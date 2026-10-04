@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lingshu"
+version = "0.0.1"
+description = "灵枢 · 完整 AI 生命载体（灵×脑×身）——身体侧代码主体：存算一体 / 世界模型 / 自研神经网络 / 图像生成"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+# 轻核承诺：core 纯标准库（不装任何 extras 也可运行）
+world = ["numpy"]
+nn = ["numpy", "Pillow"]
+gen = ["numpy", "Pillow"]
+full = ["numpy", "Pillow"]
+
+[tool.setuptools.packages.find]
+include = ["lingshu*"]

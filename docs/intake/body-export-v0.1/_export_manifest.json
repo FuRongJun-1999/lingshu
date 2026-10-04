@@ -1,0 +1,625 @@
+{
+ "package": "lingshu",
+ "generated": "2026-10-02",
+ "aeis_root": "AEIS",
+ "blocks": {
+  "world": {
+   "files": [
+    {
+     "file": "anchor_verify.py",
+     "src": "aeis.anchor_verify",
+     "sha256": "b7a593816503e304",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "anchored_verification.py",
+     "src": "aeis.anchored_verification",
+     "sha256": "2d26b89498ce6b42",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "channel_credibility.py",
+     "src": "aeis.channel_credibility",
+     "sha256": "01b56625ab55ee0a",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "confirmation.py",
+     "src": "aeis.confirmation",
+     "sha256": "b4c07be72963134a",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "curiosity_explorer.py",
+     "src": "aeis.curiosity_explorer",
+     "sha256": "6bbc5af89375129a",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "gap_dual.py",
+     "src": "aeis.gap_dual",
+     "sha256": "a58b9f55e60913cb",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "multiview.py",
+     "src": "aeis.multiview",
+     "sha256": "43f13b113b91c6d9",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "prediction.py",
+     "src": "aeis.prediction",
+     "sha256": "2c6d844768cf3723",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [
+      "semantic_space",
+      "spacetime_memory_core"
+     ],
+     "unresolved_top": []
+    },
+    {
+     "file": "scene_model.py",
+     "src": "aeis.scene_model",
+     "sha256": "c8453dc416435be1",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "scene_simulator.py",
+     "src": "aeis.scene_simulator",
+     "sha256": "53f5f353aff27207",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "semantic_anchor_graph.py",
+     "src": "aeis.semantic_anchor_graph",
+     "sha256": "6a5b27d647abe69b",
+     "rewrites": 8,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "seven_layer_loop.py",
+     "src": "aeis.seven_layer_loop",
+     "sha256": "00d70d4ed7397b4f",
+     "rewrites": 8,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "shapes.py",
+     "src": "aeis.shapes",
+     "sha256": "680e2656bac53748",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "silhouette3d.py",
+     "src": "aeis.silhouette3d",
+     "sha256": "dde19fc5d8b4279a",
+     "rewrites": 2,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "skeleton3d.py",
+     "src": "aeis.skeleton3d",
+     "sha256": "f487dd320f833cc7",
+     "rewrites": 1,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "spacetime_consistency.py",
+     "src": "aeis.spacetime_consistency",
+     "sha256": "6ca48574c7842e69",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "stable_lease.py",
+     "src": "aeis.stable_lease",
+     "sha256": "ca0cbff1546882c3",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "time_core.py",
+     "src": "aeis.time_core",
+     "sha256": "59a2af684ce80bad",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "voxel_world.py",
+     "src": "aeis.voxel_world",
+     "sha256": "3e7c721413802e10",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "vprim.py",
+     "src": "aeis.vprim",
+     "sha256": "b94ba3e91b7981af",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "wm_simloop.py",
+     "src": "aeis.wm_simloop",
+     "sha256": "64addc4736a015a5",
+     "rewrites": 8,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "world3d.py",
+     "src": "aeis.world3d",
+     "sha256": "b626fc729ad145b6",
+     "rewrites": 16,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "world_learner.py",
+     "src": "aeis.world_learner",
+     "sha256": "f263d46ff4eababf",
+     "rewrites": 8,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "world_model.py",
+     "src": "aeis.world_model",
+     "sha256": "413d56c8db09b04b",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    }
+   ],
+   "private_hits": []
+  },
+  "core": {
+   "files": [
+    {
+     "file": "activation.py",
+     "src": "aeis.activation",
+     "sha256": "7ec266341929b8c0",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 1,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "condition_normalize.py",
+     "src": "aeis.condition_normalize",
+     "sha256": "ee7bca3acbeaa6e2",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "core.py",
+     "src": "aeis.core",
+     "sha256": "46dc487db7df7927",
+     "rewrites": 34,
+     "sanitized": 2,
+     "patches": 2,
+     "hidden_refs": [
+      "1786:vision",
+      "2541:vision",
+      "3365:game_web.generate",
+      "3420:game_web.semantics",
+      "3435:game_web.semantics",
+      "3442:game_web.generate",
+      "5031:scene_reconstruction"
+     ],
+     "externals": [
+      "attention_policy",
+      "blindspot_learning_loop",
+      "body",
+      "cognitive_orchestrator",
+      "entity_registry",
+      "flywheel_engine",
+      "lifecycle_engine",
+      "pattern_separation",
+      "prediction_engine",
+      "self_cognition_engine",
+      "semantic_space"
+     ],
+     "unresolved_top": []
+    },
+    {
+     "file": "longterm_gate.py",
+     "src": "aeis.longterm_gate",
+     "sha256": "47e86683c4c6bdaa",
+     "rewrites": 1,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "provenance.py",
+     "src": "aeis.provenance",
+     "sha256": "b81c1a9b80704261",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 5,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "time_core.py",
+     "src": "aeis.time_core",
+     "sha256": "59a2af684ce80bad",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "verdict.py",
+     "src": "aeis.verdict",
+     "sha256": "43355f175b55d39f",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    }
+   ],
+   "private_hits": []
+  },
+  "nn": {
+   "files": [
+    {
+     "file": "hex_cnn.py",
+     "src": "aeis.hex_cnn",
+     "sha256": "a26f07eacd3b6deb",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_composite.py",
+     "src": "aeis.hex_composite",
+     "sha256": "d61824669286a40d",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_gen.py",
+     "src": "aeis.hex_gen",
+     "sha256": "348ad6b68cf99a10",
+     "rewrites": 3,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_hier.py",
+     "src": "aeis.hex_hier",
+     "sha256": "bab6fd52efba8402",
+     "rewrites": 3,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_nn_preview.py",
+     "src": "aeis.hex_nn_preview",
+     "sha256": "5c28cd63a82be23d",
+     "rewrites": 1,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_ortho.py",
+     "src": "aeis.hex_ortho",
+     "sha256": "8dc0beee23f6d3f5",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_query.py",
+     "src": "aeis.hex_query",
+     "sha256": "05621d8a3de55354",
+     "rewrites": 1,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_recon.py",
+     "src": "aeis.hex_recon",
+     "sha256": "6ba50a37cc403a5d",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_search.py",
+     "src": "aeis.hex_search",
+     "sha256": "11c85f9672bc8ff3",
+     "rewrites": 2,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_text.py",
+     "src": "aeis.hex_text",
+     "sha256": "b03f5cbbbf226dea",
+     "rewrites": 1,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_train.py",
+     "src": "aeis.hex_train",
+     "sha256": "1b8717c9eb70a9ba",
+     "rewrites": 2,
+     "sanitized": 1,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hex_unit.py",
+     "src": "aeis.hex_unit",
+     "sha256": "ccfe6c0b420db579",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "rust_bridge.py",
+     "src": "aeis.rust_bridge",
+     "sha256": "7f8475551018fa4d",
+     "rewrites": 0,
+     "sanitized": 4,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "stcnn.py",
+     "src": "wisdom.stcnn",
+     "sha256": "9b878583ed3a36ff",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    }
+   ],
+   "private_hits": []
+  },
+  "gen": {
+   "files": [
+    {
+     "file": "hex_composite.py",
+     "src": "aeis.hex_composite",
+     "sha256": "d61824669286a40d",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hexgen_align_probe.py",
+     "src": "experiments.hexgen_align_probe",
+     "sha256": "e699264b51c5adf8",
+     "rewrites": 2,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hexgen_c1_real.py",
+     "src": "experiments.hexgen_c1_real",
+     "sha256": "cb4123c3b0da3543",
+     "rewrites": 0,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hexgen_multi_seed.py",
+     "src": "experiments.hexgen_multi_seed",
+     "sha256": "414c213b88b666ac",
+     "rewrites": 1,
+     "sanitized": 1,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [
+      "diffusers"
+     ],
+     "unresolved_top": []
+    },
+    {
+     "file": "hexgen_pack_certify.py",
+     "src": "experiments.hexgen_pack_certify",
+     "sha256": "ff036ce60f782e45",
+     "rewrites": 2,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hexgen_self_source.py",
+     "src": "experiments.hexgen_self_source",
+     "sha256": "2d13e2b527821027",
+     "rewrites": 4,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    },
+    {
+     "file": "hexgen_subject_split.py",
+     "src": "experiments.hexgen_subject_split",
+     "sha256": "e6023d204f93cd12",
+     "rewrites": 3,
+     "sanitized": 0,
+     "patches": 0,
+     "hidden_refs": [],
+     "externals": [],
+     "unresolved_top": []
+    }
+   ],
+   "private_hits": []
+  }
+ },
+ "note": "导出副本；上游 AEIS 为真源（单向引入）"
+}

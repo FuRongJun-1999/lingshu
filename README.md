@@ -42,6 +42,19 @@
 互为引用、层层咬合（白箱固化 → 存算一体 → 蜂窝 CNN）：
 见 [docs/theory/](docs/theory/)。
 
+## 代码主体
+
+身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 7 件 ·
+world 世界模型 24 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件）：
+
+```bash
+pip install -e .             # 轻核：core 纯标准库，零依赖可跑
+pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规路径）
+```
+
+依赖分层、环境自适应降级点与精修记录见
+[docs/intake/body-export-v0.1/](docs/intake/body-export-v0.1/)（导出说明 / 双清单审计 / 逐文件指纹清单）。
+
 ---
 
 *灵枢（Lingshu）· 由 FuRongJun-1999 构建与维护。*
