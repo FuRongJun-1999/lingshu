@@ -15,6 +15,19 @@
 | ⑥ | `build_viewer.py` | `graph.json` + 多个 `--derived` 源 → `viewer_graph.json` + `index.html` + `serve.py` |
 | ⑦ | `python serve.py 8788 <mdcg_root>` | 本地服务 → http://127.0.0.1:8788 |
 
+## 一键：查看自身记忆
+
+`view_memory.py` 把七步串成一条命令（产物缺省落 `./graph_view`，可随时重建）：
+
+```bash
+python view_memory.py --root <MDCG_ROOT>            # 构建查看器（产物落 ./graph_view）
+python view_memory.py --root <MDCG_ROOT> --serve    # 构建并直接起本地服务（http://127.0.0.1:8788）
+```
+
+- **只读真源**：认知图根内任何文件都不会被修改；产物全部落在 `--out`。
+- `--root` 缺省读环境变量 `MDCG_ROOT`；`--out` 与 `--port`（缺省 8788）可调。
+- 需要单步调参时按上表逐条执行——一键脚本就是这七步的顺序封装。
+
 ## 依赖
 
 - Python 3.10+；`export_coggraph.py` 需要 **PyYAML**；其余纯标准库
