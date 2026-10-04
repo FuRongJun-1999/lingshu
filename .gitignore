@@ -1,0 +1,43 @@
+# 运行时与虚拟环境
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+node_modules/
+
+# 模型与资产（体积大，按需下载）
+models/
+weights/
+assets/baked/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.ckpt
+*.bin
+*.gguf
+
+# 数据（记忆真源与本地数据一律不入库）
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.wal
+
+# 凭据与环境（绝不入库）
+.env
+.env.*
+*.key
+*.token
+secrets/
+
+# 日志与临时
+*.log
+*.tmp
+tmp/
+_tmp/
