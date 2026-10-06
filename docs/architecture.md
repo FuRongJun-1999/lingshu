@@ -73,6 +73,6 @@ lingshu
 | 2026-10-04 | 认知图可视化管线 7 件（coggraph 七步：导出 / 推导边 / 会话链 / 命名审计 / 同义归并 / 渲染构建 / 服务模板）——见 `tools/coggraph/` | 身体侧可视化项目 | CLEAN（命中项经人工复核为误报：CDN 资源 URL / npm 包名 / 服务回环地址） | `e0a616b` |
 | 2026-10-04 | 身体侧模块化导出 v0.1：`lingshu` Python 包 52 模块（core 存算一体 7 / world 世界模型 24 / nn 自研神经网络 14 / gen 图像生成 7）+ 导出档案（`docs/intake/body-export-v0.1/`）+ `pyproject.toml`（轻核零依赖 / 重载 extras） | 身体侧模块化导出物 | **独立复核通过**：重扫 CLEAN（2 项命中复核为误报：`self://` 截断伪影 / 公开 GitHub URL）；import 冒烟 57/57；构造性运行（渲染 512²→分割抽实例）通过 | `ac6c0ca` |
 | 2026-10-04 | 查看自身记忆 · 查看器工具面：`tools/coggraph/view_memory.py`（一键链路：导出→推导边→会话链→命名审计→同义归并→构建查看器[→起服务]）＋ README「一键」用法成书 | 本仓（coggraph 七件之上的工具面封装） | **端到端构造性验证**：在役库全链实测 18174 节点/83016 边；只读不变量（漂移经归因＝外部引擎周期批次）；服务探针 200 与正文回读；独立复核 15 项 | `6a84004` |
-| 2026-10-06 | **世界模型 × 脑 适配器**：`lingshu/world/brain_store.py`（MCP stdio 客户端 + `BrainStore`/`BrainEngine`/`connect`；M1 读向＋M2 写向最小闭环）＋ `tests/test_brain_store.py`（隔离库端到端 10 断言）——intake 见 `docs/intake/brain-store-v0.1/` | **本仓新件**（依 0.8.0「身体×脑」对接设计四裁定之一＝适配器归身体侧；对端 `dsh-memory` 承接 spatial 直存与组合冒烟腿） | CLEAN（机械扫描 2 文件 0 命中；连接参数零本机路径字面量；端到端实证：`ingest_scene`→世界重建逐项断言，零改动对接） | `d97e125` |
+| 2026-10-06 | **世界模型 × 脑 适配器**：`lingshu/world/brain_store.py`（MCP stdio 客户端 + `BrainStore`/`BrainEngine`/`connect`；M1 读向＋M2 写向最小闭环）＋ `tests/test_brain_store.py`（隔离库端到端 10 断言）——intake 见 `docs/intake/brain-store-v0.1/` | **本仓新件**（依 0.8.0「身体×脑」对接设计四裁定之一＝适配器归身体侧；对端 `dsh-memory` 承接 spatial 直存与组合冒烟腿） | CLEAN（机械扫描 2 文件 0 命中；连接参数零本机路径字面量；端到端实证：`ingest_scene`→世界重建逐项断言，零改动对接） | `fb4b98b` |
 
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*
