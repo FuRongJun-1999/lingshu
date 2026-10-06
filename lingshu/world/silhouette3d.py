@@ -9,7 +9,7 @@
 肥鱼（猫娘少女）轮廓模板：猫耳/头/身体(裙)/手臂/腿/尾巴，各部件深度不同。
 
 用法：
-    python -m aeis.silhouette3d   # 渲染 3 视角 demo → data/fatfish_*.png
+    python -m lingshu.world.silhouette3d   # 渲染 3 视角 demo → data/fatfish_*.png
 """
 
 from __future__ import annotations
@@ -155,18 +155,18 @@ def _ellipse(center: Tuple[float, float], rx: float, ry: float,
 
 def fatfish_skinned(center: Tuple[float, float, float] = (0, 0.85, 5.0),
                     height: float = 1.55, lod: int = 3) -> Silhouette3D:
-    """肥鱼**蒙皮版**裸身轮廓——从骨架关节坐标推导（骨架=基准，轮廓=肉）。
+    """肥鱼**蒙皮版**基础轮廓（无服装层）——从骨架关节坐标推导（骨架=基准，轮廓=面）。
 
     与 fatfish_skeleton（手调坐标）的关键区别：
     - 所有身体部件（头/躯干/四肢/尾巴）的轮廓点**从 fatfish_bone_skeleton
       关节的世界坐标直接推导**，保证骨架线条叠加时关节精确落在轮廓内
-      （"身体骨架和外部轮廓一致"，脱衣/叠骨架永不露馅）。
-    - 裸身：全身皮肤色，无衣服；衣服是后续可叠加的外衣层。
+      （"身体骨架和外部轮廓一致"，去服装层/叠加骨架线时轮廓始终贴合）。
+    - 基础层：全身皮肤色，不含服装；服装是后续可叠加的外层。
 
     用法：
         ff = fatfish_skinned()
-        img = ff.render(...)          # 裸身
-        img = ff.render(..., bones=True 由 WorldModel 叠骨架)  # 骨架+肉
+        img = ff.render(...)          # 基础层
+        img = ff.render(..., bones=True 由 WorldModel 叠骨架)  # 骨架+面
     """
     from .skeleton3d import fatfish_bone_skeleton
 
