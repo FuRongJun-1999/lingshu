@@ -1,0 +1,112 @@
+{
+ "package": "lingshu",
+ "batch": "body-export-v0.2",
+ "generated": "2026-10-08",
+ "aeis_root": "AEIS",
+ "scope": "固化物 1 件 + 测试件 8 件（构造性）；模块刷新判定=无过时（不刷新，见模块复核节）",
+ "artifacts": [
+  {
+   "file": "lingshu/nn/assets/kernels_img0.json",
+   "src": "data/vision/hex_cnn_m1/kernels_img0.json",
+   "bytes": 779,
+   "sha256": "dc8d9f9013d4c71c47e6fc93a6e649b69f383d04a3a3edb92e91558e1db57de6",
+   "sanitized_fields": 1,
+   "note": "source 字段素材编号脱敏（原值 img0_240x394）；kernels/algo/consolidated/epochs/loss 未动"
+  }
+ ],
+ "tests": [
+  {
+   "file": "tests/test_hex_cnn.py",
+   "src": "tests/test_hex_cnn.py",
+   "bytes": 7811,
+   "sha256": "41308cc0b040d973",
+   "rewrites": 1,
+   "patches": 11,
+   "sanitized": 0
+  },
+  {
+   "file": "tests/test_hex_composite.py",
+   "src": "tests/test_hex_composite.py",
+   "bytes": 6591,
+   "sha256": "d47c2e08b285ac94",
+   "rewrites": 1,
+   "patches": 0,
+   "sanitized": 0
+  },
+  {
+   "file": "tests/test_hex_gen.py",
+   "src": "tests/test_hex_gen.py",
+   "bytes": 12503,
+   "sha256": "85331c0ae9c8afc7",
+   "rewrites": 4,
+   "patches": 0,
+   "sanitized": 0
+  },
+  {
+   "file": "tests/test_hex_hier.py",
+   "src": "tests/test_hex_hier.py",
+   "bytes": 3698,
+   "sha256": "e7780eea7c04b33d",
+   "rewrites": 4,
+   "patches": 0,
+   "sanitized": 0
+  },
+  {
+   "file": "tests/test_hex_ortho.py",
+   "src": "tests/test_hex_ortho.py",
+   "bytes": 5633,
+   "sha256": "e491ed11723bb6c4",
+   "rewrites": 5,
+   "patches": 0,
+   "sanitized": 0
+  },
+  {
+   "file": "tests/test_hex_search.py",
+   "src": "tests/test_hex_search.py",
+   "bytes": 6205,
+   "sha256": "fe0c325ba71c1cf1",
+   "rewrites": 6,
+   "patches": 0,
+   "sanitized": 0
+  },
+  {
+   "file": "tests/test_hex_text.py",
+   "src": "tests/test_hex_text.py",
+   "bytes": 4632,
+   "sha256": "9b4a5619903428cc",
+   "rewrites": 5,
+   "patches": 0,
+   "sanitized": 0
+  },
+  {
+   "file": "tests/test_hex_train.py",
+   "src": "tests/test_hex_train.py",
+   "bytes": 6619,
+   "sha256": "0f0290ef9664da2d",
+   "rewrites": 11,
+   "patches": 0,
+   "sanitized": 0
+  }
+ ],
+ "modules_recheck": {
+  "method": "重跑上游 export.py 管线（--blocks world,core,nn,gen）输出与仓内逐件二进制比对 + 逐行 diff",
+  "result": "52 件中 50 件与上游现源管线产物字节级一致（SAME）；差异 2 件均为本仓 f8b69ab 『公开前脱敏处置』改写（nn/hex_gen.py 内部工作流号；world/silhouette3d.py 措辞），刷新将回归脱敏破坏 ⇒ 不刷新；另 world/brain_store.py 为本仓新件（fb4b98b），无上游对照。",
+  "note": "派发者前提『AEIS 侧字节数更大 ⇒ 上游过时』经实测否证：字节差为 import 改写长度差（如 from aeis.hex_train import → from .hex_train import），重管线产物与仓内件逐件一致。"
+ },
+ "tooling": {
+  "sanitize_rule_added": [
+   "「Program Files 下 2_ai 工作区」形态的旧机器正斜杠路径（原版兜底正则不覆盖正斜杠形态；触发处 test_hex_cnn.py 旧注释已随 patch 中性化）"
+  ],
+  "test_import_rewrite": "from aeis.hex_X import → from lingshu.nn.hex_X import（跨层改写同 v0.1 约定）",
+  "guide_block_added_to": [
+   "test_hex_hier.py",
+   "test_hex_ortho.py",
+   "test_hex_search.py",
+   "test_hex_text.py",
+   "test_hex_train.py"
+  ],
+  "cnn_patch": "test_hex_cnn.py：段④⑤⑥（11 项，依赖上游素材 data/img/0.png）包 if/else——素材在盘时原判据全跑；导出面无素材时显式 SKIP（不伪造通过）；另 10 处替换（9 条规则：旧路径注释/nahida 叙事/人物措辞/立绘与纳西妲措辞/source 字段/变量名/img0 引用）",
+  "audit_ext": "audit_intake_ext.py（过程物）：.json 纳入扫描面 + .git 排除 + --out；PRIVATE/PATS 未动"
+ },
+ "note": "导出副本；上游 AEIS 为真源（单向引入）；本批不改写 v0.1 历史件"
+}

@@ -17,6 +17,11 @@ world = ["numpy"]
 nn = ["numpy", "Pillow"]
 gen = ["numpy", "Pillow"]
 full = ["numpy", "Pillow"]
+dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 include = ["lingshu*"]
+
+[tool.setuptools.package-data]
+# nn 模块附属固化物（白箱固化产物，JSON 可直读；见 docs/intake/body-export-v0.2/）
+"lingshu.nn" = ["assets/*.json"]
