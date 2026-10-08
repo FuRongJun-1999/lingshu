@@ -168,6 +168,14 @@ def spatial_detect(net: HexHierNet, lat: np.ndarray,
 
 # ==================== 图文融合一致性判定(四态) ====================
 
+def _attr_support(said: Optional[str], seen: str) -> float:
+    """单属性支持度:相符 0.5 / 冲突 0 / 子句未陈述该属性 0.25(无证据,沿用原分值)。
+    两属性都陈述时子句得分即 1 全符 / 0.5 半符 / 0 冲突。"""
+    if said is None:
+        return 0.25
+    return 0.5 if said == seen else 0.0
+
+
 def fuse_consistency(clauses: List[Dict], detections: List[Dict]) -> Dict:
     """文字子句 vs 图像检测 对齐融合 → 四态一致性判定。
     每子句得分 = 位置命中物卡的形状/颜色匹配度(1 全符/0.5 半符/0 冲突);
@@ -180,11 +188,11 @@ def fuse_consistency(clauses: List[Dict], detections: List[Dict]) -> Dict:
         for det in detections:
             m = 0.0
             if cl["pos"] == det["pos"]:
-                m = 0.5
-                sm = (cl["shape"] == det["obj"].split("|")[0])
-                cm = (cl["color"] == det["obj"].split("|")[1])
-                m += 0.25 * sm + 0.25 * cm
-            elif cl["shape"] in det["obj"] and cl["color"] in det["obj"]:
+                shape_seen, color_seen = det["obj"].split("|")
+                m = (_attr_support(cl["shape"], shape_seen)
+                     + _attr_support(cl["color"], color_seen))
+            elif (cl["shape"] and cl["color"]
+                  and cl["shape"] in det["obj"] and cl["color"] in det["obj"]):
                 m = 0.4                                     # 位置异但物体同
             best = max(best, m)
         scores.append(best)
