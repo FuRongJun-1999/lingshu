@@ -223,6 +223,25 @@ class STEdge:
         )
 
 
+class CausalChain(list):
+    """因果链（list 子类，元素=STEdge 序列）·携带遍历元信息（issue #145）。
+
+    - truncated=True：到深度预算（max_depth）仍存在出边——链在此截断，
+      区别于「无因果后果」（后者才是空列表）
+    - cyclic=True：链尾为回边（闭回路径内已访问节点，含自环）——可达部分
+      不丢弃，链到此为止
+
+    向后兼容：list 子类——isinstance(chain, list) 成立，既有下标/迭代/len/
+    排序/json 序列化用法均不变；两个标记为新增只读语义位。
+    """
+    __slots__ = ("truncated", "cyclic")
+
+    def __init__(self, edges=(), truncated: bool = False, cyclic: bool = False):
+        super().__init__(edges)
+        self.truncated = bool(truncated)
+        self.cyclic = bool(cyclic)
+
+
 # =============================================================================
 # 自我模型（SelfModel）
 # =============================================================================
@@ -821,29 +840,149 @@ class LayeredStore:
         return all_paths
 
     def find_cycles(self, max_depth: int = 10) -> List[List[STEdge]]:
-        """检测因果循环"""
-        cycles = []
-        all_nodes = self.query_nodes(limit=1000)
-        node_ids = [n.id for n in all_nodes]
+        """检测因果循环（有向简单环）·issue #145 修复。
 
-        def dfs(current: str, start: str, path: List[STEdge], depth: int):
+        - 覆盖自环与 2 环（旧实现 `len(path) >= 2` 漏报 A⇄B 与 A→A）
+        - 每环只报一次：环内最小节点起枚举 + 环边集规范化去重
+        - 只在非平凡强连通分量（Tarjan SCC，O(V+E)）内枚举；边索引一次 SQL 建好，
+          不再每步一次查询——无环图整趟 O(V+E)，不随规模指数增长
+        - max_depth：环长上限（与旧语义一致：至多 max_depth+1 条边）
+        - P2-002：CYCLIC 为显式循环标记，纳入检测确保复合循环不遗漏；
+          infer_causal_paths 保持仅 CAUSAL
+        """
+        out_edges: Dict[str, List[STEdge]] = {}
+        nodes: Set[str] = set()
+        for row in self.conn.execute(
+                "SELECT * FROM edges WHERE relation_type IN (?, ?)",
+                (EdgeType.CAUSAL.value, EdgeType.CYCLIC.value)).fetchall():
+            e = STEdge.from_row(tuple(row))
+            out_edges.setdefault(e.source_id, []).append(e)
+            nodes.add(e.source_id)
+            nodes.add(e.target_id)
+        if not nodes:
+            return []
+        order = sorted(nodes)  # 全序：每环从其最小节点起枚举一次
+
+        # ---- Tarjan SCC（迭代版；未访问/在栈/已定 三色语义），O(V+E) ----
+        index_of: Dict[str, int] = {}
+        lowlink: Dict[str, int] = {}
+        on_stack: Set[str] = set()
+        tarjan_stack: List[str] = []
+        scc_of_node: Dict[str, int] = {}
+        scc_size: List[int] = []
+        counter = 0
+        for root in order:
+            if root in index_of:
+                continue
+            work = [(root, iter(out_edges.get(root, ())))]
+            index_of[root] = lowlink[root] = counter
+            counter += 1
+            tarjan_stack.append(root)
+            on_stack.add(root)
+            while work:
+                node, it = work[-1]
+                advanced = False
+                for e in it:
+                    t = e.target_id
+                    if t not in index_of:
+                        index_of[t] = lowlink[t] = counter
+                        counter += 1
+                        tarjan_stack.append(t)
+                        on_stack.add(t)
+                        work.append((t, iter(out_edges.get(t, ()))))
+                        advanced = True
+                        break
+                    if t in on_stack:
+                        lowlink[node] = min(lowlink[node], index_of[t])
+                if advanced:
+                    continue
+                work.pop()
+                if work:
+                    parent = work[-1][0]
+                    lowlink[parent] = min(lowlink[parent], lowlink[node])
+                if lowlink[node] == index_of[node]:
+                    sid = len(scc_size)
+                    size = 0
+                    while True:
+                        w = tarjan_stack.pop()
+                        on_stack.discard(w)
+                        scc_of_node[w] = sid
+                        size += 1
+                        if w == node:
+                            break
+                    scc_size.append(size)
+
+        # 非平凡 SCC：分量 ≥2 节点，或单点带自环——环只落在其中，其余节点整体剪掉
+        self_looped = {e.source_id for es in out_edges.values() for e in es
+                       if e.source_id == e.target_id}
+        interesting = {n for n, sid in scc_of_node.items()
+                       if scc_size[sid] >= 2 or n in self_looped}
+
+        cycles: List[List[STEdge]] = []
+        seen: Set[frozenset] = set()
+
+        def dfs(current: str, start: str, path: List[STEdge],
+                on_path: Set[str], depth: int):
             if depth > max_depth:
                 return
-            edges = self.get_outgoing_edges(current)
-            for e in edges:
-                if e.relation_type in (EdgeType.CAUSAL, EdgeType.CYCLIC):
-                    # P2-002: CYCLIC 为显式循环标记，纳入检测确保复合循环不遗漏；infer_causal_paths 保持仅 CAUSAL
-                    if e.target_id == start and len(path) >= 2:
-                        cycles.append(list(path) + [e])
-                        return
-                    if e.target_id not in [p.target_id for p in path]:
-                        path.append(e)
-                        dfs(e.target_id, start, path, depth+1)
-                        path.pop()
+            for e in out_edges.get(current, ()):
+                t = e.target_id
+                if t == start:
+                    cyc = list(path) + [e]  # 闭环（path 为空时即自环）
+                    key = frozenset(x.id for x in cyc)
+                    if key not in seen:
+                        seen.add(key)
+                        cycles.append(cyc)
+                    continue
+                if t in on_path or t <= start or t not in interesting:
+                    continue
+                path.append(e)
+                on_path.add(t)
+                dfs(t, start, path, on_path, depth + 1)
+                path.pop()
+                on_path.remove(t)
 
-        for nid in node_ids:
-            dfs(nid, nid, [], 0)
+        for s in order:
+            if s in interesting:
+                dfs(s, s, [], {s}, 0)
         return cycles
+
+    def has_causal_cycle(self) -> bool:
+        """因果循环存在性探测（三色 DFS：未访问/在栈/已定）·O(V+E)，不做环枚举。
+
+        self_check 只需判有无环——以本件替代整趟 find_cycles 枚举，
+        检测耗时不再随图规模指数增长（issue #145）。
+        """
+        out_edges: Dict[str, List[str]] = {}
+        nodes: Set[str] = set()
+        for row in self.conn.execute(
+                "SELECT source_id, target_id FROM edges WHERE relation_type IN (?, ?)",
+                (EdgeType.CAUSAL.value, EdgeType.CYCLIC.value)).fetchall():
+            out_edges.setdefault(row[0], []).append(row[1])
+            nodes.add(row[0])
+            nodes.add(row[1])
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color: Dict[str, int] = {n: WHITE for n in nodes}
+        for root in sorted(nodes):
+            if color[root] != WHITE:
+                continue
+            color[root] = GRAY
+            work = [(root, iter(out_edges.get(root, ())))]
+            while work:
+                node, it = work[-1]
+                advanced = False
+                for t in it:
+                    if color[t] == GRAY:
+                        return True  # 回边（含自环）⇒ 有环
+                    if color[t] == WHITE:
+                        color[t] = GRAY
+                        work.append((t, iter(out_edges.get(t, ()))))
+                        advanced = True
+                        break
+                if not advanced:
+                    color[node] = BLACK
+                    work.pop()
+        return False
 
     # ---------- 衰减引擎 ----------
 
@@ -2074,7 +2213,10 @@ class SpacetimeMemoryEngine:
         """
         因果推理（v1.16 图架构增强）：
         - 指定 end_id：查找 start→end 的所有路径（relation_types 可多类型）
-        - 未指定：返回从 start 出发的所有链（每条链最长 max_depth）
+        - 未指定：返回从 start 出发的所有链（每条链最长 max_depth），元素为
+          CausalChain（list 子类）——到深度预算仍有出边 ⇒ 存截断链并标
+          truncated；链尾遇回边/自环 ⇒ 存链并标 cyclic（可达部分不丢弃）；
+          空列表=确无因果后果，不再混同于「链太长/有环」（issue #145）
         - importance_weighted：路径排序加权（节点 importance 均值）
         - include_subgraph：结果附尾节点知识点子图（嵌套感知）
         """
@@ -2082,24 +2224,38 @@ class SpacetimeMemoryEngine:
             paths = self.store.infer_causal_paths(start_id, end_id, max_depth,
                                                   relation_types=relation_types)
         else:
-            chains = []
-            def collect(current_id: str, path: List[STEdge], depth: int):
-                if depth > max_depth:
-                    return
+            chains: List[CausalChain] = []
+
+            def collect(current_id: str, path: List[STEdge], on_path: Set[str],
+                        depth: int):
                 edges = self.store.get_outgoing_edges(current_id)
                 if relation_types:
                     tset = {t.lower() for t in relation_types}
                     kept = [e for e in edges if e.relation_type.value in tset]
                 else:
                     kept = [e for e in edges if e.relation_type == EdgeType.CAUSAL]
-                if not kept and path:
-                    chains.append(list(path))
+                if not kept:
+                    # 天然终点：无出边的链（唯一的「无因果后果」形态）
+                    if path:
+                        chains.append(CausalChain(path))
+                    return
+                if depth >= max_depth:
+                    # 深度预算用尽仍有出边：存截断链（不丢弃、不混同于无后果）
+                    if path:
+                        chains.append(CausalChain(path, truncated=True))
                     return
                 for e in kept:
+                    if e.target_id in on_path:
+                        # 回边/自环：路径内已访问 ⇒ 存带环链（不吞掉可达部分）
+                        chains.append(CausalChain(list(path) + [e], cyclic=True))
+                        continue
                     path.append(e)
-                    collect(e.target_id, path, depth+1)
+                    on_path.add(e.target_id)
+                    collect(e.target_id, path, on_path, depth + 1)
                     path.pop()
-            collect(start_id, [], 0)
+                    on_path.remove(e.target_id)
+
+            collect(start_id, [], {start_id}, 0)
             paths = chains
         # importance 加权排序
         if importance_weighted and paths:
@@ -4956,8 +5112,11 @@ class SpacetimeMemoryEngine:
             "stats": self.store.get_stats(),
             "timestamp": time.time()
         }
-        # 检查是否存在因果循环
-        cycles = self.store.find_cycles(max_depth=8)
+        # 检查是否存在因果循环：先 O(V+E) 三色探测，无环即免整趟枚举（issue #145）
+        if self.store.has_causal_cycle():
+            cycles = self.store.find_cycles(max_depth=8)
+        else:
+            cycles = []
         report["cycles_found"] = len(cycles)
         report["cycle_details"] = [[e.id for e in path] for path in cycles[:5]]
         return report
