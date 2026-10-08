@@ -241,6 +241,7 @@ class SelfModel:
     history: List[Dict] = field(default_factory=list)          # 状态变更记录
 
     TRUST_HISTORY_MAX = 30  # 对齐 2.9.2 观察窗口 N_effective
+    HISTORY_MAX = 200       # 状态变更记录上界（对齐 trust_history 的钳制手法，值可调）
 
     def update(self, **kwargs):
         """更新 SelfModel 字段并自动落变更历史（state 历史：时间戳+变更键值）。"""
@@ -251,6 +252,9 @@ class SelfModel:
             "timestamp": time.time(),
             "changes": kwargs
         })
+        # 对齐 trust_history：append 后钳制到 HISTORY_MAX，避免随 update_self 调用无界增长
+        if len(self.history) > self.HISTORY_MAX:
+            self.history = self.history[-self.HISTORY_MAX:]
 
     def record_value_change(self, value: str, trigger: str):
         """价值观版本化：2.1.2 价值观修正事件可追溯"""
