@@ -13,8 +13,11 @@
   ① **读出稳定性**（同 prompt S 张之间）：形状/颜色/花纹的**多重集**是否一致、数量是否一致；
   ② **真值兑现率**：同一 prompt 的多张里，读出与 prompt 真值一致的比例（此前只能用单张近似，
      现在可以给「语料级」的定义：**多次渲染中兑现的比例**）；
-  ③ **件内方差 vs 类间差**：按形状类分组，逐特征算「同 prompt 内散布（pooled sd）」与
-     「类间散布（类中心 sd）」，给出比值 ⇒ 这是形状列能否再提升的判据。
+  ③ **件内方差 vs 类间差**：逐特征算「同 prompt 内散布（按形状类 pooled）」（分子）与
+     「类间散布（类中心 sd）」（分母），给出比值 ⇒ 这是形状列能否再提升的判据。
+     类间差 ≈ 0 而件内 > 0 的维不可分（比值 = +∞）：记进 `indistinguishable_dims`，
+     该维比值输出 null、排序时排最前，且**不参与** `median_ratio`——不写成 0.0
+     （0 = 「件内比类间还稳」= 最优，正好把最坏情形藏成最好）。
 
 红线：白箱（零 LLM、纯 stdlib+numpy+PIL）；读图/量测**只读复用** `hexgen_c1_real` 的确定性实现；
       生成侧只用**本地 Qwen-Image-2.1 管线**（即被研究的黑箱本体，与既有语料同源同参数）。
@@ -167,14 +170,26 @@ def summarize(reads, items):
             hon["pattern"].append(float(r["patterns"] == sorted([t["pattern"]] * t["n"])))
             hon["count"].append(float(r["n_read"] == t["n"]))
 
-    #   ③ 件内方差 vs 类间差（逐特征；只用该类的件，同 prompt 内 pooled sd）
+    #   ③ 件内方差 vs 类间差（逐特征）
+    #   分子 = **同 prompt 内**散布：先算每个 prompt 自己的 per-image sd，再按形状类 pooled
+    #          （sqrt(Σ(n_i−1)·s_i² / Σ(n_i−1))，n_i = 该 prompt 的图数）。「件内」= 同一
+    #          prompt 的多次渲染之间，**不是**同形状类的不同 prompt 之间。
+    #   分母 = 类间散布（各类中心的 sd）。
     cls_of = {it["sid"]: it["shape"] for it in items}
-    vecs = {}                                   # 类 → [[每图的特征行], ...]
+    vecs = {}                                   # 类 → [[每图的特征行], ...]（类中心用）
+    per_prompt_sd = {}                          # 类 → [(n_i, sd_i), ...]（**每 prompt 一项**）
     for sid, rs in by_sid.items():
         k = cls_of.get(sid)
         if not k:
             continue
         vecs.setdefault(k, []).extend([r["feats"] for r in rs])
+        with_f = [r["feats"] for r in rs if r["feats"]]
+        #   「件内」只在同一 prompt 有 ≥2 张时才有定义：先按图求均值（消除「一张图里多个
+        #   物体」的干扰），再对图求 sd；单张件对分子没有贡献。
+        if len(with_f) >= 2:
+            img_means = np.stack([np.stack(im).mean(axis=0) for im in with_f])
+            per_prompt_sd.setdefault(k, []).append(
+                (len(img_means), img_means.std(axis=0, ddof=1)))
     dims = list(C.FEATS)
     within, between, n_cls = [], [], 0
     means = []
@@ -187,17 +202,27 @@ def summarize(reads, items):
         if len(with_obj) < 2:
             continue
         means.append(np.stack([np.stack(im).mean(axis=0) for im in with_obj]).mean(axis=0))
-        #   同 prompt 内的散布：先按图求均值，再对图求 sd（消除「一张图里多个物体」的干扰）
-        img_means = np.stack([np.stack(im).mean(axis=0) for im in with_obj])
-        within.append(img_means.std(axis=0, ddof=1) if len(img_means) > 1
-                      else np.zeros(len(dims)))
         n_cls += 1
+    #   件内：按类 pooled —— 每个 prompt 先出 per-image sd，再按自由度加权合并
+    for k, entries in per_prompt_sd.items():
+        den = sum(n - 1 for n, _ in entries)
+        if den <= 0:
+            continue
+        within.append(np.sqrt(sum((n - 1) * (s ** 2) for n, s in entries) / den))
     if len(means) > 1:
         between = np.stack(means).std(axis=0, ddof=1)
     else:
         between = np.zeros(len(dims))
     within_m = np.median(np.stack(within), axis=0) if within else np.zeros(len(dims))
-    ratio = np.where(between > 1e-9, within_m / np.maximum(between, 1e-9), 0.0)
+    #   类间差 ≈ 0 而件内散布 > 0 的维：比值在数学上无定义（= +∞）。它既不能落进 0.0
+    #   （0 = 「件内比类间还稳」= 最优，恰好把最坏情形写成最好），也不该悄悄混进
+    #   median_ratio；故单独点名 indistinguishable_dims、该维比值输出 null、排序时排最前。
+    indistinguishable = (between <= 1e-9) & (within_m > 0)
+    defined = ~indistinguishable
+    ratio = np.zeros(len(dims))
+    ratio[defined] = within_m[defined] / np.maximum(between[defined], 1e-9)
+    order = np.argsort(-np.where(indistinguishable, np.inf, ratio))
+    med = float(np.median(ratio[defined])) if bool(defined.any()) else float("nan")
     return {
         "n_prompt": len(by_sid), "n_img": len(reads),
         "n_img_empty": n_empty,
@@ -210,9 +235,11 @@ def summarize(reads, items):
             "dims": dims,
             "within_prompt_sd": [round(float(x), 5) for x in within_m],
             "between_class_sd": [round(float(x), 5) for x in between],
-            "ratio_within_over_between": [round(float(x), 3) for x in ratio],
-            "median_ratio": round(float(np.median(ratio)), 3),
-            "worst_dims": [dims[i] for i in np.argsort(-ratio)[:5]],
+            "ratio_within_over_between": [None if indistinguishable[i] else round(float(ratio[i]), 3)
+                                          for i in range(len(dims))],
+            "indistinguishable_dims": [dims[i] for i in np.where(indistinguishable)[0]],
+            "median_ratio": round(med, 3) if med == med else None,
+            "worst_dims": [dims[i] for i in order[:5]],
         },
     }
 
