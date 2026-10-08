@@ -28,8 +28,6 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, ".")
-sys.path.insert(0, "experiments")
 from . import hexgen_c1_real as C
 from . import hexgen_self_source as S
 

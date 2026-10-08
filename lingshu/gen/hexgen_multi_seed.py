@@ -34,8 +34,6 @@ import time
 import numpy as np
 from PIL import Image
 
-sys.path.insert(0, ".")
-sys.path.insert(0, "experiments")
 from . import hexgen_c1_real as C          # 只读复用：解析器/读出链/度量（旁路，不改它）
 
 QWEN = (r"<local-path>"

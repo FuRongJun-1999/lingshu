@@ -73,8 +73,6 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from . import hexgen_c1_real as C          # noqa: E402
 from . import hexgen_self_source as S      # noqa: E402  只读复用：8 类**解析原型**（词表）
 

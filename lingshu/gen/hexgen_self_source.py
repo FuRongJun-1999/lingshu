@@ -28,8 +28,6 @@ import sys
 import math
 import numpy as np
 
-sys.path.insert(0, ".")
-sys.path.insert(0, "experiments")
 from . import hexgen_c1_real as C
 from . import hexgen_multi_seed as M
 from .hex_composite import _COLORS_RGB, _paint        # 只读复用（既有确定性画笔）
