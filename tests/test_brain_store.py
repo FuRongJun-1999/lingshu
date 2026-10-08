@@ -90,6 +90,30 @@ def main() -> int:
         nodes = agent.store.get_nodes_by_tag("spatial", limit=50)
         ents = {str(t)[4:] for n in nodes for t in n.tags if str(t).startswith("ent:")}
         ok("幽灵" not in ents, "S9b 无 spatial 标签者被适配器侧过滤", sorted(ents))
+
+        # ⑥ issue #2 回归守卫：读取条数契约——`limit` 须译为脑端条数参数 `k`。
+        #    改前读数（真实 MCP stdio；21 实体场景）：limit=200 只回 20、limit=1 也回
+        #    20（脑端 `_int_arg(a, "k", 20)` 缺省静默回落），世界缺最后一个实体。
+        ents_before = {str(t)[4:]
+                       for n in agent.store.get_nodes_by_tag("spatial", limit=200)
+                       for t in n.tags if str(t).startswith("ent:")}
+        want21 = {"chair%d" % i for i in range(21)}
+        desc21 = "\n".join("chair%d|chair|%.1f,0.45,5.0|neutral" % (i, i * 0.1)
+                           for i in range(21))
+        ids21 = ingest_scene_to_brain(agent, desc21)
+        ok(len(ids21) == 21, "S10a 21 实体写入成功（issue #2 场景，对照组）", len(ids21))
+        nodes21 = agent.store.get_nodes_by_tag("spatial", limit=200)
+        ents21 = {str(t)[4:] for n in nodes21
+                  for t in n.tags if str(t).startswith("ent:")}
+        ok(ents21 - ents_before == want21,
+           "S10b limit=200 ⇒ 新增候选恰为写入的 21 个（脑端 k 生效；改前只回 20）",
+           sorted(want21 - ents21))
+        got21 = set(load_world_from_brain(agent).entities.keys())
+        ok(got21 - ents_before == want21,
+           "S10c 世界重建实体集合＝写入集合（增量口径；改前缺末位实体）",
+           sorted((want21 | ents_before) - got21))
+        n1 = agent.store.get_nodes_by_tag("spatial", limit=1)
+        ok(len(n1) <= 1, "S11 limit=1 ⇒ 至多 1 个候选（改前回落 k=20 ⇒ 20 个）", len(n1))
     finally:
         try:
             agent.store.client.close()

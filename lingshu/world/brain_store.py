@@ -42,8 +42,9 @@
     print(wm.scene_text())
 
 诚实边界（MVP）：
-- 读候选受 `cg(op=read)` 召回面与 `limit` 约束（非全库枚举）——场景规模大时
-  由 `seed_query`（缺省「场景实体」＝ingest_scene 的内容约定词）保证召回头部；
+- 读候选受 `cg(op=read)` 召回面与 `limit` 约束（非全库枚举；`limit` 译为脑端
+  条数参数 `k`——issue #2）——场景规模大时由 `seed_query`（缺省「场景实体」
+  ＝ingest_scene 的内容约定词）保证召回头部；
 - `record_state` 的 `old` 恒为 None（legacy `ingest_scene` 只传新值；变迁史由
   事件序承担，撤回语义走脑侧既有 projection）；
 - 仅翻译 `UPDATE nodes SET state_attributes` 一条 legacy 语句形态，其它 SQL 抛错
@@ -246,9 +247,13 @@ class BrainStore:
         """cg(op=read) 取候选 → **适配器侧按 tag 过滤**（裁定三：零脑改）→ BrainNode。
 
         坐标取 `frontmatter.spatial.coords3d`（裁定二）；状态取槽位投影。
+
+        `limit` 译为脑端条数参数 `k`（issue #2）：脑端 `cg(op=read)` 的条数口径
+        是 `k`（`_int_arg(a, "k", 20)`）；`limit` 在非 `budget_tokens` 路径**不被
+        识别**、静默回落脑端缺省 20——写入 21 个场景实体会只重建 20 个。
         """
         resp = self.client.call("cg", {"op": "read", "query": self.seed_query,
-                                       "limit": max(1, int(limit))})
+                                       "k": max(1, int(limit))})
         states = self._state_map()
         out: List[BrainNode] = []
         for item in (resp.get("results") or resp.get("items") or []):
