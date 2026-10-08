@@ -342,8 +342,9 @@ def from_legacy(tags: Any, created_at: Optional[float] = None,
     if not cs.get("existence_constraint"):
         p.existence_constraint = "（未声明）"
 
-    # 验证状态 / 方式
-    for s in ("anchored", "partial", "unverified"):
+    # 验证状态 / 方式（按强度递减取首个命中；VERIFY_STATUS 为强度递增序：
+    # unverified < partial < verified < anchored）
+    for s in ("anchored", "verified", "partial", "unverified"):
         if s in low:
             p.verify_status = s
             break
