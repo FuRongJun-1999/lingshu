@@ -77,20 +77,22 @@ class HexGrid:
 
 def image_to_grid(img_arr: np.ndarray, cells_across: int = 48) -> Tuple[np.ndarray, HexGrid]:
     """图像 (H,W,3) uint8 → 蜂窝晶格特征 (rows, cols, 3) float32（每 cell 区域均值）。
-    错行布局：第 r 行中心 x = √3·s·(q + 0.5·(r%2) + 0.5)，y = 1.5·s·r + s。"""
+    错行布局：第 r 行中心 x = √3·s·(q + 0.5·(r%2) + 0.5)，y = 1.5·s·r + s。
+    s 为外接圆半径；横向节距 √3·s = W/(cells_across+0.5)——cells_across 列（含奇行半格
+    错位）恰铺满画幅宽 W，每个 cell 的采样窗都落在画内。"""
     H, W = img_arr.shape[:2]
-    cell = W / (cells_across + 0.5)
+    s3 = W / (cells_across + 0.5)       # 横向节距 √3·s（此前误作 s 用：晶格横向越出画幅 √3 倍）
+    cell = s3 / math.sqrt(3)
     rows = max(1, int(round(H / (cell * 1.5)) - 1)) or 1
     grid = HexGrid(cells_across, rows, cell)
     out = np.zeros((rows, cells_across, img_arr.shape[2]), dtype=np.float32)
-    s3 = cell * math.sqrt(3)
     for r in range(rows):
         xoff = s3 * (0.5 * (r % 2) + 0.5)
         for q in range(cells_across):
             cx = s3 * q + xoff
             cy = 1.5 * cell * r + cell
-            # cell 采样窗（六边形内切圆近似：方形窗均值）
-            rad = max(1, int(cell * 0.5))
+            # cell 采样窗（六边形内切圆近似：方形窗均值；内切圆半径 √3·s/2 = s3/2）
+            rad = max(1, int(s3 * 0.5))
             x0, x1 = int(cx - rad), int(cx + rad + 1)
             y0, y1 = int(cy - rad), int(cy + rad + 1)
             x0c, y0c = max(0, x0), max(0, y0)
