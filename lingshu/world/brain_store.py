@@ -53,9 +53,12 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+import queue
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -66,7 +69,7 @@ SEED_QUERY = "场景实体"
 
 
 class BrainError(RuntimeError):
-    """脑侧 MCP 返回 error / isError / 非法 JSON 时抛出（不静默）。"""
+    """脑侧 MCP 传输、超时或工具结果错误时抛出（不静默）。"""
 
 
 # ---------------------------------------------------------------------------
@@ -94,11 +97,20 @@ def _brain_env(root: Optional[str], pythonpath: Optional[str],
 
 
 class MCPClient:
-    """脑侧 MCP 最小客户端：initialize → tools/call（单飞请求，逐行 JSON-RPC）。"""
+    """脑侧 MCP stdio 客户端（单飞请求，逐行 JSON-RPC）。
+
+    stderr 持续消费，仅缓存最近 4096 字节供错误诊断。`request_timeout` 是每次
+    initialize / tools/call 写入及等待响应的秒数，缺省 30；None 显式关闭超时。
+    传输失败或超时会关闭连接，调用方须重新连接，避免迟到响应串入后续调用。
+    """
 
     def __init__(self, python: Optional[str] = None, pythonpath: Optional[str] = None,
                  root: Optional[str] = None, extra_env: Optional[Dict[str, str]] = None,
-                 args: Optional[List[str]] = None):
+                 args: Optional[List[str]] = None,
+                 request_timeout: Optional[float] = 30.0):
+        if request_timeout is not None and (
+                not math.isfinite(request_timeout) or request_timeout <= 0):
+            raise ValueError("request_timeout 必须是正的有限秒数或 None")
         python = python or os.environ.get("BRAIN_PYTHON") or sys.executable
         pythonpath = pythonpath or os.environ.get("BRAIN_PYTHONPATH")
         root = root or os.environ.get("BRAIN_ROOT")
@@ -109,22 +121,33 @@ class MCPClient:
         env = _brain_env(root, pythonpath, extra_env)
         self.root = root
         self._id = 0
+        self._request_timeout = request_timeout
+        self._request_lock = threading.Lock()
+        self._close_lock = threading.Lock()
+        self._closed = False
+        self._rpc_worker = None
+        self._stderr_lock = threading.Lock()
+        self._stderr_tail = b""
         self.server_info: Dict = {}
         self._p = subprocess.Popen(
             [python, "-X", "utf8", *(args or ["-m", "md_cg.mcp_server"])],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env=env, text=True, encoding="utf-8", errors="replace")
-        self._rpc({"jsonrpc": "2.0", "id": self._next(), "method": "initialize",
-                   "params": {"protocolVersion": "2024-11-05", "capabilities": {},
-                              "clientInfo": {"name": "lingshu-brain-store",
-                                             "version": "0.1"}}})
-        init = self._read()
-        self.server_info = (init.get("result") or {}).get("serverInfo") or {}
-        if not self.server_info:
-            raise BrainError("脑侧握手无 serverInfo：%r" % (init,))
-        self._p.stdin.write(json.dumps(
-            {"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
-        self._p.stdin.flush()
+        self._stderr_worker = threading.Thread(target=self._drain_stderr, daemon=True)
+        try:
+            self._stderr_worker.start()  # 必须早于握手；启动日志也会填满管道。
+            init = self._exchange({"jsonrpc": "2.0", "method": "initialize",
+                                   "params": {"protocolVersion": "2024-11-05",
+                                              "capabilities": {},
+                                              "clientInfo": {"name": "lingshu-brain-store",
+                                                             "version": "0.1"}}})
+            self.server_info = (init.get("result") or {}).get("serverInfo") or {}
+            if not self.server_info:
+                raise BrainError("脑侧握手无 serverInfo：%r" % (init,))
+            self._rpc({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        except BaseException:
+            self.close()
+            raise
 
     # ---- 低层 ----
     def _next(self) -> int:
@@ -135,11 +158,30 @@ class MCPClient:
         self._p.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")
         self._p.stdin.flush()
 
+    def _drain_stderr(self) -> None:
+        # read1 不等换行或填满整块；原始字节也不会因非法 UTF-8 中止消费。
+        try:
+            while True:
+                chunk = self._p.stderr.buffer.read1(4096)
+                if not chunk:
+                    return
+                with self._stderr_lock:
+                    self._stderr_tail = (self._stderr_tail + chunk)[-4096:]
+        except (OSError, ValueError):  # 管道关闭；诊断保留已读尾部。
+            return
+
+    def _diagnostic(self) -> str:
+        with self._stderr_lock:
+            return self._stderr_tail.decode("utf-8", errors="replace")[-400:]
+
     def _read(self) -> dict:
         while True:
             line = self._p.stdout.readline()
             if not line:
-                raise BrainError("脑进程关闭：" + (self._p.stderr.read() or "")[:400])
+                # stdout EOF 与最后一块 stderr 的到达没有先后保证；短等尾部，
+                # 但不对仍存活、只关闭 stdout 的子进程调用阻塞式 stderr.read。
+                self._stderr_worker.join(timeout=0.1)
+                raise BrainError("脑进程关闭：" + self._diagnostic())
             try:
                 msg = json.loads(line)
             except ValueError:
@@ -147,12 +189,48 @@ class MCPClient:
             if isinstance(msg, dict) and ("result" in msg or "error" in msg):
                 return msg
 
+    def _exchange(self, obj: dict) -> dict:
+        with self._request_lock:
+            if self._closed:
+                raise BrainError("脑侧 MCP 连接已关闭；请重新连接")
+            obj["id"] = self._next()
+            outcome = queue.Queue(maxsize=1)
+
+            def run():
+                try:
+                    self._rpc(obj)
+                    outcome.put((True, self._read()))
+                except Exception as exc:
+                    outcome.put((False, exc))
+
+            worker = threading.Thread(target=run, daemon=True)
+            self._rpc_worker = worker
+            worker.start()
+            try:
+                success, value = outcome.get(timeout=self._request_timeout)
+            except queue.Empty as exc:
+                # 写入也在 worker 中：子进程不读 stdin 时同样受期限约束。
+                self.close()
+                raise BrainError("脑侧 MCP %s 超时（%s 秒）：%s"
+                                 % (obj["method"], self._request_timeout,
+                                    self._diagnostic())) from exc
+            except BaseException:
+                self.close()
+                raise
+            worker.join()
+            self._rpc_worker = None
+            if not success:
+                if isinstance(value, (BrainError, OSError)):
+                    self.close()
+                    raise BrainError("脑侧 MCP 传输失败：" + str(value)) from value
+                raise value
+            return value
+
     # ---- 调用面 ----
     def call(self, name: str, arguments: dict) -> dict:
         """tools/call → 解析 content[0].text（JSON）；错误面抛 BrainError。"""
-        self._rpc({"jsonrpc": "2.0", "id": self._next(), "method": "tools/call",
-                   "params": {"name": name, "arguments": arguments}})
-        msg = self._read()
+        msg = self._exchange({"jsonrpc": "2.0", "method": "tools/call",
+                              "params": {"name": name, "arguments": arguments}})
         if "error" in msg and msg["error"]:
             raise BrainError("MCP error：%r" % (msg["error"],))
         res = msg.get("result") or {}
@@ -165,14 +243,35 @@ class MCPClient:
             raise BrainError("工具 %s 返回非 JSON：%s" % (name, text[:400])) from e
 
     def close(self) -> None:
-        try:
-            self._p.stdin.close()
-        except Exception:  # noqa: BLE001 —— 关闭尽力而为
-            pass
-        try:
-            self._p.wait(timeout=10)
-        except Exception:  # noqa: BLE001
-            self._p.terminate()
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+            # 活跃 writer 可持有 stdin 的 I/O 锁；先停进程，不能先 close(stdin)。
+            if self._request_lock.locked() and self._p.poll() is None:
+                self._p.terminate()
+            else:
+                try:
+                    self._p.stdin.close()
+                except (OSError, ValueError):
+                    pass
+            try:
+                self._p.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._p.kill()
+                self._p.wait(timeout=2)
+            for worker in (self._rpc_worker, self._stderr_worker):
+                if worker is not None and worker.ident is not None:
+                    worker.join(timeout=1)
+            # 后代若继承管道，reader 仍可能等待；不能 close 它持锁的 stream。
+            if self._rpc_worker is None or not self._rpc_worker.is_alive():
+                for stream in (self._p.stdin, self._p.stdout):
+                    try:
+                        stream.close()
+                    except (OSError, ValueError):
+                        pass
+            if not self._stderr_worker.is_alive():
+                self._p.stderr.close()
 
 
 # ---------------------------------------------------------------------------
@@ -350,10 +449,15 @@ class BrainAgent:
 
 def connect(python: Optional[str] = None, pythonpath: Optional[str] = None,
             root: Optional[str] = None,
-            extra_env: Optional[Dict[str, str]] = None) -> BrainAgent:
-    """建立到脑的 MCP 连接并返回 BrainAgent（调用方负责 close：`agent.store.client.close()`）。"""
+            extra_env: Optional[Dict[str, str]] = None,
+            request_timeout: Optional[float] = 30.0) -> BrainAgent:
+    """建立到脑的 MCP 连接并返回 BrainAgent。
+
+    每次请求缺省限时 30 秒；慢工具可传更长 request_timeout 或 None。
+    调用方负责 close：`agent.store.client.close()`；超时后须重新 connect。
+    """
     client = MCPClient(python=python, pythonpath=pythonpath, root=root,
-                       extra_env=extra_env)
+                       extra_env=extra_env, request_timeout=request_timeout)
     return BrainAgent(BrainStore(client))
 
 
