@@ -16,6 +16,7 @@ name: gate
 #     test_hex_cnn / test_hex_composite / test_hex_gen —— 逐件单跑，失败即红。
 #   · **pytest 式**：test_hex_hier / test_hex_ortho / test_hex_search / test_hex_text /
 #     test_hex_train —— 合跑；其中两条 known-fail 显式 deselect（下详）。
+#     test_activation_empty_graph —— 合成 SQLite 冷启动与正常激活回归。
 #   · **不可** `pytest tests/` 全目录：`tests/test_hex_cnn.py` 无 `__main__` 守卫、
 #     模块级即 `sys.exit()`，被 pytest 收集会在 collection 期直接炸；故两式分开跑。
 
@@ -48,6 +49,7 @@ env:
     tests/test_hex_gen.py
   # pytest 式测试件（合跑）
   PYTEST_TESTS: >-
+    tests/test_activation_empty_graph.py
     tests/test_hex_hier.py
     tests/test_hex_ortho.py
     tests/test_hex_search.py
@@ -59,7 +61,7 @@ jobs:
     name: gate (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     # pytest 腿偏重：本机（Windows/3.12）实测 `tests/test_hex_hier.py` **单件**即 >7 分钟
-    # （420s 超时前只跑完 4/7，均 PASSED），5 件合跑需充足余量 ⇒ 45 分钟。
+    # （420s 超时前只跑完 4/7，均 PASSED），合跑需充足余量 ⇒ 45 分钟。
     # 若 CI 上仍逼近上限，再把 pytest 腿按文件拆成多 step（可见性也更好）。见报告「未验证项」。
     timeout-minutes: 45
     strategy:
