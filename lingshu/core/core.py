@@ -4574,6 +4574,20 @@ class SpacetimeMemoryEngine:
 
         降级口径（issue #16）：目标库不存在的表跳过并计入 `skipped_tables`；
         否则导出产物一旦含 `entities` 行，回灌同样抛 `OperationalError`。
+
+        返回值指标口径（**勿与 `verify_integrity()` 的 `orphan_edges` 混用**）：
+        `dangling_rows` 是**按「违规行」去重**的计数——导入后跑 `PRAGMA
+        foreign_key_check`，该指令对**每一条**被违反的外键约束各回一行；同一行若
+        其两条外键（`source_id`、`target_id`）**都**悬挂，就回两行（rowid 相同、
+        fkid 不同）。这里按 `(表名, rowid)` 去重后取 `len` ⇒ **同一条两端全悬挂
+        的边只算 1**（两端各断一根的**两条**边则算 2，因为是两行）。
+        对照 `verify_integrity()["orphan_edges"]`：那是**按「边×端点」累加**
+        （`orphan_source + orphan_target`）⇒ 同一条两端全悬挂的边算 **2**。
+        故「一条两端都悬挂的边」这一最小场景下，两处给出的是 **1 与 2** —— 两者都
+        判 `integrity_ok=False`（都判不通过），但**不是同一个数**，读者勿当成同一
+        指标（该口径差由 `tests/test_core_dangling_metric_parity.py` 钉住）。
+        另注：`dangling_rows` 覆盖**全部**声明外键的表，`orphan_edges` 只统计
+        `edges` 表（本仓当前仅 `edges` 声明外键，两处范围恰好一致）。
         """
         with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -4601,12 +4615,24 @@ class SpacetimeMemoryEngine:
         # 自带的悬挂边会被原样恢复，事后只能靠调用方主动调 verify_integrity；
         # 故导入后当场体检，把「恢复了损坏备份」这件事随返回值交付（不拦写入）。
         c.execute("PRAGMA foreign_key_check")
+        # 按 (表名, rowid) 去重 ⇒ 两端全悬挂的**同一条边**只计 1。对照
+        # verify_integrity()["orphan_edges"] 按边×端点累加，同一场景计 2；两处
+        # 口径不同（详见本方法 docstring），不要把这一个数当成那一个数。
         dangling = {(table, rid) for table, rid, *_ in c.fetchall()}
         return {"imported": counts, "skipped_tables": skipped,
                 "dangling_rows": len(dangling), "integrity_ok": not dangling}
 
     def verify_integrity(self) -> Dict:
-        """M13：完整性校验（边引用节点存在性 + 表计数）"""
+        """M13：完整性校验（边引用节点存在性 + 表计数）
+
+        指标口径（**勿与 `import_all()` 的 `dangling_rows` 混用**）：
+        `orphan_edges` = `orphan_source + orphan_target`，**按「边×端点」累加**——
+        一条边 source 悬挂计 1、target 悬挂计 1，故**两端全悬挂即计 2**。
+        对照 `import_all()` 返回的 `dangling_rows`：那是**按「违规行」去重**（同一
+        条两端全悬挂的边只计 1）。故上述最小场景下本指标给 **2**、那边给 **1**。
+        两者各自都有 `integrity_ok` 判「不通过」，但**不是同一个指标**，勿混用
+        （该关系的守卫见 `tests/test_core_dangling_metric_parity.py`）。
+        """
         c = self.store.conn.cursor()
         c.execute("SELECT COUNT(*) FROM edges e LEFT JOIN nodes n ON e.source_id=n.id WHERE n.id IS NULL")
         orphan_source = c.fetchone()[0]
