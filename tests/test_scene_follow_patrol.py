@@ -146,10 +146,21 @@ def group_e_existing_contract():
 
 
 def group_f_shadow_exact_alignment():
-    """★ 最关键的一组：follow 属确定性行为、走 exact 分支——影子重放必须与
-    实体实际位置**逐位一致**。若影子仍按"每 tick 重算最近点"重放，推进后
-    会弹回原点，与实际巡逻轨迹分叉（distance 会显著大于 0）。"""
-    print("\nF 组：影子重放逐位对齐（exact 预测必须等于实体实际位置）")
+    """★F 组 = **耦合守卫**，**不是缺陷探测器**（本 PR 的自我修正）。
+
+    **它的角色**：`follow`（静态路径）被 `_is_deterministic` 判为确定性行为、走
+    `exact` 分支。本 PR 同时改了主路径（`_decide`）与影子（`_shadow_decide`），
+    F 组保证**两者保持同构** —— 只要有人只改一侧，F 组必红。
+
+    **它对什么是盲的**：影子的输入是场景、输出是位置；两者**一起**被改成同样的
+    错误实现时，F 组照样绿。真·修前（两文件均回退 `origin/main`）实测 `8/15`：
+    A/B/C 红、**F 绿** —— 即「follow 根本不巡逻」时 F 组毫无反应。
+
+    **⇒ 缺陷探测由 A/B/C 承担**（它们在真·修前与"单侧退化"下均红）；
+    F 组只承担「`_decide` 与 `_shadow_decide` 是否同步演化」这一**耦合不变式**。
+    按「判据强度门·门 3」，耦合类断言须显式声明其角色、并指明行为断言在何处。
+    """
+    print("\nF 组：影子重放逐位对齐（★耦合守卫，非缺陷探测器；缺陷探测见 A/B/C 组）")
     stc = SpacetimeConsistency(size=24)
     stc.create_scene(trees=2, water=False)
     stc.add_path("loop", PATH)
