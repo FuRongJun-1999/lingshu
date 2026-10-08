@@ -127,13 +127,19 @@ class SpacetimeConsistency:
         nz = max(0.5, min(self.scene.world.size - 0.5, nz))
         return (round(nx, 2), pos[1], round(nz, 2))
 
-    def _shadow_decide(self, e, shadow: Dict[str, Tuple[float, float, float]]
+    def _shadow_decide(self, e, shadow: Dict[str, Tuple[float, float, float]],
+                       follow_target: Optional[Dict[str, int]] = None
                        ) -> Tuple[float, float, float]:
         """影子状态下的行为决策（与 SceneSimulator._decide 同式，读取影子位置）。
 
         世界 step 按实体插入序依次决策/行动——后决策的实体看到的是前序实体
         已移动后的位置。预测必须复刻该顺序语义，否则追逐链会产生 ~speed 的
         系统性偏差（世界比模型多一阶）。不消耗 RNG（仅确定性分支调用）。
+
+        `follow_target`：follow 的"已提交目标路径点"表，由 `_predict_next` 以
+        世界侧 `scene._follow_target` 的当前值初始化，并在影子重放中同样推进。
+        否则影子每 tick 重算"最近点"，推进一格后会弹回原点，与世界实际巡逻
+        轨迹分叉（follow 属确定性行为、走 exact 分支，必须逐 tick 对齐）。
         """
         bx, by, bz = shadow.get(e.id, e.pos)
         if e.behavior == "seek":
@@ -151,13 +157,18 @@ class SpacetimeConsistency:
         elif e.behavior == "follow":
             path = self.scene.paths.get(e.goal)
             if path:
-                best, best_d = None, float("inf")
-                for pt in path:
-                    d = math.hypot(pt[0] - bx, pt[2] - bz)
-                    if d < best_d:
-                        best, best_d = pt, d
-                if best is not None:
-                    return self.scene._normalize(best[0] - bx, 0, best[2] - bz)
+                fi = follow_target if follow_target is not None else {}
+                idx = fi.get(e.id)
+                if idx is None or not (0 <= idx < len(path)):
+                    idx = min(range(len(path)),
+                              key=lambda i: math.hypot(path[i][0] - bx,
+                                                       path[i][2] - bz))
+                tgt = path[idx]
+                if math.hypot(tgt[0] - bx, tgt[2] - bz) <= max(e.speed, 1e-9):
+                    idx = (idx + 1) % len(path)
+                fi[e.id] = idx
+                tgt = path[idx]
+                return self.scene._normalize(tgt[0] - bx, 0, tgt[2] - bz)
         return (0.0, 0.0, 0.0)
 
     def _predict_next(self) -> Dict[str, Tuple[Tuple[float, float, float], str,
@@ -172,11 +183,15 @@ class SpacetimeConsistency:
         注意：确定性分支不消耗 RNG（与 _decide 的随机分支隔离），不扰动实际演化。
         """
         shadow = {eid: tuple(e.pos) for eid, e in self.scene.entities.items()}
+        # follow 的已提交目标索引以世界侧当前值为种子，影子重放中同步推进
+        # ——否则影子每 tick 重算"最近点"，会与世界的巡逻轨迹分叉。
+        follow_target: Dict[str, int] = dict(
+            getattr(self.scene, "_follow_target", {}) or {})
         pred = {}
         for eid, e in self.scene.entities.items():
             exact, bound = self._exactness(e, pred)
             if exact:
-                d = self._shadow_decide(e, shadow)
+                d = self._shadow_decide(e, shadow, follow_target)
                 np_ = self._apply_move_at(shadow[eid], e.speed, d)
                 shadow[eid] = np_              # 已移动 → 后续实体决策可见
                 pred[eid] = (np_, "exact", e.category, e.behavior, 0.0)

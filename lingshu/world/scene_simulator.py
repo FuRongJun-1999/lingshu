@@ -78,6 +78,10 @@ class SceneSimulator:
         self.paths: Dict[str, List[Tuple[float, float, float]]] = {}
         self._history: List[Dict] = []
         self._behavior_log: List[Dict] = []
+        # follow 的"已提交目标路径点"索引（entity_id -> path 下标）。
+        # 巡逻必须**提交**目标：若每 tick 只重算"最近点"，实体推进一格后
+        # 最近点会立刻变回原点 ⇒ 原地振荡，永不前进。
+        self._follow_target: Dict[str, int] = {}
         self.tick_count = 0
         self._rng = random.Random(42)   # 确定性随机（可复现）
 
@@ -138,15 +142,22 @@ class SceneSimulator:
             # 沿路径巡逻
             path = self.paths.get(e.goal)
             if path:
-                # 找最近未到达的点
-                best = None
-                best_d = float("inf")
-                for pt in path:
-                    d = math.hypot(pt[0] - bx, pt[2] - bz)
-                    if d < best_d:
-                        best, best_d = pt, d
-                if best is not None:
-                    return self._normalize(best[0] - bx, 0, best[2] - bz)
+                # 取**已提交**的目标路径点；首次（或路径已变短）取最近点
+                idx = self._follow_target.get(e.id)
+                if idx is None or not (0 <= idx < len(path)):
+                    idx = min(range(len(path)),
+                              key=lambda i: math.hypot(path[i][0] - bx,
+                                                       path[i][2] - bz))
+                # 到达判定：已足够接近**当前目标** ⇒ 提交推进到下一个点。
+                # 容差取 e.speed（"下一 tick 即可抵达"的距离）。缺此提交时，
+                # 实体或在路径点上永久静止（方向为零向量），或只在最近点两侧
+                # 振荡——「沿路径巡逻」两种情况都不成立。
+                tgt = path[idx]
+                if math.hypot(tgt[0] - bx, tgt[2] - bz) <= max(e.speed, 1e-9):
+                    idx = (idx + 1) % len(path)
+                self._follow_target[e.id] = idx
+                tgt = path[idx]
+                return self._normalize(tgt[0] - bx, 0, tgt[2] - bz)
 
         # wander（默认）：随机游走（确定性随机）
         return (self._rng.uniform(-1, 1), 0, self._rng.uniform(-1, 1))
