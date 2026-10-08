@@ -22,7 +22,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
 from lingshu.world.brain_store import (  # noqa: E402
-    connect, ingest_scene_to_brain, load_world_from_brain)
+    BrainStore, connect, ingest_scene_to_brain, load_world_from_brain)
 
 _PASS = []
 _FAIL = []
@@ -114,6 +114,69 @@ def main() -> int:
            sorted((want21 | ents_before) - got21))
         n1 = agent.store.get_nodes_by_tag("spatial", limit=1)
         ok(len(n1) <= 1, "S11 limit=1 ⇒ 至多 1 个候选（改前回落 k=20 ⇒ 20 个）", len(n1))
+
+        # ⑦ S12 守卫（PR #3 部位②）：脑端资格判据判 REJECT 的带 tag 节点**不进世界重建**。
+        #    构造：六要素齐全 + `# 不适用条件：场景实体`（命中读取情境 seed_query）
+        #    ⇒ 脑端 `cg(op=read)` 对该节点回 `state=REJECT`；正文刻意把「场景」「实体」
+        #    拆开（「实体坐标登记到场景台账」）以绕过脑端一致性自否定闸，同时保留召回。
+        #    只踢 REJECT（不清空）：场景实体节点缺六要素 ⇒ 实测恒为 BLINDSPOT，须保留。
+        #    变异鉴别：去掉本仓过滤 ⇒ S12b 红；改回 `(item.get("state") or "")` 的
+        #    静默剔除写法 ⇒ S12f 红（缺 state 者被误剔）。
+        rj = agent.store.client.call("mdcg_remember", {
+            "content": "# 功能名：G7 标定物坐标台账\n"
+                       "# 生效条件：任意时刻\n# 子功能：无\n"
+                       "# 执行：把标定物 G7 的实体坐标登记到场景台账\n"
+                       "# 验证方式：对端复核台账（measurement）\n"
+                       "# 不适用条件：场景实体\n",
+            "layer": "contextual", "gated": False,
+            "tags": ["spatial", "cat:marker", "ent:G7_REJECT"],
+            "spatial": {"coords3d": {"x": 9.0, "y": 0.0, "z": 9.0}},
+            "verification_basis": "measurement",
+            "non_applicable_conditions": ["场景实体"], "consistency": False})
+        ok(bool(rj.get("ok")), "S12a REJECT 标定物已写入（对照组）", rj)
+        wm_rj = load_world_from_brain(agent)
+        ok("G7_REJECT" not in wm_rj.entities,
+           "S12b REJECT 资格节点不注入世界重建（PR#3 部位②）",
+           sorted(wm_rj.entities.keys()))
+        ok("肥鱼" in wm_rj.entities,
+           "S12c BLINDSPOT 实体保留（只踢 REJECT，不清空）",
+           sorted(wm_rj.entities.keys()))
+        ents_off = {str(t)[4:] for n in agent.store.get_nodes_by_tag(
+            "spatial", limit=200, accept_states=set())
+            for t in n.tags if str(t).startswith("ent:")}
+        ok("G7_REJECT" in ents_off,
+           "S12d accept_states=set() 关闭过滤 ⇒ REJECT 回候选（旧行为兼容口）",
+           sorted(ents_off))
+        ents_tight = {str(t)[4:] for n in agent.store.get_nodes_by_tag(
+            "spatial", limit=200, accept_states={"ACCEPT"})
+            for t in n.tags if str(t).startswith("ent:")}
+        ok("G7_REJECT" not in ents_tight and "肥鱼" not in ents_tight,
+           "S12e accept_states={'ACCEPT'} 收紧 ⇒ REJECT 与 BLINDSPOT 均出局",
+           sorted(ents_tight))
+
+        class _NoStateClient:
+            """桩客户端：`cg(op=read)` 回一条 tags 含 spatial 但**无 state 键**的条目。"""
+
+            def call(self, name, arguments):      # noqa: D102 —— 桩件
+                if name == "cg":
+                    return {"results": [{
+                        "reason": "stub", "ref": "mem_stub",
+                        "node": {"id": "mem_stub", "content": "无态节点",
+                                 "frontmatter": {
+                                     "id": "mem_stub",
+                                     "tags": ["spatial", "ent:S12_STUB"],
+                                     "spatial": {"coords3d": {"x": 1.0,
+                                                              "y": 0.0,
+                                                              "z": 1.0}}}}}]}
+                if name == "stg":
+                    return {"items": []}
+                return {}
+
+        stub_ids = [n.id for n in BrainStore(_NoStateClient()).get_nodes_by_tag(
+            "spatial", limit=5)]
+        ok("mem_stub" in stub_ids,
+           "S12f 缺 state 者 fail-open 保留（未知≠否决；PR 原写法会静默剔除）",
+           sorted(stub_ids))
     finally:
         try:
             agent.store.client.close()

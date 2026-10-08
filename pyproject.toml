@@ -13,10 +13,12 @@ dependencies = []
 
 [project.optional-dependencies]
 # 轻核承诺：core 纯标准库（不装任何 extras 也可运行）
-world = ["numpy"]
-nn = ["numpy", "Pillow"]
-gen = ["numpy", "Pillow"]
-full = ["numpy", "Pillow"]
+# 版本区间依据＝2026-10-08 实测矩阵（Python 3.12.x：numpy 2.3.5/2.4.2/2.5.3 · Pillow 12.2.0/12.3.0），
+# 区间外未测不承诺；矩阵与说明见 README「代码主体」节（外部报告 issue #4）。
+world = ["numpy>=2.3.5,<2.6"]
+nn = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
+gen = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
+full = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
 dev = ["pytest"]
 
 [tool.setuptools.packages.find]

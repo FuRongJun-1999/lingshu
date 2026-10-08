@@ -243,7 +243,15 @@ class BrainStore:
                 m[str(u.get("subject"))] = u.get("value")
         return m
 
-    def get_nodes_by_tag(self, tag: str, limit: int = 200) -> List[BrainNode]:
+    #: 允许进入世界重建的脑端资格态（cg(op=read) 返回体 item["state"]，四态之一）。
+    #: 默认只踢 REJECT：场景实体节点本身缺 CCG 六要素 ⇒ 实测恒为 BLINDSPOT，
+    #: 若只收 ACCEPT 世界重建会清零；世界是消费端，取保守纪律——只拒明确否决者
+    #: （REJECT），BLINDSPOT（证据不足）/DEFER（待定）不拒。
+    #: 调用方可显式收紧（accept_states={"ACCEPT"}）或传 set() 关闭过滤（旧行为）。
+    DEFAULT_ACCEPT_STATES = frozenset({"ACCEPT", "BLINDSPOT", "DEFER"})
+
+    def get_nodes_by_tag(self, tag: str, limit: int = 200,
+                         accept_states: Optional[set] = None) -> List[BrainNode]:
         """cg(op=read) 取候选 → **适配器侧按 tag 过滤**（裁定三：零脑改）→ BrainNode。
 
         坐标取 `frontmatter.spatial.coords3d`（裁定二）；状态取槽位投影。
@@ -251,7 +259,15 @@ class BrainStore:
         `limit` 译为脑端条数参数 `k`（issue #2）：脑端 `cg(op=read)` 的条数口径
         是 `k`（`_int_arg(a, "k", 20)`）；`limit` 在非 `budget_tokens` 路径**不被
         识别**、静默回落脑端缺省 20——写入 21 个场景实体会只重建 20 个。
+
+        `accept_states`：资格态白名单（缺省 `DEFAULT_ACCEPT_STATES`＝只踢
+        REJECT；传 `set()` 关闭过滤保留旧行为）。REJECT 来自脑端资格判据
+        `judge_qualification`——不适用条件命中情境（query/context）即明确否决，
+        不应作为可信几何注入世界重建；state 缺失（如脑端换判据面）不剔除
+        （未知≠否决，fail-open，防静默清空）。
         """
+        if accept_states is None:
+            accept_states = self.DEFAULT_ACCEPT_STATES
         resp = self.client.call("cg", {"op": "read", "query": self.seed_query,
                                        "k": max(1, int(limit))})
         states = self._state_map()
@@ -262,6 +278,10 @@ class BrainStore:
             tags = list(fm.get("tags") or [])
             if tag not in tags:
                 continue                      # 裁定三：过滤在适配器侧
+            if accept_states:
+                st = item.get("state")
+                if st and st not in accept_states:
+                    continue                  # 明确否决态不注入世界（缺省踢 REJECT）
             sp = ((fm.get("spatial") or {}).get("coords3d") or {})
             coords = None
             if isinstance(sp, dict) and sp:
