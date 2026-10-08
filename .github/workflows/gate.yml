@@ -13,9 +13,10 @@ name: gate
 #
 # 测试面实况（2026-10-08 本机实测，证据见报告）：
 #   · **脚本式**（PASS/FAIL + 退出码）：test_brain_store / test_wm_verify_unobserved /
-#     test_hex_cnn / test_hex_composite / test_hex_gen —— 逐件单跑，失败即红。
+#     test_hex_cnn / test_hex_composite / test_hex_gen ＋ nn 守卫 5 件（grid_extent /
+#     text_contracts / hier_fd_cache / train_selfsup_eval / search_root_screen）—— 逐件单跑，失败即红。
 #   · **pytest 式**：test_hex_hier / test_hex_ortho / test_hex_search / test_hex_text /
-#     test_hex_train —— 合跑；其中两条 known-fail 显式 deselect（下详）。
+#     test_hex_train —— 合跑（原两条 known-fail 的根因已修，不再 deselect，下详）。
 #   · **不可** `pytest tests/` 全目录：`tests/test_hex_cnn.py` 无 `__main__` 守卫、
 #     模块级即 `sys.exit()`，被 pytest 收集会在 collection 期直接炸；故两式分开跑。
 
@@ -46,6 +47,11 @@ env:
     tests/test_hex_cnn.py
     tests/test_hex_composite.py
     tests/test_hex_gen.py
+    tests/test_hex_grid_extent.py
+    tests/test_hex_text_contracts.py
+    tests/test_hex_hier_fd_cache.py
+    tests/test_hex_train_selfsup_eval.py
+    tests/test_hex_search_root_screen.py
   # pytest 式测试件（合跑）
   PYTEST_TESTS: >-
     tests/test_hex_hier.py
@@ -124,17 +130,15 @@ jobs:
           done
           echo "脚本式测试全部通过：$SCRIPT_TESTS"
 
-      - name: pytest 式测试（显式 deselect 两条 known-fail）
-        # 两条 known-fail（README「代码主体」节已标，issue #4）：
+      - name: pytest 式测试
+        # 原两条 known-fail（README「代码主体」节已标，issue #4）：
         #   · tests/test_hex_text.py::test_spatial_detect_finds_single_object    （6/16 < 0.6 阈值）
         #   · tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt      （7/12 < 阈值）
-        # 全部 numpy/Pillow 版本组合下读数**逐位一致** ⇒ 与依赖版本无关，上游同跑同红。
-        # 处置：**显式 deselect**（不改任何断言）。待上游修复后，同处摘除本条并与 README 同步。
+        # 根因是 image_to_grid 晶格横向越出画幅 √3 倍（及其遮住的判分 / 噪声口径缺陷），已修复、
+        # 断言未改（守卫见 tests/test_hex_grid_extent.py 等）⇒ 按原注「同处摘除」不再 deselect；README 待同步。
         run: |
           set -euo pipefail
-          python -X utf8 -m pytest $PYTEST_TESTS -v \
-            --deselect tests/test_hex_text.py::test_spatial_detect_finds_single_object \
-            --deselect tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt
+          python -X utf8 -m pytest $PYTEST_TESTS -v
 
       - name: 汇总（写入 Step Summary）
         if: always()
@@ -143,7 +147,7 @@ jobs:
             echo "### gate · py${{ matrix.python-version }}"
             echo ""
             echo "- 脚本式（逐件）：\`$SCRIPT_TESTS\`"
-            echo "- pytest 式（合跑 + deselect 2 条 known-fail）：\`$PYTEST_TESTS\`"
+            echo "- pytest 式（合跑）：\`$PYTEST_TESTS\`"
             echo "- 脑端 clone（MDCG_BRAIN_PYTHONPATH 前置）：**${{ steps.brain.outcome }}**"
             echo "  - 非 success 时 test_brain_store 显式 SKIP——不是假绿，理由见上一步日志。"
             echo "- 非阻断档（未测 Python 版本）：\`${{ matrix.experimental }}\`"
