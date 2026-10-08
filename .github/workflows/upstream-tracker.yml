@@ -1,0 +1,238 @@
+name: upstream-tracker
+
+# 上游同步追踪：每日读 docs/upstream-tracker.md 哨兵块里登记的上游标记
+# （上游仓全名 + PR/提交号 + 本地关注点），用 `gh api` 查**是否已合并/已落地**；
+# 命中即在本仓开或评一条 issue（标签 upstream-sync）提醒同步。
+#
+# ⚠️ 本件为**工作区草稿**（尚未落仓）——落仓前须知见报告
+#    （落地前的本地验证记录在起草方工作区，未随仓发布。）
+#
+# 触发：每日 cron + 手动 workflow_dispatch（可 dry_run）。
+# 运行器：GitHub 托管（ubuntu-latest）；gh CLI 由 runner 预装。
+# 权限最小化：contents: read（读 tracker 文件）+ issues: write（开/评 issue）。
+# 令牌：需 repo secret `GH_PROJECT_TOKEN`；**未配置即静默跳过**（只打一条 notice，不红）
+#   ——沿用 billion-context-dsh 的 GH_PROJECT_TOKEN 缺省即跳过先例。
+
+on:
+  schedule:
+    # 每日 UTC 04:41（避开整点）；与 gate 的 03:23 错峰。
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 只打印将执行的动作，不开/评 issue
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: upstream-tracker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+  TRACKER: docs/upstream-tracker.md
+  LABEL: upstream-sync
+
+jobs:
+  track:
+    name: 上游同步追踪
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 令牌闸门（缺 GH_PROJECT_TOKEN 即静默跳过）
+        id: gate
+        env:
+          TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::notice::未配置 repo secret GH_PROJECT_TOKEN —— 上游追踪本轮跳过（缺省即跳过，不红）。见 workflow 头注与 docs/upstream-tracker.md。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 解析 tracker 登记（哨兵块内非注释行）
+        id: parse
+        if: steps.gate.outputs.skip == 'false'
+        env:
+          OUT: ${{ runner.temp }}/upstream_entries.json
+        run: |
+          python -X utf8 - <<'PY'
+          import json, os, pathlib, re, sys
+
+          text = pathlib.Path(os.environ["TRACKER"]).read_text(encoding="utf-8")
+          B = "<!-- UPSTREAM-TRACKER:BEGIN -->"
+          E = "<!-- UPSTREAM-TRACKER:END -->"
+          payload = {"entries": [], "errors": []}
+          if B not in text or E not in text:
+              payload["errors"].append("tracker 缺哨兵块（UPSTREAM-TRACKER:BEGIN/END）")
+          else:
+              block = text.split(B, 1)[1].split(E, 1)[0]
+              repo_re = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+              for i, raw in enumerate(block.splitlines(), 1):
+                  line = raw.strip()
+                  if not line or line.startswith("#"):
+                      continue  # 注释与空行跳过
+                  parts = [x.strip() for x in line.split("|")]
+                  if len(parts) < 4:
+                      payload["errors"].append(f"行{i} 字段不足 4 段：{line!r}")
+                      continue
+                  repo, kind, ref, concern = parts[0], parts[1].lower(), parts[2], " | ".join(parts[3:])
+                  if not repo_re.fullmatch(repo):
+                      payload["errors"].append(f"行{i} 仓库全名非法：{repo!r}")
+                      continue
+                  if kind == "pr" and not ref.isdigit():
+                      payload["errors"].append(f"行{i} kind=pr 但编号非纯数字：{ref!r}")
+                      continue
+                  if kind == "commit" and not re.fullmatch(r"[0-9a-fA-F]{7,40}", ref):
+                      payload["errors"].append(f"行{i} kind=commit 但非 7-40 位十六进制：{ref!r}")
+                      continue
+                  if kind not in ("pr", "commit"):
+                      payload["errors"].append(f"行{i} kind 非 pr|commit：{kind!r}")
+                      continue
+                  payload["entries"].append({"repo": repo, "kind": kind, "ref": ref, "concern": concern})
+
+          pathlib.Path(os.environ["OUT"]).write_text(
+              json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+          print(f"登记条目：{len(payload['entries'])}；格式问题：{len(payload['errors'])}")
+          for e in payload["errors"]:
+              print(f"  FORMAT-ERR {e}")
+          for e in payload["entries"]:
+              print(f"  · {e['repo']} {e['kind']} {e['ref']} — {e['concern']}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"count={len(payload['entries'])}\n")
+          PY
+
+      - name: 查状态 + 提醒同步（开/评 issue）
+        if: steps.gate.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          OUT: ${{ runner.temp }}/upstream_entries.json
+        run: |
+          python -X utf8 - <<'PY'
+          import json, os, pathlib, subprocess, sys
+
+          REPO = os.environ["REPO"]
+          LABEL = os.environ["LABEL"]
+          DRY = os.environ.get("DRY_RUN", "").strip().lower() in ("true", "1")
+          entries = json.loads(pathlib.Path(os.environ["OUT"]).read_text(encoding="utf-8"))["entries"]
+
+          def log(msg):
+              print(msg, flush=True)
+
+          def sh(cmd):
+              p = subprocess.run(cmd, capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace")
+              return p.returncode, (p.stdout or "").strip(), (p.stderr or "").strip()
+
+          def upstream_landed(repo, kind, ref, db_cache):
+              """-> (landed|None, detail)。None 表示查不到（仓库/编号不存在或无权限）。"""
+              if kind == "pr":
+                  rc, out, err = sh(["gh", "api", f"repos/{repo}/pulls/{ref}",
+                                     "--jq", "{merged:.merged,state:.state,title:.title}"])
+                  if rc != 0:
+                      return None, "gh api 查 PR 失败：" + (err.splitlines()[0] if err else f"rc={rc}")
+                  d = json.loads(out)
+                  return (bool(d.get("merged")),
+                          f"PR #{ref} state={d.get('state')} merged={d.get('merged')} title={d.get('title')!r}")
+              db = db_cache.get(repo)
+              if not db:
+                  rc, out, err = sh(["gh", "api", f"repos/{repo}", "--jq", ".default_branch"])
+                  if rc != 0:
+                      return None, "gh api 查仓库失败：" + (err.splitlines()[0] if err else f"rc={rc}")
+                  db = out.strip()
+                  db_cache[repo] = db
+              rc, out, err = sh(["gh", "api", f"repos/{repo}/compare/{db}...{ref}",
+                                 "--jq", ".status"])
+              if rc != 0:
+                  return None, "gh api 查 commit 失败：" + (err.splitlines()[0] if err else f"rc={rc}")
+              st = out.strip()
+              return (st in ("behind", "identical")), f"commit {ref} vs {db} 的 compare.status={st}"
+
+          def marker(repo, kind, ref):
+              return f"<!-- upstream-ref: {repo}#{kind}:{ref} -->"
+
+          def find_open_issue(mk):
+              rc, out, err = sh(["gh", "issue", "list", "-R", REPO, "-l", LABEL, "-s", "open",
+                                 "--json", "number,title,body", "--limit", "100"])
+              if rc != 0:
+                  return None
+              for it in json.loads(out):
+                  if mk in (it.get("body") or ""):
+                      return it
+              return None
+
+          def act(repo, kind, ref, concern, detail):
+              mk = marker(repo, kind, ref)
+              head = f"[upstream-sync] {repo} {kind} {ref} 已合并/已落地——请同步"
+              body = (f"{mk}\n\n**上游**：`{repo}` {kind} `{ref}`\n"
+                      f"**状态**：{detail}\n**本地关注点**：{concern}\n\n"
+                      f"本仓为单向引入的聚合体（见 `docs/architecture.md`）——上游已落地，"
+                      f"请核对上列关注点，并在 `docs/upstream-tracker.md` 记录同步批次。")
+              old = find_open_issue(mk)
+              if DRY:
+                  log("[dry-run] 将" + ("评论 #%s" % old["number"] if old else "开 issue：" + head))
+                  return "dry-run"
+              if old:
+                  rc, out, err = sh(["gh", "issue", "comment", "-R", REPO,
+                                     str(old["number"]), "-b", body])
+                  if rc != 0:
+                      return "ERR comment: " + (err.splitlines()[0] if err else f"rc={rc}")
+                  log(f"已评论 issue #{old['number']}（{repo} {kind} {ref}）")
+                  return "commented"
+              rc, out, err = sh(["gh", "issue", "create", "-R", REPO, "-t", head, "-b", body,
+                                 "-l", LABEL])
+              if rc != 0:
+                  return "ERR create: " + (err.splitlines()[0] if err else f"rc={rc}")
+              log("已开 issue：" + head)
+              return "created"
+
+          if not entries:
+              log("tracker 内无去注释条目（示例均为注释）——无待查上游，正常退出（不是失败）。")
+              sys.exit(0)
+
+          if not DRY:
+              # label 幂等确保存在——issue create -l 在标签缺失时会直接失败。
+              sh(["gh", "label", "create", LABEL, "-R", REPO, "--force",
+                  "--color", "5319e7", "--description", "上游合并提醒（upstream-tracker）"])
+
+          db_cache, results = {}, []
+          for e in entries:
+              repo, kind, ref, concern = e["repo"], e["kind"], e["ref"], e["concern"]
+              landed, detail = upstream_landed(repo, kind, ref, db_cache)
+              if landed is None:
+                  log(f"SKIP（查不到）：{repo} {kind} {ref} — {detail}")
+                  results.append((repo, kind, ref, "unresolved", detail))
+              elif landed:
+                  results.append((repo, kind, ref, act(repo, kind, ref, concern, detail), detail))
+              else:
+                  log(f"未合并/未落地（无需动作）：{repo} {kind} {ref} — {detail}")
+                  results.append((repo, kind, ref, "pending", detail))
+
+          sp = os.environ.get("GITHUB_STEP_SUMMARY")
+          if sp:
+              esc = lambda s: str(s).replace("|", "\\|").replace("\n", " ")
+              lines = ["### upstream-tracker", "",
+                       f"- 登记条目：{len(entries)}；dry_run：`{DRY}`", "",
+                       "| 上游 | kind | ref | 结果 | 状态 |", "|---|---|---|---|---|"]
+              lines += [f"| {esc(a)} | {esc(b)} | {esc(c)} | {esc(d)} | {esc(e)} |"
+                        for a, b, c, d, e in results]
+              with open(sp, "a", encoding="utf-8") as f:
+                  f.write("\n".join(lines) + "\n")
+          PY
