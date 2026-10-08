@@ -90,6 +90,29 @@ def main() -> int:
         nodes = agent.store.get_nodes_by_tag("spatial", limit=50)
         ents = {str(t)[4:] for n in nodes for t in n.tags if str(t).startswith("ent:")}
         ok("幽灵" not in ents, "S9b 无 spatial 标签者被适配器侧过滤", sorted(ents))
+
+        # ⑥ ★ 读取条数契约（此前无断言 —— 正是 issue #2 长期潜伏的原因）
+        #    脑端 cg(op=read) 的条数参数是 k，不是 limit。适配器若发错键名，
+        #    所有上限会静默回落到脑端默认 20 ⇒ >20 实体时静默丢实体。
+        #    这里显式写入 N(=25) > 20 个实体，验证「要多少给多少」。
+        n_big = 25
+        big_desc = "\n".join(f"pad{i}|pad|{i},0,9|neutral" for i in range(n_big))
+        big_ids = ingest_scene_to_brain(agent, big_desc)
+        got_big = len(agent.store.get_nodes_by_tag("spatial", limit=200))
+        ok(len(big_ids) == n_big, "S10a 写入 25 个实体", len(big_ids))
+        ok(got_big >= n_big,
+           "S10b 读取条数契约：limit=200 应至少返回 25（>默认 20）", got_big)
+
+        # 上限必须被遵守：小 limit 不能仍返回一大堆
+        got_one = len(agent.store.get_nodes_by_tag("spatial", limit=1))
+        ok(got_one == 1, "S10c 读取上限被遵守：limit=1 应恰返回 1", got_one)
+
+        # 世界重建不应因上限静默丢实体
+        wm_big = load_world_from_brain(agent)
+        missing_big = [f"pad{i}" for i in range(n_big)
+                       if f"pad{i}" not in wm_big.entities]
+        ok(not missing_big,
+           "S10d 世界重建不丢实体（无 limit 截断）", missing_big)
     finally:
         try:
             agent.store.client.close()
