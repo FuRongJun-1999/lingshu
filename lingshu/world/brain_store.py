@@ -242,13 +242,24 @@ class BrainStore:
                 m[str(u.get("subject"))] = u.get("value")
         return m
 
-    def get_nodes_by_tag(self, tag: str, limit: int = 200) -> List[BrainNode]:
+    #: 允许进入世界重建的脑端资格（cg(op=read) 返回体的 state）。
+    #: 默认只踢 REJECT：实测场景实体本身即 BLINDSPOT，只收 ACCEPT 会清空世界。
+    DEFAULT_ACCEPT_STATES: frozenset = frozenset({"ACCEPT", "BLINDSPOT", "DEFER"})
+
+    def get_nodes_by_tag(self, tag: str, limit: int = 200,
+                         accept_states: Optional[set] = None) -> List[BrainNode]:
         """cg(op=read) 取候选 → **适配器侧按 tag 过滤**（裁定三：零脑改）→ BrainNode。
 
         坐标取 `frontmatter.spatial.coords3d`（裁定二）；状态取槽位投影。
+
+        修复 1（issue #2）：脑端条数参数是 `k` 不是 `limit`；此前发 `limit`
+        会静默回落到默认 20 ⇒ >20 实体时静默丢实体。此处改发 `k`。
+        修复 2：此前不看返回体 state，连明确 REJECT 的节点也入世界。
         """
+        if accept_states is None:
+            accept_states = self.DEFAULT_ACCEPT_STATES
         resp = self.client.call("cg", {"op": "read", "query": self.seed_query,
-                                       "limit": max(1, int(limit))})
+                                       "k": max(1, int(limit))})
         states = self._state_map()
         out: List[BrainNode] = []
         for item in (resp.get("results") or resp.get("items") or []):
@@ -257,6 +268,9 @@ class BrainStore:
             tags = list(fm.get("tags") or [])
             if tag not in tags:
                 continue                      # 裁定三：过滤在适配器侧
+            if accept_states:
+                if (item.get("state") or "") not in accept_states:
+                    continue
             sp = ((fm.get("spatial") or {}).get("coords3d") or {})
             coords = None
             if isinstance(sp, dict) and sp:
