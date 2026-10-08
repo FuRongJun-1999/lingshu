@@ -1,44 +1,48 @@
 # -*- coding: utf-8 -*-
-"""test_issue156_component_discovery · lingshu issue #156 守卫
+"""test_issue156_component_discovery · lingshu issue #156 守卫（v2）
 ============================================================================
-缺陷（lingshu issue #156 · 安全：组件发现面）：
-  引擎按**裸模块名**解析一批可选组件（`from entity_registry import ...` 等，
-  构造期即刻触发 10 处）；当 sys.modules 无别名时，`python -c` / `python -m` /
-  REPL / pytest 形态下 `sys.path[0]` 是**当前工作目录**（空串 `''` 或 cwd）
-  ⇒ 在工作目录放同名 `.py` 即可在**构造期**进程内执行任意代码：拿到活引擎、
-  读 `AEIS_DESIGNER_KEY`（同进程可读）、伪造 D-007 终裁、`set_escalation_enabled`
-  关停全部升级点。且装配失败**完全静默**（core.py 无 print/logging/warnings、
-  构造期 stderr 为空，仅有事后 `*_error` 字符串）。
-  （`python xxx.py` 形态 sys.path[0] 是脚本目录，不在本守卫断言面内。）
+缺陷（lingshu issue #156 · 安全：cwd 投毒 → 引擎进程内执行）：
+  引擎按**裸模块名**解析组件与一众标准库；`python -c` / `python -m` / REPL /
+  pytest 形态下 `sys.path[0]` 是**当前工作目录**（空串 `''` 或 cwd 字面量）。
+  cwd 放同名 `.py` 即可在构造期进程内执行任意代码（活引擎、读
+  `AEIS_DESIGNER_KEY`、伪造 D-007 终裁），且**完全静默**。
 
-修法（本批）：
-  ① 组件解析收口（`lingshu/core/component_resolver.py`）：白名单名字只从
-     sys.modules 别名 / 显式根 `LINGSHU_COMPONENT_ROOT` / sys.path 非 cwd 条目
-     解析；受控面缺失即抛原生同文本 ModuleNotFoundError（不回落到 cwd），
-     且不再依赖 cwd/空串条目。
-  ② 装配失败告警出口：ComponentDiscoveryWarning（stderr，标准库）+ 引擎
-     `self_check()["component_assembly"]`（只增字段）；既有 `*_error` 字段
-     文本逐字不变。
-  ③ core.py 顶部密钥声明收窄到事实（同进程可读，属设计级事项）。
+v1 的漏（独立对抗性复核已证，见报告 ①）：
+  · 只封了 15 个**白名单组件名**；`core.py:17 import json` 等**标准库裸名**在
+    组件守卫（`core.py:40`）之前就经 cwd 解析 ⇒ 实测 `json/hashlib/hmac/
+    sqlite3/threading/uuid/dataclasses/typing/inspect/ast/contextlib/datetime/
+    enum/collections` 14 名逐个 `executed=True`（PWN.txt 生成、rc=0、静默装配）。
+  · `python <script>.py` 且**脚本目录 != cwd** 时，脚本目录里的白名单同名毒文件
+    被执行（脚本目录被当成"受控面"）。
+  · 旧 D 组自称「AST 扫描断言全仓裸名 ⊆ 白名单」，实则**先按白名单过滤** ⇒
+    恒真空转（注入新裸名守卫仍 81/81 全绿）。
 
-断言组（全部走子进程，隔离环境；毒目录一律 tempfile.mkdtemp）：
-  A 组（注入面关闭）：对**每个**构造期裸名，毒目录放同名 .py（顶层写 MARKER）
-     ⇒ ①`-c` 形态构造引擎：MARKER 不得出现、该名字不得进 sys.modules、
-     对应 *_error 非空；②pytest 形态（毒目录内含 test_ 文件）构造引擎：
-     pytest 不得因 MARKER 出现而失败（即毒文件未执行）；③10 名毒文件同时在场
-     ⇒ 一次构造，全部 MARKER 不出现。
-  B 组（告警出口）：干净环境构造 ⇒ ①`-W always` 时 stderr 出现
-     ComponentDiscoveryWarning 文本（≥8 条，含构造期组件名）；②self_check()
-     的 component_assembly.failed 覆盖 10 个构造期名字且 guard_installed=True；
-     ③`-W ignore`（告警被压掉）下构造不崩、failed 字段仍完整（两路独立）。
-  C 组（装配成功路径没被修坏）：①显式根 LINGSHU_COMPONENT_ROOT 放假组件
-     （self_cognition_engine/body/semantic_space）⇒ 正常装上且毒 cwd 仍不执行；
-     ②PYTHONPATH（非 cwd）放组件 ⇒ 装上；③sys.modules 别名（AEIS 私域
-     `aeis/__init__.py` 命名空间注册形态）⇒ 命中别名、cwd 毒文件不执行。
-  D 组（白名单完整性 · 回归护栏）：AST 扫描全仓裸名导入 ⇒ 顶层名集合
-     ⊆ COMPONENT_NAMES，且包含已知 15 名（新增裸名须同步登记白名单）。
-  E 组（边界诚实）：verify_designer docstring 不再声称「永远无法读取」，
-     明确点出「同进程」可读与「本批只封注入面」。
+v2 修法：
+  ① **最早落点**（`lingshu/__init__.py` 首行 + `core.py` 顶部）：在包首次 import
+     时由 `lingshu/_pathguard.py` 从 `sys.path` 移除 **cwd/空串条目** ⇒ 一切经
+     `sys.path` 的裸名导入（含标准库）不再落到 cwd。幂等、可观测、带逃生口
+     `LINGSHU_ALLOW_CWD_IMPORTS`（打开即放弃本层保护，留告警 + 状态）。
+  ② 组件解析收口（`component_resolver.py`）：白名单名只从 sys.modules 别名 /
+     显式根 `LINGSHU_COMPONENT_ROOT` / sys.path 非 cwd / **非脚本目录** 条目解析；
+     受控面缺失即抛原生同文本 `ModuleNotFoundError`（不回落 cwd）。
+  ③ 装配失败告警出口：ComponentDiscoveryWarning + `self_check()["component_assembly"]`
+     （只增字段，含 `discovery.path_scrub`）。
+  ④ 密钥声明收窄到事实（同进程可读，属设计级事项）。
+
+断言组（除 D 外全部走子进程，隔离环境；毒目录一律 tempfile.mkdtemp）：
+  A 组（组件注入面关闭）：逐名毒 cwd 在 `-c` / pytest / 链式 / 调用期 / 齐上阵
+     形态下均不执行；受控面缺失即原生错误。
+  B 组（告警 + 装配状态可观）：ComponentDiscoveryWarning（stderr）+ self_check 字段。
+  C 组（装配成功路径未坏 · 反向腿）：显式根 / PYTHONPATH / sys.modules 别名 /
+     包+子模块 / **非 cwd 合法条目（含 ghost .zip/egg）保留**。
+  D 组（全仓裸名分类 · 有牙）：AST 扫描**全仓**裸名 → {标准库 / 组件 / 已知第三方 /
+     未知}；**未知即红**；并**自证有牙**（沙箱副本注入新裸名 ⇒ 必被检出）。
+  F 组（标准库劫持面 · v2 核心）：逐名毒 cwd（json/hashlib/.../collections）
+     `-c` 形态不执行；另 `-m` 形态一条（证绝对 cwd 条目亦被消除）。
+  G 组（逃生口）：关＝cwd 条目被消除；开＝保留 + 告警 + 状态标 `escape_hatch_open`。
+  S 组（脚本目录边界）：`python <script>.py` 且脚本目录 != cwd 时，脚本目录里的
+     白名单毒组件不被执行（v1 漏点）。
+  E 组（边界诚实）：verify_designer docstring 收窄到事实。
 
 运行（lingshu 仓根）：python -X utf8 tests/test_issue156_component_discovery.py
 退出码：0 = 全过；1 = 有断言失败
@@ -48,6 +52,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -58,6 +63,41 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
 from lingshu.core.component_resolver import COMPONENT_NAMES  # noqa: E402
+
+# ------------------------------------------------------------------ 分类白名单
+# (a) 标准库白名单——**显式列出**仓内实际出现的标准库顶层名（每类附理由）。
+#     理由：v2「消除 cwd/空串 sys.path 解析」覆盖一切经 sys.path 的裸名，故标准库
+#     名同样受保护；本表只用于 AST 分类判据（把标准库与「未知」分开）。
+#     下方 D0b 断言本表 ⊆ sys.stdlib_module_names（解释器权威清单），避免误收。
+STDLIB_ALLOWED = frozenset({
+    # 解释器/未来特性
+    "__future__",
+    # 序列化 / 编码
+    "json", "base64", "hashlib", "hmac",
+    # 容器 / 迭代 / 类型 / 数据类 / 枚举
+    "collections", "itertools", "typing", "dataclasses", "enum",
+    # 运行时 / 导入 / 告警
+    "sys", "os", "importlib", "warnings", "pathlib",
+    # 并发 / 时间 / 唯一定名
+    "threading", "time", "uuid",
+    # 存储
+    "sqlite3",
+    # IO / 文本 / 数值 / 随机
+    "io", "re", "math", "random",
+    # 命令行 / 子进程
+    "argparse", "subprocess",
+})
+# (b) 已知第三方依赖（pyproject extras 声明；显式列出 + 理由）
+THIRD_PARTY_ALLOWED = frozenset({
+    "numpy",    # world/nn/gen extras
+    "PIL",      # nn/gen extras（Pillow）
+    "scipy",    # activation 可选稀疏
+    "torch",    # gen 可选
+    "diffusers",  # gen 可选
+    "pyarrow",  # nn/hex_train 可选
+})
+# (c) 本包自名（绝对自导入）
+SELF_ALLOWED = frozenset({"lingshu"})
 
 # 构造期裸名（SpacetimeMemoryEngine.__init__ 的 _setup_* 调用链）→ 失败信息字段
 CONSTRUCT_TIME = [
@@ -78,6 +118,12 @@ WHITELIST_EXPECTED = frozenset(
     + ["vision", "pattern_separation", "scene_reconstruction",
        "spacetime_memory_core", "game_web"])
 
+# v2 核心判据：引擎 import 图内、v1 下被 cwd 劫持并执行的标准库名（逐个验）
+STDLIB_HIJACK_NAMES = [
+    "json", "hashlib", "hmac", "sqlite3", "threading", "uuid", "dataclasses",
+    "typing", "inspect", "ast", "contextlib", "datetime", "enum", "collections",
+]
+
 _PASS: list = []
 _FAIL: list = []
 
@@ -94,6 +140,7 @@ def sub_env(path=None, extra=None):
     env["PYTHONUTF8"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"     # 不写任何 .pyc（含毒目录与仓内）
     env.pop("LINGSHU_COMPONENT_ROOT", None)  # 清宿主干扰
+    env.pop("LINGSHU_ALLOW_CWD_IMPORTS", None)
     env.pop("AEIS_DESIGNER_KEY", None)       # 本守卫不碰真密钥
     if extra:
         env.update(extra)
@@ -127,6 +174,14 @@ with open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "MARKER.tx
     _f.write("EXECUTED cwd=%s\\n" % _os.getcwd())
 {symbols}"""
 
+# 标准库毒名模板：顶层写 MARKER，并（若是可运行的）留一个可导入的替身
+STDLIB_POISON_TEMPLATE = '''# poison stdlib for issue156 v2 guard (top-level code must NOT run)
+import os as _os
+with open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "MARKER.txt"),
+          "w", encoding="utf-8") as _f:
+    _f.write("EXECUTED stdlib=" + _os.path.basename(__file__) + "\\n")
+'''
+
 
 def make_poison_dir(base, name, tag="", with_pytest_file=False):
     # tag 使每组各自独立目录（避免前一组残留 MARKER 污染后一组判据）
@@ -146,6 +201,14 @@ def make_poison_dir(base, name, tag="", with_pytest_file=False):
                     assert not os.path.exists(os.path.join(here, "MARKER.txt")), \\
                         "cwd/poison component executed under pytest form"
                 """))
+    return d
+
+
+def make_stdlib_poison_dir(base, name, tag):
+    d = os.path.join(base, "stdlib_%s_%s" % (tag, name))
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, name + ".py"), "w", encoding="utf-8") as f:
+        f.write(STDLIB_POISON_TEMPLATE)
     return d
 
 
@@ -345,18 +408,20 @@ def group_b_alert(base):
     ok("self_cognition_engine" in warn_txt and "entity_registry" in warn_txt,
        "B1c 告警文本点名具体组件（此前装配失败完全静默）")
 
-    # B2：self_check()["component_assembly"] 覆盖构造期 10 名
+    # B2：self_check()["component_assembly"] 覆盖构造期 10 名 + path_scrub 可观
     code2 = textwrap.dedent("""
         import json
         from lingshu.core.core import SpacetimeMemoryEngine
         e = SpacetimeMemoryEngine(":memory:")
         ca = e.self_check()["component_assembly"]
+        d = ca["discovery"]
         print("##JSON##" + json.dumps({
             "failed": sorted(ca["failed"].keys()),
             "ok": ca["ok"], "lazy": ca["lazy"],
-            "guard": ca["discovery"]["guard_installed"],
-            "cwd_excluded": ca["discovery"]["cwd_excluded_count"],
-            "names": ca["discovery"]["component_names"],
+            "guard": d["guard_installed"],
+            "cwd_excluded": d["cwd_excluded_count"],
+            "names": d["component_names"],
+            "path_scrub": d.get("path_scrub"),
         }, ensure_ascii=False))
         """)
     r = run_py(code2, cwd=clean)
@@ -375,6 +440,10 @@ def group_b_alert(base):
         ok(j["cwd_excluded"] >= 1, "B2d discovery 报告已排除 cwd/空串条目", j)
         ok(set(j["names"]) >= WHITELIST_EXPECTED,
            "B2e 白名单含全部已知 15 名", f"missing={sorted(WHITELIST_EXPECTED - set(j['names']))}")
+        ps = j.get("path_scrub") or {}
+        ok(ps.get("applied") is True and ps.get("removed_count", 0) >= 1
+           and ps.get("escape_hatch_open") is False,
+           "B2f discovery.path_scrub 可观测（applied + removed_count≥1 + 逃生口关）", ps)
 
     # B3：-W ignore（压掉告警）⇒ 构造不崩，self_check 通道仍完整（两路独立）
     r = run_py(code2, cwd=clean, args=["-W", "ignore", "-c", code2])
@@ -389,7 +458,7 @@ def group_b_alert(base):
 
 # ---------------------------------------------------------------- C 组
 def group_c_install_paths(base):
-    print("== C 组：装配成功路径未被修坏（显式根 / PYTHONPATH / sys.modules 别名） ==")
+    print("== C 组：装配成功路径未被修坏（显式根 / PYTHONPATH / sys.modules 别名 / 合法条目保留） ==")
     root = os.path.join(base, "comproot")
     os.makedirs(root, exist_ok=True)
     with open(os.path.join(root, "self_cognition_engine.py"), "w", encoding="utf-8") as f:
@@ -476,13 +545,48 @@ def group_c_install_paths(base):
        "C4 显式根提供 game_web 包（含子模块 generate）⇒ world_generator 正常装上",
        (r4.stdout or "")[:300])
 
+    # C5：非 cwd 合法条目（含 ghost .zip / egg 路径）保留——至少不误删
+    clean = os.path.join(base, "clean_keep")
+    os.makedirs(clean, exist_ok=True)
+    ghosts = [os.path.join(base, "ghost.zip"), os.path.join(base, "ghost.egg"),
+              os.path.join(base, "ns_root")]
+    code5 = textwrap.dedent("""
+        import os, sys
+        from lingshu.core.core import SpacetimeMemoryEngine
+        SpacetimeMemoryEngine(":memory:")
+        ghosts = %r
+        kept = [g for g in ghosts if any(str(e).lower() == g.lower() for e in sys.path)]
+        repo_kept = any(isinstance(e, str) and os.path.abspath(e) == os.path.abspath(%r)
+                        for e in sys.path)
+        print("GHOSTS_KEPT:", len(kept), "REPO_KEPT:", repo_kept)
+        """) % (ghosts, REPO)
+    r5 = run_py(code5, cwd=clean, path=REPO + os.pathsep + os.pathsep.join(ghosts))
+    out5 = r5.stdout or ""
+    ok(r5.returncode == 0 and "GHOSTS_KEPT: 3" in out5 and "REPO_KEPT: True" in out5,
+       "C5 非 cwd 合法条目（PYTHONPATH 的 ghost .zip/.egg/ns 目录 + 仓根）未被误删",
+       out5[:300])
 
-# ---------------------------------------------------------------- D 组
-def group_d_whitelist():
-    print("== D 组：白名单完整性——全仓裸名 ⊆ COMPONENT_NAMES ==")
-    found = set()
-    hits = []
-    for root, dirs, files in os.walk(os.path.join(REPO, "lingshu")):
+
+# ---------------------------------------------------------------- D 组（AST · 有牙）
+def _classify_top(top):
+    if top in COMPONENT_NAMES:
+        return "component"
+    if top in STDLIB_ALLOWED:
+        return "stdlib"
+    if top in THIRD_PARTY_ALLOWED:
+        return "third_party"
+    if top in SELF_ALLOWED:
+        return "self"
+    return "unknown"
+
+
+def scan_naked_imports(pkg_dir):
+    """AST 扫描 <pkg_dir> 下全部 `.py` 的**裸名** import（不含相对导入）。
+
+    返回 {top: [(abs_path, lineno, modname), ...]}——**不过滤**，含未知名。
+    """
+    found = {}
+    for root, dirs, files in os.walk(pkg_dir):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         for fn in files:
             if not fn.endswith(".py"):
@@ -490,45 +594,202 @@ def group_d_whitelist():
             p = os.path.join(root, fn)
             try:
                 tree = ast.parse(open(p, encoding="utf-8").read())
-            except Exception as exc:
-                ok(False, f"D0 解析失败 {fn}", exc)
+            except Exception as exc:  # noqa: BLE001
+                found.setdefault("__PARSE_ERROR__", []).append((p, 0, str(exc)))
                 continue
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for a in node.names:
                         top = a.name.split(".")[0]
-                        if top in WHITELIST_EXPECTED:
-                            found.add(top)
-                            hits.append((p, node.lineno, a.name))
+                        found.setdefault(top, []).append((p, node.lineno, a.name))
                 elif isinstance(node, ast.ImportFrom):
                     if node.level and node.level > 0:
                         continue
                     top = (node.module or "").split(".")[0]
-                    if top in WHITELIST_EXPECTED:
-                        found.add(top)
-                        hits.append((p, node.lineno, node.module))
-    ok(WHITELIST_EXPECTED <= found and len(hits) >= 20,
+                    if top:
+                        found.setdefault(top, []).append((p, node.lineno, node.module))
+    return found
+
+
+def _classify_report(pkg_dir):
+    """对 <pkg_dir> 做「标准库/组件/已知第三方/未知」分类；返回 (unknown, all_tops, hits)。"""
+    found = scan_naked_imports(pkg_dir)
+    unknown = {}
+    hits = 0
+    for top, sites in found.items():
+        hits += len(sites)
+        if _classify_top(top) == "unknown":
+            unknown[top] = sites
+    return unknown, set(found), hits
+
+
+def group_d_whitelist():
+    print("== D 组：全仓裸名分类（有牙）——标准库/组件/已知第三方/未知 ==")
+    ok(STDLIB_ALLOWED <= set(sys.stdlib_module_names),
+       "D0a 标准库白名单 ⊆ sys.stdlib_module_names（解释器权威清单校验）",
+       f"非法={sorted(STDLIB_ALLOWED - set(sys.stdlib_module_names))}")
+    unknown, all_tops, hits = _classify_report(os.path.join(REPO, "lingshu"))
+    ok(WHITELIST_EXPECTED <= all_tops and hits >= 20,
        "D1 全仓裸名扫描：已知 15 名全部出现（≥20 处引用）",
-       f"found={sorted(found)} hits={len(hits)}")
-    ok(found <= set(COMPONENT_NAMES),
-       "D2 扫描结果 ⊆ COMPONENT_NAMES（新增裸名须登记白名单）",
-       f"extra={sorted(found - set(COMPONENT_NAMES))}")
+       f"found={sorted(all_tops)} hits={hits}")
+    ok(not unknown,
+       "D2 未知裸名 = ∅（出现未知即红：须登记为组件白名单/标准库/已知第三方）",
+       "未知=" + json.dumps({k: [os.path.relpath(s[0], REPO) + ":" + str(s[1])
+                                for s in v] for k, v in unknown.items()},
+                              ensure_ascii=False))
     ok(set(COMPONENT_NAMES) >= WHITELIST_EXPECTED,
        "D3 白名单未缩水（≥已知 15 名）",
        f"missing={sorted(WHITELIST_EXPECTED - set(COMPONENT_NAMES))}")
 
+    # D4：**自证有牙**——沙箱副本注入新裸名 ⇒ 判据必检为「未知」；干净副本 ⇒ 空
+    sandbox = tempfile.mkdtemp(prefix="f156_d_sandbox_")
+    try:
+        copy_root = os.path.join(sandbox, "lingshu")
+        shutil.copytree(os.path.join(REPO, "lingshu"), copy_root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        u_clean, _, _ = _classify_report(copy_root)
+        ok(not u_clean, "D4a 干净副本：未知裸名 = ∅（基线）", f"unknown={sorted(u_clean)}")
+        probe = os.path.join(copy_root, "_inject_probe_156.py")
+        with open(probe, "w", encoding="utf-8") as f:
+            f.write("# 沙箱变异：注入新裸名（守卫必须检为「未知」）\n"
+                    "import totally_new_component_xyz_156\n")
+        u_mut, _, _ = _classify_report(copy_root)
+        ok("totally_new_component_xyz_156" in u_mut,
+           "D4b **有牙自证**：注入新裸名 totally_new_component_xyz_156 ⇒ 判据检为「未知」（必红）",
+           f"unknown={sorted(u_mut)}")
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- F 组（标准库劫持面）
+def group_f_stdlib_hijack(base):
+    print("== F 组：标准库劫持面（v2 核心）——逐名毒 cwd 在 -c 形态下不执行 ==")
+    ct = ("from lingshu.core.core import SpacetimeMemoryEngine\n"
+          "SpacetimeMemoryEngine(':memory:')\n"
+          "print('CONSTRUCTED')\n")
+    n_exec = 0
+    for name in STDLIB_HIJACK_NAMES:
+        d = make_stdlib_poison_dir(base, name, tag="c")
+        r = run_py(ct, cwd=d)
+        marker = os.path.exists(os.path.join(d, "MARKER.txt"))
+        n_exec += 1 if marker else 0
+        ok(r.returncode == 0 and not marker and "CONSTRUCTED" in (r.stdout or ""),
+           f"F1[{name}] -c 形态：cwd 毒 {name}.py 未执行、引擎照常装配 rc=0",
+           f"rc={r.returncode} marker={marker} out={(r.stdout or '')[:120]!r} err={(r.stderr or '')[:120]!r}")
+    ok(n_exec == 0, f"F1 汇总：{len(STDLIB_HIJACK_NAMES)} 个标准库毒名全部未执行（executed=0/%d）"
+       % len(STDLIB_HIJACK_NAMES), f"n_exec={n_exec}")
+
+    # F2：`-m` 形态（sys.path[0] = cwd **绝对路径**）—— 证「等于 cwd 的绝对条目」亦被消除
+    runner_root = os.path.join(base, "runner_mod")
+    pkg = os.path.join(runner_root, "f156mod")
+    os.makedirs(pkg, exist_ok=True)
+    with open(os.path.join(pkg, "__init__.py"), "w", encoding="utf-8") as f:
+        f.write("")
+    with open(os.path.join(pkg, "__main__.py"), "w", encoding="utf-8") as f:
+        f.write(ct)
+    d = make_stdlib_poison_dir(base, "json", tag="m")
+    r = run_py("", cwd=d, path=REPO + os.pathsep + runner_root, args=["-m", "f156mod"])
+    marker = os.path.exists(os.path.join(d, "MARKER.txt"))
+    ok(r.returncode == 0 and not marker and "CONSTRUCTED" in (r.stdout or ""),
+       "F2 -m 形态（sys.path[0]=cwd 绝对路径）：cwd 毒 json.py 未执行、引擎照常装配",
+       f"rc={r.returncode} marker={marker} out={(r.stdout or '')[:160]!r} err={(r.stderr or '')[:160]!r}")
+
+
+# ---------------------------------------------------------------- G 组（逃生口）
+def group_g_escape_hatch(base):
+    print("== G 组：逃生口 LINGSHU_ALLOW_CWD_IMPORTS（默认关；开＝放弃本层保护） ==")
+    clean = os.path.join(base, "clean_hatch")
+    os.makedirs(clean, exist_ok=True)
+    code = textwrap.dedent("""
+        import json, os, sys
+        import lingshu._pathguard as pg
+        from lingshu.core.core import SpacetimeMemoryEngine
+        SpacetimeMemoryEngine(":memory:")
+        print("##JSON##" + json.dumps({
+            "empty_in_path": ("" in sys.path),
+            "scrub": pg.pathguard_report(),
+        }, ensure_ascii=False))
+        """)
+
+    # G1：默认（逃生口关）⇒ '' 被消除、状态标 escape_hatch_open=False
+    r = run_py(code, cwd=clean)
+    j = None
+    for line in (r.stdout or "").splitlines():
+        if line.startswith("##JSON##"):
+            j = json.loads(line[len("##JSON##"):])
+    ok(r.returncode == 0 and j is not None, "G1a 逃生口关：子进程取到状态", (r.stdout or "")[:160])
+    if j:
+        ok(j["empty_in_path"] is False, "G1b 逃生口关：'' 已从 sys.path 消除")
+        s = j["scrub"]
+        ok(s["escape_hatch_open"] is False and s["cwd_scrub_active"] is True
+           and s["removed_count"] >= 1 and s["cwd_entries_now"] == 0,
+           "G1c 逃生口关：状态标 cwd_scrub_active=True / removed_count≥1 / cwd_entries_now=0", s)
+        ok(all(":" not in k for k in s["removed_kinds"]),
+           "G1d removed_kinds 不含本机绝对路径（只记种类）", s["removed_kinds"])
+
+    # G2：逃生口开（LINGSHU_ALLOW_CWD_IMPORTS=1）⇒ 保留 cwd 条目 + 告警 + 状态可观测
+    r = run_py(code, cwd=clean, extra={"LINGSHU_ALLOW_CWD_IMPORTS": "1"})
+    j = None
+    for line in (r.stdout or "").splitlines():
+        if line.startswith("##JSON##"):
+            j = json.loads(line[len("##JSON##"):])
+    ok(r.returncode == 0 and j is not None, "G2a 逃生口开：子进程取到状态", (r.stdout or "")[:160])
+    if j:
+        s = j["scrub"]
+        ok(j["empty_in_path"] is True,
+           "G2b 逃生口开：'' 被**保留**（本层保护关闭）")
+        ok(s["escape_hatch_open"] is True and s["escape_hatch_env"] == "LINGSHU_ALLOW_CWD_IMPORTS"
+           and s["cwd_entries_now"] >= 1 and len(s["kept_cwd_kinds"]) >= 1,
+           "G2c 逃生口开：状态标 escape_hatch_open=True / kept_cwd_kinds 非空", s)
+    ok("CwdImportsAllowed" in (r.stderr or "") and "[issue156-v2]" in (r.stderr or ""),
+       "G2d 逃生口开：stderr 有明确告警（CwdImportsAllowed + [issue156-v2]）",
+       (r.stderr or "")[:200])
+
+    # G3：逃生口开 + cwd 毒 json.py ⇒ MARKER 出现（记录性断言：开＝放弃保护）
+    d = make_stdlib_poison_dir(base, "json", tag="hatch")
+    r = run_py("from lingshu.core.core import SpacetimeMemoryEngine; SpacetimeMemoryEngine(':memory:')",
+               cwd=d, extra={"LINGSHU_ALLOW_CWD_IMPORTS": "1"})
+    marker = os.path.exists(os.path.join(d, "MARKER.txt"))
+    ok(marker, "G3 逃生口开 + cwd 毒 json.py ⇒ MARKER 出现（如实记录：开＝放弃本层保护）",
+       f"marker={marker} rc={r.returncode}")
+
+
+# ---------------------------------------------------------------- S 组（脚本目录边界）
+def group_s_script_dir(base):
+    print("== S 组：脚本目录边界——`python <script>.py` 且脚本目录 != cwd ==")
+    A = os.path.join(base, "script_dir_A")
+    B = os.path.join(base, "cwd_B")
+    os.makedirs(A, exist_ok=True)
+    os.makedirs(B, exist_ok=True)
+    with open(os.path.join(A, "self_cognition_engine.py"), "w", encoding="utf-8") as f:
+        f.write(POISON_TEMPLATE.format(symbols=POISON_SYMBOLS["self_cognition_engine"]))
+    with open(os.path.join(A, "run_probe.py"), "w", encoding="utf-8") as f:
+        f.write(textwrap.dedent("""
+            import os
+            from lingshu.core.core import SpacetimeMemoryEngine
+            e = SpacetimeMemoryEngine(":memory:")
+            here = os.path.dirname(os.path.abspath(__file__))
+            print("SCE_SLOT:", e._self_cognition, "ERR:", repr(e._self_cognition_error))
+            print("SCRIPTDIR_MARKER:", os.path.exists(os.path.join(here, "MARKER.txt")))
+            """))
+    r = run_py("", cwd=B, args=[os.path.join(A, "run_probe.py")])
+    out = r.stdout or ""
+    ok(r.returncode == 0 and "SCRIPTDIR_MARKER: False" in out,
+       "S1 脚本目录（!= cwd）里的白名单毒组件未被执行（v1 漏点）", out[:300])
+    ok("SCE_SLOT: None" in out and "No module named" in out,
+       "S2 脚本目录不被当作受控面 ⇒ 白名单名原生缺失（不回落脚本目录）", out[:300])
+
 
 # ---------------------------------------------------------------- E 组
 def group_e_disclosure():
-    print("== E 组：边界诚实——密钥声明收窄到事实 ==")
+    print("== E 组：边界诚实——密钥声明收窄到事实（v2 精确措辞） ==")
     from lingshu.core.core import verify_designer
     doc = verify_designer.__doc__ or ""
-    # 反面判据：原 docstring（“密钥仅存在于服务环境变量…永远无法冒充”）
-    # 不含下列任一词 ⇒ 若回退到旧表述，本组必红（见下方“原表述不成立”的否定语）。
     ok("同进程" in doc, "E1 docstring 点明「同进程」可读（原「永远无法读取」不成立）")
     ok("不成立" in doc, "E2 docstring 显式给出「原表述不成立」的边界", doc[:160])
-    ok("设计级" in doc and "注入面" in doc,
-       "E3 docstring 注明本批只封注入面、同进程可信性属设计级事项")
+    ok("设计级" in doc and "sys.path" in doc and "消除" in doc,
+       "E3 docstring 精确表述本批范围（消除 cwd/空串 sys.path 解析）且同进程属设计级")
+    ok("逃生口" in doc, "E4 docstring 明示仍不覆盖的情形（逃生口被显式打开）")
 
 
 def main():
@@ -543,9 +804,11 @@ def main():
         group_b_alert(base)
         group_c_install_paths(base)
         group_d_whitelist()
+        group_f_stdlib_hijack(base)
+        group_g_escape_hatch(base)
+        group_s_script_dir(base)
         group_e_disclosure()
     finally:
-        import shutil
         shutil.rmtree(base, ignore_errors=True)
     print()
     print(f"===== SUMMARY {len(_PASS)}/{len(_PASS) + len(_FAIL)} 通过 =====")
@@ -554,8 +817,10 @@ def main():
         for m in _FAIL:
             print("  -", m)
         return 1
-    print("VERDICT=PASS（issue #156 守卫：cwd 同名组件在构造期不执行（逐名 × 两形态）；"
-          "装配失败有可观测告警出口；显式根/PYTHONPATH/别名三条装配路径未被修坏）")
+    print("VERDICT=PASS（issue #156 v2 守卫：cwd/空串 sys.path 解析面已消除——白名单组件"
+          "（逐名 × 两形态）+ 标准库（逐名）毒 cwd 均不执行；脚本目录边界亦收口；"
+          "AST 分类判据有牙（未知即红）；逃生口与 path_scrub 状态可观测；"
+          "显式根/PYTHONPATH/别名/非 cwd 合法条目四条装配路径未被修坏）")
     return 0
 
 

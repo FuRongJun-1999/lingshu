@@ -26,8 +26,18 @@ component_resolver · 组件发现面收口（lingshu issue #156）
 `ComponentDiscoveryWarning`——装配失败此前完全静默（core.py 全文无
 print/logging/warnings，构造期 stderr 为空），现在有可观测出口。
 
-范围边界（issue #156 批次）：只封组件**发现面**。同进程代码可读
-`os.environ` 一事（密钥面）属设计级事项，不在本模块处理。
+v2 补强（issue #156 第二版）：
+  - `sys.path` 的 cwd/空串条目由 `lingshu._pathguard` 在**包首次 import 时**
+    全局消除（早于 core.py 的 `import json`）——本模块的 `_is_cwd_entry` 仍保留，
+    用于逃生口打开（cwd 条目仍在）时白名单名**依旧不**从 cwd 解析。
+  - **脚本目录**（`python <script>.py` 形态的 `sys.path[0]`）同属「解释器隐式
+    塞入的解析面」，不再被当作受控面 ⇒ 白名单名不从脚本目录解析（见
+    `_is_script_dir_entry` / `_pathguard.main_script_dir`）。
+
+范围边界（精确）：本模块封的是**组件发现面**（白名单 15 名的裸名解析不经
+cwd/空串/脚本目录条目）；「消除一切经 `sys.path` 的裸名解析（含标准库）」由
+`lingshu._pathguard` 承担。同进程代码可读 `os.environ`（密钥面）与
+`sys.modules` 预置/别名冒充属**设计级**事项，不在本模块处理。
 
 零外部依赖 · 纯标准库（D-005）。
 """
@@ -39,9 +49,15 @@ import os
 import sys
 import warnings
 
+from .._pathguard import (
+    main_script_dir as _main_script_dir,
+    pathguard_report as _pathguard_report,
+)
+
 # 白名单：仓内以裸名解析的全部组件（含 AEIS `aeis/__init__.py` 注册别名集）。
 # 新增裸名导入时须同步登记，守卫 tests/test_issue156_component_discovery.py
-# 以 AST 扫描断言「全仓裸名 ⊆ 本表」。
+# 的 D 组以 AST 扫描**全仓裸名**并按「标准库 / 组件 / 已知第三方 / 未知」分类，
+# 「未知」即判红（v2：旧 D 组先按本表过滤 ⇒ 恒真空转，已修真）。
 COMPONENT_NAMES = frozenset({
     # —— 构造期（SpacetimeMemoryEngine.__init__ 的 _setup_* 调用链）——
     "entity_registry",
@@ -99,6 +115,21 @@ def _is_cwd_entry(entry) -> bool:
     return _norm(entry) == _norm(cwd)
 
 
+def _is_script_dir_entry(entry) -> bool:
+    """`sys.path` 条目是否为 `python <script>.py` 形态的**脚本目录**。
+
+    脚本目录同属「解释器隐式塞入」的解析面（非部署方显式声明），故亦不视为
+    受控面（v2 补强：上一版只判 cwd/空串 ⇒ 脚本目录 != cwd 时毒白名单组件
+    仍被执行）。
+    """
+    if not isinstance(entry, str) or entry == "":
+        return False
+    sd = _main_script_dir()
+    if not sd:
+        return False
+    return _norm(entry) == _norm(sd)
+
+
 def configured_roots() -> list:
     """显式配置的组件根（`LINGSHU_COMPONENT_ROOT`，按顺序去空项）。"""
     raw = os.environ.get(COMPONENT_ROOT_ENV, "")
@@ -106,7 +137,7 @@ def configured_roots() -> list:
 
 
 def safe_search_path() -> list:
-    """受控搜索面：显式配置根在前，其后为 sys.path 的非 cwd 条目（去重保序）。"""
+    """受控搜索面：显式配置根在前，其后为 sys.path 的非 cwd/非脚本目录条目（去重保序）。"""
     roots: list = []
     seen: set = set()
 
@@ -119,7 +150,7 @@ def safe_search_path() -> list:
     for p in configured_roots():
         _add(p)
     for entry in list(sys.path):
-        if _is_cwd_entry(entry):
+        if _is_cwd_entry(entry) or _is_script_dir_entry(entry):
             continue
         _add(entry)
     return roots
@@ -190,12 +221,22 @@ def discovery_report() -> dict:
     except Exception:
         cwd_ok = False
     entries = [p for p in sys.path if isinstance(p, str)]
+    _pg = _pathguard_report()
+    _cwd_live = sum(1 for p in entries if _is_cwd_entry(p))
     return {
         "guard_installed": is_installed(),
         "component_names": sorted(COMPONENT_NAMES),
         "configured_root_env": COMPONENT_ROOT_ENV,
         "configured_roots_set": bool(configured_roots()),
         "search_entries": len(safe_search_path()),
-        "cwd_excluded_count": sum(1 for p in entries if _is_cwd_entry(p)),
+        # cwd 类条目被挡在受控面之外的计数 = 已由 _pathguard 从 sys.path 消除的
+        # （`path_scrub.removed_count`）+ 仍在 sys.path 但被本模块忽略的（逃生口打开时）。
+        "cwd_excluded_count": _pg["removed_count"] + _cwd_live,
+        "cwd_entries_in_sys_path": _cwd_live,
+        "script_dir_excluded": _main_script_dir() is not None,
+        "script_dir_excluded_count": sum(1 for p in entries if _is_script_dir_entry(p)),
         "cwd_available": cwd_ok,
+        # issue #156 v2：路径护栏状态（cwd/空串条目是否已从 sys.path 消除、
+        # 逃生口是否被打开、移除了哪些「种类」）——只增字段，不含本机绝对路径。
+        "path_scrub": _pg,
     }

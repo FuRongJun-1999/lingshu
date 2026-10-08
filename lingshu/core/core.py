@@ -13,6 +13,12 @@ spacetime_memory_core · 智能论 v3.2 协议实例核心引擎
 版本：v1.13 · 协议实例核心（基于 v1.12；v1.13 视觉感知：YOLO 外接（可选扩展·零依赖降级）/视觉→记忆闭环/身体能力声明；VISION-REV1）
 """
 
+# issue #156 v2：**最早落点**——在本文件任何裸名 import（含下方 `import json`）
+# 之前消除 cwd/空串 sys.path 解析面。包导入时 `lingshu/__init__.py` 已执行同一
+# 护栏（幂等，本行再调用一次为防御纵深，并使「最早落点」在本文件可自证）。
+# 见 lingshu/_pathguard.py（含精确范围声明与逃生口 LINGSHU_ALLOW_CWD_IMPORTS）。
+from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，勿删)
+
 import sqlite3
 import json
 import time
@@ -31,7 +37,12 @@ try:
 except ImportError:  # 直跑 fallback（裸名互导）
     from .time_core import cred_step
 
-# 组件发现面收口（issue #156）：白名单组件的裸名导入不再经 cwd/空串 sys.path 条目解析
+# 组件发现面收口（issue #156）：白名单组件的裸名导入不再经 cwd/空串 sys.path 条目解析。
+# v2 精确范围：① 本包 import 期由 _pathguard 消除 cwd/空串 sys.path 解析（覆盖**一切**
+# 经 sys.path 的裸名导入，含标准库——上一版只封白名单组件名，json.py 等仍被劫持）；
+# ② 白名单组件另由本守卫收口（含排除脚本目录）；③ 仍不覆盖：进程已被预置投毒
+# （sys.modules 预置 / 进程内 sys.path.insert）、逃生口 LINGSHU_ALLOW_CWD_IMPORTS 被
+# 显式打开的情形。
 from .component_resolver import (
     COMPONENT_NAMES as _COMPONENT_NAMES,
     discovery_report as _component_discovery_report,
@@ -58,8 +69,11 @@ def verify_designer(designer_key) -> bool:
       密钥不在仓库与代码中，仅存在于服务环境。
     - 不成立：**同进程代码**（如构造期被装入的组件、被劫持的裸名导入）可读
       os.environ ⇒「模型/自动化永远无法读取」对同进程不成立。
-    本批（#156）只封了组件注入面（裸名解析不再经 cwd/空串 sys.path 条目）；
-    同进程可信性属设计级事项，待 D-007 后续裁定。"""
+    本批（#156 v2）的精确范围＝**消除 cwd/空串 `sys.path` 解析**——覆盖一切经
+    `sys.path` 的裸名导入（含标准库），并另由组件守卫收口白名单 15 名（含排除
+    脚本目录）。仍**不覆盖**：进程已被预置投毒（`sys.modules` 预置 / 进程内
+    `sys.path.insert` / 别名冒充）、逃生口 `LINGSHU_ALLOW_CWD_IMPORTS` 被显式
+    打开的情形。同进程可信性属**设计级**事项，待 D-007 后续裁定。"""
     expected = os.environ.get("AEIS_DESIGNER_KEY")
     if not expected or not designer_key:
         return False
