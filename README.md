@@ -55,6 +55,17 @@ pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规�
 依赖分层、环境自适应降级点与精修记录见
 [docs/intake/body-export-v0.1/](docs/intake/body-export-v0.1/)（导出说明 / 双清单审计 / 逐文件指纹清单）。
 
+## 测试
+
+```bash
+python -m pip install -e ".[full,dev]"
+python -m pytest -q -m "not slow and not integration"
+```
+
+快速集覆盖可在公开数据和本地临时库上复跑的业务场景。完整集、耗时训练、
+真实脑侧 MCP 集成的命令与当前已知失败见 [业务场景测试指南](docs/testing.md)。
+新增测试可沿用其中的「输入事实 → 真实流程 → 独立判据 → 可消费结果」写法。
+
 ## 联系与贡献
 
 - **设计者**：QQ `1935852383`

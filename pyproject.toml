@@ -25,3 +25,11 @@ include = ["lingshu*"]
 [tool.setuptools.package-data]
 # nn 模块附属固化物（白箱固化产物，JSON 可直读；见 docs/intake/body-export-v0.2/）
 "lingshu.nn" = ["assets/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers -ra"
+markers = [
+    "slow: scenarios that train a hierarchical network before checking behavior",
+    "integration: scenarios that use the external dsh-memory MCP process",
+]

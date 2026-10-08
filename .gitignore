@@ -41,3 +41,4 @@ secrets/
 *.tmp
 tmp/
 _tmp/
+.pytest_cache/

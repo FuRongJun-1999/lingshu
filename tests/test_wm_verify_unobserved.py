@@ -24,6 +24,8 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
@@ -154,6 +156,8 @@ def group_d_snapshot_missing():
 
 
 def main():
+    _PASS.clear()
+    _FAIL.clear()
     print("== A 组：报告人场景（未观测假设不计分）+ C 组（假设留图） ==")
     group_a_reporter_scenario()
     print("== B 组：坑 b（此前见过、后来被遮蔽的真实实体） ==")
@@ -167,6 +171,19 @@ def main():
         return 1
     print("VERDICT=PASS（issue #1 守卫：未观测预测不计分；假设/陈旧记忆留图）")
     return 0
+
+
+@pytest.mark.parametrize("scenario", [
+    group_a_reporter_scenario,
+    group_b_stale_masked_entity,
+    group_d_snapshot_missing,
+], ids=["unobserved_hypothesis", "occluded_entity", "observation_snapshot"])
+def test_observation_based_verification(scenario):
+    """Each existing regression scenario is visible in the pytest report."""
+    _PASS.clear()
+    _FAIL.clear()
+    scenario()
+    assert not _FAIL, f"Failed checks: {_FAIL}"
 
 
 if __name__ == "__main__":

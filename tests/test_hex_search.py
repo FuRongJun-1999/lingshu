@@ -8,6 +8,9 @@ _sys.path.insert(0, _RP)
 import numpy as np
 import pytest
 
+# All tests use the shared 400-step training fixture.
+pytestmark = pytest.mark.slow
+
 from lingshu.nn.hex_cnn import image_to_grid
 from lingshu.nn.hex_hier import HexHierNet, train_hier
 from lingshu.nn.hex_search import recursive_search, search_report

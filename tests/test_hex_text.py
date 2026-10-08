@@ -66,6 +66,7 @@ def test_corrupt_description_changes_words():
     assert changed >= 8, f"corrupt_rate=1.0 应几乎必改: {changed}/10"
 
 
+@pytest.mark.slow
 def test_spatial_detect_finds_single_object(net):
     xs, metas, lat = _dataset(16, n_objects=1, seed=5)
     dets = spatial_detect(net, lat)
@@ -75,6 +76,7 @@ def test_spatial_detect_finds_single_object(net):
     assert hit / 16 > 0.6, f"单物体位置检测应多数命中: {hit}/16"
 
 
+@pytest.mark.slow
 def test_zero_shot_two_object_split(net):
     """零样本子物体拆分:单物体训练的网络,双物体场景拆出两个位置。"""
     xs, metas, lat = _dataset(12, n_objects=2, seed=13)
@@ -84,6 +86,7 @@ def test_zero_shot_two_object_split(net):
     assert both / 12 > 0.4, f"双物体零样本拆分: {both}/12"
 
 
+@pytest.mark.slow
 def test_multimodal_check_clean_vs_corrupt(net):
     """一致性判定:干净描述应 ACCEPT/DEFER,重度噪声应大量 REJECT。"""
     xs, metas, lat = _dataset(12, n_objects=1, seed=17)
@@ -102,6 +105,7 @@ def test_multimodal_check_clean_vs_corrupt(net):
     assert rej / 12 > 0.3, f"噪声描述应大量 REJECT: {rej}/12"
 
 
+@pytest.mark.slow
 def test_multimodal_structure(net):
     xs, metas, lat = _dataset(4, n_objects=1, seed=5)
     r = multimodal_check(net, lat[0:1], metas[0]["description"])

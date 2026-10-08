@@ -28,58 +28,60 @@ def check(name, ok, detail=""):
     print(f"  [{'PASS' if ok else 'FAIL'}] {name} {detail}")
 
 
-# ============ ① 蜂窝晶格几何 ============
-print("\n[1] 蜂窝晶格(axial/pointy-top)")
-g = HexGrid(10, 8, 1.0)
-cx, cy = g.center_px(0, 0)
-check("原点 cell 中心在原点", abs(cx) < 1e-9 and abs(cy) < 1e-9)
-cx2, cy2 = g.center_px(1, 0)
-import math as _math
-check("同行相邻间距 = √3·size", abs((cx2 - cx) - _math.sqrt(3)) < 1e-6)
-q, r = g.pixel_to_cell(cx2, cy2)
-check("像素→cell 往返", (q, r) == (1, 0), str((q, r)))
-n = g.neighbors(3, 3)
-check("六邻 6 个且互不相同", len(n) == 6 and len(set(n)) == 6)
-dists = [abs(g.center_px(*n[i])[0] - g.center_px(3, 3)[0]) ** 2
-         + abs(g.center_px(*n[i])[1] - g.center_px(3, 3)[1]) ** 2 for i in range(6)]
-check("6 邻等距(各向同性——蜂窝核心性质)", max(dists) - min(dists) < 1e-6,
-      f"spread={max(dists)-min(dists):.2e}")
-
-# ============ ② HexConv 手写核性质 ============
-print("\n[2] HexConv 手写核性质")
-feat = np.full((8, 10, 3), 100.0, dtype=np.float32)
-sm = hex_conv(feat, kernel_smooth())
-check("平滑核对常数场恒等(归一化核)", np.allclose(sm, 100.0, atol=1e-4))
-lap = hex_conv(feat, kernel_laplacian())
-check("Laplacian 对常数场零响应", np.allclose(lap, 0.0, atol=1e-4))
-cs = hex_conv(feat, kernel_center_surround())
-check("center-surround 对常数场零响应(拮抗平衡)",
-      np.allclose(cs, 0.0, atol=1e-4))
-# 阶跃边缘 → 方向核有响应
-step = np.full((8, 10, 3), 50.0, dtype=np.float32)
-step[:, 5:] = 150.0
-ev = hex_conv(step, kernel_edge(True))
-check("纵向边缘核在阶跃处有响应", abs(ev[:, 4:6]).mean() > 10,
-      f"边缘响应 {abs(ev[:, 4:6]).mean():.1f}")
-check("HexConv 输出形状保持", ev.shape == step.shape)
-
-# ============ ③ 图像→晶格→可视化往返 ============
-print("\n[3] 图像↔晶格")
-img = np.zeros((120, 160, 3), dtype=np.uint8)
-img[40:80, 60:100] = 255  # 中央白块
-feat, grid = image_to_grid(img, cells_across=32)
-check("晶格尺寸合理", feat.shape[0] >= 4 and feat.shape[1] == 32, str(feat.shape))
-# 白块 (x 60~100, y 40~80) → 实测亮 cell 集中在 (r=5..7, q=7..10)
-check("白块区域 cell 亮于角落", feat[6, 8].mean() > feat[1, 1].mean() + 50,
-      f"块内={feat[6, 8].mean():.0f} 角落={feat[1, 1].mean():.0f}")
-vis = grid_to_image(feat, grid, scale=6)
-check("可视化画布非空且亮度合理", vis.shape[0] > 50 and vis.mean() > 5,
-      f"{vis.shape} mean={vis.mean():.1f}")
-
-# ============ ④–⑥ 素材相关段（素材可选：上游素材未随导出时显式 SKIP） ============
-# 素材路径：上游私有素材（导出面不存在）；在盘时本段按原判据全跑。
 _ASSET = os.path.join(PROJECT_ROOT, "data", "img", "0.png")
-if os.path.exists(_ASSET):
+
+
+def run_constructive_checks():
+    # ============ ① 蜂窝晶格几何 ============
+    print("\n[1] 蜂窝晶格(axial/pointy-top)")
+    g = HexGrid(10, 8, 1.0)
+    cx, cy = g.center_px(0, 0)
+    check("原点 cell 中心在原点", abs(cx) < 1e-9 and abs(cy) < 1e-9)
+    cx2, cy2 = g.center_px(1, 0)
+    import math as _math
+    check("同行相邻间距 = √3·size", abs((cx2 - cx) - _math.sqrt(3)) < 1e-6)
+    q, r = g.pixel_to_cell(cx2, cy2)
+    check("像素→cell 往返", (q, r) == (1, 0), str((q, r)))
+    n = g.neighbors(3, 3)
+    check("六邻 6 个且互不相同", len(n) == 6 and len(set(n)) == 6)
+    dists = [abs(g.center_px(*n[i])[0] - g.center_px(3, 3)[0]) ** 2
+             + abs(g.center_px(*n[i])[1] - g.center_px(3, 3)[1]) ** 2 for i in range(6)]
+    check("6 邻等距(各向同性——蜂窝核心性质)", max(dists) - min(dists) < 1e-6,
+          f"spread={max(dists)-min(dists):.2e}")
+
+    # ============ ② HexConv 手写核性质 ============
+    print("\n[2] HexConv 手写核性质")
+    feat = np.full((8, 10, 3), 100.0, dtype=np.float32)
+    sm = hex_conv(feat, kernel_smooth())
+    check("平滑核对常数场恒等(归一化核)", np.allclose(sm, 100.0, atol=1e-4))
+    lap = hex_conv(feat, kernel_laplacian())
+    check("Laplacian 对常数场零响应", np.allclose(lap, 0.0, atol=1e-4))
+    cs = hex_conv(feat, kernel_center_surround())
+    check("center-surround 对常数场零响应(拮抗平衡)",
+          np.allclose(cs, 0.0, atol=1e-4))
+    # 阶跃边缘 → 方向核有响应
+    step = np.full((8, 10, 3), 50.0, dtype=np.float32)
+    step[:, 5:] = 150.0
+    ev = hex_conv(step, kernel_edge(True))
+    check("纵向边缘核在阶跃处有响应", abs(ev[:, 4:6]).mean() > 10,
+          f"边缘响应 {abs(ev[:, 4:6]).mean():.1f}")
+    check("HexConv 输出形状保持", ev.shape == step.shape)
+
+    # ============ ③ 图像→晶格→可视化往返 ============
+    print("\n[3] 图像↔晶格")
+    img = np.zeros((120, 160, 3), dtype=np.uint8)
+    img[40:80, 60:100] = 255  # 中央白块
+    feat, grid = image_to_grid(img, cells_across=32)
+    check("晶格尺寸合理", feat.shape[0] >= 4 and feat.shape[1] == 32, str(feat.shape))
+    # 白块 (x 60~100, y 40~80) → 实测亮 cell 集中在 (r=5..7, q=7..10)
+    check("白块区域 cell 亮于角落", feat[6, 8].mean() > feat[1, 1].mean() + 50,
+          f"块内={feat[6, 8].mean():.0f} 角落={feat[1, 1].mean():.0f}")
+    vis = grid_to_image(feat, grid, scale=6)
+    check("可视化画布非空且亮度合理", vis.shape[0] > 50 and vis.mean() > 5,
+          f"{vis.shape} mean={vis.mean():.1f}")
+
+
+def run_asset_checks(tmpd):
     # ============ ④ 自监督微调 + 白箱固化 ============
     print("\n[4] 自监督(掩码重建)+白箱固化")
     img = Image.open(_ASSET).convert("RGB")
@@ -90,7 +92,6 @@ if os.path.exists(_ASSET):
           tr["final_loss"] <= tr["init_loss"] * 1.05,
           f"init={tr['init_loss']} final={tr['final_loss']}")
     check("核归一化(能量守恒约束)", abs(abs(tr["kernel"]).sum() - 1.0) < 1e-5)
-    tmpd = tempfile.mkdtemp()
     kpath = save_consolidated({**DEFAULT_KERNELS, "learned": tr["kernel"]},
                               {"source": "upstream-asset", "epochs": 8}, os.path.join(tmpd, "kernels.json"))
     loaded = load_consolidated(kpath)
@@ -140,10 +141,42 @@ if os.path.exists(_ASSET):
     tr_n = selfsup_finetune(arr_n, epochs=5, lr=0.3)
     check("透明底域自监督收敛", tr_n["final_loss"] < tr_n["init_loss"] * 1.1,
           f"{tr_n['init_loss']}→{tr_n['final_loss']}")
-else:
-    print("\n[4-6] SKIP：上游素材 data/img/0.png 未随导出（构造性段①②③照跑）")
 
-passed = sum(1 for _, ok in results if ok)
-failed = len(results) - passed
-print(f"\n{passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+
+def assert_checks_passed():
+    failed = [name for name, ok in results if not ok]
+    assert not failed, f"Failed checks: {failed}"
+
+
+def test_hex_cnn_constructive():
+    results.clear()
+    run_constructive_checks()
+    assert_checks_passed()
+
+
+def test_hex_cnn_upstream_asset(tmp_path):
+    import pytest
+
+    if not os.path.exists(_ASSET):
+        pytest.skip("upstream image data/img/0.png is not part of the export")
+    results.clear()
+    run_asset_checks(str(tmp_path))
+    assert_checks_passed()
+
+
+def main():
+    results.clear()
+    run_constructive_checks()
+    if os.path.exists(_ASSET):
+        with tempfile.TemporaryDirectory() as tmpd:
+            run_asset_checks(tmpd)
+    else:
+        print("\n[4-6] SKIP：上游素材 data/img/0.png 未随导出（构造性段①②③照跑）")
+    passed = sum(1 for _, ok in results if ok)
+    failed = len(results) - passed
+    print(f"\n{passed} passed, {failed} failed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

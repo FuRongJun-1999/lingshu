@@ -55,6 +55,7 @@ def test_l4_position_accuracy_above_random():
     assert rep["acc_pos"] > 1 / 9 + 0.1, f"位置质心应远超随机: {rep}"
 
 
+@pytest.mark.slow
 def test_hier_training_learns_object():
     """分层训练:物体判定(条件组合卡)从随机 1/9 显著上升。"""
     xs, labs, lat = _dataset(96)
@@ -68,6 +69,7 @@ def test_hier_training_learns_object():
     assert after["acc_obj"] >= before["acc_obj"]
 
 
+@pytest.mark.slow
 def test_info_gap_profile_decreases():
     """信息差剖面:训练后联合信息差应低于初始(语义层级压缩信息差)。"""
     xs, labs, lat = _dataset(96)
@@ -87,6 +89,7 @@ def test_cards_calibrated():
         assert 0.0 <= c["p_q25"] <= 1.0
 
 
+@pytest.mark.slow
 def test_train_hier_matches_numpy_baseline():
     """速度护栏:96 样本 60 步应在 60s 内(有限差分成本可控)。"""
     import time
