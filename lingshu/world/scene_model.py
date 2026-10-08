@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import math
+import warnings
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -313,14 +314,20 @@ def ingest_scene(agent, scene_desc: str, store=None, tag: str = "spatial"):
                 tags=[tag, f"cat:{cat}", f"ent:{name}", "world_model"],
                 entities=[name],
             )
-        # 状态写入 state_attributes（store 直接更新）
+        # 状态写入 state_attributes（store 直接更新）。
+        # 状态未入账不阻断导入（节点已建，世界仍可加载），但必须可观测：
+        # 否则节点正文写着状态、重建世界却回落 neutral，两边静默矛盾。
         try:
             store.conn.execute(
                 "UPDATE nodes SET state_attributes=? WHERE id=?",
                 (json.dumps({"state": state}), node.id))
             store.conn.commit()
-        except Exception:
-            pass
+        except Exception as exc:                                  # noqa: BLE001
+            warnings.warn(
+                "场景实体 %s 的状态 %r 未写入脑侧台账（%s: %s）；"
+                "记忆节点已创建，重建世界时该实体状态会回落为 neutral"
+                % (name, state, type(exc).__name__, exc),
+                RuntimeWarning, stacklevel=2)
         written.append(node.id)
     return written
 
