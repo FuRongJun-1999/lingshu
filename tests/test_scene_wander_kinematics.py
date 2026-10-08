@@ -34,6 +34,8 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
+import pytest  # noqa: E402
+
 from lingshu.world.scene_simulator import SceneSimulator  # noqa: E402
 from lingshu.world.spacetime_consistency import SpacetimeConsistency  # noqa: E402
 
@@ -265,6 +267,43 @@ def main():
         return 1
     print("全部通过")
     return 0
+
+
+# ---- pytest 入口（消除门禁盲区）--------------------------------------------
+# ★ 本件原为**纯脚本式**：`pytest --collect-only` 收 **0 件**——与 PR #26 同样的门禁盲区，
+#   维护者在 #26 评语里已指出（「你的测试件也是脚本式，pytest --collect-only 收 0 件；
+#   已由我方补进门禁脚本清单（另一笔，我方署名）」）。此处给每个断言组加 pytest 入口，
+#   **复用同一批 group 函数**：脚本模式（`python tests/test_scene_wander_kinematics.py`）
+#   与 pytest 模式**跑同一套断言**，无需再动 `.github/workflows/gate.yml` 的脚本清单。
+_GROUPS = (
+    ("A 遵守 speed", group_a_respects_speed),
+    ("B 修前超速", group_b_former_overspeed),
+    ("C 单位方向", group_c_unit_direction),
+    ("C2 方向随机性", group_c2_direction_is_random),
+    ("D RNG 流不变", group_d_rng_stream_unchanged),
+    ("E 影子不受影响", group_e_shadow_unaffected),
+    ("F 无新增漏检", group_f_no_new_miss),
+    ("G 确定性", group_g_deterministic),
+    ("H 上界观测", group_h_bound_observation),
+)
+
+
+@pytest.mark.parametrize("_label,_fn", _GROUPS, ids=[g[0] for g in _GROUPS])
+def test_wander_group(_label, _fn):
+    """逐组判据（pytest 入口）：组内不得出现 FAIL。"""
+    _PASS.clear()
+    _FAIL.clear()
+    _fn()
+    assert not _FAIL, "%s 组失败：%s" % (_label, _FAIL)
+
+
+def test_wander_groups_executed():
+    """量具自检：整轮跑完后必须有断言被执行——防「没测到」被当成「通过」。"""
+    _PASS.clear()
+    _FAIL.clear()
+    for _label, fn in _GROUPS:
+        fn()
+    assert _PASS, "没有任何断言被执行 ⇒ 夹具/前置有问题，本件未真正测到任何东西"
 
 
 if __name__ == "__main__":
