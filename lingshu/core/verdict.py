@@ -43,7 +43,7 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
 
 
 if __name__ == "__main__":
-    # img0 演示: 常服(粉红裙)覆盖 torso/legs → DEFER; head/arm/hand 可见 → ACCEPT
+    # img0 演示: 服装覆盖 torso/legs → DEFER; head/arm/hand 可见 → ACCEPT
     D = {"clothing":"常服","occlusion":"无遮挡","contrast":"清晰","line_edge":"淡线稿"}
     for t in ["head","torso","upper_arm_L","hand_L","upper_leg_L","foot_L"]:
         r = assess({"type":t}, D, part_fg_px=9000, part_area=10000)
