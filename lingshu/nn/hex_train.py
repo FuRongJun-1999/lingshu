@@ -325,10 +325,22 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
                      samples_per_step: int = 16, batch: int = 64,
                      steps: int = 60, seed: int = 7) -> Dict:
     """ELF x-prediction 背书的目标：预测干净 cell（非噪声）。
-    conv 核支路的有限差分调整，conv 段冻结 mix/fc（预训练只调特征前端）。"""
+    conv 核支路的有限差分调整，conv 段冻结 mix/fc（预训练只调特征前端）。
+    init/final 在同一评估掩码上量（独立随机流抽一次，不扰动训练抽样）；curve 是逐步训练
+    读数，每步掩码不同——单步读数间的掩码噪声可大于训练带来的下降，不宜拿首末两点比。"""
     rng = np.random.default_rng(seed)
     curve = []
     conv_vec_len = net.K * 7
+    eval_hole = np.random.default_rng(seed + 1).random(x.shape[:3]) < mask_ratio
+
+    def eval_loss() -> float:
+        masked = x.copy()
+        masked[eval_hole] = 0.0
+        maps = [hex_conv_batch(masked, net.conv[k])[..., 0] for k in range(net.K)]
+        pred = np.stack(maps, axis=-1).mean(axis=-1, keepdims=True)
+        return float(((pred[eval_hole] - x[eval_hole]) ** 2).mean())
+
+    init = eval_loss()
     for step in range(steps):
         idx = rng.permutation(len(x))[:batch]
         xb = x[idx]
@@ -355,8 +367,8 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
             vec[pi] -= lr * g
         net.conv = vec.reshape(net.K, 7)
         curve.append(round(recon_loss(), 5))
-    return {"algo": ALGO + "+selfsup", "init": curve[0], "final": curve[-1],
-            "curve": curve}
+    return {"algo": ALGO + "+selfsup", "init": round(init, 5),
+            "final": round(eval_loss(), 5), "curve": curve}
 
 
 # ==================== 类别条件卡 · 四态判定（三层分工） ====================
