@@ -53,6 +53,7 @@ env:
     tests/test_hex_search.py
     tests/test_hex_text.py
     tests/test_hex_train.py
+    tests/test_world_learner_oracle_rate.py
 
 jobs:
   gate:

@@ -13,8 +13,9 @@ gap_to_oracle 相应 > 1。
         "已追平上界"；须显式标 oracle_unavailable
   D 组（兼容性）：对等场景（学习者认识全部实体）三类率仍在 [0,1] 且 gap>=0
 
-运行（lingshu 仓根）：python -X utf8 tests/test_world_learner_oracle_rate.py
-退出码：0 = 全过；1 = 有断言失败
+运行（lingshu 仓根）——脚本/pytest 双模式：
+    python -X utf8 tests/test_world_learner_oracle_rate.py     # 脚本式，退出码 0/1
+    python -X utf8 -m pytest tests/test_world_learner_oracle_rate.py
 """
 from __future__ import annotations
 
@@ -122,7 +123,8 @@ def group_d_parity_unchanged():
         ok("D4 公开字段保留 %s" % k, k in r)
 
 
-def main():
+def run_checks():
+    _PASS.clear(); _FAIL.clear()
     print("== A 组：oracle_rate 不得 > 1 ==")
     group_a_oracle_rate_bounded()
     print("== B 组：分母独立 ==")
@@ -140,5 +142,11 @@ def main():
     return 0
 
 
+def test_world_learner_oracle_rate():
+    """pytest 入口（与 tests/test_hex_composite.py 同惯例：脚本/pytest 双模式）。"""
+    run_checks()
+    assert not _FAIL, f"{len(_FAIL)} checks failed: {_FAIL}"
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_checks())
