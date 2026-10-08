@@ -305,19 +305,19 @@ def from_legacy(tags: Any, created_at: Optional[float] = None,
     elif "novel_prefeed" in low or "gate" in low:
         p.observation_tool, p.observation_position = "bench_fixture", "测试台"
 
-    # 来源
-    if p.observation_tool == "bench_fixture":
-        p.source = "fixture"
-    elif "user" in low:
-        p.source = "user"
-    elif "assistant" in low:
-        p.source = "assistant"
-    elif "external" in low:
-        p.source = "external"
-    elif "consolidation" in low:
-        p.source = "system"
-    elif "白箱校验" in ts or "llm_verify" in low:
-        p.source = "assistant"
+    # 来源：原始声明优先；gate / novel_prefeed 描述处理路径，不能覆盖「谁说的」。
+    for source in ("user", "assistant", "external", "system", "tool", "fixture"):
+        if source in low:
+            p.source = source
+            break
+    else:
+        # 没有来源声明时，保留既有数据的推断规则。
+        if p.observation_tool == "bench_fixture":
+            p.source = "fixture"
+        elif "consolidation" in low:
+            p.source = "system"
+        elif "白箱校验" in ts or "llm_verify" in low:
+            p.source = "assistant"
 
     # 时间窗 / 存在约束：优先取 condition_space，识别默认值
     cs = condition_space
