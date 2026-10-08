@@ -350,8 +350,17 @@ class WorldLearner:
             return {}
 
     def eval_phase(self, eval_ticks: int = 15) -> Dict:
-        """评估一轮（不学习）：学得模型 vs naive 基线 vs 真模型上界。"""
-        learned_hits = naive_hits = oracle_hits = total = 0
+        """评估一轮（不学习）：学得模型 vs naive 基线 vs 真模型上界。
+
+        口径：三类命中数**各用各自的分母**——learned/naive 用学得模型给出预测的
+        实体数（total），oracle 用 oracle 给出预测且落在真实观测里的实体数
+        （oracle_total）。此前 oracle 命中数除以 learned 的 total，当学习者覆盖面
+        小于 oracle 时 oracle_rate 可 > 1（实测 outcomes=1 时 oracle_rate=6.0），
+        gap_to_oracle 相应失真。oracle 不可用时 oracle_rate 为 None 并标
+        oracle_unavailable，不退化成 0 参与作差。
+        """
+        learned_hits = naive_hits = oracle_hits = total = oracle_total = 0
+        oracle_available = False
         for _ in range(max(1, int(eval_ticks))):
             lp = self.predict(horizon=1)
             op = self._oracle_predict()
@@ -369,14 +378,24 @@ class WorldLearner:
                 if math.dist(before.get(eid, actual[eid]), actual[eid]) < self.hit_threshold:
                     naive_hits += 1
             for eid, (pp, _mode, _cat, _beh, bound) in op.items():
-                if eid in actual and math.dist(pp, actual[eid]) < max(bound, 0.5):
-                    oracle_hits += 1
-        def rate(h):
-            return round(h / total, 4) if total else 1.0
+                if eid in actual:
+                    oracle_total += 1
+                    oracle_available = True
+                    if math.dist(pp, actual[eid]) < max(bound, 0.5):
+                        oracle_hits += 1
+        def rate(h, denom):
+            return round(h / denom, 4) if denom else None
+        learned_rate = rate(learned_hits, total)
+        oracle_rate = rate(oracle_hits, oracle_total)
+        if learned_rate is None:
+            learned_rate = 1.0
         res = {"tick": self.tick, "eval_ticks": int(eval_ticks), "outcomes": total,
-               "learned_rate": rate(learned_hits), "naive_rate": rate(naive_hits),
-               "oracle_rate": rate(oracle_hits),
-               "gap_to_oracle": round(max(0.0, rate(oracle_hits) - rate(learned_hits)), 4)}
+               "learned_rate": learned_rate, "naive_rate": rate(naive_hits, total) if total else 1.0,
+               "oracle_outcomes": oracle_total,
+               "oracle_rate": oracle_rate,
+               "oracle_unavailable": not oracle_available,
+               "gap_to_oracle": (round(max(0.0, oracle_rate - learned_rate), 4)
+                                 if oracle_rate is not None else None)}
         self.evals.append(res)
         return res
 
