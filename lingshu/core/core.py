@@ -31,6 +31,14 @@ try:
 except ImportError:  # 直跑 fallback（裸名互导）
     from .time_core import cred_step
 
+# 组件发现面收口（issue #156）：白名单组件的裸名导入不再经 cwd/空串 sys.path 条目解析
+from .component_resolver import (
+    COMPONENT_NAMES as _COMPONENT_NAMES,
+    discovery_report as _component_discovery_report,
+    install as _install_component_resolver,
+)
+_install_component_resolver()
+
 
 # =============================================================================
 # 设计者认证（D-007 用户身份识别·最小版）
@@ -43,8 +51,15 @@ def designer_key_configured() -> bool:
 
 def verify_designer(designer_key) -> bool:
     """设计者密钥验证（fail-closed）：未配置密钥或密钥不匹配一律拒绝。
-    密钥仅存在于服务环境变量（AEIS_DESIGNER_KEY），模型/自动化无法读取，
-    因此自动化会话与模型生成内容永远无法冒充设计者行使终裁权（D-007）。"""
+
+    事实边界（issue #156 修订；原表述为「密钥仅存在于服务环境变量，
+    模型/自动化无法读取，因此永远无法冒充」）：
+    - 成立：判据 = 调用方传入值 == **本进程** 环境变量值（AEIS_DESIGNER_KEY）；
+      密钥不在仓库与代码中，仅存在于服务环境。
+    - 不成立：**同进程代码**（如构造期被装入的组件、被劫持的裸名导入）可读
+      os.environ ⇒「模型/自动化永远无法读取」对同进程不成立。
+    本批（#156）只封了组件注入面（裸名解析不再经 cwd/空串 sys.path 条目）；
+    同进程可信性属设计级事项，待 D-007 后续裁定。"""
     expected = os.environ.get("AEIS_DESIGNER_KEY")
     if not expected or not designer_key:
         return False
@@ -1927,6 +1942,44 @@ class SpacetimeMemoryEngine:
         self._body_registry = None
         self._body_error = ""
         self._setup_body()
+        # ---- issue #156：组件装配状态快照（self_check 面 · 只增字段） ----
+        self._component_assembly = self._component_assembly_status()
+
+    # ==================== 组件装配状态（issue #156） ====================
+
+    _COMPONENT_SLOT_TABLE = (
+        # (组件名, 装配槽属性, 失败信息字段) —— 只读观测，不改装配语义
+        ("entity_registry", "entity_registry", "_v13_error"),
+        ("cognitive_orchestrator", "_cognition", "_v13_error"),
+        ("blindspot_learning_loop", "_learning_loop", "_v13_error"),
+        ("semantic_space", "_semantic_provider", "_semantic_error"),
+        ("attention_policy", "_attention_policy", "_attention_error"),
+        ("prediction_engine", "_prediction", "_prediction_error"),
+        ("lifecycle_engine", "_lifecycle", "_lifecycle_error"),
+        ("flywheel_engine", "_flywheel", "_flywheel_error"),
+        ("self_cognition_engine", "_self_cognition", "_self_cognition_error"),
+        ("body", "_body_registry", "_body_error"),
+        ("vision", "_vision_provider", "_vision_error"),  # 惰性：未触发视觉前不尝试
+    )
+
+    def _component_assembly_status(self) -> Dict:
+        """issue #156：组件装配状态汇总（只读既有槽位与 *_error 字段）。
+
+        返回 {"ok": [...], "failed": {名: 错误}, "lazy": [...], "discovery": {...}}；
+        供 self_check 与外部观测（装配失败此前完全静默）。只增字段，不改装配语义、
+        不改既有返回结构。
+        """
+        ok, failed, lazy = [], {}, []
+        for name, slot, err_field in self._COMPONENT_SLOT_TABLE:
+            err = getattr(self, err_field, "")
+            if getattr(self, slot, None) is not None:
+                ok.append(name)
+            elif name == "vision" and not err:
+                lazy.append(name)          # 惰性组件：尚未尝试装配
+            else:
+                failed[name] = err or "未装配（无错误信息）"
+        return {"ok": ok, "failed": failed, "lazy": lazy,
+                "discovery": _component_discovery_report()}
 
     def _setup_v113(self):
         """v1.13 视觉组件装配（惰性：仅清状态，首次 perceive_image 才加载 YOLO/CLIP——
@@ -5156,6 +5209,8 @@ class SpacetimeMemoryEngine:
             "skills_count": self.store.count_skills(),
             "context_count": self.store.count_layer(MemoryLayer.CONTEXT),
             "stats": self.store.get_stats(),
+            # issue #156：组件装配状态（只增字段；装配失败此前无可观测出口）
+            "component_assembly": self._component_assembly_status(),
             "timestamp": time.time()
         }
         # 检查是否存在因果循环：先 O(V+E) 三色探测，无环即免整趟枚举（issue #145）
