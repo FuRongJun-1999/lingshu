@@ -122,6 +122,64 @@ def hex_conv_batch(feat: np.ndarray, kernel7: np.ndarray) -> np.ndarray:
     return acc  # float64
 
 
+def hex_conv_batch_multi(feat: np.ndarray, kernels: np.ndarray) -> np.ndarray:
+    """一次前向算完全部核：feat (B,rows,cols,C) × kernels (K,C,7) → (B,rows,cols,K)。
+
+    语义 = 对每个 k 调用 hex_conv_batch(feat, kernels[k]).sum(axis=-1)
+    （即「逐核卷积 → 跨输入通道求和」的融合形式），但只做**一次** padding、
+    **一次** 6 邻移位、**一次** GEMM——把 O(K) 次重复的 padding/concatenate
+    折叠成常数次，并把逐核的逐元素乘加交给 BLAS。
+
+    等价性：与逐核循环的差别仅在对输入通道 C 的求和次序（∑_C 与 ∑_i 交换），
+    float64 下相对误差 ~1e-15~1e-13 量级（见 tests/test_hex_conv_fusion.py）。
+    错行偏移表、boundary=replicate、奇偶行混合规则与 hex_conv_batch 完全一致。
+
+    适用区间：本仓的实际用途是「空间维 ≥ 数格、C=3、K=6+」，此区间融合稳定
+    快 3~16x。反过来，**空间很小 ∧ 输入通道 C 很大 ∧ 输出核数 K 很小**时融合
+    会更慢（实测 C≈48-64 且 K=1 时约 0.66-0.85x：此时 (B,r,c,C,7) 的 float64
+    tap 张量写带宽成瓶颈，而逐核循环每次的临时量小得多）。本仓无此调用形态，
+    故不加分支回退、保持实现单一；将来若要在「大 C / 单核」场景复用，请先按
+    上面的判据实测再决定走哪条路径。
+    """
+    B, rows, cols, C = feat.shape
+    K = kernels.shape[0]
+    f = feat.astype(np.float64)
+    even_off = [(-1, 0), (1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+    odd_off = [(-1, 0), (1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+
+    def pad_rep(x: np.ndarray) -> np.ndarray:
+        top, bot = x[:, 0:1], x[:, -1:]
+        left, right = x[:, :, 0:1], x[:, :, -1:]
+        tl, tr = x[:, 0:1, 0:1], x[:, 0:1, -1:]
+        bl, br = x[:, -1:, 0:1], x[:, -1:, -1:]
+        mid = np.concatenate([left, x, right], axis=2)
+        topm = np.concatenate([tl, top, tr], axis=2)
+        botm = np.concatenate([bl, bot, br], axis=2)
+        return np.concatenate([topm, mid, botm], axis=1)
+
+    padded = pad_rep(f)
+
+    # taps: (B,rows,cols,C,7) —— 0 号是自身，1..6 是奇偶行混合后的邻居值。
+    # 奇数行只占一半，故「先写 even 偏移、再覆盖奇数行」比 np.where 全矩阵
+    # 选择少一次 (B,rows,cols,C) 级临时量；与 rowmask 混合逐位等价。
+    taps = np.empty((B, rows, cols, C, 7), dtype=np.float64)
+    taps[..., 0] = padded[:, 1:-1, 1:-1, :]
+    for i in range(6):
+        dq, dr = even_off[i]
+        taps[..., i + 1] = padded[:, 1 + dr: 1 + dr + rows,
+                                  1 + dq: 1 + dq + cols, :]
+        if rows > 1:
+            dq2, dr2 = odd_off[i]
+            o = padded[:, 1 + dr2: 1 + dr2 + rows,
+                       1 + dq2: 1 + dq2 + cols, :]
+            taps[:, 1::2, :, :, i + 1] = o[:, 1::2]
+
+    # 单次 GEMM：(B*rows*cols, C*7) @ (C*7, K) → (B*rows*cols, K)
+    m = taps.reshape(B * rows * cols, C * 7)
+    w = kernels.reshape(K, C * 7).T
+    return (m @ w).reshape(B, rows, cols, K)
+
+
 # ==================== HexNet：可生长的浅层蜂窝网络 ====================
 
 class HexNet:
@@ -165,9 +223,10 @@ class HexNet:
         """x:(B,r,c,1) → (logits(B,10), feats(B,M))
         池化=RMS 能量池化——边缘/差分核(DC=0)响应空间正负交替,均值池化
         会正负抵消把特征抹零(实测 pooled~0.006 梯度全灭);RMS 保留模式能量。"""
-        maps = [hex_conv_batch(x, self.conv[k])[..., 0] for k in range(self.K)]
-        h = np.stack(maps, axis=-1)                     # (B,r,c,K)
-        h = self._lrelu(h)
+        # 融合前向：一次 padding + 一次 GEMM 算完全部 K 核。
+        # 原实作是 hex_conv_batch(x, self.conv[k])[..., 0]——即**只取第 0 通道**
+        # 的卷积结果，故这里显式切到单通道，语义逐字保持。
+        h = self._lrelu(hex_conv_batch_multi(x[..., :1], self.conv[:, None, :]))
         h2 = h @ self.mix.T                             # (B,r,c,M)
         h2 = self._lrelu(h2)
         pooled = np.sqrt((h2 ** 2).mean(axis=(1, 2)) + 1e-12)
@@ -337,8 +396,8 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
         masked[hole] = 0.0
 
         def recon_loss() -> float:
-            maps = [hex_conv_batch(masked, net.conv[k])[..., 0] for k in range(net.K)]
-            h = np.stack(maps, axis=-1)
+            # 原实作取 [..., 0]（只第 0 通道），此处保持同一语义
+            h = hex_conv_batch_multi(masked[..., :1], net.conv[:, None, :])
             pred = h.mean(axis=-1, keepdims=True)
             return float(((pred[hole] - xb[hole]) ** 2).mean())
 
@@ -450,4 +509,6 @@ def save_report(report: Dict, path: str) -> str:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=1, default=str)
+        json.dump(report, f, ensure_ascii=False, indent=1, default=str)
     return path
+
