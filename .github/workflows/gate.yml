@@ -46,6 +46,7 @@ env:
     tests/test_hex_cnn.py
     tests/test_hex_composite.py
     tests/test_hex_gen.py
+    tests/test_coggraph_generic_tag.py
   # pytest 式测试件（合跑）
   PYTEST_TESTS: >-
     tests/test_hex_hier.py
