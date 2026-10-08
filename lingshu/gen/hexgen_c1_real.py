@@ -821,9 +821,9 @@ def fit(measured, ids):
                       and it["shape"] == b for o in measured["by_id"][it["id"]]]
                 if not va or not vb:
                     continue
-                gap = min(vb) - max(va)                     # b 在上 (lo=a, hi=b)
+                pair_gap = min(vb) - max(va)                # b 在上 (lo=a, hi=b)
                 rev = min(va) - max(vb)                     # a 在上
-                g, lo_is_a = (gap, True) if gap >= rev else (rev, False)
+                g, lo_is_a = (pair_gap, True) if pair_gap >= rev else (rev, False)
                 #   **选择键＝成对 d′**（|均值差| ÷ 合并标准差），而不是「间隔 ÷ 类内极差」——
                 #   后者会被「类内极差小的维」骗：R283 实测 (triangle,diamond) 上 `harm5` 的相对
                 #   间隔 1.845 盖过 `peak_prom` 的 1.722，可 harm5 的绝对间隔只有 0.133（噪声级），
