@@ -32,6 +32,38 @@ except ImportError:
 FM_RE = re.compile(r"^---\n(.*?)\n---", re.S)
 TITLE_RE = re.compile(r"^#\s*功能名：\s*(.+)$", re.M)
 
+# ---- 公开面卫生（issue #163）：产物里不得出现本机绝对路径 ----
+# 口径：**只掩码，不丢弃**——字段与结构保持原样，只把「本机绝对路径」压成不含
+#       盘符 / 上级目录 / 用户名段的形态；相对路径与空值**原样返回**（⇒ 幂等，可重复施加）。
+#   · neutral_path    ：信息字段（meta.source_root 等）→ 只留末段 basename；
+#   · neutral_root_id ：作分组键用的 ref_root → 末段 + sha1(原文)前 8 位短指纹
+#                       （同末段不同根仍互不碰撞；指纹不可逆，不含原路径）；
+#   · 末段口径 = 路径最后一级（跨平台切 `/`，顺带把 Windows 反斜杠归一为 `/`）。
+WIN_ABS_RE = re.compile(r"^[A-Za-z]:[\\/]")
+POSIX_ABS_RE = re.compile(r"^/")
+UNC_ABS_RE = re.compile(r"^\\\\")
+
+
+def is_abs_path(p):
+    p = str(p or "")
+    return bool(WIN_ABS_RE.match(p) or POSIX_ABS_RE.match(p) or UNC_ABS_RE.match(p))
+
+
+def tail_seg(p):
+    return str(p or "").replace("\\", "/").rstrip("/").split("/")[-1]
+
+
+def neutral_path(p):
+    p = str(p or "")
+    return tail_seg(p) if is_abs_path(p) else p
+
+
+def neutral_root_id(p):
+    p = str(p or "")
+    if not is_abs_path(p):
+        return p
+    return "%s#%s" % (tail_seg(p) or "root", hashlib.sha1(p.encode("utf-8")).hexdigest()[:8])
+
 
 def eol(text):
     return "\r\n" if "\r\n" in text else "\n"
@@ -134,8 +166,8 @@ def main(argv=None):
                 "importance": fm.get("importance", 0),
                 "created": fm.get("created_at", 0),
                 "sha": sha,
-                "ref_root": ref,
-                "ref_dir": os.path.dirname(str((dr or cr).get("path", "")).replace("\\\\", "/")).replace("\\\\", "/"),
+                "ref_root": neutral_root_id(ref),
+                "ref_dir": neutral_path(os.path.dirname(str((dr or cr).get("path", "")).replace("\\", "/")).replace("\\", "/")),
                 "n_edges": len(eds),
                 "path": os.path.relpath(p, root).replace("\\", "/"),
             })
@@ -149,7 +181,8 @@ def main(argv=None):
 
     graph = {
         "meta": {
-            "source_root": root,
+            # 公开面卫生：真源根本机绝对路径只留末段（见文件头 neutral_path 口径）
+            "source_root": neutral_path(root),
             "source_sha": hashlib.sha256(
                 json.dumps(sorted((n["id"], n["sha"]) for n in nodes), ensure_ascii=False).encode("utf-8")
             ).hexdigest()[:16],
@@ -166,7 +199,7 @@ def main(argv=None):
 
     report_lines = [
         "# 认知图导出报告", "",
-        "- 真源：%s" % root,
+        "- 真源：%s" % neutral_path(root),
         "- 真源指纹（内容指纹）：%s" % graph["meta"]["source_sha"],
         "- 生成时间：%s" % graph["meta"]["generated_at"],
         "", "## 规模",

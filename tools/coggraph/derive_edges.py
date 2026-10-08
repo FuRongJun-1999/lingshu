@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
 import io
 import json
 import os
@@ -22,6 +23,37 @@ import time
 
 
 FMHEAD = re.compile(r"^---\n.*?\n---", re.S)
+
+# ---- 公开面卫生（issue #163）：产物里不得出现本机绝对路径 ----
+# 口径：**只掩码，不丢弃**（与 export_coggraph.py 同口径；两件各自独立可跑，故各自内联）：
+#   · neutral_path    ：信息字段（meta.graph_source 等）→ 只留末段 basename；
+#   · neutral_root_id ：作分组键用的 ref_root → 末段 + sha1(原文)前 8 位短指纹
+#                       （同末段不同根仍互不碰撞；指纹不可逆，不含原路径）；
+#   · 相对路径与空值原样返回 ⇒ 幂等；末段跨平台切 `/`（Windows 反斜杠归一）。
+WIN_ABS_RE = re.compile(r"^[A-Za-z]:[\\/]")
+POSIX_ABS_RE = re.compile(r"^/")
+UNC_ABS_RE = re.compile(r"^\\\\")
+
+
+def is_abs_path(p):
+    p = str(p or "")
+    return bool(WIN_ABS_RE.match(p) or POSIX_ABS_RE.match(p) or UNC_ABS_RE.match(p))
+
+
+def tail_seg(p):
+    return str(p or "").replace("\\", "/").rstrip("/").split("/")[-1]
+
+
+def neutral_path(p):
+    p = str(p or "")
+    return tail_seg(p) if is_abs_path(p) else p
+
+
+def neutral_root_id(p):
+    p = str(p or "")
+    if not is_abs_path(p):
+        return p
+    return "%s#%s" % (tail_seg(p) or "root", hashlib.sha1(p.encode("utf-8")).hexdigest()[:8])
 
 
 def norm_tag(t):
@@ -119,20 +151,28 @@ def main(argv=None):
     per_rule = collections.Counter({"R1_same_bucket": r1})
 
     # ---- R2 同源（ref root + 文件所在目录；目录级而非整个 root）
-    by_src = collections.defaultdict(list)
+    # 公开面卫生：ref_root 可能是本机绝对路径 ⇒ 先掩码（末段+短指纹）再归一分隔符，
+    # 使 hub id / label 均不含盘符、上级目录与用户名段；老 graph.json（未掩码）同样兜住，
+    # 掩码幂等 ⇒ 重复施加无副作用。分组语义不变：不同根（含同末段不同根）仍互不合并。
+    by_src = collections.OrderedDict()
     for n in nodes:
-        rr = n.get("ref_root")
-        if not rr:
+        rr_raw = str(n.get("ref_root") or "")
+        if not rr_raw:
             continue
-        rd = n.get("ref_dir") or ""
-        key = rr.rstrip("/") + ("/" + rd if rd else "")
-        by_src[key].append(n["id"])
+        rr = neutral_root_id(rr_raw).replace("\\", "/").rstrip("/")
+        rd = str(n.get("ref_dir") or "").replace("\\", "/").strip("/")
+        key = rr + ("/" + rd if rd else "")
+        ent = by_src.get(key)
+        if ent is None:
+            # 显示名底稿：根末段（不含指纹）+ 相对目录 —— 相对路径下与旧行为逐字一致
+            ent = by_src[key] = {"ids": [], "disp": tail_seg(rr_raw) + ("/" + rd if rd else "")}
+        ent["ids"].append(n["id"])
     r2 = 0
-    for rr, ids in by_src.items():
-        # 显示名通用缩短：取路径最后两级，不做任何本机路径假设（公开仓卫生）
-        short = "/".join(rr.replace("\\\\", "/").rstrip("/").split("/")[-2:])
-        hid = hub("src:" + rr, "source", "源 " + short, len(ids))
-        for nid in ids:
+    for key, ent in by_src.items():
+        # 显示名通用缩短：取路径最后两级（绝对路径只露根末段，不回显盘符/上级/用户名段）
+        short = "/".join(ent["disp"].rstrip("/").split("/")[-2:])
+        hid = hub("src:" + key, "source", "源 " + short, len(ent["ids"]))
+        for nid in ent["ids"]:
             if add(nid, hid, "same_source", "R2_same_source", 0.5):
                 r2 += 1
     per_rule["R2_same_source"] = r2
@@ -279,7 +319,8 @@ def main(argv=None):
 
     out = {
         "meta": {
-            "graph_source": args.graph,
+            # 公开面卫生：graph.json 的本机绝对路径只留末段（见文件头 neutral_path 口径）
+            "graph_source": neutral_path(args.graph),
             "graph_sha": (g.get("meta") or {}).get("source_sha"),
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "rules": dict(per_rule),

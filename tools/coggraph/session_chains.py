@@ -15,8 +15,31 @@ import collections
 import io
 import json
 import os
+import re
 import sys
 import time
+
+
+# ---- 公开面卫生（issue #163）：产物里不得出现本机绝对路径 ----
+# 口径与 export_coggraph.py / derive_edges.py 同：**只掩码，不丢弃**——
+# 绝对路径只留末段 basename（不含盘符/上级目录/用户名段）；相对路径与空值原样返回（幂等）。
+WIN_ABS_RE = re.compile(r"^[A-Za-z]:[\\/]")
+POSIX_ABS_RE = re.compile(r"^/")
+UNC_ABS_RE = re.compile(r"^\\\\")
+
+
+def is_abs_path(p):
+    p = str(p or "")
+    return bool(WIN_ABS_RE.match(p) or POSIX_ABS_RE.match(p) or UNC_ABS_RE.match(p))
+
+
+def tail_seg(p):
+    return str(p or "").replace("\\", "/").rstrip("/").split("/")[-1]
+
+
+def neutral_path(p):
+    p = str(p or "")
+    return tail_seg(p) if is_abs_path(p) else p
 
 
 def main(argv=None):
@@ -80,7 +103,8 @@ def main(argv=None):
     chains.sort(key=lambda c: -c["nodes"])
     out = {
         "meta": {
-            "audit": args.audit,
+            # 公开面卫生：_audit.jsonl 的本机绝对路径只留末段（见文件头 neutral_path 口径）
+            "audit": neutral_path(args.audit),
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "sessions": len(chains),
             "counts": {"sequential_edges": len([e for e in edges if e["type"] == "sequential"]),
