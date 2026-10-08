@@ -56,11 +56,13 @@ def main(argv=None):
         if len(t) >= args.min_title:
             groups[t].append(n)
 
+    # Q2/Q3 的"被正文提及"只数**被提及**方向：derive_edges 的 R5 是
+    # add(me, owner, ...)（s=提及者、t=被提及的规范概念节点），把 e["s"] 也算进来
+    # 会把"这条正文提及了多少个概念"当成"被多少个节点正文提及"。
     r5_in = collections.Counter()
     for e in d["edges"]:
         if e.get("rule") == "R5_body_crossref":
-            r5_in[e["t"]] += 1          # 被多少正文提及
-            r5_in[e["s"]] += 1
+            r5_in[e["t"]] += 1          # t = 被提及者
 
     rows = []
     for t, members in groups.items():
