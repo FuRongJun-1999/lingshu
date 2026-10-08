@@ -14,11 +14,10 @@ name: gate
 # 测试面实况（2026-10-08 本机实测，证据见报告）：
 #   · **脚本式**（PASS/FAIL + 退出码）：test_brain_store / test_wm_verify_unobserved /
 #     test_hex_cnn / test_hex_composite / test_hex_gen —— 逐件单跑，失败即红。
-#   · **pytest 式**：test_hex_hier / test_hex_ortho / test_hex_search / test_hex_text /
-#     test_hex_train —— 合跑；其中两条 known-fail 显式 deselect（下详）。
-#     test_activation_empty_graph —— 合成 SQLite 冷启动与正常激活回归。
-#   · **不可** `pytest tests/` 全目录：`tests/test_hex_cnn.py` 无 `__main__` 守卫、
-#     模块级即 `sys.exit()`，被 pytest 收集会在 collection 期直接炸；故两式分开跑。
+#   · **pytest 式**：自动收集 tests/，排除 SCRIPT_TESTS；新增回归测试自动进入门禁。
+#     其中两条 known-fail 显式 deselect（下详）。
+#   · 脚本式测试必须在 pytest 收集前排除：`tests/test_hex_cnn.py` 无 `__main__`
+#     守卫，模块级即 `sys.exit()`，故保留两式分开跑。
 
 on:
   push:
@@ -47,14 +46,6 @@ env:
     tests/test_hex_cnn.py
     tests/test_hex_composite.py
     tests/test_hex_gen.py
-  # pytest 式测试件（合跑）
-  PYTEST_TESTS: >-
-    tests/test_activation_empty_graph.py
-    tests/test_hex_hier.py
-    tests/test_hex_ortho.py
-    tests/test_hex_search.py
-    tests/test_hex_text.py
-    tests/test_hex_train.py
 
 jobs:
   gate:
@@ -134,7 +125,11 @@ jobs:
         # 处置：**显式 deselect**（不改任何断言）。待上游修复后，同处摘除本条并与 README 同步。
         run: |
           set -euo pipefail
-          python -X utf8 -m pytest $PYTEST_TESTS -v \
+          pytest_args=(tests/ -v)
+          for t in $SCRIPT_TESTS; do
+            pytest_args+=(--ignore="$t")
+          done
+          python -X utf8 -m pytest "${pytest_args[@]}" \
             --deselect tests/test_hex_text.py::test_spatial_detect_finds_single_object \
             --deselect tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt
 
@@ -145,7 +140,7 @@ jobs:
             echo "### gate · py${{ matrix.python-version }}"
             echo ""
             echo "- 脚本式（逐件）：\`$SCRIPT_TESTS\`"
-            echo "- pytest 式（合跑 + deselect 2 条 known-fail）：\`$PYTEST_TESTS\`"
+            echo "- pytest 式：tests/ 自动收集（排除上述脚本式测试 + deselect 2 条 known-fail）"
             echo "- 脑端 clone（MDCG_BRAIN_PYTHONPATH 前置）：**${{ steps.brain.outcome }}**"
             echo "  - 非 success 时 test_brain_store 显式 SKIP——不是假绿，理由见上一步日志。"
             echo "- 非阻断档（未测 Python 版本）：\`${{ matrix.experimental }}\`"
