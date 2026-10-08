@@ -1,0 +1,52 @@
+name: pr-lint
+
+# PR 元数据门禁 · 校验 PR 标题符合本仓提交约定 `type(scope): 摘要`。
+#
+# ⚠️ 本件为**工作区草稿**（尚未落仓）——落仓前须知见报告
+#    （落地前的本地验证记录在起草方工作区，未随仓发布。）
+#
+# 触发：PR 的 opened/edited/reopened/synchronize——标题被改（edited）也会重判。
+# 运行器：GitHub 托管（ubuntu-latest）。
+# 权限：最小化 contents: read（只需检出脚本；标题取自事件载荷，不调 API）。
+#
+# 安全：PR 标题在 **fork PR 上是攻击者可控输入** ⇒ 必须经 `env:` 注入、
+#   以 `"$PR_TITLE"` 传参，**绝不**把 `${{ github.event.pull_request.title }}`
+#   直接内插进 `run:` 脚本（否则标题里的 `$(…)`/反引号会被 shell 执行）。
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: pr-lint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  pr-title:
+    name: "PR 标题约定（type(scope) + 摘要）"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 纯标准库校验器，不吃版本矩阵；与 gate 主档对齐即可。
+          python-version: "3.12"
+
+      - name: 校验器自检（正负例）
+        # 与仓内既有门禁先例同款（check_publish_artifact.py --selftest）：
+        # 先证判据自身正负例正确，再用它判 PR 标题。
+        run: python -X utf8 scripts/check_pr_title.py --selftest
+
+      - name: 校验 PR 标题
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python -X utf8 scripts/check_pr_title.py "$PR_TITLE"

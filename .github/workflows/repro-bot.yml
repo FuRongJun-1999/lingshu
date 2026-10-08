@@ -1,0 +1,142 @@
+name: repro-bot
+
+# issue 复现机器人 · 外部报告人附了复现脚本的 issue——维护者打一个 `run-repro` 标签，
+# 机器人在托管 runner 上自动执行该脚本并把**原始读数**回贴到 issue 评论。
+# 机器人**只贴读数、不作结论**（结论仍走人工/模型侧的既有流程）。
+#
+# ⚠️ 本件为**工作区草稿**（尚未落仓、未 commit/push）——落仓前须知见报告
+#    （落地前的本地验证记录在起草方工作区，未随仓发布）。
+#
+# 安全模型（本 workflow 的成立前提，改动前先读）：
+#   · **不传任何 secret**：job 只持有 `github.token`（自动令牌，权限已被下面
+#     permissions 收窄到 issues: write + contents: read），且该令牌**不进**被测
+#     脚本的进程环境——①「抽取并限时执行」步骤自身不挂 GH_TOKEN（取正文在上一步
+#     经 gh api 落盘）；②执行核脚本对被跑子进程的 env 再做清洗（剔除
+#     GITHUB_*/GH_*/ACTIONS_*/RUNNER_* 与含 TOKEN|SECRET|PASSWORD|CREDENTIAL 的键）。
+#   · checkout 用 persist-credentials: false——不把令牌落进检出仓的 .git/config。
+#   · **绝不用自托管 runner**（同 gate.yml 口径）：这里执行的是不可信代码，
+#     自托管 runner 等于把内网/凭据面直接暴露给被执行的脚本。
+#   · 限时＋一次性宿主：脚本内 600 s 超时；本 job 30 分钟上限；托管 runner 用完即弃。
+#   · 触发面双重收窄：**只有** `run-repro` 标签 **且** 打标签者在允许名单内才触发。
+#   · 事件载荷（issue 正文——攻击者可控文本）**从不进 shell 脚本正文**：正文只经
+#     `gh api` 落盘成文件、由 python 脚本读取处理（对齐 pr-lint.yml 的注入面纪律）。
+#
+# 权限：issues: write（回评 + 打状态标签）＋ contents: read（checkout）。
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: repro-bot-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  repro:
+    # ── 触发门：标签名＋打标签者允许名单 ─────────────────────────────────
+    # 允许名单常量（本 workflow 内**唯一一处**，改动只动此行）；
+    # 多账号写法：contains(fromJSON('["a","b"]'), github.event.sender.login)
+    if: >-
+      github.event.label.name == 'run-repro' &&
+      github.event.sender.login == 'FuRongJun-1999'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # 不落凭据到 .git/config——被测代码可能读检出仓
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: 安装依赖（pip install -e ".[full,dev]"）
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full,dev]"
+
+      - name: Clone 脑端公开仓（dsh-memory）供 MDCG_BRAIN_PYTHONPATH
+        continue-on-error: true
+        # 失败**不**红；下一步会**显式**标注 SKIP 原因，绝不静默通过。
+        run: |
+          git clone --depth 1 https://github.com/FuRongJun-1999/dsh-memory.git "$RUNNER_TEMP/dsh-memory"
+
+      - name: 决定脑端路径（可达则传入；否则显式 SKIP）
+        id: brainpp
+        run: |
+          if [ -f "$RUNNER_TEMP/dsh-memory/md_cg/mcp_server.py" ]; then
+            echo "path=$RUNNER_TEMP/dsh-memory" >> "$GITHUB_OUTPUT"
+            echo "脑端 clone 成功 → 将传 MDCG_BRAIN_PYTHONPATH=$RUNNER_TEMP/dsh-memory"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "::warning::脑端公开仓不可达（clone 失败或缺 md_cg/mcp_server.py）——不传 MDCG_BRAIN_PYTHONPATH；依赖脑端的复现脚本将自行报错（读数照贴，不静默通过）。"
+          fi
+
+      - name: 取 issue 正文（gh api 落盘；仅本步骤带 token）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}" \
+            --jq .body > "$RUNNER_TEMP/issue_body.md"
+          echo "正文已落盘：$RUNNER_TEMP/issue_body.md（$(wc -c < "$RUNNER_TEMP/issue_body.md") 字节）"
+
+      - name: 抽取并限时执行复现脚本（无 token；读数写 report 文件）
+        id: repro
+        # ⚠️ 本步骤**故意不挂** GH_TOKEN——被执行的脚本不得接触任何令牌。
+        run: |
+          set +e
+          python -X utf8 scripts/extract_and_run_issue_repro.py \
+            --body-file "$RUNNER_TEMP/issue_body.md" \
+            --source-desc "${{ github.repository }}#${{ github.event.issue.number }}" \
+            --timeout 600 \
+            --env "MDCG_BRAIN_PYTHONPATH=${{ steps.brainpp.outputs.path }}" \
+            --report-file "$RUNNER_TEMP/repro_report.md"
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "repro 执行核退出码=$rc（0=被测脚本退出码 0；1=被测脚本非 0 或超时；2=抽取失败）"
+          # 读数不是 CI 失败——成败语义由 repro-done/repro-failed 标签表达；
+          # 本步骤永不红（红=机器人自身坏了，会体现在后续步骤/日志）。
+          exit 0
+
+      - name: 确保状态标签存在（幂等）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create repro-done --color 0e8a16 --force \
+            --description "repro-bot：复现脚本自动执行完成（退出码 0）"
+          gh label create repro-failed --color d93f0b --force \
+            --description "repro-bot：抽取/执行未通过——读数见评论，结论待人工"
+
+      - name: 回贴读数（固定模板；只贴读数不作结论）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body-file "$RUNNER_TEMP/repro_report.md"
+
+      - name: 打状态标签（并移除 run-repro，便于再次触发）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.repro.outputs.rc }}" = "0" ]; then
+            gh issue edit "${{ github.event.issue.number }}" \
+              --repo "${{ github.repository }}" --add-label repro-done
+          else
+            gh issue edit "${{ github.event.issue.number }}" \
+              --repo "${{ github.repository }}" --add-label repro-failed
+          fi
+          gh issue edit "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" --remove-label run-repro || true
