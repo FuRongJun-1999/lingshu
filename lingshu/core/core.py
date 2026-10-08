@@ -743,6 +743,7 @@ class LayeredStore:
                              max_results: int = 20) -> List[Tuple[STNode, float]]:
         """
         时空联想查询：找时间上邻近 + 空间上相似的节点
+        time_radius=0 表示仅匹配同一时刻，时间距离分量为 0。
         返回 (节点, 综合距离) 列表，按距离升序
         """
         center = self.get_node(center_node_id)
@@ -767,7 +768,8 @@ class LayeredStore:
                 if space_dist > space_radius:
                     continue
             # 综合距离（加权）
-            combined = 0.5 * (time_dist / time_radius) + 0.5 * (space_dist / max(space_radius, 0.01))
+            time_component = time_dist / time_radius if time_radius else 0.0
+            combined = 0.5 * time_component + 0.5 * (space_dist / max(space_radius, 0.01))
             results.append((node, combined))
         results.sort(key=lambda x: x[1])
         return results[:max_results]
