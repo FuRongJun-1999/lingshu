@@ -19,7 +19,13 @@ world = ["numpy>=2.3.5,<2.6"]
 nn = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
 gen = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
 full = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
-dev = ["pytest"]
+# dev = 开发/测试面：pytest（运行器）+ PyYAML（**测试件的运行依赖**）。
+#   PyYAML 之所以落 dev 而非新建 tools extra / 不入 full：tools/ 不进 wheel
+#   （本文件 packages.find 只收 lingshu*），该依赖只在「本仓开发：跑本仓测试 / 驱动 tools/」
+#   场景下被拉起——tests/test_coggraph_public_paths.py 子进程调用 tools/coggraph/export_coggraph.py，
+#   后者**模块级 `import yaml`**；此前只写进 tools/coggraph/README.md 散文未进声明面 ⇒
+#   门禁装 `.[full,dev]` 拿不到 PyYAML，出现「本机装了 PyYAML 而绿 / CI 红」的回归。
+dev = ["pytest", "PyYAML>=6.0,<7"]
 
 [tool.setuptools.packages.find]
 include = ["lingshu*"]

@@ -30,7 +30,8 @@ python view_memory.py --root <MDCG_ROOT> --serve    # 构建并直接起本地�
 
 ## 依赖
 
-- Python 3.10+；`export_coggraph.py` 需要 **PyYAML**；其余纯标准库
+- Python 3.10+；`export_coggraph.py` 需要 **PyYAML**（已在 `pyproject.toml` 的 `dev` extra 里
+  声明，`pip install -e ".[dev]"` 即装齐；门禁 workflow 装 `.[full,dev]` ⇒ CI 同面）；其余纯标准库
   （`cytoscape.min.js` 由 build_viewer 首次运行自动下载）。
 
 ## 纪律（定位）
