@@ -323,7 +323,13 @@ class SelfModel:
         self.trust_state["e_weight"] = self._compute_e_weight()
 
     def _compute_e_weight(self) -> float:
-        """e_weight_n = (T_n - 2·T_{n-1} + T_{n-2}) / Δround²；指数平滑 α=0.3；钳制 [-1,1]"""
+        """e_weight_n = (T_n - 2·T_{n-1} + T_{n-2}) / Δround²；指数平滑 α=0.3；钳制 [-1,1]
+
+        读数边界（#119④ · 设计者裁决 C-12 · 2026-10-09）：信任面无时间动力学
+        （无遗忘）⇒ T 饱和后本量为**二阶变化率 → 0**，即 `e_weight` 长期趋零
+        ——属设计者认可的有意现状，非机制失效；三处偏离声明详见
+        `lingshu/world/channel_credibility.py` 模块头。
+        """
         h = self.trust_history
         if len(h) < 3:
             return 0.0
