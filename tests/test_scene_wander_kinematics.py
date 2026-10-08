@@ -187,20 +187,61 @@ def group_g_deterministic():
     ok(a == b, "同参数两次运行最大位移逐位相同", "%.6f vs %.6f" % (a, b))
 
 
-# ---------- H 组：观测（不在本 PR 修，不得静默） ----------
+# ---------- H 组：观测（**非判据**，不计入退出码） ----------
 
 def group_h_bound_observation():
-    print("\nH 组：观测 —— 归一化后 bounded 接受域相对可达集更宽松")
+    """★ 本组**故意不用 `ok()`**。
+
+    它只做本地算术（`bound = max(0.5, sp*1.5+0.2)` 与 `reach = sp` 的比值），
+    **完全不触碰被测代码**——把 `_decide` 换成 `pass` 它照样"通过"。
+    按「判据强度门·门 1（非判据剔除）」，这类断言必须**降级为观测输出**，
+    不得计入退出码；否则它会假装在被测对象上施加了约束。
+    """
+    print("\nH 组（观测，非判据，不计退出码）：归一化后 bounded 接受域相对可达集更宽松")
     for sp in (0.3, 1.0):
         bound = max(0.5, sp * 1.5 + 0.2)
         reach = sp                      # 归一化后可达位移上确界 = speed
-        ratio = bound / reach
-        ok(ratio >= 1.4,
-           "speed=%.1f ⇒ bound/可达集 = %.3f（修前为 1.5/sqrt(2)=1.061）" % (sp, ratio))
-    print("       ↑ 这是**观测**：`wander_bound_factor=1.5` 原按未归一化的")
-    print("         |d| ≤ sqrt(2) 标定，归一化后相对可达集更宽松。属"
-          "「判据可失败性」")
-    print("         问题（与 #1/#9/#22 同族），本 PR **不**改该常量。")
+        print("      speed=%.1f ⇒ bound/可达集 = %.3f（修前为 1.5/sqrt(2)=1.061）"
+              % (sp, bound / reach))
+    print("      ↑ `wander_bound_factor=1.5` 原按未归一化的 |d| ≤ sqrt(2) 标定，")
+    print("        归一化后相对可达集更宽松。属「判据可失败性」问题")
+    print("        （与 #1/#9/#22 同族），本 PR **不**改该常量。")
+
+
+# ---------- C2 组：随机性维度（★ 补门 2 的维度覆盖） ----------
+
+def group_c2_direction_is_random():
+    """★ 为什么需要这一组（本 PR 的一次自我修正）。
+
+    A/B/C 三组只约束**模长**（`|d| == 1`、位移 ≤ speed）。一个
+    **方向恒定**（如恒返 `(1,0,0)`）的退化实现——即「完全不是随机游走」——
+    能让 A/B/C **全部通过**（实测：只回退为 `return (1.0, 0.0, 0.0)` 后
+    A/B/C 全绿，仅 D 组的两条 RNG 断言变红）。
+
+    按「判据强度门·门 2（维度覆盖）」：判据必须覆盖被修改代码的
+    **全部输出维度**。本修复声称「wander 仍是随机游走」，故必须**显式断言
+    随机性这一维度**，而不能只断言有界性。
+    """
+    print("\nC2 组：方向必须真的随机（覆盖 A/B/C 未覆盖的维度）")
+    scene = SceneSimulator(size=24)
+    eid = scene.add_entity("actor", behavior="wander", pos=(6.0, 0.5, 6.0),
+                           speed=0.3)
+    e = scene.entities[eid]
+    dirs = set()
+    for _ in range(200):
+        d = scene._decide(e)
+        dirs.add((round(d[0], 6), round(d[2], 6)))
+    ok(len(dirs) > 100,
+       "200 次决策产生 >100 个不同方向（常量方向的实现只有 1 个）",
+       "不同方向数=%d" % len(dirs))
+    ok(len(dirs) != 1, "方向不是常量")
+    # 分布不应退化到单象限（随机游走的两个分量相互独立、正负各半）
+    quad = set()
+    for dx, dz in dirs:
+        quad.add((dx > 0, dz > 0))
+    ok(len(quad) == 4,
+       "方向覆盖全部 4 个象限（退化实现通常只落 1 个）",
+       "象限数=%d" % len(quad))
 
 
 def main():
@@ -210,6 +251,7 @@ def main():
     group_a_respects_speed()
     group_b_former_overspeed()
     group_c_unit_direction()
+    group_c2_direction_is_random()
     group_d_rng_stream_unchanged()
     group_e_shadow_unaffected()
     group_f_no_new_miss()
