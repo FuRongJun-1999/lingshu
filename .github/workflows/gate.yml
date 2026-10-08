@@ -14,7 +14,7 @@ name: gate
 # 测试面实况（2026-10-08 本机实测，证据见报告）：
 #   · **脚本式**（PASS/FAIL + 退出码）：test_brain_store / test_wm_verify_unobserved /
 #     test_hex_cnn / test_hex_composite / test_hex_gen / test_core_export_all /
-#     test_scene_follow_patrol —— 逐件单跑，失败即红。
+#     test_scene_follow_patrol / test_issue145_causal_depth_cycles —— 逐件单跑，失败即红。
 #   · **pytest 式**：自动收集 tests/，排除 SCRIPT_TESTS；新增回归测试自动进入门禁。
 #     其中两条 known-fail 显式 deselect（下详）。
 #   · 脚本式测试必须在 pytest 收集前排除：`tests/test_hex_cnn.py` 无 `__main__`
@@ -49,6 +49,7 @@ env:
     tests/test_hex_gen.py
     tests/test_core_export_all.py
     tests/test_scene_follow_patrol.py
+    tests/test_issue145_causal_depth_cycles.py
 
 jobs:
   gate:
