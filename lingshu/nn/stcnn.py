@@ -7,7 +7,12 @@
 """
 import sys
 import numpy as np
-sys.stdout.reconfigure(encoding='utf-8')
+
+# 模块顶层**不做** stdout 改造（issue #147）：那是导入期副作用——① 会**改写宿主
+# 进程**的 stdout 编码（影响导入方自己的全部输出）；② stdout 非 `TextIOWrapper`
+#（如被 `contextlib.redirect_stdout(io.StringIO())` 包装）时 `reconfigure` 不存在，
+# 导入直接 `AttributeError` ⇒ 本模块全部不可用。编码调整只在作为脚本运行时做，
+# 见文件末尾的主演示入口。
 
 
 # ============ 一、时空体素化（连续帧 → 3D 体素） ============
@@ -230,6 +235,9 @@ def synth_blinking(frames=12, size=32, period=3):
 
 # ============ 六、主演示 ============
 if __name__ == "__main__":
+    # issue #147：编码调整只在脚本入口生效，且对无 `reconfigure` 的流（StringIO 等）做保护。
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     print("=== 白箱自举·多模态主线：3D 时空 CNN × 时空记忆图（零 LLM） ===\n")
     mem = SpatiotemporalMemory()
 
