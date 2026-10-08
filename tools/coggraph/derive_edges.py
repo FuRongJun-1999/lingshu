@@ -159,7 +159,9 @@ def main(argv=None):
                 cand[pair].add(tg)
     r3 = 0
     per_node = collections.Counter()
-    for (a, b), shared in cand.items():
+    # 上限会影响候选是否入选；必须在限额判断前固定顺序，而非仅在输出时排序。
+    # cand 的插入顺序来自 set 遍历，会随 PYTHONHASHSEED 改变。
+    for (a, b), shared in sorted(cand.items()):
         if len(shared) < args.min_shared:   # 共享内容标签不足 → 关联太弱
             continue
         if per_node[a] >= args.per_node_cap and per_node[b] >= args.per_node_cap:
