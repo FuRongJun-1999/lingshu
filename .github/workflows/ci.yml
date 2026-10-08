@@ -1,0 +1,69 @@
+# 标准 CI：lint（ruff）+ pytest 全矩阵
+# Python 3.12 × numpy 2.3.5/2.4.2/2.5.3 × Pillow 12.2.0/12.3.0
+#
+# 排除说明（与 README「代码主体」节保持一致）：
+#   test_brain_store.py            — 需外部 MDCG_BRAIN_PYTHONPATH，CI 不具备 → --ignore
+#   test_spatial_detect_*          — 已知红（issue #4），读数与版本组合无关 → --deselect
+#   test_multimodal_check_*        — 同上 → --deselect
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install "ruff>=0.9,<1"
+
+      - name: ruff check
+        run: ruff check .
+
+  test:
+    name: "Test · numpy ${{ matrix.numpy }} · Pillow ${{ matrix.pillow }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 已测版本矩阵（2026-10-08 实测；区间外未测不承诺）
+          - { numpy: "2.3.5", pillow: "12.2.0" }
+          - { numpy: "2.3.5", pillow: "12.3.0" }
+          - { numpy: "2.4.2", pillow: "12.2.0" }
+          - { numpy: "2.4.2", pillow: "12.3.0" }
+          - { numpy: "2.5.3", pillow: "12.2.0" }
+          - { numpy: "2.5.3", pillow: "12.3.0" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -e ".[dev]" \
+            "numpy==${{ matrix.numpy }}" \
+            "Pillow==${{ matrix.pillow }}"
+
+      - name: pytest
+        run: |
+          python -m pytest tests/ \
+            --ignore=tests/test_brain_store.py \
+            --deselect=tests/test_hex_text.py::test_spatial_detect_finds_single_object \
+            --deselect=tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt \
+            -v

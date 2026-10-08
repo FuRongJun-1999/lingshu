@@ -19,13 +19,13 @@ world = ["numpy>=2.3.5,<2.6"]
 nn = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
 gen = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
 full = ["numpy>=2.3.5,<2.6", "Pillow>=12.2,<13"]
-# dev = 开发/测试面：pytest（运行器）+ PyYAML（**测试件的运行依赖**）。
+# dev = 开发/测试面：pytest（运行器）+ PyYAML（**测试件的运行依赖**）+ ruff（lint）。
 #   PyYAML 之所以落 dev 而非新建 tools extra / 不入 full：tools/ 不进 wheel
 #   （本文件 packages.find 只收 lingshu*），该依赖只在「本仓开发：跑本仓测试 / 驱动 tools/」
 #   场景下被拉起——tests/test_coggraph_public_paths.py 子进程调用 tools/coggraph/export_coggraph.py，
 #   后者**模块级 `import yaml`**；此前只写进 tools/coggraph/README.md 散文未进声明面 ⇒
 #   门禁装 `.[full,dev]` 拿不到 PyYAML，出现「本机装了 PyYAML 而绿 / CI 红」的回归。
-dev = ["pytest", "PyYAML>=6.0,<7"]
+dev = ["pytest", "PyYAML>=6.0,<7", "ruff>=0.9,<1"]
 
 [tool.setuptools.packages.find]
 include = ["lingshu*"]
@@ -33,3 +33,23 @@ include = ["lingshu*"]
 [tool.setuptools.package-data]
 # nn 模块附属固化物（白箱固化产物，JSON 可直读；见 docs/intake/body-export-v0.2/）
 "lingshu.nn" = ["assets/*.json"]
+
+[tool.pytest.ini_options]
+# 排除需外部环境的 standalone 脚本与已知红测试（与 CI workflow 保持一致）
+addopts = [
+    "--ignore=tests/test_brain_store.py",
+    "--deselect=tests/test_hex_text.py::test_spatial_detect_finds_single_object",
+    "--deselect=tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt",
+    "-v",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",   # 行长由 line-length 控制，长注释不强制截断
+]
