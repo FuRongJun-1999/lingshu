@@ -85,6 +85,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[full,dev]"
 
+      - name: 安装激活回归所需的可选 SciPy
+        # 仅扩充 CI 测试环境，不改变本体/extras 依赖。
+        # 新回归参数化覆盖真实 CSR 与 edge-list；确保 CSR 用例不因缺库而 SKIP。
+        # SciPy 1.18.1 要求 Python>=3.12、numpy>=2.0,<2.8，与当前门禁矩阵兼容。
+        run: |
+          python -m pip install --only-binary=:all: --no-deps "scipy==1.18.1"
+          python -c "from scipy.sparse import csr_matrix"
+
       - name: Clone 脑端公开仓（dsh-memory）供 MDCG_BRAIN_PYTHONPATH
         id: brain
         # 失败**不**红（continue-on-error）；但下一步会**显式**标注 SKIP 原因，绝不静默通过。
