@@ -80,7 +80,8 @@ class UnifiedWorldModel:
 
     def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
                  world: Optional[SceneSimulator] = None):
-        self.world = world or SceneSimulator(size=size, ground_level=ground_level)
+        self.world = world or SceneSimulator(size=size, ground_level=ground_level,
+                                             seed=seed)
         self.size = self.world.world.size
         self.nodes: Dict[str, WMNode] = {}
         self.edges: List[WMEdge] = []
