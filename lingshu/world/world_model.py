@@ -120,8 +120,15 @@ class UnifiedWorldModel:
                 best, best_d = eid, d
         if best is not None and best_d < 2.0:   # 追踪半径：同类别 2 体素内
             return best
-        return "wm_" + "".join(self._rng.choice("0123456789abcdef")
-                               for _ in range(6))
+        # 生成后查重 self.nodes，碰撞则重生成（6 位 hex=16M 空间，长程生日悖论必然碰撞；
+        # 不查重会让新 eid 命中既有键，perceive 走 matched 分支把两个不同实体静默合并）
+        for _ in range(8):
+            cand = "wm_" + "".join(self._rng.choice("0123456789abcdef")
+                                   for _ in range(6))
+            if cand not in self.nodes:
+                return cand
+        # 兜底：连续碰撞则加长 eid 避免极小概率的 6 位空间连撞
+        return "wm_" + "".join(self._rng.choice("0123456789abcdef") for _ in range(12))
 
     def _expected(self, eid: str) -> Optional[Dict]:
         """生成先验：上一 tick 对 eid 的预期（供 perceive 一致性检查）。"""
