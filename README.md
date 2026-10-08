@@ -1,5 +1,7 @@
 # 灵枢 · Lingshu
 
+[![CI](https://github.com/FuRongJun-1999/lingshu/actions/workflows/ci.yml/badge.svg)](https://github.com/FuRongJun-1999/lingshu/actions/workflows/ci.yml)
+
 **一个完整的 AI 生命载体。**
 
 > 灵为智能之过程，枢为制衡之核心。
