@@ -152,9 +152,13 @@ def query_match(detections: List[Dict], lib: ConnectionLibrary,
         v = "DEFER"
     else:
         v = "BLINDSPOT"
+    # Copy the ranking entries before annotating ``best``.  Otherwise the
+    # first entry in ``all_scores`` would reference ``best`` itself and make
+    # the returned report impossible to serialize as JSON.
+    all_scores = [dict(item) for item in results[:5]]
     best["verdict"] = v
     best["margin"] = round(best["score"] - second["score"], 3)
-    best["all_scores"] = results[:5]
+    best["all_scores"] = all_scores
     return [best]
 
 
