@@ -4488,7 +4488,13 @@ class SpacetimeMemoryEngine:
                           tuple(r.get(col) for col in cols))
             counts[table] = len(rows)
         self.store.conn.commit()
-        return {"imported": counts, "skipped_tables": skipped}
+        # 恢复自检：SQLite 默认不强制外键（连接未开 PRAGMA foreign_keys），备份
+        # 自带的悬挂边会被原样恢复，事后只能靠调用方主动调 verify_integrity；
+        # 故导入后当场体检，把「恢复了损坏备份」这件事随返回值交付（不拦写入）。
+        c.execute("PRAGMA foreign_key_check")
+        dangling = {(table, rid) for table, rid, *_ in c.fetchall()}
+        return {"imported": counts, "skipped_tables": skipped,
+                "dangling_rows": len(dangling), "integrity_ok": not dangling}
 
     def verify_integrity(self) -> Dict:
         """M13：完整性校验（边引用节点存在性 + 表计数）"""
