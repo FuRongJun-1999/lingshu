@@ -4416,38 +4416,66 @@ class SpacetimeMemoryEngine:
 
     # ---- M13 备份/迁移 ----
 
+    #: M13 导出/导入的共享表清单（顺序即导出顺序）。
+    #: 前置条件（issue #16）：`entities` 由 **未随本导出面一同发布的**
+    #: `entity_registry` 拥有（见 docs/intake/body-export-v0.1/README.md「未实现
+    #: 扩展点名号」）——公开仓形态下该表不存在，故两条链路一律以
+    #: `sqlite_master` 的实际存在性为准：缺失的表**跳过 + 显式标注**，
+    #: 而不是让「灾备基础」因一个可选组件缺席而整体失败。
+    M13_TABLES = ("nodes", "edges", "blindspots", "skills", "promotion_proposals",
+                  "protections", "rejected_paths", "verifier_standards",
+                  "escalation_points", "entities")
+
+    def _existing_tables(self) -> Set[str]:
+        """当前库实际存在的表名（以 sqlite_master 为准，不假设 DDL 全集）。"""
+        return {r[0] for r in self.store.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+
     def export_all(self, output_path: str) -> Dict:
-        """M13：全库导出（JSON · 6.5 摘要交换/灾备基础）"""
+        """M13：全库导出（JSON · 6.5 摘要交换/灾备基础）
+
+        降级口径（issue #16）：只导出**实际存在**的表；缺失的表跳过并在
+        `meta.skipped_tables` 与返回值 `skipped_tables` 中显式标注。
+        未安装 `entity_registry`（本仓默认形态）时 `entities` 即落入该列表，
+        导出不再抛 `OperationalError: no such table: entities`。
+        """
         c = self.store.conn.cursor()
+        existing = self._existing_tables()
+        skipped = [t for t in self.M13_TABLES if t not in existing]
+
         def rows(table):
             c.execute(f"SELECT * FROM {table}")
             return [dict(r) for r in c.fetchall()]
+
         data = {
             "meta": {"version": "v1.6", "exported_at": time.time(),
-                     "condition_space": "全库备份 · 有损投影"},
-            "nodes": rows("nodes"), "edges": rows("edges"),
-            "blindspots": rows("blindspots"), "skills": rows("skills"),
-            "promotion_proposals": rows("promotion_proposals"),
-            "protections": rows("protections"),
-            "rejected_paths": rows("rejected_paths"),
-            "verifier_standards": rows("verifier_standards"),
-            "escalation_points": rows("escalation_points"),
-            "entities": rows("entities"),
+                     "condition_space": "全库备份 · 有损投影",
+                     "skipped_tables": skipped},
         }
+        for table in self.M13_TABLES:
+            if table in existing:
+                data[table] = rows(table)
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        return {"exported_nodes": len(data["nodes"]), "path": output_path,
-                "tables": len(data) - 1}
+        return {"exported_nodes": len(data.get("nodes", [])), "path": output_path,
+                "tables": len(data) - 1, "skipped_tables": skipped}
 
     def import_all(self, input_path: str) -> Dict:
-        """M13：全库导入（恢复/迁移/6.5 合并基础）"""
+        """M13：全库导入（恢复/迁移/6.5 合并基础）
+
+        降级口径（issue #16）：目标库不存在的表跳过并计入 `skipped_tables`；
+        否则导出产物一旦含 `entities` 行，回灌同样抛 `OperationalError`。
+        """
         with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         c = self.store.conn.cursor()
+        existing = self._existing_tables()
         counts = {}
-        for table in ("nodes", "edges", "blindspots", "skills", "promotion_proposals",
-                      "protections", "rejected_paths", "verifier_standards",
-                      "escalation_points", "entities"):
+        skipped = []
+        for table in self.M13_TABLES:
+            if table not in existing:
+                skipped.append(table)
+                continue
             rows = data.get(table, [])
             if not rows:
                 counts[table] = 0
@@ -4460,7 +4488,7 @@ class SpacetimeMemoryEngine:
                           tuple(r.get(col) for col in cols))
             counts[table] = len(rows)
         self.store.conn.commit()
-        return {"imported": counts}
+        return {"imported": counts, "skipped_tables": skipped}
 
     def verify_integrity(self) -> Dict:
         """M13：完整性校验（边引用节点存在性 + 表计数）"""
