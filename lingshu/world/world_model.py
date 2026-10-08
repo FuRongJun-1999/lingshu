@@ -13,7 +13,8 @@ UnifiedWorldModel = 世界图（统一骨干）+ 三端口：
       · 从轨迹推断行为模式（观测-only 启发式：方向一致性/趋向-远离点积/速度估计）
       · 追逐随机目标 → 可达域传播（D1 可达域原理：max(自身,目标)+阈值）
       · 随机行为 → 可达域命中（D2 统计力学升维：单实体不可预测，分布稳定）
-  - 验证端口 verify()：外部观察者逐 tick 对比（生成 vs 实际 → 命中率/滚动窗口）
+  - 验证端口 verify()：外部观察者逐 tick 对比（生成 vs 真实观测快照 → 命中率/
+    滚动窗口；未观测预测标 pending 不计分——actual 不取自模型内部节点）
 
 世界图（统一骨干）：实体节点（类别/位置/推断行为/置信/观测溯源条件空间）+
 关系边（seek/flee，evidence=inferred）+ 4D 演化历史（观测序列记忆）。
@@ -89,6 +90,10 @@ class UnifiedWorldModel:
         self._conditions: Dict[str, Dict] = {} # 观测溯源条件空间（eid → 条件）
         self._last_prediction: Dict[str, Dict] = {}   # 生成先验（上一 generate）
         self._compare: Dict = {}               # 最近一次预测-观测对比
+        self._obs_snapshot: Optional[Dict[str, List[float]]] = None
+        #                                      # 最近一次 perceive 的真实观测快照
+        #                                      # （eid → 观测位置；verify 唯一 actual 来源）
+        self._obs_tick: Optional[int] = None   # 快照对应的观测时刻（tick）
         self._anomalies: List[Dict] = []       # 预测-观测异常事件
         self._patterns: Dict = {}              # 推断模式（relations/speed/entropy）
         self._rng = random.Random(seed)
@@ -133,9 +138,11 @@ class UnifiedWorldModel:
         obs = observations if observations is not None else self._observe_world()
         self.tick += 1
         stats = {"observed": 0, "matched": 0, "new": 0, "consistent": 0, "anomalies": 0}
+        snap: Dict[str, List[float]] = {}      # 本轮真实观测快照（verify 的 actual 来源）
         for o in obs:
             eid = str(o.get("eid", "")) or self._track_identity(o)
             pos = tuple(float(v) for v in o["pos"])
+            snap[eid] = list(pos)
             stats["observed"] += 1
             if eid in self.nodes:
                 stats["matched"] += 1
@@ -170,6 +177,9 @@ class UnifiedWorldModel:
                 "time_window": [self.tick - 5, self.tick],
                 "existence_constraint": "观测存在中",
             }
+        # 留存本轮真实观测快照与时刻（verify 只以它为 actual 来源）
+        self._obs_snapshot = snap
+        self._obs_tick = self.tick
         # 4D 演化历史（观测序列记忆）
         self.history.append({"tick": self.tick,
                              "entities": {eid: list(n.pos)
@@ -399,13 +409,28 @@ class UnifiedWorldModel:
     # ================= 验证端口（外部观察者） =================
 
     def verify(self) -> Dict:
-        """观察者对比：最近一次 generate vs 当前观测实际 → 命中率。"""
-        obs = {eid: list(n.pos) for eid, n in self.nodes.items()}
-        hits, total = 0, 0
+        """观察者对比：最近一次 generate vs 最近一次真实观测 → 命中率。
+
+        `actual` 来源＝最近一次 perceive() 留存的本轮观测快照
+        （`self._obs_snapshot`，eid → 观测位置），不再从 `self.nodes` 重建——
+        节点位置是模型内部表征，拿它当「实际」会让预测自证命中（未观测的
+        拓扑假设 distance=0、hit=True）。预测实体不在快照里（拓扑假设/
+        被遮蔽或出视野的真实实体/陈旧记忆）⇒ 标 pending：只进 details、
+        不计入 hits/total；hit_rate 分母＝已验证项。
+        快照缺失（从未 perceive）⇒ total=0 并标 `no_observation`，
+        不回退到「从 nodes 重建」（那等于把自证命中放回来）。
+        """
+        snap = self._obs_snapshot
+        hits, total, pending = 0, 0, 0
         details = []
         for eid, p in self._last_prediction.items():
-            actual = obs.get(eid)
-            if actual is None:
+            actual = snap.get(eid) if snap is not None else None
+            if actual is None:                 # 未观测 ⇒ 待验证，不参与计分
+                pending += 1
+                details.append({"entity": eid, "mode": p["mode"],
+                                "predicted": p["predicted"], "actual": None,
+                                "bound": p["bound"], "distance": None,
+                                "hit": None, "status": "pending"})
                 continue
             dist = math.dist(p["predicted"], actual)
             hit = dist < p["bound"]
@@ -415,10 +440,13 @@ class UnifiedWorldModel:
             details.append({"entity": eid, "mode": p["mode"],
                             "predicted": p["predicted"], "actual": actual,
                             "bound": p["bound"], "distance": round(dist, 4),
-                            "hit": hit})
+                            "hit": hit, "status": "verified"})
         rate = round(hits / total, 4) if total else 1.0
         self._compare = {"tick": self.tick, "hits": hits, "total": total,
-                         "hit_rate": rate, "details": details}
+                         "hit_rate": rate, "pending": pending,
+                         "details": details}
+        if snap is None:
+            self._compare["no_observation"] = True
         return self._compare
 
     def verify_run(self, n: int = 10) -> Dict:
