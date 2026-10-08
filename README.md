@@ -55,6 +55,17 @@ pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规�
 依赖分层、环境自适应降级点与精修记录见
 [docs/intake/body-export-v0.1/](docs/intake/body-export-v0.1/)（导出说明 / 双清单审计 / 逐文件指纹清单）。
 
+## 联系与贡献
+
+- **设计者**：QQ `1935852383`
+- **官方交流群**：QQ 群 `100453509`
+
+欢迎提交 issue 与 PR。**尤其鼓励「经过验证有效」的提交**：issue 请给出触发条件、
+最小复现与实测读数；PR 请附改动说明与验证方式（复跑命令与读数）；结论均以
+**能被独立复跑**为准（[issue #1](https://github.com/FuRongJun-1999/lingshu/issues/1)
+是一个好例子——触发链、最小复现、判据三样都齐）。
+缺少证据、无法复现的描述，我们会先回帖请求补充证据再处置。
+
 ---
 
 *灵枢（Lingshu）· 由 FuRongJun-1999 构建与维护。*
