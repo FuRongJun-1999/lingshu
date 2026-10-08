@@ -11,7 +11,7 @@
    "bytes": 779,
    "sha256": "dc8d9f9013d4c71c47e6fc93a6e649b69f383d04a3a3edb92e91558e1db57de6",
    "sanitized_fields": 1,
-   "note": "source 字段素材编号脱敏（原值 img0_240x394）；kernels/algo/consolidated/epochs/loss 未动"
+   "note": "source 字段素材编号已脱敏（原值不复述，见 AUDIT 判据）；kernels/algo/consolidated/epochs/loss 未动"
   }
  ],
  "tests": [
