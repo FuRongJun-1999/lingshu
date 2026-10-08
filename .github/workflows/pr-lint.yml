@@ -42,7 +42,7 @@ jobs:
           python-version: "3.12"
 
       - name: 校验器自检（正负例）
-        # 与仓内既有门禁先例同款（check_publish_artifact.py --selftest）：
+        # 本检查器自带 --selftest 正负例入口（本仓实存：scripts/check_pr_title.py --selftest）：
         # 先证判据自身正负例正确，再用它判 PR 标题。
         run: python -X utf8 scripts/check_pr_title.py --selftest
 

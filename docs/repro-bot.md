@@ -1,6 +1,6 @@
 # repro-bot —— issue 复现机器人
 
-> **状态**：工作区草稿（未落仓）。相关件：`.github/workflows/repro-bot.yml`（外壳）、
+> **状态**：已随仓落仓（引入提交 `8a2de8f`「ci: issue 复现机器人落仓」——本件与 workflow、执行核同批落仓）。相关件：`.github/workflows/repro-bot.yml`（外壳）、
 > `scripts/extract_and_run_issue_repro.py`（执行核）。
 
 一句话：外部报告人附了复现脚本的 issue，维护者打一个 `run-repro` 标签，
@@ -18,7 +18,7 @@
    移除 `run-repro`**。
 4. 要重跑：再打一次 `run-repro`（标签已被移除，直接重打即可重新触发）。
 
-## 判据（对齐 enforcement 三件）
+## 判据
 
 - **触发**：`issues` 事件的 `labeled`；**门**＝标签名 `run-repro` 且打标签者
   在允许名单内（防滥用）。
