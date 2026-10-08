@@ -139,13 +139,30 @@ class HexHierNet:
         self.head = rng.normal(0, head_scale,
                                (len(OBJ), head_in)).astype(np.float64)
         self._protos: Dict[str, Dict] = {}
+        self._fd_cache: Optional[Dict] = None        # 有限差分分块缓存(仅 train_hier 期间,见 _block)
+
+    def _block(self, lat: np.ndarray, name: str, k: int, params: Tuple,
+               compute) -> np.ndarray:
+        """单核响应图的分块缓存:有限差分一次只扰动一个参数,其余核的响应图与上次
+        逐位相同——按 (输入对象, 核名, 序号, 决定它的全部参数字节) 复用,数值不变。
+        _fd_cache 为 None(默认)时直接计算。"""
+        c = getattr(self, "_fd_cache", None)         # 兼容未经 __init__ 构造的旧对象
+        if c is None:
+            return compute()
+        if c.get("lat") is not lat:                  # 换批即清
+            c.clear()
+            c["lat"] = lat
+        key = (name, k) + tuple(p.tobytes() for p in params)
+        if key not in c:
+            c[key] = compute()
+        return c[key]
 
     # ---- L1:感知单元(轮廓/颜色变化核组,保留空间维!) ----
     def _h1(self, lat: np.ndarray) -> np.ndarray:
         """带符号 L1 特征 (B,r,c,K1):每核 conv→跨 RGB 求和→leaky。"""
-        maps = [self._lrelu(hex_conv_batch(
-            lat, np.stack([self.conv[k]] * 3, 0)
-            if self.conv[k].ndim == 1 else self.conv[k]).sum(axis=-1))
+        maps = [self._block(lat, "h1", k, (self.conv[k],), lambda k=k: self._lrelu(
+            hex_conv_batch(lat, np.stack([self.conv[k]] * 3, 0)
+                           if self.conv[k].ndim == 1 else self.conv[k]).sum(axis=-1)))
             for k in range(self.K)]
         return np.stack(maps, axis=-1)
 
@@ -167,7 +184,9 @@ class HexHierNet:
         stacked:L1 带符号特征 → L1.5 conv2(跨 K1 求和)→leaky→RMS。"""
         h1 = self._h1(lat)
         if self.stacked:
-            maps2 = [self._lrelu(hex_conv_batch(h1, self.conv2[k]).sum(axis=-1))
+            maps2 = [self._block(lat, "h2", k, (self.conv, self.conv2[k]),
+                                 lambda k=k: self._lrelu(
+                                     hex_conv_batch(h1, self.conv2[k]).sum(axis=-1)))
                      for k in range(self.K2)]
             h2 = np.stack(maps2, axis=-1)                # (B,r,c,K2)
             deep = np.sqrt((h2 ** 2).mean(axis=(1, 2)) + 1e-12)
@@ -277,28 +296,32 @@ def train_hier(net: HexHierNet, lat: np.ndarray, labels: Dict[str, np.ndarray],
         d_shape = float(-np.log(p_shape[np.arange(len(sh_idx)), sh_idx] + 1e-12).mean())
         return d_obj + 0.5 * d_shape
 
-    d0 = joint_loss(lat[:batch], labels["shape"][:batch], labels["obj"][:batch])
-    for step in range(steps):
-        idx = rng.permutation(len(lat))[:batch]
-        xb = lat[idx]
-        sb = labels["shape"][idx]
-        ob = labels["obj"][idx]
-        d = joint_loss(xb, sb, ob)
-        sample = rng.choice(len(vec), size=min(samples_per_step, len(vec)),
-                            replace=False)
-        for pi in sample:
-            vp, vm = vec.copy(), vec.copy()
-            vp[pi] += eps; vm[pi] -= eps
-            net.set_vec(vp); dp = joint_loss(xb, sb, ob)
-            net.set_vec(vm); dm = joint_loss(xb, sb, ob)
+    net._fd_cache = {}       # 一次只扰动一个参数:未动核的响应图逐位复用(HexHierNet._block)
+    try:
+        d0 = joint_loss(lat[:batch], labels["shape"][:batch], labels["obj"][:batch])
+        for step in range(steps):
+            idx = rng.permutation(len(lat))[:batch]
+            xb = lat[idx]
+            sb = labels["shape"][idx]
+            ob = labels["obj"][idx]
+            d = joint_loss(xb, sb, ob)
+            sample = rng.choice(len(vec), size=min(samples_per_step, len(vec)),
+                                replace=False)
+            for pi in sample:
+                vp, vm = vec.copy(), vec.copy()
+                vp[pi] += eps; vm[pi] -= eps
+                net.set_vec(vp); dp = joint_loss(xb, sb, ob)
+                net.set_vec(vm); dm = joint_loss(xb, sb, ob)
+                net.set_vec(vec)
+                g = (dp - dm) / (2 * eps)
+                if abs(g) > 1e-6:
+                    vec[pi] -= lr * np.sign(g)
             net.set_vec(vec)
-            g = (dp - dm) / (2 * eps)
-            if abs(g) > 1e-6:
-                vec[pi] -= lr * np.sign(g)
-        net.set_vec(vec)
-        curve.append(round(d, 4))
-        if verbose and step % 20 == 0:
-            print(f"  [step {step}] D_L2+3={d:.4f}")
+            curve.append(round(d, 4))
+            if verbose and step % 20 == 0:
+                print(f"  [step {step}] D_L2+3={d:.4f}")
+    finally:
+        net._fd_cache = None
     return {"init_D": round(d0, 4), "final_D": curve[-1], "curve": curve,
             "steps": steps}
 
