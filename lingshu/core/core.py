@@ -641,7 +641,8 @@ class LayeredStore:
 
     def get_layer_nodes(self, layer: MemoryLayer) -> List[STNode]:
         """取指定记忆层的全部节点（query_nodes 的层过滤快捷入口）。"""
-        return self.query_nodes(layer=layer)
+        # 整层枚举不继承 query_nodes 的默认分页；SQLite LIMIT -1 表示不限条数。
+        return self.query_nodes(layer=layer, limit=-1)
 
     # ---------- v1.16 图架构增强：有界遍历 + 子图嵌套 ----------
 
