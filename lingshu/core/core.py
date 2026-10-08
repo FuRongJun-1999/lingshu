@@ -329,7 +329,9 @@ class LayeredStore:
 
     IMMUTABLE_LAYERS = {MemoryLayer.ANCHOR, MemoryLayer.STRUCTURE,
                         MemoryLayer.SELF}  # v1.16 扮演论：SELF 层=自我锚点（扮演依据）不可遗忘
-    SCHEMA_VERSION = 1  # 建表块每新增表/列时 +1（配合 _init_tables 启动只读化守卫）
+    SCHEMA_VERSION = 1  # 建表块每新增表/列时 +1（配合 _init_tables 启动只读化守卫；
+                        # 守卫已兼比结构 _SCHEMA_TABLES/_SCHEMA_COLUMNS，
+                        # 版本号不再单独作「跳过建表块」的依据）
 
     # 只读化守卫的结构对照（_init_tables 的全部表 + 三处 ALTER 补出的列）：版本号
     # 与实际 DDL 无强制绑定，故守卫须兼比结构，否则「版本匹配但结构陈旧」的库永远补不上。
@@ -338,6 +340,10 @@ class LayeredStore:
                                 'escalation_points', 'action_logs', 'engine_meta', 'gap_history'))
     _SCHEMA_COLUMNS = {'nodes': ('semantic_coordinates', 'state_attributes', 'entity_id'),
                        'edges': ('source_evidence',), 'blindspots': ('predictability',)}
+    # 已知边界：本结构对照只覆盖「表 + 列」，**不含索引**——建表块的三条
+    # `CREATE INDEX idx_nodes_layer/idx_edges_source/idx_edges_target` 不在对照面内。
+    # 仅缺索引的老库仍会被判为「结构齐全」而跳过建表块 ⇒ 索引不会由本守卫补建，
+    # 索引缺失当前也无独立检出手段（补建须待版本号 +1 或手工迁移）。
 
     def __init__(self, db_path: str = ":memory:", role: Role = Role.PRIMARY):
         self.db_path = db_path
