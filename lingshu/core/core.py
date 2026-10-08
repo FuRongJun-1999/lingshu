@@ -331,6 +331,14 @@ class LayeredStore:
                         MemoryLayer.SELF}  # v1.16 扮演论：SELF 层=自我锚点（扮演依据）不可遗忘
     SCHEMA_VERSION = 1  # 建表块每新增表/列时 +1（配合 _init_tables 启动只读化守卫）
 
+    # 只读化守卫的结构对照（_init_tables 的全部表 + 三处 ALTER 补出的列）：版本号
+    # 与实际 DDL 无强制绑定，故守卫须兼比结构，否则「版本匹配但结构陈旧」的库永远补不上。
+    _SCHEMA_TABLES = frozenset(('nodes', 'edges', 'blindspots', 'skills', 'promotion_proposals',
+                                'protections', 'rejected_paths', 'verifier_standards',
+                                'escalation_points', 'action_logs', 'engine_meta', 'gap_history'))
+    _SCHEMA_COLUMNS = {'nodes': ('semantic_coordinates', 'state_attributes', 'entity_id'),
+                       'edges': ('source_evidence',), 'blindspots': ('predictability',)}
+
     def __init__(self, db_path: str = ":memory:", role: Role = Role.PRIMARY):
         self.db_path = db_path
         self.role = role
@@ -378,7 +386,11 @@ class LayeredStore:
                 row = self.conn.execute(
                     "SELECT value FROM engine_meta WHERE key='_schema_version'"
                 ).fetchone()
-                if row and row[0] == str(self.SCHEMA_VERSION):
+                # 版本匹配只说明建表块跑过，不说明结构完整 → 再比对结构（只读，不取写锁）
+                if (row and row[0] == str(self.SCHEMA_VERSION)
+                        and self._SCHEMA_TABLES <= have
+                        and all(set(c) <= {r[1] for r in self.conn.execute(f"PRAGMA table_info({t})")}
+                                for t, c in self._SCHEMA_COLUMNS.items())):
                     return
         except Exception:
             pass  # 只读校验异常 → 保守回退到原建表路径（IF NOT EXISTS 幂等）
