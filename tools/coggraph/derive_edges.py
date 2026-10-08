@@ -185,10 +185,12 @@ def main(argv=None):
         deg[e["t"]] += 1
     r4 = 0
     for day, ids in sorted(day_hub.items()):
+        # hub() 每次调用都累加 count，必须与 R1/R2 一样在（逐节点）循环外登记一次；
+        # 放在循环内会得到 len(ids) × 该日孤立节点数（issue #45 第一处）。
+        hid = hub("day:" + day, "day", "日 " + day, len(ids))
         for nid in ids:
             if deg[nid] > 0:
                 continue
-            hid = hub("day:" + day, "day", "日 " + day, len(ids))
             if add(nid, hid, "same_day", "R4_same_day", 0.2):
                 r4 += 1
     per_rule["R4_same_day"] = r4
