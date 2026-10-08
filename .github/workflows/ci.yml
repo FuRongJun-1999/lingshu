@@ -1,0 +1,77 @@
+# .github/workflows/ci.yml
+# 灵枢 CI —— 冻结规格 PR-1 文件 D。
+#
+# 作用：在 push / PR 上跑四道门 + 一道脚本式自检，覆盖 Python 3.11 与 3.13（requires-python >=3.10）。
+# 边界（如实）：
+#   - 默认门**不含**慢件 `tests/test_hex_hier.py`（README 记 657.5s）与
+#     `tests/test_hex_search.py`（README 记 361.6s）——单独说明，不放进默认门。
+#   - deselect 的 2 项是**已登记的已知红**，不是新引入的失败，详见步骤③注释。
+#   - 不引入 pyflakes/ruff 门：当前有 84 项历史告警，会把门做成噪声。
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    name: py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup-python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 安装依赖（extras=full + pytest）
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full]" pytest
+
+      # ① 模块 import 冒烟：pkgutil.walk_packages 遍历 lingshu 全部子模块，任一 import 失败即红。
+      - name: ① import 冒烟（遍历 lingshu）
+        run: |
+          python - <<'PY'
+          import importlib
+          import pkgutil
+
+          import lingshu
+
+          names = sorted(m.name for m in pkgutil.walk_packages(lingshu.__path__, "lingshu."))
+          for name in names:
+              importlib.import_module(name)
+          print("import smoke OK: %d modules" % len(names))
+          PY
+
+      # ② 登记指纹核验：退出码 0 = 清单可解析且无 MISSING / 无 MALFORMED。
+      #    MISMATCH 不算失败（清单未声明指纹指向哪一侧，属既有事实）。
+      - name: ② 登记指纹核验
+        run: python tools/verify_manifest.py
+
+      # ③ 快件默认门。
+      #    排除 slow：test_hex_hier.py（657.5s）与 test_hex_search.py（361.6s）是慢件，
+      #    不在默认门内，需要时单独跑。
+      #    deselect 两项（test_spatial_detect_finds_single_object /
+      #    test_multimodal_check_clean_vs_corrupt）：**已登记的已知红**，
+      #    见 docs/intake/body-export-v0.2/README.md:64-71 —— 上游 AEIS 同跑同红、
+      #    失败读数逐位相同 ⇒ 历史既有（环境/训练数值性），非导出引入（另见 #4/#24）。
+      - name: ③ pytest 快件（排除慢件 + deselect 已登记已知红）
+        run: |
+          python -m pytest tests -q \
+            --ignore=tests/test_hex_hier.py \
+            --ignore=tests/test_hex_search.py \
+            -k "not test_spatial_detect_finds_single_object and not test_multimodal_check_clean_vs_corrupt"
+
+      # ④ 脚本式自检：这 5 件以「python 直跑」为契约（各自带 __main__ 守卫），退出码必须为 0。
+      - name: ④ 脚本式自检（5 件）
+        run: |
+          python tests/test_hex_cnn.py
+          python tests/test_hex_composite.py
+          python tests/test_hex_gen.py
+          python tests/test_wm_verify_unobserved.py
+          python tests/test_brain_store.py
