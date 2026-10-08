@@ -188,6 +188,8 @@ class ActivationEngine:
                  prior_workset: Optional[str] = None) -> Dict:
         """激活一次:种子(同步询问投票)→沿边扩散(条件衰减)→写入激活表+审计。
 
+        空图返回空工作态，并保留各步的零激活审计记录。
+
         self-conditioning(ELF §3.3 同构 · 显式接口约定):
           ELF:上一步预测 x̂′ 作为下一步的条件输入;本引擎同构——"上一步工作态"
           作为本步先验激活,与种子一起扩散(不额外增加查询路径):
@@ -249,7 +251,7 @@ class ActivationEngine:
             newly = [self._node_ids[i] for i in np.nonzero(act >= act_floor)[0]]
             path.append({"step": hop, "phase": "propagate",
                          "activated_count": len(newly),
-                         "max_act": round(float(act.max()), 4)})
+                         "max_act": round(float(act.max()), 4) if n else 0.0})
         # 阈值截断→工作态
         keep = np.nonzero(act >= act_floor)[0]
         members = [(self._node_ids[i], round(float(act[i]), 4)) for i in keep]
