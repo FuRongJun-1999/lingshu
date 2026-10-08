@@ -160,7 +160,18 @@ class SceneSimulator:
                 return self._normalize(tgt[0] - bx, 0, tgt[2] - bz)
 
         # wander（默认）：随机游走（确定性随机）
-        return (self._rng.uniform(-1, 1), 0, self._rng.uniform(-1, 1))
+        # 返回**单位**方向——与 seek/avoid/follow/flee 一致。修前直接返回
+        # `(uniform(-1,1), 0, uniform(-1,1))`（未归一化），|d| 可达 sqrt(2)
+        # ⇒ 单 tick 位移可达 sqrt(2)*speed，**突破 speed 声明的运动学上限**
+        # （实测 speed=0.3 时位移/speed = 1.2983，理论上界 1.4142）。
+        # 仍消耗 2 次 RNG、且顺序与修前相同 ⇒ 不改变其它行为的随机序列。
+        d = self._normalize(self._rng.uniform(-1, 1), 0,
+                            self._rng.uniform(-1, 1))
+        if d == (0.0, 0.0, 0.0):
+            # 退化：两次采样同时落在 1e-6 内（概率 ~0）。给固定方向而不是
+            # 静默静止；不额外消耗 RNG，保持随机序列长度不变。
+            return (1.0, 0.0, 0.0)
+        return d
 
     def _normalize(self, dx, dy, dz) -> Tuple[float, float, float]:
         n = math.hypot(dx, dz)
