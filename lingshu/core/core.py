@@ -5110,7 +5110,9 @@ class SpacetimeMemoryEngine:
                 continue  # 不可遗忘过滤器（3.2 节）
             if n.importance >= rehearsal_threshold:
                 self.store.increment_access(n.id)
-                if n.access_count % 10 == 0:
+                new_count = (n.access_count or 0) + 1      # 判据用本次增量后的计数，勿用快照旧值
+                n.access_count = new_count                 # 同步副本，供同轮后续逻辑使用
+                if new_count % 10 == 0:
                     self.store.update_node_importance(n.id, gain)
                     stats["boosted"] += 1
                 stats["rehearsed"] += 1
