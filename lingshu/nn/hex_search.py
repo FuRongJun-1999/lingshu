@@ -121,21 +121,30 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
         ev.update(extra)
         stats["blindspot_evidence"].append(ev)
 
-    def search(sub: np.ndarray, qy0: float, qy1: float, qx0: float, qx1: float,
-               depth: int, parent_share: float = 1.0):
-        stats["visited"] += 1
-        stats["max_depth"] = max(stats["max_depth"], depth)
+    def region_share(sub: np.ndarray) -> float:
         # 该区域能量份额(粗筛证据)——99.9 分位截断防单点数值爆炸
         # (扩容网的非对称差分先验可在个别 cell 产生极值,稀释全部份额)
         energy, _ = net.l1(sub)
         w_map = np.abs(energy)[0].sum(axis=-1)
         w_map = np.minimum(w_map, np.quantile(w_map, 0.999))
-        share = float(w_map.sum()) / wt
+        return float(w_map.sum()) / wt
+
+    def search(sub: np.ndarray, qy0: float, qy1: float, qx0: float, qx1: float,
+               depth: int, parent_share: float = 1.0,
+               share: Optional[float] = None, floor: Optional[float] = None):
+        stats["visited"] += 1
+        stats["max_depth"] = max(stats["max_depth"], depth)
+        if share is None:
+            share = region_share(sub)
         # 信息差死区(自适应深度):子域占父域能量过低 → 细分无收益,诚实终止
         if adaptive_depth and depth > 0 and share < min_share * parent_share:
             stats["stopped_dead_zone"] += 1
             note_blindspot(f"d{depth}", depth, "infogap_dead_zone",
                            share_ratio=round(share / max(1e-9, parent_share), 4))
+            return
+        # 兄弟域粗筛:份额不高于兄弟域典型(中位)份额 × share_mult ⇒ 只有背景纹理,空域
+        if floor is not None and share <= floor:
+            stats["rejected"] += 1
             return
         node = evaluate_node(net, sub, share, **th)
         if node["verdict"] == "REJECT":
@@ -155,15 +164,21 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
             note_blindspot(f"d{depth}", depth, "max_depth", conf=node["conf"])
             return
         rr, cc = sub.shape[1:3]
+        kids = []
         for i in range(3):
             for j in range(3):
                 ssub = sub[:, i * rr // 3:(i + 1) * rr // 3,
                            j * cc // 3:(j + 1) * cc // 3]
                 if ssub.shape[0] == 0 or ssub.shape[1] == 0:
                     continue
-                search(ssub, qy0 + i / 3, qy0 + (i + 1) / 3,
-                       qx0 + j / 3, qx0 + (j + 1) / 3, depth + 1,
-                       parent_share=share)
+                kids.append((i, j, ssub, region_share(ssub)))
+        if not kids:
+            return
+        kfloor = float(np.median([k[3] for k in kids])) * th.get("share_mult", 1.3)
+        for i, j, ssub, ksh in kids:
+            search(ssub, qy0 + i / 3, qy0 + (i + 1) / 3,
+                   qx0 + j / 3, qx0 + (j + 1) / 3, depth + 1,
+                   parent_share=share, share=ksh, floor=kfloor)
 
     search(lat, 0.0, 1.0, 0.0, 1.0, 0)
     # 同位置去重(保留置信最高)
