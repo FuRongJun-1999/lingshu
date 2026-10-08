@@ -1860,12 +1860,41 @@ class LayeredStore:
         self.conn.commit()
         return eid
 
-    def set_escalation_enabled(self, escalation_id: str, enabled: bool):
-        """启用/停用升级点（危机响应开关）。"""
+    def log_action(self, action_type: str, summary: str = "",
+                   node_ids: list = None, outcome: dict = None,
+                   context: dict = None) -> None:
+        """落一条行为审计（v1.14 `action_logs` 表先例，M13 结构对照内）。
+
+        与 `SpacetimeMemoryEngine._note_action` 的分工：后者委托可选组件
+        自我认知引擎（未装配即静默 no-op），**不构成可靠留痕**；本方法直接
+        写库，作为治理动作的持久审计兜底（跨进程、可查）。"""
+        c = self.conn.cursor()
+        c.execute("INSERT INTO action_logs"
+                  " (ts, action_type, summary, node_ids, outcome, context)"
+                  " VALUES (?,?,?,?,?,?)",
+                  (time.time(), action_type, summary,
+                   json.dumps(node_ids or [], ensure_ascii=False),
+                   json.dumps(outcome or {}, ensure_ascii=False),
+                   json.dumps(context or {}, ensure_ascii=False)))
+        self.conn.commit()
+
+    def set_escalation_enabled(self, escalation_id: str, enabled: bool,
+                               designer_key: str = None):
+        """启用/停用升级点（危机响应开关）。
+
+        issue #130：此开关先前**无授权、无审计**。现补齐与
+        `adjudicate_promotion` **同款**的 fail-closed 密钥闸，并把变更写入
+        `action_logs`（审计留痕可查）。"""
+        if not verify_designer(designer_key):
+            raise PermissionError(
+                "D-007 设计者认证失败：密钥无效或未配置 AEIS_DESIGNER_KEY（fail-closed）")
         c = self.conn.cursor()
         c.execute("UPDATE escalation_points SET enabled=? WHERE id=?",
                   (int(enabled), escalation_id))
-        self.conn.commit()
+        self.log_action(
+            "escalation_toggle",
+            f"set escalation {escalation_id} enabled={bool(enabled)}",
+            outcome={"escalation_id": escalation_id, "enabled": bool(enabled)})
 
     # ---------- 统计 ----------
 
@@ -2606,9 +2635,19 @@ class SpacetimeMemoryEngine:
     ANCHOR_KINDS = ("pre_access_stance", "introspection", "external_calibration")
 
     def register_external_anchor(self, kind: str, content: str,
-                                 condition_space: ConditionSpace = None) -> STNode:
+                                 condition_space: ConditionSpace = None,
+                                 designer_key: str = None) -> STNode:
         """接入前立场 / 自省记录 / 外部校准输入。
-        PRIMARY 写结构层（不可遗忘）；SUB 写知识层副本（待父节点同步为验证副本）"""
+        PRIMARY 写结构层（不可遗忘）；SUB 写知识层副本（待父节点同步为验证副本）。
+
+        D-007 授权闸（issue #109）：外部锚点是「外部内容 → 不可遗忘共享层」的
+        入口，先前**无任何授权**即写结构层（`confidence=1.0`、不可删），且绕过
+        「提案→复核→终裁」全链。现补齐与 `adjudicate_promotion` **同款**的
+        fail-closed 密钥闸：未配置/不匹配 `AEIS_DESIGNER_KEY` 一律拒绝
+        （`PermissionError`），不做「降级到知识层」的静默放行。"""
+        if not verify_designer(designer_key):
+            raise PermissionError(
+                "D-007 设计者认证失败：密钥无效或未配置 AEIS_DESIGNER_KEY（fail-closed）")
         if kind not in self.ANCHOR_KINDS:
             raise ValueError(f"未知锚点类型: {kind}")
         cs = condition_space or ConditionSpace(
@@ -4738,14 +4777,29 @@ class SpacetimeMemoryEngine:
                              action: str, severity: str = "medium") -> str:
         return self.store.add_escalation_point(code, trigger, condition, action, severity)
 
-    def set_escalation_enabled(self, escalation_id: str, enabled: bool):
-        self.store.set_escalation_enabled(escalation_id, enabled)
+    def set_escalation_enabled(self, escalation_id: str, enabled: bool,
+                               designer_key: str = None):
+        self.store.set_escalation_enabled(escalation_id, enabled,
+                                          designer_key=designer_key)
 
     def check_escalation(self, signal_type: str, value: float = None) -> List[Dict]:
-        """A-3：信号 → 升级点匹配（何种信号必须提交维生系统）"""
+        """A-3：信号 → 升级点匹配（何种信号必须提交维生系统）。
+
+        issue #130 匹配修正（原判据 `signal_type in point["trigger"] or
+        signal_type in point["condition"]` 方向反了）：
+        - **空串/纯空白短路**返回 `[]`：`"" in <任意串>` 恒真 ⇒ 修前命中全部；
+        - **双向包含**：触发词/条件词出现在信号里（本意，修前含词长句
+          如「关于自维持迹象的报告」命中 0），同时保留「信号 token 出现在
+          触发词/条件里」（既有调用方以 token 如 `deviation` 作信号，纯单向
+          翻转会让其从命中变不命中）。"""
+        signal = (signal_type or "").strip()
+        if not signal:
+            return []
         matches = []
         for point in self.store.list_escalation_points(enabled_only=True):
-            if signal_type in point["trigger"] or signal_type in point["condition"]:
+            trigger, condition = point["trigger"], point["condition"]
+            if (signal in trigger or trigger in signal
+                    or signal in condition or condition in signal):
                 matches.append(point)
         return matches
 
