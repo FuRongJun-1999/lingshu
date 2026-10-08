@@ -141,14 +141,14 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
         if node["verdict"] == "REJECT":
             stats["rejected"] += 1
             return
-        if node["verdict"] == "ACCEPT":
+        if node["verdict"] == "ACCEPT" and depth > 0:
             # 位置 = 子区域中心的归一化坐标 → 3×3 象限
             cy, cx = (qy0 + qy1) / 2, (qx0 + qx1) / 2
             pos = f"r{min(2, int(cy * 3)) * 3 + min(2, int(cx * 3))}"
             found.append({"obj": node["obj"], "pos": pos,
                           "conf": node["conf"], "depth": depth})
             return
-        # DEFER → 递归深化(可能性引导:切 3×3,空子域被粗筛剪掉)
+        # DEFER(或根域 ACCEPT:根域横跨全部 9 个位置,位置信息差未闭合)→ 递归深化
         stats["deferred"] += 1
         if depth >= max_depth:
             stats["stopped_max_depth"] += 1        # 工程保险上界(非语义深度)
