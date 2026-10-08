@@ -416,7 +416,8 @@ class UnifiedWorldModel:
         节点位置是模型内部表征，拿它当「实际」会让预测自证命中（未观测的
         拓扑假设 distance=0、hit=True）。预测实体不在快照里（拓扑假设/
         被遮蔽或出视野的真实实体/陈旧记忆）⇒ 标 pending：只进 details、
-        不计入 hits/total；hit_rate 分母＝已验证项。
+        不计入 hits/total；hit_rate 分母＝已验证项。total=0 时 hit_rate=None
+        （无验证读数），聚合方只收 total>0 的轮次。
         快照缺失（从未 perceive）⇒ total=0 并标 `no_observation`，
         不回退到「从 nodes 重建」（那等于把自证命中放回来）。
         """
@@ -441,7 +442,7 @@ class UnifiedWorldModel:
                             "predicted": p["predicted"], "actual": actual,
                             "bound": p["bound"], "distance": round(dist, 4),
                             "hit": hit, "status": "verified"})
-        rate = round(hits / total, 4) if total else 1.0
+        rate = round(hits / total, 4) if total else None
         self._compare = {"tick": self.tick, "hits": hits, "total": total,
                          "hit_rate": rate, "pending": pending,
                          "details": details}
@@ -457,9 +458,11 @@ class UnifiedWorldModel:
             self.world.step(n=1)
             self.perceive()
             v = self.verify()
-            rates.append(v["hit_rate"])
+            if v["total"]:
+                rates.append(v["hit_rate"])
         return {"status": "ok", "ticks": int(n), "tick": self.tick,
-                "rolling_hit_rate": round(sum(rates) / len(rates), 4) if rates else 1.0,
+                "rolling_hit_rate": round(sum(rates) / len(rates), 4) if rates else None,
+                "verified_ticks": len(rates),
                 "last": v}
 
     # ================= 记忆与导出 =================

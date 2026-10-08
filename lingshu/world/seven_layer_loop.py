@@ -85,7 +85,7 @@ class SevenLayerLoop:
     # ---- 七层一步 ----
 
     def _verify(self, predictions: Dict) -> Dict:
-        """L5 锚定验证：外部观察者全实体对比（有世界访问权）。"""
+        """L5 锚定验证：外部观察者全实体对比；无可比项时 hit_rate=None。"""
         hits, total = 0, 0
         details = []
         for eid, p in predictions.items():
@@ -99,7 +99,7 @@ class SevenLayerLoop:
             total += 1
             details.append({"entity": eid, "mode": p["mode"], "hit": hit,
                             "distance": round(dist, 4)})
-        rate = round(hits / total, 4) if total else 1.0
+        rate = round(hits / total, 4) if total else None
         return {"hits": hits, "total": total, "hit_rate": rate,
                 "details": details}
 
@@ -132,7 +132,8 @@ class SevenLayerLoop:
         ver = self._verify(pred["predictions"])
         rec["L5_verification"] = {"hit_rate": ver["hit_rate"],
                                   "hits": ver["hits"], "total": ver["total"]}
-        self.hit_history.append(ver["hit_rate"])
+        if ver["total"]:
+            self.hit_history.append(ver["hit_rate"])
         # L2 时空记忆图（观测序列 + 世界图）
         rec["L2_memory"] = {"history_len": len(self.explorer.history),
                             "entities": {eid: list(n.pos)
@@ -161,8 +162,9 @@ class SevenLayerLoop:
         return {"status": "ok", "ticks": int(n), "loop_tick": self.tick,
                 "overall_hit_rate": self._overall_hit_rate()}
 
-    def _overall_hit_rate(self) -> float:
-        return round(sum(self.hit_history) / len(self.hit_history), 4)             if self.hit_history else 1.0
+    def _overall_hit_rate(self) -> Optional[float]:
+        return (round(sum(self.hit_history) / len(self.hit_history), 4)
+                if self.hit_history else None)
 
     # ---- 闭环报告与审计 ----
 
@@ -182,16 +184,18 @@ class SevenLayerLoop:
                              "entity_count": len(self.explorer.nodes)},
             "L4_prediction": {"entity_count": len(self.explorer._last_prediction)},
             "L5_verification": {"overall_hit_rate": self._overall_hit_rate(),
+                                "verified_ticks": len(self.hit_history),
+                                "unverified_ticks": self.tick - len(self.hit_history),
                                 "recent": recent},
             "L6_physics": {"world_tick": self.world.tick_count,
                            "entities": len(self.world.entities)},
             "L7_decision": {"policy": self.policy, "budget": self.budget,
                             "obs_distribution": dict(self.explorer.obs_counts)},
             "closed_loop_enhancement": {
-                "early_hit_rate": round(sum(early) / len(early), 4) if early else 1.0,
-                "late_hit_rate": round(sum(late) / len(late), 4) if late else 1.0,
+                "early_hit_rate": round(sum(early) / len(early), 4) if early else None,
+                "late_hit_rate": round(sum(late) / len(late), 4) if late else None,
                 "improvement": round(sum(late) / len(late) - sum(early) / len(early), 4)
-                if early and late else 0.0},
+                if early and late else None},
             "loop_closed": True,
         }
 

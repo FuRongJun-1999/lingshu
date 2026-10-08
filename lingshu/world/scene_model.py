@@ -325,17 +325,20 @@ def ingest_scene(agent, scene_desc: str, store=None, tag: str = "spatial"):
     return written
 
 
-def load_world_from_memory(agent_or_store, tag: str = "spatial") -> WorldModel:
-    """从记忆库遍历 `spatial` 标签节点 → 重建世界模型场景。
+def load_world_from_memory(agent_or_store, tag: str = "spatial",
+                           limit: int = 200) -> WorldModel:
+    """从带 `spatial` 标签的候选节点重建世界模型场景。
 
     记忆就是缓存：场景 = 记忆节点的实时投影；新增/更新记忆节点即改场景。
+    limit 为 store 读取预算（默认 200），可由场景调用者显式调大。
+    脑侧是语义召回后过滤标签，预算不是实体总数或全库枚举保证。
     """
     store = getattr(agent_or_store, "store", agent_or_store)
     if not hasattr(store, "get_nodes_by_tag"):
         engine = getattr(agent_or_store, "engine", None)
         if engine is not None:
             store = getattr(engine, "store", store)
-    nodes = store.get_nodes_by_tag(tag, limit=200)
+    nodes = store.get_nodes_by_tag(tag, limit=limit)
     wm = WorldModel()
     for n in nodes:
         sp = n.spatial_coordinates or {}
