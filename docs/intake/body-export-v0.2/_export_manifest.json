@@ -105,7 +105,7 @@
    "test_hex_text.py",
    "test_hex_train.py"
   ],
-  "cnn_patch": "test_hex_cnn.py：段④⑤⑥（11 项，依赖上游素材 data/img/0.png）包 if/else——素材在盘时原判据全跑；导出面无素材时显式 SKIP（不伪造通过）；另 10 处替换（9 条规则：旧路径注释/nahida 叙事/人物措辞/立绘与纳西妲措辞/source 字段/变量名/img0 引用）",
+  "cnn_patch": "test_hex_cnn.py：段④⑤⑥（11 项，依赖上游素材 data/img/0.png）包 if/else——素材在盘时原判据全跑；导出面无素材时显式 SKIP（不伪造通过）；另 10 处替换（9 条规则：旧路径注释/旧素材名叙事/素材与角色类措辞/source 字段/变量名等，逐处清单不出现于公开面）",
   "audit_ext": "audit_intake_ext.py（过程物）：.json 纳入扫描面 + .git 排除 + --out；PRIVATE/PATS 未动"
  },
  "note": "导出副本；上游 AEIS 为真源（单向引入）；本批不改写 v0.1 历史件"
