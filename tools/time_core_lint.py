@@ -97,10 +97,10 @@ L9 已判定为"不按违规处理"的既有候选（每条都带豁免回归测
      且核 docstring 自己写「保持率 retain = 1-λ」——所以**参数派生留在调用方是核认可的形态**，
      判为不违规；但要说清：这不是"推荐写法"（同模块的 `cred_step(x, factor) = x*(1-factor)`
      语义上可直接用，`cred_step(last, self.decay) + growth` 就能免掉手写 `1-λ`）。
-   · lingshu/nn/hex_train.py:289 `d_after <= d_before * retain_gain` —— 出现在**阈值比较**里，
+   · lingshu/nn/hex_train.py（片段定位：`d_after <= d_before * retain_gain`） —— 出现在**阈值比较**里，
      不是乘性更新：没有状态改写、没有自指。retain_gain 是"生长验证"的判据比值，
      与时间演化无关（R3 只认更新，故不匹配）。
-   · lingshu/world/channel_credibility.py:106 `evidence = 1.0 - alpha` —— **跨语句且名字未登记**，
+   · lingshu/world/channel_credibility.py（片段定位：`evidence = 1.0 - alpha`） —— **跨语句且名字未登记**，
      故按逐语句正则口径不匹配（R2(b) 要求目标名 ∈ 保持率词表、R2(c) 要求括号包裹；
      下游 `* 20.0` 在下一语句）。★ 措辞上说清楚：这是"机制上抓不到"，**不是"性质上不是保持率"**
      ——`1 - α` 当证据保留权重、下游乘性使用，离 E5 精神很近，值得维护者人工看一眼。
