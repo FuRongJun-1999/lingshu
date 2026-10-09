@@ -67,10 +67,23 @@ def ok(cond, msg, extra=""):
           + (("  ← " + str(extra)) if (extra and not cond) else ""))
 
 
+_SEQ = [0]
+
+
 def mk(e, n):
-    """节点工厂（独立观察记录，skip_dedup 保独立身份）——同 #145 守卫体例。"""
-    return [e.add_perception(f"事件节点{i}：独立观察记录{i * 7919}",
-                             skip_dedup=True).id for i in range(n)]
+    """节点工厂：**每次调用内容唯一**（全局递增序号）。
+
+    注意：不能用「固定模板 + 固定乘数」（如 `i * 7919`）——多次调用会生成重复
+    内容，而 `add_perception` 的 M5 去重会把同内容折叠成**同一个节点**
+    （实测：同内容两次调用返回同一 id）。那会让「孤立 end」意外等于链上节点，
+    使测试构造静默失真而非被测逻辑出错。
+    """
+    out = []
+    for _ in range(n):
+        _SEQ[0] += 1
+        out.append(e.add_perception(f"节点#{_SEQ[0]} 独立观察记录",
+                                    skip_dedup=True).id)
+    return out
 
 
 def chain_graph(n=8):
@@ -237,6 +250,102 @@ def group_e_compat():
        "E5 relation_types 过滤在 end_id 路径照常生效")
 
 
+# ---------- F 组：假阳性回归（死胡同不得记截断） ----------
+# 缺陷（本 PR 首版引入，对抗性复审 A6 发现）：截断分支未先判「当前节点仍有出边」，
+# 于是把**死胡同**（天然终点、路径已被完整走完）也记成截断证据，
+# 使「空列表=确无因果」被证伪。
+#
+# 判据的核心区别：
+#   · 到预算**仍有出边**（路径确实没走完）⇒ 记截断 = 合法，
+#   · 走到**天然终点**（出边=0）而 end 不在此路径上 ⇒ 不记截断 = 修复点。
+
+def group_f_no_false_truncation():
+    # 同一张图（链尾是死胡同），只改预算：md=2 时路径未走完（合法截断），
+    # md=3 时走到死胡同（修复点——旧版假阳性）。
+    e = SpacetimeMemoryEngine(":memory:")
+    c = mk(e, 4)
+    for a, b in zip(c, c[1:]):
+        e.add_edge(a, b, EdgeType.CAUSAL)
+    z = mk(e, 1)[0]                      # 不可达的 end
+    ok(len(e.store.get_outgoing_edges(c[3])) == 0,
+       "F1 前置：链尾 c[3] 确为天然终点（出边=0）",
+       len(e.store.get_outgoing_edges(c[3])))
+
+    st_deep = {}
+    r_deep = e.reason_causal(c[0], end_id=z, max_depth=3, causal_stats=st_deep)
+    ok(st_deep.get("truncated", 0) == 0 and len(r_deep) == 0,
+       "F2 走到死胡同且 end 不可达 ⇒ 无截断证据、空列表（旧版：假阳性 1 条）",
+       [len(r_deep), st_deep])
+
+    st_mid = {}
+    r_mid = e.reason_causal(c[0], end_id=z, max_depth=2, causal_stats=st_mid)
+    if st_mid.get("truncated", 0) > 0:
+        ok(all(len(e.store.get_outgoing_edges(x[-1].target_id)) > 0
+               for x in r_mid),
+           "F3 凡上报的截断证据，链尾必须**仍有出边**（不得是死胡同）",
+           [(x[-1].target_id[:8],
+             len(e.store.get_outgoing_edges(x[-1].target_id))) for x in r_mid])
+    else:
+        ok(True, "F3 本预算下无截断证据（同样合法，判据不强制上报）")
+
+    # 正例：链确实未走完 ⇒ 截断证据照常给出（修 A6 不得误伤）
+    e2 = SpacetimeMemoryEngine(":memory:")
+    d = mk(e2, 4)
+    for a, b in zip(d, d[1:]):
+        e2.add_edge(a, b, EdgeType.CAUSAL)
+    st3 = {}
+    e2.reason_causal(d[0], end_id=z, max_depth=1, causal_stats=st3)
+    ok(st3.get("truncated", 0) >= 1,
+       "F4 到预算仍有出边（路径未走完）⇒ 截断证据照常给出（未误伤正例）", st3)
+
+
+# ---------- G 组：stats 键必须存在（防「默认值遮蔽」恒真断言） ----------
+
+def group_g_stats_keys():
+    e, ids = chain_graph(8)
+    st = {}
+    e.reason_causal(ids[0], end_id=ids[7], max_depth=5, causal_stats=st)
+    ok(all(k in st for k in ("max_depth", "complete", "truncated",
+                             "truncated_dropped")),
+       "G1 end_id 分支：四个统计键**必须都在**（不允许靠 .get 默认值过）",
+       sorted(st.keys()))
+
+    e2 = SpacetimeMemoryEngine(":memory:")
+    b = mk(e2, 3)
+    e2.add_edge(b[0], b[1], EdgeType.CAUSAL)
+    e2.add_edge(b[1], b[2], EdgeType.CAUSAL)
+    e2.add_edge(b[2], b[1], EdgeType.CAUSAL)   # A→B→C→B 带环链
+    st2 = {}
+    r2 = e2.reason_causal(b[0], max_depth=5, causal_stats=st2)
+    ok(all(k in st2 for k in ("max_depth", "complete", "truncated",
+                              "truncated_dropped", "cyclic")),
+       "G2 chains 分支：含 cyclic 键", sorted(st2.keys()))
+    ok(st2.get("complete") == 0 and st2.get("cyclic", 0) >= 1,
+       "G3 A→B→C→B 不得报 complete（唯一链是 cyclic）——修 cyclic 错算进 complete",
+       st2)
+    ok(len([c for c in r2 if getattr(c, "cyclic", False)]) == st2.get("cyclic", -1),
+       "G4 stats.cyclic 与返回列表里 cyclic 链数一致", st2)
+
+
+    # importance_weighted=True 时，高 importance 的截断链**不得抢占**首元素
+    # （对抗性复审 B2：原排序键忽略了 truncated 位）
+    e3 = SpacetimeMemoryEngine(":memory:")
+    start = e3.add_perception("起点", skip_dedup=True, importance=0.5).id
+    endn = e3.add_perception("终点", skip_dedup=True, importance=0.5).id
+    mid = e3.add_perception("中间低重要性", skip_dedup=True, importance=0.01).id
+    e3.add_edge(start, mid, EdgeType.CAUSAL)
+    e3.add_edge(mid, endn, EdgeType.CAUSAL)          # 完整支：2 跳，低 importance
+    hi = [e3.add_perception(f"高重要性{i}", skip_dedup=True,
+                            importance=0.99).id for i in range(4)]
+    e3.add_edge(start, hi[0], EdgeType.CAUSAL)
+    for x, y in zip(hi, hi[1:]):
+        e3.add_edge(x, y, EdgeType.CAUSAL)           # 截断支：高 importance
+    w = e3.reason_causal(start, end_id=endn, max_depth=2, importance_weighted=True)
+    ok(len(w) >= 2 and getattr(w[0], "truncated", False) is False,
+       "E6 importance_weighted 下首元素仍是**完整**链（高 importance 截断链不得抢占）",
+       [len(w), getattr(w[0], "truncated", None) if w else None])
+
+
 def main():
     print("== A 组：超深链 ⇒ 截断证据（旧：静默 0 条） ==")
     group_a_truncation_visible()
@@ -248,13 +357,17 @@ def main():
     group_d_optin_unbounded()
     print("== E 组：兼容 —— 既有分支与用法照旧 ==")
     group_e_compat()
+    print("== F 组：假阳性回归 —— 死胡同不得记截断 ==")
+    group_f_no_false_truncation()
+    print("== G 组：stats 键存在性与 cyclic 归集 ==")
+    group_g_stats_keys()
     print()
     print(f"===== SUMMARY {len(_PASS)}/{len(_PASS) + len(_FAIL)} 通过 =====")
     if _FAIL:
         print("FAILS:", _FAIL)
         return 1
     print("VERDICT=PASS（end_id 路径超深 ⇒ 截断证据可见且可审计；"
-          "空列表=确无因果；预算内读数不变）")
+          "死胡同不误报；空列表=确无因果；预算内读数不变）")
     return 0
 
 

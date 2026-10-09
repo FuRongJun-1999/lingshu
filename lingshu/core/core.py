@@ -914,21 +914,31 @@ class LayeredStore:
         v1.16 图架构增强：relation_types 可多类型（默认 causal；
         传 ['causal','similar','hierarchical'] 可做相似递推/归属层级推理）。
 
-        issue #145 同族补修（**传 end_id 的这一半**）——到 max_depth 仍有出边时，
-        不再直接丢弃该分支：保留路径并标 `CausalChain(truncated=True)`，与
-        「确无因果路径」（空列表）**可区分**。对照不传 end_id 的分支
-        （`SpacetimeMemoryEngine.reason_causal` 的 chains 分支），两者口径一致。
+        issue #145 同族补修（**传 end_id 的这一半**）——到 max_depth 且**该节点
+        仍有出边**时，不再直接丢弃该分支：保留路径并标 `CausalChain(truncated=True)`，
+        与「确无因果路径」可区分（空列表＝确无因果**路径**）。
 
-        - `max_depth`：正整数=深度预算；**None=不限深度**（调用方显式要求「必须
-          找到」时才用——注意无环图上限受节点数约束，有环图靠 on_path 剪枝）。
-        - `causal_stats`：可选出参。传入 dict 即被填充
-          `{max_depth, truncated, complete, truncated_dropped}`——截断事实外传，
-          调用方可判、可审计；`truncated_dropped` 为超出证据上界被丢弃的条数
-          （**不静默**）。
-        - 截断证据条数受 `TRUNCATED_EVIDENCE_CAP` 约束，防分叉图组合爆炸。
+        **语义变化（相对旧实现，如实声明）**：
+        - 旧实现 max_depth 超预算一律返回 `[]`；现在**预算内可达 end 的完整路径
+          依旧返回，且仍是列表前缀**；仅当无完整路径时才会返回截断证据。
+        - 因此返回列表的**末项可能不以 end_id 结尾**（截断链尾＝预算边界节点）。
+          调用方若假设"每条都通到 end"，需据 `truncated` 位分别处置。
+        - `max_depth=0` 旧返 `[]`，现在会返回 1 条截断证据（若 start 有出边）；
+          `max_depth<0` 同 0。`max_depth=None` 为**不限深度**，递归深度受图规模
+          约束（超深图可能 `RecursionError`，调用方自行评估）。
+        - 与不传 end_id 的分支**只共享「到预算仍存出边即记截断」这一条判据**，
+          其余（cyclic 归集、complete 的构成）不宣称同口径。
 
-        返回元素为 `CausalChain`（list 子类，见本类定义）——向后兼容既有
-        下标/迭代/len/json 用法；`truncated`/`cyclic` 为新增只读语义位。
+        - `causal_stats`：可选出参，传入 dict 即被填充。不传 end_id 的分支另有
+          `cyclic` 字段（`complete + truncated + cyclic` = 返回链总数）；传 end_id
+          的分支则为 `{max_depth, complete, truncated, truncated_dropped}`。
+          `truncated_dropped` 为超出证据上界（`TRUNCATED_EVIDENCE_CAP`，防分叉图
+          组合爆炸）被丢弃的条数——**不静默**。
+        - `TRUNCATED_EVIDENCE_CAP=8` 为**工程初值**（未做敏感性实验），只约束截断
+          证据；完整路径数不受其限制。
+
+        返回元素为 `CausalChain`（list 子类，见本类定义）——下标/迭代/len/相等
+        比较/pickle 均与 list 兼容；`truncated`/`cyclic` 为新增只读语义位。
         """
         types = relation_types or ["causal"]
         type_set = {t.lower() for t in types}
@@ -939,19 +949,21 @@ class LayeredStore:
 
         def dfs(current_id: str, path: List[STEdge], depth: int):
             nonlocal truncated_dropped
-            if max_depth is not None and depth > max_depth:
-                # 预算耗尽：本分支仍有可达路径 ⇒ 截断证据（不丢弃、不与
-                # 「确无因果」混同）。仅在确有成链路径时记。
-                if path:
-                    if len(truncated_all) < self.TRUNCATED_EVIDENCE_CAP:
-                        truncated_all.append(CausalChain(path, truncated=True))
-                    else:
-                        truncated_dropped += 1
-                return
             if current_id == end_id and path:
                 all_paths.append(CausalChain(path))
                 return
             if current_id in visited:
+                return
+            if max_depth is not None and depth > max_depth:
+                # 预算耗尽。**必须先确认本节点仍有出边**（与不传 end_id 分支的
+                # `if not kept` 天然终点判定同口径）：无出边者是**天然终点**
+                # （死胡同），到 end 确无路径 ⇒ 不记截断，否则会把「确无因果」
+                # 误报成「链太长」（假阳性）。
+                if path and self.get_outgoing_edges(current_id):
+                    if len(truncated_all) < self.TRUNCATED_EVIDENCE_CAP:
+                        truncated_all.append(CausalChain(path, truncated=True))
+                    else:
+                        truncated_dropped += 1
                 return
             visited.add(current_id)
             edges = self.get_outgoing_edges(current_id)
@@ -2481,11 +2493,17 @@ class SpacetimeMemoryEngine:
             collect(start_id, [], {start_id}, 0)
             paths = chains
             if causal_stats is not None:
+                # 三条出口形态互斥，显式分解：complete + truncated + cyclic。
+                # 此前把 cyclic 链算进 complete（A→B→C→B 会报 complete=1 而无
+                # 任何「完整」链），与 end_id 分支口径不符。
+                cyclic_count = len([c for c in chains
+                                    if getattr(c, "cyclic", False)])
                 causal_stats.update({
                     "max_depth": max_depth,
-                    "complete": len(chains) - truncated_kept,
+                    "complete": len(chains) - truncated_kept - cyclic_count,
                     "truncated": truncated_kept + truncated_dropped,
                     "truncated_dropped": truncated_dropped,
+                    "cyclic": cyclic_count,
                 })
         # importance 加权排序
         if importance_weighted and paths:
@@ -2498,7 +2516,11 @@ class SpacetimeMemoryEngine:
                 imp = {r[0]: r[1] for r in rows}
                 vals = [imp.get(i, 0.5) for i in ids]
                 return sum(vals) / len(vals) if vals else 0.5
-            paths.sort(key=lambda p: (-_imp_mean(p), len(p)))
+            # **完整路径优先**：先按 truncated 位分层（完整在前），层内再按原口径
+            # （importance 均值、长度）排序。否则 importance 高的截断链会抢占首元素，
+            # 破坏「已有完整解时首元素是最短完整路径」的既有读数。
+            paths.sort(key=lambda p: (bool(getattr(p, "truncated", False)),
+                                      -_imp_mean(p), len(p)))
         # 子图感知：尾节点知识点子图
         if include_subgraph:
             decorated = []
@@ -3344,7 +3366,8 @@ class SpacetimeMemoryEngine:
 
     def scene_simulator(self, action: str, params: dict = None) -> dict:
         """场景级世界模拟器（里程碑2.3 · 自主行为玩家）：
-        - create: 创建场景（size/trees/water/seed——seed 播种物理世界，缺省 42）
+        - create: 创建场景（size/trees/water；seed 缺省 42——**只播种实体行为随机流
+          （wander 等），地形布局与 seed 无关**，见 world/voxel_world.py）
         - entity: 添加自主实体（category/behavior/pos/speed/goal——wander/seek/avoid/flee/follow）
         - path: 定义巡逻路径（path_id/points）
         - step: 推进 n tick（所有自主实体决策→行动→场景演化）
@@ -3388,7 +3411,7 @@ class SpacetimeMemoryEngine:
 
     def spacetime_consistency(self, action: str, params: dict = None) -> dict:
         """时空一致性验证（里程碑2.4 · 阶段2收官）——世界模型自洽判定：
-        - init: 初始化一致性验证器（size/seed/window/hit_threshold/drift_rate/drift_ticks/consistent_rate/min_consistent_ticks——seed 播种内部物理世界，缺省 42）
+        - init: 初始化一致性验证器（size/seed/window/hit_threshold/drift_rate/drift_ticks/consistent_rate/min_consistent_ticks——seed 缺省 42，**只播种实体行为随机流，地形与 seed 无关**）
         - create: 创建场景（透传 SceneSimulator）
         - entity: 添加自主实体（wander/seek/avoid/flee/follow）
         - path: 定义巡逻路径
