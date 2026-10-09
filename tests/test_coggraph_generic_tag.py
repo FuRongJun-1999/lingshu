@@ -34,9 +34,8 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-sys.path.insert(0, os.path.join(REPO, "tools", "coggraph"))
 
-import derive_edges as D  # noqa: E402
+from tools.coggraph import derive_edges as D  # noqa: E402
 
 #: 上游（修复前）判据——只在本件里作对照读数用，不改仓内文件
 OLD_GENERIC_TAG = re.compile(
