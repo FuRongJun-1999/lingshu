@@ -236,10 +236,17 @@ def main(argv=None):
         deg[e["t"]] += 1
     r4 = 0
     for day, ids in sorted(day_hub.items()):
+        # hub() 是累加语义（hubs[hid]["count"] += count），必须与 R1/R2 一样**只登记一次**；
+        # 写在逐节点循环内会得到 len(ids) × 该日孤立节点数（issue #45 第一处）。
+        # 登记点取「该日首个孤立节点」而非无条件提前到循环外：整日无孤立节点时，
+        # 提前登记会凭空多出一个「零辐条日枢纽」（count>0 却无边），改变节点集合，
+        # 与本修法「只改 count 口径、节点/边集合不变」相悖 —— 故惰性登记。
+        hid = None
         for nid in ids:
             if deg[nid] > 0:
                 continue
-            hid = hub("day:" + day, "day", "日 " + day, len(ids))
+            if hid is None:
+                hid = hub("day:" + day, "day", "日 " + day, len(ids))
             if add(nid, hid, "same_day", "R4_same_day", 0.2):
                 r4 += 1
     per_rule["R4_same_day"] = r4

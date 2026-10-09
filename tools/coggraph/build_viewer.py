@@ -184,6 +184,24 @@ def build_layout(nodes, hubs_by_id):
     return pos
 
 
+def center_hubs(pos, hubs_by_id, all_edges, ndigits=1):
+    """枢纽坐标移到成员质心（否则全部 src:/day:/session: 枢纽挤在原点，形成巨型扇形射线）。
+
+    必须在把 pos 拷进 vnodes 之前调用 —— 拷贝之后改 pos 不会影响已写入的坐标（issue #45 第二处）。
+    """
+    hub_neigh = collections.defaultdict(list)
+    for e in all_edges:
+        for a, b in ((e["s"], e["t"]), (e["t"], e["s"])):
+            if a in hubs_by_id and b not in hubs_by_id:
+                hub_neigh[a].append(b)
+    for hid, neigh in hub_neigh.items():
+        pts = [pos.get(x) for x in neigh if x in pos]
+        if pts:
+            pos[hid] = (round(sum(p[0] for p in pts) / len(pts), ndigits),
+                        round(sum(p[1] for p in pts) / len(pts), ndigits))
+    return pos
+
+
 def fetch_cytoscape(out_dir):
     p = os.path.join(out_dir, "cytoscape.min.js")
     if os.path.isfile(p) and os.path.getsize(p) > 100000:
@@ -286,24 +304,15 @@ def main(argv=None):
                        "bucket": "", "tags": [], "importance": 0,
                        "degree": h["count"], "hub": True})
 
+    # 先算布局，再把枢纽移到成员质心（必须在拷进 vnodes 之前；否则拷贝到的是未居中的坐标）
     pos = build_layout(g["nodes"], hubs_by_id)
+    center_hubs(pos, hubs_by_id, all_edges)
+
     for n in vnodes:
         x, y = pos.get(n["id"], (0.0, 0.0))
         n["x"], n["y"] = x, y
         n["bg"] = LAYER_COLOR.get(n["layer"], "#888888")
         n["ncls"] = title2cls.get((n.get("title") or "").strip(), "")
-
-    # 枢纽移到成员质心（否则全部 src:/day:/session: 枢纽挤在原点，形成巨型扇形射线）
-    hub_neigh = collections.defaultdict(list)
-    for e in all_edges:
-        for a, b in ((e["s"], e["t"]), (e["t"], e["s"])):
-            if a in hubs_by_id and b not in hubs_by_id:
-                hub_neigh[a].append(b)
-    for hid, neigh in hub_neigh.items():
-        pts = [pos.get(x) for x in neigh if x in pos]
-        if pts:
-            pos[hid] = (round(sum(p[0] for p in pts) / len(pts), 1),
-                        round(sum(p[1] for p in pts) / len(pts), 1))
 
     vedges = []
     et_count = collections.Counter()
