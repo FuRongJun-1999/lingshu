@@ -1,55 +1,23 @@
-# tests/ · 运行方式与已知状态
+# tests/ · 当前运行方式
 
-> 本文档登记测试件的双模式运行方式、已知红与耗时档位。改动结论均以**能被独立复跑**为准。
+完整门禁由 [.github/workflows/gate.yml](../.github/workflows/gate.yml) 定义：
 
-## 一键运行
+1. 安装 `pip install -e ".[full,dev]"`。
+2. 逐一运行 workflow 的 `SCRIPT_TESTS`（`python -X utf8 <文件>`），任一非零退出码即失败。
+3. 使用 `python -X utf8 -m pytest tests/ -v`，并通过 `--ignore` 排除已在前一步独立执行的脚本文件。所有其他 pytest 用例都参加检查。
 
-```bash
-pip install -e ".[full,dev]"     # world/nn/gen 需 numpy+Pillow；dev 提供 pytest
-python -m pytest tests/ -v -rs --ignore=tests/test_hex_search.py --ignore=tests/test_hex_hier.py
-                                 # ↑ 快档（≈80s）；两个重件见下表
-python -m pytest tests/ -v -rs   # 全量（≈20min，含两个重件）
+部分脚本在模块导入时执行或退出，直接对目录运行 pytest 不能替代上述完整门禁。脚本列表统一以 workflow 为准，不在这里维护另一份名单。
+
+脑适配器测试需要公开 `dsh-memory` 代码目录，由 `MDCG_BRAIN_PYTHONPATH` 指定。CI 会 clone 公开仓并实际运行；只有公开仓不可达时才显示具体 SKIP 原因。它不使用真实记忆数据库。
+
+结构服务业务回归运行：
+
+```text
+python -X utf8 -m pytest tests/test_structure_events.py tests/test_structure_writer.py -q
 ```
 
-## 双模式说明
+TLS 子进程测试使用 OpenSSL CLI 在临时目录生成证书与私钥，文件不会进入仓库。GitHub Ubuntu runner 提供该工具；本地需先安装 OpenSSL CLI。Windows 的临时 ACL 调整只作用于测试自身目录。
 
-测试件支持两种入口，断言集一致：
+两条 `test_hex_text` 历史 known-fail 现在已通过原断言，gate 已移除对应 deselect；没有添加 xfail。旧 intake 中的 6/16、7/12 是历史导出读数，不能用来描述当前实现。
 
-| 形态 | 文件 | 说明 |
-|---|---|---|
-| pytest 原生 | `test_hex_ortho` `test_hex_search` `test_hex_text` `test_hex_train` `test_hex_hier` | `python -m pytest <file> -v`；直接 `python <file>` 亦转投 pytest |
-| 脚本/pytest 双模式 | `test_hex_cnn` `test_hex_composite` `test_hex_gen` `test_brain_store` `test_wm_verify_unobserved` | `python tests/test_<x>.py` 原样保留（intake 复跑命令不变）；执行体收拢在 `main()`/`run_checks()`，pytest 经薄包装入口收集（见下"改造注记"） |
-
-前置说明：`test_brain_store` 需环境变量 `MDCG_BRAIN_PYTHONPATH`（脑包目录）才全跑，
-缺前置时显式 SKIP 并以 0 退出——CI 中该件恒为 SKIP，不阻塞。
-
-## 耗时档位（上游 intake v0.2 §四实测；本地 py3.12/numpy2.5.1 同量级）
-
-| 档位 | 文件 | 耗时 |
-|---|---|---|
-| 快档 | 其余全部 | 合计 ≈80s |
-| 重件 | `test_hex_search` | ≈361.6s |
-| 重件 | `test_hex_hier` | ≈657.5s |
-
-CI（`.github/workflows/ci.yml`）按此分两档：快档随 push/PR 跑；慢档每周一定时 +
-手动触发（workflow_dispatch）。
-
-## 已知红（如实登记，非本仓引入）
-
-`test_hex_text` 含 **2 项已知红**：`test_spatial_detect_finds_single_object`（6/16）、
-`test_multimodal_check_clean_vs_corrupt`（7/12）。**上游 AEIS 同跑同红、失败读数逐位
-相同**（intake body-export-v0.2 §五）⇒ 系历史既有（环境/训练数值性），非导出引入。
-
-处理方式：两项已标 `@pytest.mark.xfail(strict=True)`——套件保持全绿可当门禁，
-reason 内登记出处；修好后以 XPASS→FAIL 提醒摘牌。另见 issue #24（判据本身
-"不可复算"的批评在案）。
-
-## 改造注记（2026-10-08 · 测试基建）
-
-- `test_hex_cnn` 原为模块级直跑脚本——pytest 收集时即触发 `sys.exit`，
-  **整个 `tests/` 目录无法一键收集**（INTERNALERROR）。现执行体收拢进 `main()`，
-  脚本模式退出码语义不变；本地读数 `13 passed, 0 failed`（改造前后逐位一致）。
-- `test_brain_store` / `test_wm_verify_unobserved` 原有 `main()` 但 pytest 收不到
-  用例；各加一个薄包装 `test_*()`（`assert main() == 0`），断言零改动。
-- `test_hex_text` 两项已知红加 xfail 标注（断言与数值判据零改动）。
-- 新增根 `conftest.py`（sys.path 注入）与 `.github/workflows/ci.yml`（快/慢双档）。
+SciPy 属可选后端，未安装时其现有专属测试显式 skip；不要将 skip 记为运行通过。核心和 NumPy 路径正常运行。

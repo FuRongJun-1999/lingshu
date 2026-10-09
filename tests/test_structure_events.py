@@ -138,3 +138,40 @@ def test_existing_configuration_paths_use_common_history(engines, monkeypatch):
     history = engine.store.get_nodes_by_tag("verifier_standard")
     assert len(history) == 1
     assert history[0].state_attributes["structure_event"]["metadata"]["standard_id"] == "standard-1"
+
+
+def test_configuration_history_failure_keeps_effective_configuration(engines, monkeypatch):
+    monkeypatch.setenv("AEIS_DESIGNER_KEY", DUMMY_KEY)
+    engine = engines()
+    weights = {"recall": 0.5}
+    engine._attention_policy = SimpleNamespace(
+        preference_weights=weights,
+        set_weight=lambda key, value, source, reason, role: weights.update({key: value}))
+    engine._verifier_config = {"dedup_static": 0.85, "deviation_threshold": 0.3}
+    engine._dedup_static, engine._cognition = 0.85, None
+    engine.store.conn.execute(
+        "INSERT INTO verifier_standards(id,name,param,value,reason,proposer,status) "
+        "VALUES ('standard-fault','dedup','dedup_static',0.8,'test','proposer','cs_approved')")
+    engine.store.conn.execute(
+        "CREATE TRIGGER reject_configuration_history BEFORE INSERT ON action_logs "
+        "WHEN NEW.action_type='structure_event' "
+        "BEGIN SELECT RAISE(ABORT,'synthetic failure'); END")
+    engine.store.conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        engine.adjust_attention_weight("recall", 0.7, "operator", "calibration")
+    assert weights == {"recall": 0.5}
+    assert engine.store.get_meta("attention_weights") == {}
+    with pytest.raises(sqlite3.IntegrityError):
+        engine.adjudicate_verifier_standard("standard-fault", "designer", True, DUMMY_KEY)
+    assert engine._dedup_static == 0.85
+    assert engine.store.conn.execute(
+        "SELECT status FROM verifier_standards WHERE id='standard-fault'").fetchone()[0] == "cs_approved"
+    assert engine.store.count_layer(MemoryLayer.STRUCTURE) == 0
+    engine.store.conn.execute("DROP TRIGGER reject_configuration_history")
+    engine.store.conn.commit()
+    assert engine.adjust_attention_weight("recall", 0.7, "operator", "calibration")
+    assert engine.adjudicate_verifier_standard("standard-fault", "designer", True, DUMMY_KEY)
+    engine._dedup_static = 0.85
+    weights["recall"] = 0.1
+    engine._restore_structure_configuration()
+    assert engine._dedup_static == 0.8 and weights["recall"] == 0.7

@@ -386,6 +386,19 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
     """ELF x-prediction 背书的目标：预测干净 cell（非噪声）。
     conv 核支路的有限差分调整，conv 段冻结 mix/fc（预训练只调特征前端）。"""
     rng = np.random.default_rng(seed)
+    # 固定评估样本与掩码：init/final 必须测量同一个重建任务。
+    evaluation = x[:batch, ..., :1]
+    eval_hole = np.random.default_rng(seed).random(evaluation.shape[:3]) < mask_ratio
+    eval_masked = evaluation.copy()
+    eval_masked[eval_hole] = 0.0
+
+    def recon_loss(masked, target, hole) -> float:
+        h = hex_conv_batch_multi(masked[..., :1], net.conv[:, None, :])
+        pred = h.mean(axis=-1, keepdims=True)
+        # 单通道预测应比较同一通道，不能广播到另外两个颜色通道。
+        return float(((pred[hole] - target[..., :1][hole]) ** 2).mean())
+
+    initial = recon_loss(eval_masked, evaluation, eval_hole)
     curve = []
     conv_vec_len = net.K * 7
     for step in range(steps):
@@ -394,28 +407,23 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
         masked = xb.copy()
         hole = rng.random(xb.shape[:3]) < mask_ratio
         masked[hole] = 0.0
-
-        def recon_loss() -> float:
-            # 原实作取 [..., 0]（只第 0 通道），此处保持同一语义
-            h = hex_conv_batch_multi(masked[..., :1], net.conv[:, None, :])
-            pred = h.mean(axis=-1, keepdims=True)
-            return float(((pred[hole] - xb[hole]) ** 2).mean())
-
-        vec = net.conv.ravel()
+        vec = net.conv.ravel().copy()
         sample = rng.choice(conv_vec_len, size=min(samples_per_step, conv_vec_len),
                             replace=False)
         for pi in sample:
             vp, vm = vec.copy(), vec.copy()
             vp[pi] += eps; vm[pi] -= eps
-            net.conv = vp.reshape(net.K, 7); dp = recon_loss()
-            net.conv = vm.reshape(net.K, 7); dm = recon_loss()
+            net.conv = vp.reshape(net.K, 7)
+            dp = recon_loss(masked, xb, hole)
+            net.conv = vm.reshape(net.K, 7)
+            dm = recon_loss(masked, xb, hole)
             net.conv = vec.reshape(net.K, 7)
             g = (dp - dm) / (2 * eps)
             vec[pi] -= lr * g
         net.conv = vec.reshape(net.K, 7)
-        curve.append(round(recon_loss(), 5))
-    return {"algo": ALGO + "+selfsup", "init": curve[0], "final": curve[-1],
-            "curve": curve}
+        curve.append(round(recon_loss(eval_masked, evaluation, eval_hole), 5))
+    return {"algo": ALGO + "+selfsup", "init": round(initial, 5),
+            "final": curve[-1] if curve else round(initial, 5), "curve": curve}
 
 
 # ==================== 类别条件卡 · 四态判定（三层分工） ====================

@@ -141,13 +141,14 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
         if node["verdict"] == "REJECT":
             stats["rejected"] += 1
             return
-        if node["verdict"] == "ACCEPT":
+        if node["verdict"] == "ACCEPT" and depth > 0:
             # 位置 = 子区域中心的归一化坐标 → 3×3 象限
             cy, cx = (qy0 + qy1) / 2, (qx0 + qx1) / 2
             pos = f"r{min(2, int(cy * 3)) * 3 + min(2, int(cx * 3))}"
             found.append({"obj": node["obj"], "pos": pos,
                           "conf": node["conf"], "depth": depth})
             return
+        # 分类置信不证明根域只含一个物体；先定位到子域，再交付位置。
         # DEFER → 递归深化(可能性引导:切 3×3,空子域被粗筛剪掉)
         stats["deferred"] += 1
         if depth >= max_depth:
@@ -159,10 +160,12 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
             for j in range(3):
                 ssub = sub[:, i * rr // 3:(i + 1) * rr // 3,
                            j * cc // 3:(j + 1) * cc // 3]
-                if ssub.shape[0] == 0 or ssub.shape[1] == 0:
+                if ssub.shape[1] == 0 or ssub.shape[2] == 0:
                     continue
-                search(ssub, qy0 + i / 3, qy0 + (i + 1) / 3,
-                       qx0 + j / 3, qx0 + (j + 1) / 3, depth + 1,
+                search(ssub, qy0 + (qy1 - qy0) * i / 3,
+                       qy0 + (qy1 - qy0) * (i + 1) / 3,
+                       qx0 + (qx1 - qx0) * j / 3,
+                       qx0 + (qx1 - qx0) * (j + 1) / 3, depth + 1,
                        parent_share=share)
 
     search(lat, 0.0, 1.0, 0.0, 1.0, 0)

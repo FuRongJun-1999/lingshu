@@ -97,7 +97,7 @@ L9 已判定为"不按违规处理"的既有候选（每条都带豁免回归测
      且核 docstring 自己写「保持率 retain = 1-λ」——所以**参数派生留在调用方是核认可的形态**，
      判为不违规；但要说清：这不是"推荐写法"（同模块的 `cred_step(x, factor) = x*(1-factor)`
      语义上可直接用，`cred_step(last, self.decay) + growth` 就能免掉手写 `1-λ`）。
-   · lingshu/nn/hex_train.py:289 `d_after <= d_before * retain_gain` —— 出现在**阈值比较**里，
+   · lingshu/nn/hex_train.py:348 `d_after <= d_before * retain_gain` —— 出现在**阈值比较**里，
      不是乘性更新：没有状态改写、没有自指。retain_gain 是"生长验证"的判据比值，
      与时间演化无关（R3 只认更新，故不匹配）。
    · lingshu/world/channel_credibility.py:106 `evidence = 1.0 - alpha` —— **跨语句且名字未登记**，
@@ -106,7 +106,7 @@ L9 已判定为"不按违规处理"的既有候选（每条都带豁免回归测
      ——`1 - α` 当证据保留权重、下游乘性使用，离 E5 精神很近，值得维护者人工看一眼。
    · lingshu/gen/hexgen_self_source.py:236/240/411/413、gen/hexgen_c1_real.py:464-465
      —— 互补权重线性插值 / alpha 合成（EX4）。
-   · lingshu/core/core.py:1773/1782/1783 `math.sqrt(p * (1 - p) / n)` —— 伯努利标准误（EX3）。
+   · lingshu/core/core.py:1859/1868/1869 `math.sqrt(p * (1 - p) / n)` —— 伯努利标准误（EX3）。
 """
 from __future__ import annotations
 
