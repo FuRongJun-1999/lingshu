@@ -95,7 +95,7 @@ class ActivationEngine:
         self.db_path = db_path
         self.audit_path = audit_path
         self._ensure_tables()
-        self._adj = None            # 缓存稀疏邻接(node_idx 矩阵)
+        self._adj = None            # 本轮稀疏邻接(node_idx 矩阵)
         self._node_index = None     # node_id → idx
         self._edge_meta = None      # (src_idx, dst_idx, edge_type) 列表
 
@@ -111,11 +111,12 @@ class ActivationEngine:
     def _con(self):
         return sqlite3.connect(self.db_path, timeout=30)
 
-    # ---------------- 图缓存(numpy 全图矩阵化) ----------------
+    # ---------------- 本轮图读取(numpy 全图矩阵化) ----------------
     def _load_graph(self):
-        """全图→(稀疏邻接矩阵, 节点索引, 边元数据)——CSPMN 全图并行的底物。缓存。"""
-        if self._adj is not None:
-            return
+        """每轮重读全图，保证已提交的节点/边变更进入索引与传播底物。
+
+        与 edge-list 路径一致，不跨轮复用缺乏失效机制的稀疏矩阵。
+        """
         con = self._con()
         cur = con.cursor()
         cur.execute("SELECT id FROM nodes")
