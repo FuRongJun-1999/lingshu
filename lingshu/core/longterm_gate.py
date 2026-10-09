@@ -25,7 +25,7 @@ class LongTermMemoryGate:
 
     # 默认权重（可配；场景化权重调整留作后续）
     DEFAULT_WEIGHTS = {
-        "novelty": 0.30,   # 新信息度（1 - 与最相似现有节点的相似度）
+        "novelty": 0.30,   # 新信息度（核心词新颖比例；参考集 = 全库既有知识）
         "trust": 0.25,     # 信任（来源可信度）
         "d2": 0.15,        # 信息差二阶变化（加速=新领域涌现）
         "t2": 0.15,        # 信任二阶变化（信任跃升=里程碑/校准锚点）
@@ -77,37 +77,57 @@ class LongTermMemoryGate:
             return 0.0
         return max(-0.5, min(0.5, d1[-1] - d1[0]))
 
+    @staticmethod
+    def _core_grams(text: str) -> set:
+        """核心词：4 字片段为主、3 字为辅（纯数字/字母片段是噪音，不算）。"""
+        import re as _re
+        t = _re.sub('[^\u4e00-\u9fffA-Za-z0-9]', '', text or "")
+        grams = set()
+        for n in (4, 3):
+            for i in range(len(t) - n + 1):
+                g = t[i:i + n]
+                if len(g) == n and not _re.match(r'^[\dA-Za-z_]+$', g):
+                    grams.add(g)
+        return grams
+
+    def _known_grams(self, exclude_id: str = None) -> set:
+        """已有知识的核心词表——覆盖**全库**节点（v1.27 修）。
+
+        旧实现用 `store.query_nodes(limit=80)` 取参考集，而该查询按
+        `importance DESC, last_access DESC` 排序（core.py:639），
+        参考集于是只是「最重要的 80 条」；库里更老的既有知识对它不可见，
+        同一句已存在的内容会被判为新知识（重复入库、importance 倒挂）。
+        参考集是硬判依据（NOVEL_TRIGGER=0.75），不能做排名采样。
+        成本：5000 节点全扫约 13ms（纯标准库、无缓存）。
+
+        exclude_id：排除被评估节点自身——让「已有节点重新评估」
+        （promote_from_context / 重复快照）衡量的是相对**其它**节点的新信息。
+        """
+        known = set()
+        skip = str(exclude_id) if exclude_id else None
+        rows = self.engine.store.conn.execute(
+            "SELECT id, content FROM nodes").fetchall()
+        for nid, content in rows:
+            if skip is not None and str(nid) == skip:
+                continue
+            known |= self._core_grams(content)
+        return known
+
     def _novelty(self, content: str, existing_id: str = None) -> float:
-        """新信息度（v1.15 改：核心词新颖比例，非整句相似度）。
+        """新信息度（v1.27 改：参考集覆盖全库，并真正使用 existing_id）。
 
         海马体识别的是「新信息成分」——句子里有多少**核心词**是库里没见过的。
-        旧算法用整句相似度，会因「库里有相关节点」误判为不新。
-        新算法：提取输入的核心词（3-4 字片段，短词是噪音不算），
-        统计其中未在任何现有节点出现过的比例。
+        v1.15 起用核心词新颖比例（非整句相似度），但参考集取的是排名前 80 条，
+        「库里的老知识」对它不可见：同一内容只改写入先后/importance，
+        新奇度就在 1.0 与 0.0 两端跳变。现按全库统计，且 existing_id 生效。
         """
         try:
-            import re as _re
-            text = _re.sub('[^\u4e00-\u9fffA-Za-z0-9]', '', content or "")
-            # 核心词：4 字片段为主，3 字为辅（短二元组太碎、易误判）
-            grams = set()
-            for n in (4, 3):
-                for i in range(len(text) - n + 1):
-                    g = text[i:i + n]
-                    if g and not _re.match(r'^[\dA-Za-z_]+$', g):
-                        grams.add(g)
+            grams = self._core_grams(content)
             if not grams:
                 return 0.5
-            # 已有知识的核心词表（合并采样）
-            known = set()
-            for node in self.engine.store.query_nodes(limit=80):
-                c = _re.sub('[^\u4e00-\u9fffA-Za-z0-9]', '', node.content or "")
-                for n in (4, 3):
-                    for i in range(len(c) - n + 1):
-                        g = c[i:i + n]
-                        if len(g) == n and not _re.match(r'^[\dA-Za-z_]+$', g):
-                            known.add(g)
+            known = self._known_grams(exclude_id=existing_id)
             if not known:
-                return 0.5
+                return 0.5  # 无参照：中性
             novel_grams = sum(1 for g in grams if g not in known)
             ratio = novel_grams / max(1, len(grams))
             return max(0.0, min(1.0, ratio))
@@ -265,10 +285,14 @@ class LongTermMemoryGate:
         tags_all = list(dict.fromkeys((tags or []) + ["novel_prefeed", "gate"]))
         node_id = None
         links = 0
+        actual_imp = None
         try:
             node = engine.add_perception(
                 content, importance=imp, tags=tags_all, entities=entities or None)
             node_id = getattr(node, "id", None)
+            # 去重命中时 add_perception 返回的是**既有**节点：回报实际落库值，
+            # 不要回报一个并未生效的计算值（"回报 ≠ 事实"）。
+            actual_imp = getattr(node, "importance", None)
             # 与相关知识建边（信息差驱动的关联）
             try:
                 rel = engine.store.search_content(content, limit=3)
@@ -290,7 +314,9 @@ class LongTermMemoryGate:
             pass
         return {"novel": True, "novelty": round(novelty, 3),
                 "action": "prefeed_boost", "node_id": node_id,
-                "importance": round(imp, 3), "links": links}
+                "importance": round(float(actual_imp if actual_imp is not None
+                                          else imp), 3),
+                "links": links}
 
     def promote_from_context(self, limit: int = 30) -> list:
         """情境层批量提升扫描（睡眠巩固/会话结束时调用）：
