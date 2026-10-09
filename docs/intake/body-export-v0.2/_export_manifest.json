@@ -19,7 +19,7 @@
    "file": "tests/test_hex_cnn.py",
    "src": "tests/test_hex_cnn.py",
    "bytes": 7811,
-   "sha256": "41308cc0b040d973",
+   "sha256": "5da8a696e4403cdf",
    "rewrites": 1,
    "patches": 11,
    "sanitized": 0
@@ -46,7 +46,7 @@
    "file": "tests/test_hex_hier.py",
    "src": "tests/test_hex_hier.py",
    "bytes": 3698,
-   "sha256": "e7780eea7c04b33d",
+   "sha256": "8b482f563168776e",
    "rewrites": 4,
    "patches": 0,
    "sanitized": 0
