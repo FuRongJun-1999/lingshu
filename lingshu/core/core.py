@@ -3344,7 +3344,7 @@ class SpacetimeMemoryEngine:
 
     def scene_simulator(self, action: str, params: dict = None) -> dict:
         """场景级世界模拟器（里程碑2.3 · 自主行为玩家）：
-        - create: 创建场景（size/trees/water）
+        - create: 创建场景（size/trees/water/seed——seed 播种物理世界，缺省 42）
         - entity: 添加自主实体（category/behavior/pos/speed/goal——wander/seek/avoid/flee/follow）
         - path: 定义巡逻路径（path_id/points）
         - step: 推进 n tick（所有自主实体决策→行动→场景演化）
@@ -3360,7 +3360,8 @@ class SpacetimeMemoryEngine:
                 return {"status": "scene_not_ready", "error": str(e)}
         if not hasattr(self, '_scene'):
             self._scene = SceneSimulator(size=int(p.get('size', 24)),
-                                       ground_level=int(p.get('ground_level', 1)))
+                                       ground_level=int(p.get('ground_level', 1)),
+                                       seed=int(p.get('seed', 42)))
         if action == "create":
             r = self._scene.create_scene(trees=int(p.get("trees", 4)),
                                         water=bool(p.get("water", True)))
@@ -3387,7 +3388,7 @@ class SpacetimeMemoryEngine:
 
     def spacetime_consistency(self, action: str, params: dict = None) -> dict:
         """时空一致性验证（里程碑2.4 · 阶段2收官）——世界模型自洽判定：
-        - init: 初始化一致性验证器（size/window/hit_threshold/drift_rate/drift_ticks/consistent_rate/min_consistent_ticks）
+        - init: 初始化一致性验证器（size/seed/window/hit_threshold/drift_rate/drift_ticks/consistent_rate/min_consistent_ticks——seed 播种内部物理世界，缺省 42）
         - create: 创建场景（透传 SceneSimulator）
         - entity: 添加自主实体（wander/seek/avoid/flee/follow）
         - path: 定义巡逻路径
@@ -3410,6 +3411,7 @@ class SpacetimeMemoryEngine:
             self._stc = SpacetimeConsistency(
                 size=int(p.get('size', 24)),
                 ground_level=int(p.get('ground_level', 1)),
+                seed=int(p.get('seed', 42)),
                 window=int(p.get('window', 20)),
                 hit_threshold=float(p.get('hit_threshold', 0.5)),
                 drift_rate=float(p.get('drift_rate', 0.7)),
