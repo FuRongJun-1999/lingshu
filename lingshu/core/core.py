@@ -903,23 +903,53 @@ class LayeredStore:
 
     # ---------- 因果推理 ----------
 
-    def infer_causal_paths(self, start_id: str, end_id: str, max_depth: int = 5,
-                           relation_types: List[str] = None) -> List[List[STEdge]]:
+    TRUNCATED_EVIDENCE_CAP = 8  # 截断证据条数上界；超出即计数外传，不静默
+
+    def infer_causal_paths(self, start_id: str, end_id: str,
+                           max_depth: Optional[int] = 5,
+                           relation_types: List[str] = None,
+                           causal_stats: Dict = None) -> List[List[STEdge]]:
         """
         传递闭包因果推理：找出从 start 到 end 的所有路径。
         v1.16 图架构增强：relation_types 可多类型（默认 causal；
         传 ['causal','similar','hierarchical'] 可做相似递推/归属层级推理）。
+
+        issue #145 同族补修（**传 end_id 的这一半**）——到 max_depth 仍有出边时，
+        不再直接丢弃该分支：保留路径并标 `CausalChain(truncated=True)`，与
+        「确无因果路径」（空列表）**可区分**。对照不传 end_id 的分支
+        （`SpacetimeMemoryEngine.reason_causal` 的 chains 分支），两者口径一致。
+
+        - `max_depth`：正整数=深度预算；**None=不限深度**（调用方显式要求「必须
+          找到」时才用——注意无环图上限受节点数约束，有环图靠 on_path 剪枝）。
+        - `causal_stats`：可选出参。传入 dict 即被填充
+          `{max_depth, truncated, complete, truncated_dropped}`——截断事实外传，
+          调用方可判、可审计；`truncated_dropped` 为超出证据上界被丢弃的条数
+          （**不静默**）。
+        - 截断证据条数受 `TRUNCATED_EVIDENCE_CAP` 约束，防分叉图组合爆炸。
+
+        返回元素为 `CausalChain`（list 子类，见本类定义）——向后兼容既有
+        下标/迭代/len/json 用法；`truncated`/`cyclic` 为新增只读语义位。
         """
         types = relation_types or ["causal"]
         type_set = {t.lower() for t in types}
-        all_paths = []
+        all_paths: List[CausalChain] = []
+        truncated_all: List[CausalChain] = []
+        truncated_dropped = 0
         visited = set()
 
         def dfs(current_id: str, path: List[STEdge], depth: int):
-            if depth > max_depth:
+            nonlocal truncated_dropped
+            if max_depth is not None and depth > max_depth:
+                # 预算耗尽：本分支仍有可达路径 ⇒ 截断证据（不丢弃、不与
+                # 「确无因果」混同）。仅在确有成链路径时记。
+                if path:
+                    if len(truncated_all) < self.TRUNCATED_EVIDENCE_CAP:
+                        truncated_all.append(CausalChain(path, truncated=True))
+                    else:
+                        truncated_dropped += 1
                 return
             if current_id == end_id and path:
-                all_paths.append(list(path))
+                all_paths.append(CausalChain(path))
                 return
             if current_id in visited:
                 return
@@ -933,9 +963,19 @@ class LayeredStore:
             visited.remove(current_id)
 
         dfs(start_id, [], 0)
-        # 按路径长度和平均置信度排序
+        # 完整路径优先：先按长度与平均置信度排序；截断证据次之（同口径排序），
+        # 使「已有完整解」时首元素仍是最短完整路径（既有调用方读数不变）。
         all_paths.sort(key=lambda p: (len(p), -sum(e.confidence for e in p)/len(p)))
-        return all_paths
+        truncated_all.sort(key=lambda p: (len(p), -sum(e.confidence for e in p)/len(p)))
+        paths = all_paths + truncated_all
+        if causal_stats is not None:
+            causal_stats.update({
+                "max_depth": max_depth,
+                "complete": len(all_paths),
+                "truncated": len(truncated_all) + truncated_dropped,
+                "truncated_dropped": truncated_dropped,
+            })
+        return paths
 
     def find_cycles(self, max_depth: int = 10) -> List[List[STEdge]]:
         """检测因果循环（有向简单环）·issue #145 修复。
@@ -2373,27 +2413,39 @@ class SpacetimeMemoryEngine:
     # ==================== 因果推理 ====================
 
     def reason_causal(self, start_id: str, end_id: str = None,
-                      max_depth: int = 5, relation_types: List[str] = None,
+                      max_depth: Optional[int] = 5,
+                      relation_types: List[str] = None,
                       importance_weighted: bool = False,
-                      include_subgraph: bool = False) -> List[List[STEdge]]:
+                      include_subgraph: bool = False,
+                      causal_stats: Dict = None) -> List[List[STEdge]]:
         """
         因果推理（v1.16 图架构增强）：
         - 指定 end_id：查找 start→end 的所有路径（relation_types 可多类型）
+          ——与「未指定」同口径：到深度预算仍有出边 ⇒ 存截断链并标 truncated；
+          空列表=确无因果路径，不再混同于「链太长」（issue #145 同族补修，
+          此前这一半静默返回空，见 tests/test_causal_end_id_truncation.py）
         - 未指定：返回从 start 出发的所有链（每条链最长 max_depth），元素为
           CausalChain（list 子类）——到深度预算仍有出边 ⇒ 存截断链并标
           truncated；链尾遇回边/自环 ⇒ 存链并标 cyclic（可达部分不丢弃）；
           空列表=确无因果后果，不再混同于「链太长/有环」（issue #145）
+        - max_depth：正整数=深度预算；**None=不限深度**（显式要求「必须找到」）
+        - causal_stats：可选出参 dict，两分支同口径填充
+          `{max_depth, truncated, complete, truncated_dropped}`——截断事实外传
         - importance_weighted：路径排序加权（节点 importance 均值）
         - include_subgraph：结果附尾节点知识点子图（嵌套感知）
         """
         if end_id:
-            paths = self.store.infer_causal_paths(start_id, end_id, max_depth,
-                                                  relation_types=relation_types)
+            paths = self.store.infer_causal_paths(
+                start_id, end_id, max_depth, relation_types=relation_types,
+                causal_stats=causal_stats)
         else:
             chains: List[CausalChain] = []
+            truncated_dropped = 0
+            truncated_kept = 0
 
             def collect(current_id: str, path: List[STEdge], on_path: Set[str],
                         depth: int):
+                nonlocal truncated_dropped, truncated_kept
                 edges = self.store.get_outgoing_edges(current_id)
                 if relation_types:
                     tset = {t.lower() for t in relation_types}
@@ -2405,10 +2457,15 @@ class SpacetimeMemoryEngine:
                     if path:
                         chains.append(CausalChain(path))
                     return
-                if depth >= max_depth:
+                if max_depth is not None and depth >= max_depth:
                     # 深度预算用尽仍有出边：存截断链（不丢弃、不混同于无后果）
+                    # 条数受上界约束，超出即计数外传（不静默）
                     if path:
-                        chains.append(CausalChain(path, truncated=True))
+                        if truncated_kept < self.store.TRUNCATED_EVIDENCE_CAP:
+                            chains.append(CausalChain(path, truncated=True))
+                            truncated_kept += 1
+                        else:
+                            truncated_dropped += 1
                     return
                 for e in kept:
                     if e.target_id in on_path:
@@ -2423,6 +2480,13 @@ class SpacetimeMemoryEngine:
 
             collect(start_id, [], {start_id}, 0)
             paths = chains
+            if causal_stats is not None:
+                causal_stats.update({
+                    "max_depth": max_depth,
+                    "complete": len(chains) - truncated_kept,
+                    "truncated": truncated_kept + truncated_dropped,
+                    "truncated_dropped": truncated_dropped,
+                })
         # importance 加权排序
         if importance_weighted and paths:
             def _imp_mean(p):
