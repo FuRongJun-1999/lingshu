@@ -171,3 +171,8 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def test_wm_verify_unobserved_guard():
+    """issue #1 守卫的 pytest 入口（A–D 断言组全跑；失败经 ok()/main() 计入退出码 1）。"""
+    assert main() == 0

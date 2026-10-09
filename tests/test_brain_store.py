@@ -194,3 +194,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def test_brain_store_m1_m2_loop():
+    """M1/M2 最小闭环的 pytest 入口（缺前置 MDCG_BRAIN_PYTHONPATH 时 main() 以 SKIP 退出 0）。"""
+    assert main() == 0
