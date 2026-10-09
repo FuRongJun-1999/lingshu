@@ -64,6 +64,8 @@ env:
     tests/test_coggraph_naming_report.py
     tests/test_skeleton_fk_order_guard.py
     tests/test_expression_render_guard.py
+    tests/test_hex_grid_extent.py
+    tests/test_hex_text_contracts.py
 
 jobs:
   gate:
