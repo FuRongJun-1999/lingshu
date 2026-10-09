@@ -36,7 +36,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "tools", "coggraph"))
 
-import derive_edges as D  # noqa: E402
+# 经包路径导入（`tools` 在依赖闭包守卫 tests/test_gate_dependency_closure.py 的 LOCAL_TOP 白名单内）；
+# 裸 `import derive_edges` 会被该守卫判为「未声明的第三方模块」——本地 coggraph 模块须走包路径或 spec 加载。
+from tools.coggraph import derive_edges as D  # noqa: E402
 
 #: 上游（修复前）判据——只在本件里作对照读数用，不改仓内文件
 OLD_GENERIC_TAG = re.compile(
