@@ -101,14 +101,15 @@ class Skeleton3D:
             local = j.apply_rot(j.pos)
         else:
             p = self.world_pos(j.parent, memo)
-            # 子偏移先被自身旋转，再沿父链向上累积旋转（从根到父逐层应用）
+            # 子偏移先被自身旋转，再沿父链累积：累积旋转 A_child = A_parent · R_child，
+            # 故父链必须从「父」往「根」逐层左乘（父在左、根在右），否则父链合成顺序被反转。
             local = j.apply_rot(j.pos)
             chain = []
             cur = j.parent
             while cur is not None:
                 chain.append(cur)
                 cur = self.joints[cur].parent
-            for anc in reversed(chain):     # 根 → 父
+            for anc in chain:               # 父 → 根
                 local = self.joints[anc].apply_rot(local)
         w = (p[0] + local[0], p[1] + local[1], p[2] + local[2])
         memo[name] = w

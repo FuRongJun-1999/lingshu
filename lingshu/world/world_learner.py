@@ -71,7 +71,8 @@ class WorldLearner:
 
     def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
                  window: int = 6, world: Optional[SceneSimulator] = None):
-        self.world = world or SceneSimulator(size=size, ground_level=ground_level)
+        self.world = world or SceneSimulator(size=size, ground_level=ground_level,
+                                             seed=seed)
         self.size = self.world.world.size
         self.window = max(2, int(window))
         self.nodes: Dict[str, LNNode] = {}

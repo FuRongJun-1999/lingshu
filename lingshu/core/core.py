@@ -289,6 +289,7 @@ class SelfModel:
     history: List[Dict] = field(default_factory=list)          # 状态变更记录
 
     TRUST_HISTORY_MAX = 30  # 对齐 2.9.2 观察窗口 N_effective
+    HISTORY_MAX = 200       # 状态变更记录上界（对齐 trust_history 的钳制手法，值可调）
 
     def update(self, **kwargs):
         """更新 SelfModel 字段并自动落变更历史（state 历史：时间戳+变更键值）。"""
@@ -299,6 +300,9 @@ class SelfModel:
             "timestamp": time.time(),
             "changes": kwargs
         })
+        # 对齐 trust_history：append 后钳制到 HISTORY_MAX，避免随 update_self 调用无界增长
+        if len(self.history) > self.HISTORY_MAX:
+            self.history = self.history[-self.HISTORY_MAX:]
 
     def record_value_change(self, value: str, trigger: str):
         """价值观版本化：2.1.2 价值观修正事件可追溯"""
@@ -1140,7 +1144,7 @@ class LayeredStore:
 
     def search_content(self, query: str, layers: List[MemoryLayer] = None,
                        limit: int = 20) -> List[Tuple[STNode, float]]:
-        """内容检索：多词 OR 预筛（含同义词扩展）+ 二元组 Jaccard 取最大扩展相似度"""
+        """内容检索：多词 OR 预筛（含同义词扩展）+ 原查询二元组 Jaccard 相似度排序"""
         q = query.strip()
         if not q:
             return []
@@ -1171,15 +1175,11 @@ class LayeredStore:
                 c.execute("SELECT * FROM nodes LIMIT 500")
             rows = c.fetchall()
         scored = []
-        # 评分用原查询二元组重叠率（召回导向）；扩展词只负责预筛召回不稀释评分
-        qb = self._bigrams(q)
+        # 评分用原查询二元组 Jaccard（含并集分母，与 char_bigram_jaccard 同式）；
+        # 扩展词只负责预筛召回不稀释评分
         for row in rows:
             node = STNode.from_row(tuple(row))
-            nb = self._bigrams(node.content)
-            if qb:
-                sim = len(qb & nb) / len(qb)
-            else:
-                sim = 0.0
+            sim = self.char_bigram_jaccard(q, node.content)
             tag_bonus = 0.05 if any(t in q or q in t for t in node.tags) else 0.0
             scored.append((node, min(1.0, sim + tag_bonus)))
         # 同分按重要性降序（高质量记忆优先，避免并列截断排挤重要节点）
@@ -5325,8 +5325,11 @@ class SpacetimeMemoryEngine:
             "anchor_count": len(anchors),
             "structure_ok": len(structures) >= 2,
             "structure_count": len(structures),
-            "self_ok": len(self_nodes) > 0 or self.self_model.identity != "",
-            "self_model_exists": self.self_model.identity != "",
+            # 以持久化 SELF 层为准：runtime self_model 在 __init__ 无条件构造（identity
+            # 恒为非空默认值"协议实例"），用其作判据会使 self_ok 恒 True，无法发现失忆/无
+            # 自我——与同函数 anchor_ok / structure_ok 的纯持久化口径保持一致。
+            "self_ok": len(self_nodes) > 0,
+            "self_model_exists": len(self_nodes) > 0,
             "open_blindspots": len(self.store.list_blindspots(status="open")),
             "skills_count": self.store.count_skills(),
             "context_count": self.store.count_layer(MemoryLayer.CONTEXT),

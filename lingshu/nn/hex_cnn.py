@@ -256,25 +256,30 @@ def selfsup_finetune(img_arr: np.ndarray, kernel_name: str = "center_surround",
     w = DEFAULT_KERNELS[kernel_name].copy()
     loss_curve = []
 
-    def recon_loss(wv: np.ndarray) -> float:
+    def recon_loss(wv: np.ndarray, hole: np.ndarray) -> float:
+        """给定掩码下的重建误差。
+
+        掩码由调用方显式传入：同一步内的 base / w+eps / w-eps / 曲线记录必须
+        共用**同一**掩码（common random numbers），否则中心差分算的是
+        「两次换掩码带来的损失波动」，而不是核参数的真实曲率。
+        """
         masked = lum.copy()
-        hole = rng.random(lum.shape[:2]) < mask_ratio
         masked[hole] = 0.0
         pred = hex_conv(masked, wv)[..., :1]
         return float(((pred[hole] - lum[hole]) ** 2).mean())
 
-    init_loss = recon_loss(w)
+    init_loss = recon_loss(w, rng.random(lum.shape[:2]) < mask_ratio)
     for _ in range(epochs):
-        base = recon_loss(w)
+        hole = rng.random(lum.shape[:2]) < mask_ratio      # 每步抽一次；步内共用
         grads = np.zeros(7, dtype=np.float32)
         eps = 1e-3
         for i in range(7):                                # 有限差分数值梯度（白箱可验证）
             wp = w.copy(); wp[i] += eps
             wm = w.copy(); wm[i] -= eps
-            grads[i] = (recon_loss(wp) - recon_loss(wm)) / (2 * eps)
+            grads[i] = (recon_loss(wp, hole) - recon_loss(wm, hole)) / (2 * eps)
         w -= lr * grads
         w /= (abs(w).sum() + 1e-8)                        # 归一化（核能量守恒——白箱约束）
-        loss_curve.append(recon_loss(w))
+        loss_curve.append(recon_loss(w, hole))
     return {"kernel": w, "kernel_name": kernel_name, "init_loss": round(init_loss, 5),
             "final_loss": round(loss_curve[-1], 5), "loss_curve": loss_curve,
             "algo": ALGO, "epochs": epochs, "lr": lr}

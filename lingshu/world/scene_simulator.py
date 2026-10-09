@@ -72,7 +72,7 @@ class SceneSimulator:
       - behavior_log()：实体决策记录（自主行为可审计）
     """
 
-    def __init__(self, size: int = 24, ground_level: int = 1):
+    def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42):
         self.world = VoxelWorld(size=size, ground_level=ground_level)
         self.entities: Dict[str, SceneEntity] = {}
         self.paths: Dict[str, List[Tuple[float, float, float]]] = {}
@@ -83,7 +83,8 @@ class SceneSimulator:
         # 最近点会立刻变回原点 ⇒ 原地振荡，永不前进。
         self._follow_target: Dict[str, int] = {}
         self.tick_count = 0
-        self._rng = random.Random(42)   # 确定性随机（可复现）
+        # 确定性随机（可复现）。seed 缺省 42 = 历史硬编码值，既有实验行为不变。
+        self._rng = random.Random(seed)
 
     # ---- 场景构建 ----
 

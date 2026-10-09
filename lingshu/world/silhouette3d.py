@@ -771,6 +771,12 @@ def _mouth_poly(cx, cy, rx, ry, shape: str) -> List[Tuple[float, float]]:
             (cx + rx * 0.5, cy + ry), (cx - rx * 0.5, cy + ry)]   # smile
 
 
+# 腮红：基色 + shy「加深」用的通道系数
+# 加深只在 G/B 通道压暗（颜色更红）；整体乘系数会把接近饱和的粉色推成纯白
+_BLUSH_BASE = (255, 180, 190)
+_BLUSH_DEEP_SCALE = (1.0, 0.72, 0.80)
+
+
 def set_expression(s: Silhouette3D, expression: str) -> Silhouette3D:
     """表情（状态情绪）→ 眼型 + 嘴型 + 腮红深浅。返回同一对象。
 
@@ -795,9 +801,16 @@ def set_expression(s: Silhouette3D, expression: str) -> Silhouette3D:
         cy = sum(pt[1] for pt in pts) / len(pts)
         rx = (max(pt[0] for pt in pts) - min(pt[0] for pt in pts)) / 2
         ry = (max(pt[1] for pt in pts) - min(pt[1] for pt in pts)) / 2
+        # 两只眼睛各自的原中心（先记录，再改眼型）：高光按「相对眼心的偏移」整体平移
+        old_eye_center = {}
         for side in ("l", "r"):
-            sgn = -1 if side == "l" else 1
+            pe = next((q for q in s.parts if q.name == f"eye_{side}"), None)
+            if pe is not None and pe.points:
+                old_eye_center[side] = (sum(q[0] for q in pe.points) / len(pe.points),
+                                        sum(q[1] for q in pe.points) / len(pe.points))
+        for side in ("l", "r"):
             ecx = cx if side == "l" else -cx
+            ocx = old_eye_center.get(side, (ecx, cy))[0]
             # 更新眼睛部件
             for p in s.parts:
                 if p.name == f"eye_{side}":
@@ -809,13 +822,10 @@ def set_expression(s: Silhouette3D, expression: str) -> Silhouette3D:
                     dy = -ry * 0.3 if eye_shape in ("happy", "squint") else 0.0
                     pts = p.points
                     if len(pts) >= 4:
-                        # 保持高光相对眼的偏移，整体随眼睛移动
-                        base_x = ecx + (rx * 0.35 if "_small" in p.name else -rx * 0.35)
-                        base_y = cy - ry * 0.4 + dy
-                        hl = (max(pt[0] for pt in pts) - min(pt[0] for pt in pts)) / 2
-                        hh = (max(pt[1] for pt in pts) - min(pt[1] for pt in pts)) / 2
-                        p.points = [(base_x - hl, base_y - hh), (base_x + hl, base_y - hh),
-                                    (base_x + hl, base_y + hh), (base_x - hl, base_y + hh)]
+                        # 保持高光相对眼的偏移：整体平移
+                        # （大 / 小 / 瞳孔中心三点各自保留原始相对位置，不再按名字重算绝对坐标）
+                        shift_x = ecx - ocx
+                        p.points = [(pt[0] + shift_x, pt[1] + dy) for pt in pts]
 
     # 嘴
     mouth_ref = next((p for p in s.parts if p.name == "mouth"), None)
@@ -827,13 +837,13 @@ def set_expression(s: Silhouette3D, expression: str) -> Silhouette3D:
         ry = max(0.002, (max(pt[1] for pt in pts) - min(pt[1] for pt in pts)) / 2)
         mouth_ref.points = _mouth_poly(mx, my, rx, ry, mouth_shape)
 
-    # 腮红深浅（shy 加深）
-    blush_boost = 1.0
-    if expression == "shy":
-        blush_boost = 1.6
+    # 腮红深浅（shy 加深：压暗 G/B 通道走向深粉，而不是整体乘系数把颜色推成饱和纯白）
     for p in s.parts:
         if p.name.startswith("blush_"):
-            p.color = tuple(min(255, int(c * blush_boost)) for c in (255, 180, 190))
+            if expression == "shy":
+                p.color = tuple(int(c * f) for c, f in zip(_BLUSH_BASE, _BLUSH_DEEP_SCALE))
+            else:
+                p.color = _BLUSH_BASE
     return s
 
 

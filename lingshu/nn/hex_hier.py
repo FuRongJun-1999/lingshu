@@ -270,8 +270,8 @@ def train_hier(net: HexHierNet, lat: np.ndarray, labels: Dict[str, np.ndarray],
         logits = net.l3_logits(sf, cf)
         # 物体 CE + 形状辅助 CE(从物体 logits 边缘化:9→3 分组求和)
         p = softmax(logits)
-        p_shape = np.stack([p[:, i::3].sum(axis=1)
-                            for i in range(3)], axis=1)   # obj 顺序 shape|color
+        p_shape = np.stack([p[:, i * 3:(i + 1) * 3].sum(axis=1)
+                            for i in range(3)], axis=1)   # obj 顺序 shape|color(每形状连续 3 类)
         sh_idx = np.array([shape_idx[v] for v in sb])
         d_obj = ce_loss(logits, ob, obj_idx)
         d_shape = float(-np.log(p_shape[np.arange(len(sh_idx)), sh_idx] + 1e-12).mean())
