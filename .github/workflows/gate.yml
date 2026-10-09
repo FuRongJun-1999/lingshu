@@ -19,7 +19,7 @@ name: gate
 #       SCRIPT_TESTS：不列入则本门禁**根本看不见它**——同族盲区已出现三次
 #       （#69 / #26 / #145）。新增脚本式件时，SCRIPT_TESTS 与本节同补。
 #   · **pytest 式**：自动收集 tests/，排除 SCRIPT_TESTS；新增回归测试自动进入门禁。
-#     其中两条 known-fail 显式 deselect（下详）。
+#     所有 pytest 用例均运行；移除已通过的两条历史 deselect。
 #   · 脚本式测试必须在 pytest 收集前排除：`tests/test_hex_cnn.py` 无 `__main__`
 #     守卫，模块级即 `sys.exit()`，故保留两式分开跑。
 
@@ -140,21 +140,15 @@ jobs:
           done
           echo "脚本式测试全部通过：$SCRIPT_TESTS"
 
-      - name: pytest 式测试（显式 deselect 两条 known-fail）
-        # 两条 known-fail（README「代码主体」节已标，issue #4）：
-        #   · tests/test_hex_text.py::test_spatial_detect_finds_single_object    （6/16 < 0.6 阈值）
-        #   · tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt      （7/12 < 阈值）
-        # 全部 numpy/Pillow 版本组合下读数**逐位一致** ⇒ 与依赖版本无关，上游同跑同红。
-        # 处置：**显式 deselect**（不改任何断言）。待上游修复后，同处摘除本条并与 README 同步。
+      - name: pytest 式测试（全部运行）
+        # 两条原 known-fail 现已通过；保留断言并重新纳入门禁。
         run: |
           set -euo pipefail
           pytest_args=(tests/ -v)
           for t in $SCRIPT_TESTS; do
             pytest_args+=(--ignore="$t")
           done
-          python -X utf8 -m pytest "${pytest_args[@]}" \
-            --deselect tests/test_hex_text.py::test_spatial_detect_finds_single_object \
-            --deselect tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt
+          python -X utf8 -m pytest "${pytest_args[@]}"
 
       - name: 汇总（写入 Step Summary）
         if: always()
@@ -163,7 +157,7 @@ jobs:
             echo "### gate · py${{ matrix.python-version }}"
             echo ""
             echo "- 脚本式（逐件）：\`$SCRIPT_TESTS\`"
-            echo "- pytest 式：tests/ 自动收集（排除上述脚本式测试 + deselect 2 条 known-fail）"
+            echo "- pytest 式：tests/ 自动收集（脚本式测试由前一步独立运行，其余全部收集）"
             echo "- 脑端 clone（MDCG_BRAIN_PYTHONPATH 前置）：**${{ steps.brain.outcome }}**"
             echo "  - 非 success 时 test_brain_store 显式 SKIP——不是假绿，理由见上一步日志。"
             echo "- 非阻断档（未测 Python 版本）：\`${{ matrix.experimental }}\`"
