@@ -25,7 +25,12 @@
 脑包位置与库根一律经参数/环境注入——**本仓不写本机路径字面量**（章程六）。
 
 连接安全（缺省 fail-closed）：
-- 子进程 env **剔除继承的全部 `MDCG_*`**（防在役库被无意命中），再注入显式覆盖；
+- 子进程 env **白名单放行**（issue #227）：只透传进程运行基座与部署方显式配置面
+  （见 `_ENV_ALLOW_NAMES` / `_ENV_ALLOW_PREFIXES`），其余继承变量一律**不透传**——
+  `AEIS_DESIGNER_KEY` / `*_API_KEY` / `*_TOKEN` / `*_SECRET` / `*_PASSWORD` 等
+  凭据**不再随继承环境交给脑侧子进程**（旧法「只剔 `MDCG_*`」是黑名单，对凭据面
+  fail-open）。继承的 `MDCG_*` 仍被剔除（防在役库被无意命中）；凭据若确需传入，
+  必须经 `extra_env` **显式**声明（有意为之、可审计）。再注入下面的显式覆盖；
 - `pythonpath` 必须显式给出（参数或 `BRAIN_PYTHONPATH`），否则 `ValueError`；
 - `root` 未给出且 `BRAIN_ROOT` 为空时，脑侧将回落到其缺省根——**调用方务必
   显式给隔离/目标根**（测试与生产都不例外）；
@@ -67,6 +72,43 @@ STATE_SLOT = "状态"
 #: 读候选种子词（ingest_scene 写入的正文定式首词）
 SEED_QUERY = "场景实体"
 
+#: 子进程 env **白名单·具名**（issue #227 · 凭据泄露族）——跨平台「进程运行基座」：
+#: 路径 / 临时目录 / 区域 / 主机自省。**不含任何凭据名**。
+_ENV_ALLOW_NAMES = frozenset({
+    # 可执行查找 / 命令解释器
+    "PATH", "PATHEXT", "COMSPEC",
+    # Windows 目录基座（Python 解释器与 stdlib 启动期读用）
+    "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR",
+    "PROGRAMDATA", "ALLUSERSPROFILE", "PUBLIC",
+    "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES",
+    "COMMONPROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMW6432",
+    # 临时目录
+    "TEMP", "TMP", "TMPDIR",
+    # 家目录 / 账户
+    "HOME", "HOMEDRIVE", "HOMEPATH", "USERPROFILE",
+    "APPDATA", "LOCALAPPDATA",
+    "USER", "USERNAME", "USERDOMAIN", "LOGNAME",
+    # 区域 / 终端
+    "LANG", "LANGUAGE", "TZ", "TERM",
+    # 宿主自省（解释器/编译扩展常用）
+    "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER",
+    "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "OS",
+})
+
+#: 子进程 env **白名单·前缀**（部署方显式配置面）。`PYTHON*` 覆盖 PYTHONPATH /
+#: PYTHONUTF8 / PYTHONHOME / PYTHONIOENCODING / PYTHONDONTWRITEBYTECODE 等。
+#: 刻意**不含 `MDCG_`**——继承的 `MDCG_*` 仍须剔除（防在役库被无意命中），
+#: `MDCG_ROOT` / `MDCG_STG_STATE` 由 `_brain_env` 显式注入。
+_ENV_ALLOW_PREFIXES = ("PYTHON", "HIVE_", "LINGSHU_", "LC_")
+
+
+def _env_is_allowed(name: str) -> bool:
+    """继承的环境变量名是否在白名单内（大小写无关：Windows 上 `os.environ` 键为大写）。"""
+    up = str(name).upper()
+    if up in _ENV_ALLOW_NAMES:
+        return True
+    return any(up.startswith(p) for p in _ENV_ALLOW_PREFIXES)
+
 
 class BrainError(RuntimeError):
     """脑侧 MCP 传输、超时或工具结果错误时抛出（不静默）。"""
@@ -79,8 +121,14 @@ class BrainError(RuntimeError):
 
 def _brain_env(root: Optional[str], pythonpath: Optional[str],
                extra_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """构造脑子进程 env：剔除继承 `MDCG_*` → 注入显式覆盖（隔离/连接安全单点）。"""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("MDCG_")}
+    """构造脑子进程 env（隔离/连接安全单点）。
+
+    **白名单放行**（issue #227）：只继承 `_ENV_ALLOW_NAMES` / `_ENV_ALLOW_PREFIXES`
+    命中的变量；其余（含全部凭据与继承 `MDCG_*`）一律不透传 ⇒ 再注入显式覆盖。
+    子进程由模型驱动，凭据一旦透传即落在其可读面内（`os.environ`），故本层
+    fail-closed：需要什么，谁需要谁**显式**给（`extra_env`），不靠继承顺带。
+    """
+    env = {k: v for k, v in os.environ.items() if _env_is_allowed(k)}
     if root:
         env["MDCG_ROOT"] = root
     if pythonpath:
