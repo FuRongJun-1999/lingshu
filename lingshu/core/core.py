@@ -384,12 +384,24 @@ class LayeredStore:
     # 仅缺索引的老库仍会被判为「结构齐全」而跳过建表块 ⇒ 索引不会由本守卫补建，
     # 索引缺失当前也无独立检出手段（补建须待版本号 +1 或手工迁移）。
 
+    #: :memory: 的实际连接串模板——具名共享缓存内存库。默认的 ":memory:" 每个连接
+    #: 各得一份独立空库，每线程一条连接后线程间将互相看不见；共享缓存让同一实例的
+    #: 各线程看到同一份数据。名字按实例唯一，避免同一进程内的多个实例互相串库。
+    _MEMORY_DSN = "file:lingshu_mem_{}?mode=memory&cache=shared"
+
     def __init__(self, db_path: str = ":memory:", role: Role = Role.PRIMARY):
         self.db_path = db_path
         self.role = role
-        self.conn = sqlite3.connect(db_path, check_same_thread=False,
-                                    timeout=30)
-        self.conn.row_factory = sqlite3.Row
+        # 连接按线程分配（v1.17 并发修复）。sqlite3.Connection 不是线程安全的，而本类
+        # 有 50 余处方法直接使用 self.conn：多线程共用一条连接时，一条语句序列会被其他
+        # 线程插入，表现为 database is locked / another row available，并从写路径漏到读
+        # 路径（bad parameter or other API misuse）。每线程一条连接后，异常面清零，
+        # 同时保住了连接级 PRAGMA 与 :memory: 的既有语义。
+        self._local = threading.local()
+        self._conns = []                      # 保活：连接关闭后共享内存库即消失
+        self._memory_dsn = (self._MEMORY_DSN.format(uuid.uuid4().hex[:12])
+                            if db_path == ":memory:" else None)
+        self._connect(self._memory_dsn or db_path)
         # v1.16 图架构增强：WAL 模式（读写不互锁，MCP 长事务不再阻塞其他连接）
         # + busy_timeout（锁等待而非立即报错）
         if db_path != ":memory:":
@@ -415,6 +427,32 @@ class LayeredStore:
                     raise
                 _t.sleep(1.5 * (2 ** attempt))  # 1.5s / 3s 退避
         self._lock = threading.Lock()
+
+    def _connect(self, dsn: str):
+        """建立本线程的连接并登记；连接级 PRAGMA 必须逐连接重设。"""
+        # check_same_thread=False：close() 由收尾线程（常为主线程）统一关闭本实例登记的
+        # 全部连接；若保持默认 True，跨线程 c.close() 会抛 ProgrammingError 并被 close()
+        # 的 except Exception 吞掉 ⇒ 本线程之外的连接实际未关（登记却已清空）＝连接泄漏。
+        c = sqlite3.connect(dsn, timeout=30, uri=dsn.startswith("file:"),
+                            check_same_thread=False)
+        c.row_factory = sqlite3.Row
+        if self.db_path != ":memory:":
+            try:
+                c.execute("PRAGMA busy_timeout=30000")
+                c.execute("PRAGMA journal_size_limit=512000000")
+            except Exception:
+                pass
+        self._local.conn = c
+        self._conns.append(c)
+        return c
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """本线程的连接；首次访问时按需建立（每线程一条，互不共享）。"""
+        c = getattr(self._local, "conn", None)
+        if c is None:
+            c = self._connect(self._memory_dsn or self.db_path)
+        return c
 
     def _init_tables(self):
         c = self.conn.cursor()
@@ -1918,8 +1956,13 @@ class LayeredStore:
         return stats
 
     def close(self):
-        """关闭存储连接（Agent 生命周期终点调用）。"""
-        self.conn.close()
+        """关闭本实例登记的全部连接（Agent 生命周期终点调用）。"""
+        for c in self._conns:
+            try:
+                c.close()
+            except Exception:
+                pass  # 已关闭/被其它线程回收：关闭是尽力而为，不阻断生命周期收尾
+        self._conns = []
 
 
 # =============================================================================
