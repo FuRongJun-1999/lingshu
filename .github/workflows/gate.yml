@@ -60,6 +60,7 @@ env:
     tests/test_coggraph_generic_tag.py
     tests/test_hexgen_multi_seed_metric.py
     tests/test_longterm_gate_novelty.py
+    tests/test_state_write_observable.py
 
 jobs:
   gate:

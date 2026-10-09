@@ -202,7 +202,8 @@ class _ConnShim:
     契约：只认 `UPDATE nodes SET state_attributes=? WHERE id=?` 一条形态——
     payload 为 `{"state": ...}` JSON、第二参数为节点 id；翻译为
     `cg(op=state_event)`（subject=该节点的实体名、slot=「状态」、kind=acquisition）。
-    其它 SQL 抛 NotImplementedError（不静默吞）。legacy 侧 `commit()` 为无操作。
+    其它 SQL 抛 NotImplementedError（不静默吞）；状态事件未入账时抛
+    `BrainError`（同样不静默吞）。legacy 侧 `commit()` 为无操作。
     """
 
     UPDATE_PREFIX = "UPDATE NODES SET STATE_ATTRIBUTES"
@@ -215,7 +216,14 @@ class _ConnShim:
             raise NotImplementedError("brain conn 垫片只翻译状态写语句；收到：%r"
                                       % (str(sql)[:80],))
         payload = json.loads(params[0]) if params and params[0] else {}
-        self.store.record_state(str(params[1]), (payload or {}).get("state"))
+        node_id = str(params[1])
+        state = (payload or {}).get("state")
+        ok = self.store.record_state(node_id, state)
+        if state and not ok:
+            raise BrainError(
+                "状态事件未入账（record_state→False）：node=%s state=%r；"
+                "节点正文已写入、台账未落，重建世界会与节点内容不一致"
+                % (node_id, state))
         return self
 
     def commit(self):        # noqa: D102 —— 事件已即时落账，无事务
