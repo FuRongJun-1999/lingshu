@@ -62,6 +62,7 @@ env:
     tests/test_longterm_gate_novelty.py
     tests/test_state_write_observable.py
     tests/test_coggraph_naming_report.py
+    tests/test_skeleton_fk_order_guard.py
 
 jobs:
   gate:
