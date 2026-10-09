@@ -100,9 +100,10 @@ class AnchorVerification:
             return {"anchor_id": anchor_id, "confirmation": "ACCEPT_weak",
                     "verified_rounds": 0, "note": "无任何通道证据"}
 
-        # ① 通道一致：证据均值 ≥ 阈值（允许个别弱通道）
-        mean_evidence = sum(ev.values()) / len(ev)
-        ch_ok = mean_evidence >= CONF_THRESHOLD
+        # ① 通道一致：全称量闸（每维硬下限，任一通道证据 < 阈值即资格不过）
+        #    对齐 confirmation.py:94-95 口径；不用算术平均——平均会被多弱通道
+        #    稀释单通道的强反证（0.0 反证被 4×1.0 弱通道抬到 0.8 而放行＝被淹没的根因）。
+        ch_ok = bool(ev) and all(v >= CONF_THRESHOLD for v in ev.values())
 
         # ② 强验证：至少一个强通道证据 ≥ KL 阈值
         strong_evidence = [v for c, v in ev.items() if c in STRONG_CHANNELS]
@@ -114,15 +115,20 @@ class AnchorVerification:
         # ④ 无矛盾
         no_conflict = len(rec["channel_conflicts"]) < CONFLICT_THRESHOLD
 
+        # 幸存者内加权（只排序）：仅对【已过全称量闸】的幸存通道、按本轮证据
+        #   强度加权排序，产出分层依据；零历史依赖（见 _survivor_weighting）。
+        survivors = {c: v for c, v in ev.items() if v >= CONF_THRESHOLD} if ch_ok else {}
+        rec["tier_basis"] = self._survivor_weighting(survivors)
+
         # 确认度分层
         # 无矛盾时：按证据/强验证/稳定分层
+        # 资格与排序分离：ACCEPT/NOT_ACCEPTED 仅由全称量闸(ch_ok)与②③④决定，
+        #   幸存者内加权只产出排序依据，不参与资格判定（故此处无放行支）。
         if ch_ok and strong_ok and stable_ok and no_conflict:
             confirmation = "ACCEPT_stable"
         elif ch_ok and strong_ok and no_conflict:
             confirmation = "ACCEPT_strong"
         elif ch_ok:
-            confirmation = "ACCEPT_weak"
-        elif no_conflict and len(ev) > 0:
             confirmation = "ACCEPT_weak"
         else:
             confirmation = "NOT_ACCEPTED"
@@ -135,6 +141,30 @@ class AnchorVerification:
             rec["verified_rounds"] = 0
 
         return self.anchor_state(anchor_id)
+
+    # ---- 幸存者内加权（只排序 · 零历史依赖 · 防马太效应）----
+
+    @staticmethod
+    def _survivor_weighting(ev: Dict[str, float]) -> List[Dict[str, float]]:
+        """对【已过全称量闸】的幸存通道按【本轮证据强度】加权排序。
+
+        权重 = 该通道本轮证据强度 / 幸存通道证据强度之和。
+        权威口径（设计者 2026-10-09 裁决 C-9 / #74）：
+          - 资格与排序分离：本函数只产出「分层依据」，不改 ACCEPT/NOT_ACCEPTED；
+          - 加权输入用【证据强度】而非票数；
+          - 零历史依赖：权重不取自任何累计量（不按累计通过次数自增、不继承历史
+            权重），故同一证据重复喂 N 轮权重恒定、不随轮次单调抬升——防马太效应；
+            历史权重须等 #119，本件不做。
+        """
+        if not ev:
+            return []
+        total = sum(ev.values())
+        ranked = sorted(ev.items(), key=lambda kv: (-kv[1], kv[0]))
+        return [
+            {"channel": ch, "evidence": v,
+             "weight": (v / total) if total > 0 else 0.0}
+            for ch, v in ranked
+        ]
 
     # ---- 多通道矛盾检测 ----
 
@@ -171,6 +201,7 @@ class AnchorVerification:
                                   for k, v in rec.get("channel_conflicts", {}).items()},
             "verified_rounds": rec.get("verified_rounds", 0),
             "confirmation": rec.get("confirmation", "ACCEPT_weak"),
+            "tier_basis": list(rec.get("tier_basis", [])),
         }
 
     def verification_summary(self) -> Dict:
