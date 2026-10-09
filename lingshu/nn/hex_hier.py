@@ -31,7 +31,7 @@ ALGO = "hex_hier-0.1"
 
 from .hex_cnn import (DEFAULT_KERNELS, extended_prior_family,
                           hex_conv, kernel_smooth)
-from .hex_train import (HexNet, _cos, hex_conv_batch,
+from .hex_train import (HexNet, _cos, hex_conv_batch, hex_conv_batch_multi,
                             train_infogap)
 
 SHAPES = ["circle", "triangle", "stripe"]
@@ -142,12 +142,21 @@ class HexHierNet:
 
     # ---- L1:感知单元(轮廓/颜色变化核组,保留空间维!) ----
     def _h1(self, lat: np.ndarray) -> np.ndarray:
-        """带符号 L1 特征 (B,r,c,K1):每核 conv→跨 RGB 求和→leaky。"""
-        maps = [self._lrelu(hex_conv_batch(
-            lat, np.stack([self.conv[k]] * 3, 0)
-            if self.conv[k].ndim == 1 else self.conv[k]).sum(axis=-1))
-            for k in range(self.K)]
-        return np.stack(maps, axis=-1)
+        """带符号 L1 特征 (B,r,c,K1):每核 conv→跨通道求和→leaky。
+
+        融合前向：一次 padding + 一次 GEMM 算完全部 K1 核（等价于逐核
+        `hex_conv_batch(...).sum(axis=-1)` 循环；差异仅浮点求和次序）。
+
+        核按输入的**实际通道数**展开（原实现硬编码 3 通道：C=2/4 会因广播
+        失败而抛异常，C=1 则被广播成 3 份再相加 = 真单通道卷积的 ×3 缩放）。
+        C=3（本仓所有调用方的晶格通道数）下与原来在 float64 eps 内一致
+        （实测 2.2e-16，非逐位——求和次序变了）。
+        """
+        C = lat.shape[-1]
+        kernels = np.stack([np.repeat(self.conv[k][None], C, 0)
+                            if self.conv[k].ndim == 1 else self.conv[k]
+                            for k in range(self.K)], axis=0)     # (K1,C,7)
+        return self._lrelu(hex_conv_batch_multi(lat, kernels))    # (B,r,c,K1)
 
     def l1(self, lat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """兼容接口:(能量图 |h1| (B,r,c,K1), 全局色 (B,3))。"""
@@ -167,9 +176,8 @@ class HexHierNet:
         stacked:L1 带符号特征 → L1.5 conv2(跨 K1 求和)→leaky→RMS。"""
         h1 = self._h1(lat)
         if self.stacked:
-            maps2 = [self._lrelu(hex_conv_batch(h1, self.conv2[k]).sum(axis=-1))
-                     for k in range(self.K2)]
-            h2 = np.stack(maps2, axis=-1)                # (B,r,c,K2)
+            # 融合前向：conv2 本身就是 (K2,K1,7)，一次 GEMM 算完全部 K2 核
+            h2 = self._lrelu(hex_conv_batch_multi(h1, self.conv2))   # (B,r,c,K2)
             deep = np.sqrt((h2 ** 2).mean(axis=(1, 2)) + 1e-12)
             if self.deep_norm:
                 # M4.3e 方向-幅度分离:L2 归一化保方向(防 logits 极化),
