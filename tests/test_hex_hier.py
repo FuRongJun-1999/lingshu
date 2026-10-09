@@ -97,6 +97,38 @@ def test_train_hier_matches_numpy_baseline():
     assert time.time() - t0 < 90
 
 
+def test_shape_marginal_groups_contiguous_classes():
+    """issue #64 守卫:形状辅助损失必须按 OBJ 布局(每形状连续 3 类)边缘化。
+
+    OBJ = [f"{s}|{c}" for s in SHAPES for c in COLORS] ⇒ 形状 i 占下标
+    [3i, 3i+3)。错误实现 p[:, i::3] 按颜色分组,把形状标签监督到颜色
+    边缘分布上。这里零参数更新(steps=1, samples_per_step=0)隔离损失
+    计算,直接对拍 train_hier 的 init_D 与手工连续分组期望值。
+    """
+    from lingshu.nn.hex_hier import ce_loss, softmax
+    net = HexHierNet(n_kernels=1, stacked=False, seed=7)
+    lat = np.ones((1, 3, 3, 3))
+    labels = {"shape": np.array(["circle"]), "obj": np.array(["circle|green"])}
+    # 偏置 head 使 p 非均匀——均匀分布下两种分组读数相同,无法判别
+    net.head[:] = 0
+    net.head[1, -1] = 8
+    r = train_hier(net, lat, labels, steps=1, samples_per_step=0, batch=1)
+
+    sf, cf = net.l2_features(lat)
+    logits = net.l3_logits(sf, cf)
+    p = softmax(logits)
+    obj_idx = {o: i for i, o in enumerate(OBJ)}
+    d_obj = ce_loss(logits, labels["obj"], obj_idx)
+    p_cont = np.stack([p[:, i * 3:(i + 1) * 3].sum(axis=1)
+                       for i in range(3)], axis=1)
+    expected = d_obj + 0.5 * float(-np.log(p_cont[0, 0] + 1e-12))
+    assert r["init_D"] == round(expected, 4)
+    # 判别性:错误的步进分组在本构造下必须给出显著不同的读数
+    p_stride = np.stack([p[:, i::3].sum(axis=1) for i in range(3)], axis=1)
+    wrong = d_obj + 0.5 * float(-np.log(p_stride[0, 0] + 1e-12))
+    assert abs(wrong - expected) > 0.1, (wrong, expected)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-v"]))
