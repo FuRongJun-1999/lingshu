@@ -58,6 +58,7 @@ env:
     tests/test_issue145_causal_depth_cycles.py
     tests/test_coggraph_r4_and_viewer.py
     tests/test_coggraph_generic_tag.py
+    tests/test_hexgen_multi_seed_metric.py
 
 jobs:
   gate:
