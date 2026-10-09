@@ -60,8 +60,17 @@ def norm_tag(t):
     return str(t).strip().lower()
 
 
-# 结构性/泛化标签：不承载"内容上有关联"的信号，只描述形态，参与共现必然产生噪音
-GENERIC_TAG = re.compile(r"^(doc|md|node|unit|skill|md$|case)$|^doc:|^level:|^lang:|^sha|^precise|^v\d")
+# 结构性/泛化标签：不承载"内容上有关联"的信号，只描述形态，参与共现必然产生噪音。
+# `^sha` / `^precise` / `^v\d` 三个短前缀分支必须带**非字母边界**：只锚定开头会把
+# shape / shared / shadow / sharding / precisely / v2model 这类真实内容标签一并剔除（issue #77）。
+# 边界取 `(?![a-z])` 而非 `($|:)`，使 sha256 / precise_pose / v2.1 等原有结构性剔除保持不变。
+GENERIC_TAG = re.compile(
+    r"^(doc|md|node|unit|skill|case)$"      # 裸形态标签（原 `md$` 与 `$` 重复，已删）
+    r"|^doc:|^level:|^lang:"                # 命名空间式形态标签
+    r"|^sha(?![a-z])"                       # sha / sha256 / sha:abc（不再误杀 shape/shared/shadow）
+    r"|^precise(?![a-z])"                   # precise / precise_pose（不再误杀 precisely）
+    r"|^v\d+(?![a-z])"                      # v1 / v2 / v2.1（不再误杀 v2model）
+)
 
 
 def content_tags(tags):
