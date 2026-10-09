@@ -99,7 +99,7 @@
     {
      "file": "scene_model.py",
      "src": "aeis.scene_model",
-     "sha256": "0b351f96b5e3726b",
+     "sha256": "e71858e886ab701e",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -110,7 +110,7 @@
     {
      "file": "scene_simulator.py",
      "src": "aeis.scene_simulator",
-     "sha256": "f84f45982fd2a2cf",
+     "sha256": "d2bf1de78133be40",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -132,7 +132,7 @@
     {
      "file": "seven_layer_loop.py",
      "src": "aeis.seven_layer_loop",
-     "sha256": "06a37ce0e654281a",
+     "sha256": "6ceb5c9aca0d0e2d",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -154,7 +154,7 @@
     {
      "file": "silhouette3d.py",
      "src": "aeis.silhouette3d",
-     "sha256": "d15f929975488d4c",
+     "sha256": "b344513d956b17ec",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,
@@ -165,7 +165,7 @@
     {
      "file": "skeleton3d.py",
      "src": "aeis.skeleton3d",
-     "sha256": "e97cdfc24ac565b4",
+     "sha256": "410800342c58d6d6",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -176,7 +176,7 @@
     {
      "file": "spacetime_consistency.py",
      "src": "aeis.spacetime_consistency",
-     "sha256": "426511f4d9f8e663",
+     "sha256": "67cee2f2f09d2885",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -253,7 +253,7 @@
     {
      "file": "world_learner.py",
      "src": "aeis.world_learner",
-     "sha256": "7fd0bcb136f1c7d2",
+     "sha256": "278670df630ea04b",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -264,7 +264,7 @@
     {
      "file": "world_model.py",
      "src": "aeis.world_model",
-     "sha256": "f606f23217b50ac8",
+     "sha256": "4e7c7ad0ffcfea85",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -280,7 +280,7 @@
     {
      "file": "activation.py",
      "src": "aeis.activation",
-     "sha256": "676429009026baa6",
+     "sha256": "8923a34e349218e4",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 1,
@@ -302,7 +302,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "40c8718fe41aae2d",
+     "sha256": "1876fcf3b48fc13b",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,
@@ -333,7 +333,7 @@
     {
      "file": "longterm_gate.py",
      "src": "aeis.longterm_gate",
-     "sha256": "8e5c57f426bea02e",
+     "sha256": "7ee47c43b0cdaa58",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -344,7 +344,7 @@
     {
      "file": "provenance.py",
      "src": "aeis.provenance",
-     "sha256": "517332a21e012f69",
+     "sha256": "b8b0020f52ac34c1",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 5,
@@ -382,7 +382,7 @@
     {
      "file": "hex_cnn.py",
      "src": "aeis.hex_cnn",
-     "sha256": "cfdc2e5157312f7c",
+     "sha256": "ee5263983a1c7f99",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -415,7 +415,7 @@
     {
      "file": "hex_hier.py",
      "src": "aeis.hex_hier",
-     "sha256": "1b9753b1c951578c",
+     "sha256": "a887aaca4b76afa1",
      "rewrites": 3,
      "sanitized": 0,
      "patches": 0,
@@ -426,7 +426,7 @@
     {
      "file": "hex_nn_preview.py",
      "src": "aeis.hex_nn_preview",
-     "sha256": "2cea680b5fc93aec",
+     "sha256": "16b0a16095014395",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -448,7 +448,7 @@
     {
      "file": "hex_query.py",
      "src": "aeis.hex_query",
-     "sha256": "3ca567c9fbeca770",
+     "sha256": "8143c596b26d4a70",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -481,7 +481,7 @@
     {
      "file": "hex_text.py",
      "src": "aeis.hex_text",
-     "sha256": "3cc20f345070b91b",
+     "sha256": "f1f77de5776c8a3f",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -574,7 +574,7 @@
     {
      "file": "hexgen_multi_seed.py",
      "src": "experiments.hexgen_multi_seed",
-     "sha256": "b29fff9c59f6c0fb",
+     "sha256": "ca2536a59f09638d",
      "rewrites": 1,
      "sanitized": 1,
      "patches": 0,

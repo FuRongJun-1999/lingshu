@@ -152,7 +152,10 @@ def test_4_tool_exits_zero_on_real_repo():
     summary = payload["summary"]
     assert summary["entries"] == 61, summary
     assert summary["missing"] == 0 and summary["malformed"] == 0, summary
-    # 登记已同步至仓内现文件（2026-10-09 登记同步）；本批改动后本仓 61 条全 MATCH
+    # 登记基准 = **LF 归一后的字节**（工具先 `\r\n`→`\n` 再实算 sha256/bytes）：
+    # 登记件是文本、上游真源在 Linux 侧；本机 core.autocrlf=true 落成 CRLF 工作树、
+    # CI(Linux) 检出 LF。归一后两种检出实算值相同 ⇒ 此断言在两侧都应为 0（平台无关）。
+    # 2026-10-09 登记按 LF 基准重算（20 条 sha256 + 2 条 bytes）；本批后本仓 61 条全 MATCH。
     assert summary["mismatch"] == 0, summary
     assert payload["exit_code"] == 0
 

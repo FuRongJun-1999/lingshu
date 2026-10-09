@@ -18,8 +18,8 @@
   {
    "file": "tests/test_hex_cnn.py",
    "src": "tests/test_hex_cnn.py",
-   "bytes": 7811,
-   "sha256": "5da8a696e4403cdf",
+   "bytes": 8932,
+   "sha256": "2f38c413c1d1c1e6",
    "rewrites": 1,
    "patches": 11,
    "sanitized": 0
@@ -45,8 +45,8 @@
   {
    "file": "tests/test_hex_hier.py",
    "src": "tests/test_hex_hier.py",
-   "bytes": 3698,
-   "sha256": "8b482f563168776e",
+   "bytes": 5324,
+   "sha256": "29b334866f36025e",
    "rewrites": 4,
    "patches": 0,
    "sanitized": 0

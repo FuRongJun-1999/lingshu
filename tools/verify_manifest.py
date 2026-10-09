@@ -7,6 +7,16 @@
     文件 sha256，但仓库原先**没有任何工具**能核验这些登记。本工具遍历清单、实算
     盘上文件的 sha256、按规则逐条判定，并给出可机器消费的退出码。
 
+登记基准（LF 归一 · 与检出无关）
+    **登记基准 = LF 归一后的字节，与检出 CRLF/LF 无关。**
+    实算 sha256（与 `bytes` 大小）前，先把读到的字节里所有 `\\r\\n` 归一为 `\\n`
+    （孤立 `\\r` 不动）。原因：登记件是文本、上游真源在 Linux 侧，而本仓
+    `core.autocrlf=true` 会让 Windows 工作树落成 CRLF、CI（Linux）检出成 LF——
+    若按「盘上现文件字节」记录，同一份登记在两种检出下实算值不同，CI 必红。
+    归一后同一份登记在 CRLF 工作树与 LF 检出上给出**同一个**实算值（`--json`
+    里的 `actual_sha256` / `actual_bytes` 同步为该口径），登记才与平台无关。
+    这也是 `bytes` 字段的口径：**LF 归一后的字节数**（不是 `stat` 的盘上大小）。
+
 用法
     python tools/verify_manifest.py [--repo-root PATH] [--json] [--strict] [--quiet]
 
@@ -32,10 +42,10 @@
                因此 `--json` 里永不出现本机绝对路径（旧版只有「真实清单恰好不含
                绝对路径」才成立，现已在输入可控时也成立），也堵住「清单把工具
                当任意文件读取器」去读仓外文件。
-    MATCH/MISMATCH  实算 sha256 与记录值做**同长度前缀**比较
-               （记录 16 位 → 比实算前 16 位；记录 64 位 → 全比）；
+    MATCH/MISMATCH  实算 sha256（**LF 归一后**，见上「登记基准」）与记录值做
+               **同长度前缀**比较（记录 16 位 → 比实算前 16 位；记录 64 位 → 全比）；
                `MATCH` 有正例测试（tests/test_manifest_integrity.py::test_9）。
-    `bytes` 存在时记录实盘大小与差值，仅作信息，不影响判定。
+    `bytes` 存在时记录**LF 归一后**的字节数与差值，仅作信息，不影响判定。
 
     判定优先级（四类计数是条目集的一个划分）：
     绝对路径 → MALFORMED ＞ 越界路径 → MALFORMED ＞ 文件不在盘 → MISSING ＞
@@ -67,6 +77,8 @@
 
 边界（如实）
     - 只读：不写任何文件、不联网、不调用 git。只读盘上被登记文件来实算 sha256。
+    - EOL 归一**只做 `\\r\\n`→`\\n`**：孤立 `\\r`（老 Mac 行尾）原样保留，
+      不改变非文本件（二进制）的字节——它们本就不含 `\\r\\n` 序列。
     - 只处理 `docs/intake/<batch>/_export_manifest.json` 这一 glob；更深嵌套（如
       `docs/intake/x/y/_export_manifest.json`）不扫 ⇒ 该目录下无清单 ⇒ 退出 1
       （同样是上面「零清单 = 1」的刻意语义）。
@@ -146,13 +158,37 @@ def emit_json_error(kind: str, exit_code: int) -> None:
     })
 
 
-def sha256_file(path: Path) -> str:
-    """实算文件 sha256（流式，大文件也不吃内存）。"""
+CHUNK = 1 << 20
+
+
+def lf_digest(path: Path):
+    """实算文件的 (LF 归一字节数, sha256 hex)。
+
+    **登记基准 = LF 归一后的字节，与检出 CRLF/LF 无关**：读到的字节里所有
+    `\\r\\n` 先归一为 `\\n` 再喂给哈希（孤立 `\\r` 不动）。这样同一份登记在
+    Windows（autocrlf=true ⇒ 工作树 CRLF）与 Linux（检出 LF）上实算值相同。
+
+    流式实现（大文件不吃内存），且与「整文件 `replace(b"\\r\\n", b"\\n")`」
+    逐字节等价：跨 chunk 的 `\\r\\n` 由 1 字节 carry 处理——chunk 末尾若为 `\\r`
+    则留作下一轮前缀，不与下一 chunk 的 `\\n` 被拆散。
+    """
     digest = hashlib.sha256()
+    size = 0
+    carry = b""
     with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+        for chunk in iter(lambda: handle.read(CHUNK), b""):
+            data = carry + chunk
+            if data.endswith(b"\r"):
+                carry, data = b"\r", data[:-1]
+            else:
+                carry = b""
+            data = data.replace(b"\r\n", b"\n")
+            digest.update(data)
+            size += len(data)
+    if carry:
+        digest.update(carry)
+        size += len(carry)
+    return size, digest.hexdigest()
 
 
 def is_unsafe_absolute(raw: str) -> bool:
@@ -246,7 +282,9 @@ def classify(root: Path, root_resolved: Path, raw_path: str, recorded_sha,
         detail["reason"] = "missing-file"
         return detail
 
-    detail["actual_bytes"] = target.stat().st_size
+    # 实算一次（LF 归一）：同时得到 bytes 与 sha256 两个实盘量
+    actual_bytes, actual = lf_digest(target)
+    detail["actual_bytes"] = actual_bytes
     if detail["recorded_bytes"] is not None:
         detail["bytes_delta"] = detail["actual_bytes"] - detail["recorded_bytes"]
 
@@ -263,7 +301,6 @@ def classify(root: Path, root_resolved: Path, raw_path: str, recorded_sha,
         detail["reason"] = "sha256-length-%d" % len(recorded_sha)
         return detail
 
-    actual = sha256_file(target)
     detail["actual_sha256"] = actual
     if actual[: len(recorded_sha)] == recorded_sha:
         detail["status"] = STATUS_MATCH
