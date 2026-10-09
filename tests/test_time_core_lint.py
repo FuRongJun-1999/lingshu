@@ -15,7 +15,8 @@
    · 裸 `keep` 计入保持率词表（`x = x * keep` 必须命中）
    · 同一物理行 `;` 分隔的语句分别判定（`a = a*(1-pc); b = z*pc` 必须命中，行号仍精确）
    · R3 数值形状只认 `0 < literal < 1`（`x = 2.0*x` 不再误报，`v = 0.9*v + 0.1*g` 仍报）
-   · 判定回归带**源行守卫**（`EXPECTED_MARKERS`），行号漂移会当场报错而非恒真
+   · 判定回归带**形态锚**（`EXPECTED_MARKERS`）：按源码片段在文件内定位豁免点，
+     上方无关增删行不再误报；片段若被删除/改写（豁免点消失）仍当场报错而非恒真
    · 同一语句 R2+R3 ⇒ 输出 2 行、baseline 需 2 行
    · 显式 `--baseline FILE --update-baseline` 指向不存在文件 ⇒ 退出 2 且不创建
    · 退出码 2、baseline 注册、掩码、规范模块豁免、`;` 切分行号回归
@@ -495,28 +496,33 @@ def test_real_repo_current_hit_set_is_exactly_stable_lease(empty_baseline):
     assert hit_set(data) == {("lingshu/world/stable_lease.py", 67, "R1")}
 
 
-# 判定回归的「源行守卫」：{（文件, 行号）: 该行必须仍含的片段}
-# 没有它的话，只要行号漂移，参数化断言就恒真（豁免失效也看不出来）。
-EXPECTED_MARKERS = {
-    ("lingshu/world/gap_dual.py", 103): "retain=1.0 - self.decay",        # EX5（实参内）
-    ("lingshu/nn/hex_train.py", 289): "d_before * retain_gain",           # 阈值比较，非更新
-    ("lingshu/world/channel_credibility.py", 123): "evidence = 1.0 - alpha",
-    ("lingshu/core/core.py", 1698): "math.sqrt(cer * (1 - cer) / n)",     # EX3
-    ("lingshu/gen/hexgen_c1_real.py", 464): "* (1 - fy)",                 # EX4 插值
-    ("lingshu/gen/hexgen_c1_real.py", 465): "fy * fx",                    # EX4 插值
-    ("lingshu/gen/hexgen_self_source.py", 236): "* (1.0 - pc",            # EX4 合成
-    ("lingshu/gen/hexgen_self_source.py", 411): "* (1.0 - pc",            # EX4 合成
-    ("lingshu/world/confirmation.py", 34): "1.0 + math.exp(-x)",          # EX1 sigmoid
-}
+# 判定回归的「形态锚」：(文件, 该文件内必须仍出现的源码片段, 第 n 次出现)
+# 按片段文本在文件内**定位**豁免点，不钉死绝对行号 —— 上方无关增删行不再误报
+# （这正是本批 CI 红的成因：core.py / hex_train.py 的锚点被后续采纳顶漂）。
+# 片段若被删除/改写（豁免点消失）仍会当场失败 ⇒ 判别力不降，下面的断言不会恒真。
+# 第 n 次出现用于同一文件内同片段的多个豁免点（hexgen_self_source.py 两处 `* (1.0 - pc`）。
+EXPECTED_MARKERS = (
+    ("lingshu/world/gap_dual.py", "retain=1.0 - self.decay", 1),        # EX5（实参内）
+    ("lingshu/nn/hex_train.py", "d_before * retain_gain", 1),           # 阈值比较，非更新
+    ("lingshu/world/channel_credibility.py", "evidence = 1.0 - alpha", 1),
+    ("lingshu/core/core.py", "math.sqrt(cer * (1 - cer) / n)", 1),      # EX3
+    ("lingshu/gen/hexgen_c1_real.py", "* (1 - fy)", 1),                 # EX4 插值
+    ("lingshu/gen/hexgen_c1_real.py", "fy * fx", 1),                    # EX4 插值
+    ("lingshu/gen/hexgen_self_source.py", "* (1.0 - pc", 1),            # EX4 合成
+    ("lingshu/gen/hexgen_self_source.py", "* (1.0 - pc", 2),            # EX4 合成
+    ("lingshu/world/confirmation.py", "1.0 + math.exp(-x)", 1),         # EX1 sigmoid
+)
 
 
-@pytest.mark.parametrize("rel,line", sorted(EXPECTED_MARKERS))
-def test_judgement_regressions_not_reported(empty_baseline, rel, line):
-    # 先守卫：目标行必须仍是当初被评估的那一行（否则下面的"不在命中里"恒真）
-    src_line = (REPO_ROOT / rel).read_text(encoding="utf-8").splitlines()[line - 1]
-    assert EXPECTED_MARKERS[(rel, line)] in src_line, \
-        "行号已漂移：%s:%d 现在是 %r（请同步 EXPECTED_MARKERS 与 baseline 注释）" \
-        % (rel, line, src_line.strip())
+@pytest.mark.parametrize("rel,marker,nth", EXPECTED_MARKERS)
+def test_judgement_regressions_not_reported(empty_baseline, rel, marker, nth):
+    # 形态锚：按片段文本定位豁免点（不钉死行号）。片段若被删除/改写则当场失败，
+    # 从而保证下面「不在命中里」不是恒真（判别力与旧行号锚等价，且不再怕行漂移）。
+    src_lines = (REPO_ROOT / rel).read_text(encoding="utf-8").splitlines()
+    hits = [i + 1 for i, text in enumerate(src_lines) if marker in text]
+    assert len(hits) >= nth, \
+        "形态锚未命中：%s 里找不到第 %d 处 %r（豁免点被删除/改写？）" % (rel, nth, marker)
+    line = hits[nth - 1]
 
     data = payload(run_lint("--baseline", str(empty_baseline), "--json"))
     assert not [h for h in data["new_violations"] if h["file"] == rel and h["line"] == line], \

@@ -63,8 +63,8 @@
   {
    "file": "tests/test_hex_search.py",
    "src": "tests/test_hex_search.py",
-   "bytes": 6205,
-   "sha256": "fe0c325ba71c1cf1",
+   "bytes": 7689,
+   "sha256": "b1b0bf0fdf573c91",
    "rewrites": 6,
    "patches": 0,
    "sanitized": 0

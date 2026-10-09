@@ -4,7 +4,8 @@
 # 本文件由人工复核并逐条注明性质；`--update-baseline` 只做机械重写，覆盖后请重新补注释。
 # 运维提示：本文件按**行号**定位。若在已登记文件的行号之上插入/删除行，旧条目会变成
 #   stale_baseline_entries（不失败），而同一违规会以新行号出现在 new_violations → 退出 1；
-#   届时请重跑 --update-baseline 并重新补写性质注释（tests 里 EXPECTED_MARKERS 同步更新）。
+#   届时请重跑 --update-baseline 并重新补写性质注释（tests 里 EXPECTED_MARKERS 用**形态锚**，
+#   按源码片段定位、不随行号同步，故此处行号仅作人工参考，漂移不会让测试恒真）。
 # 输出以 {file,line,rule} 为键：同一语句同时命中 R2 与 R3 会输出 2 行，baseline 也必须写 2 行。
 # 显式 `--baseline FILE --update-baseline` 而 FILE 不存在 → 退出码 2 且不创建（防写错路径）。
 #
@@ -19,10 +20,10 @@ lingshu/world/stable_lease.py:67:R1    # 既有：手写同核 exp(-γ·t)（与
 
 # ── 曾评估但判定为「不按违规处理」的候选（故未登记；判据见 tools/time_core_lint.py 头部 L9）──
 # lingshu/world/gap_dual.py:103:R2         # `retain=1.0 - self.decay` 落在 cred_blend 实参括号内 → EX5（位置级）：参数派生留在调用方是核 docstring 认可的形态（`retain = 1-λ`），乘法本体在核内
-# lingshu/nn/hex_train.py:289:R3           # `d_after <= d_before * retain_gain` 是生长验证的**阈值比较**，非乘性更新（无状态改写、无自指）→ R3 不匹配
+# lingshu/nn/hex_train.py:348:R3           # `d_after <= d_before * retain_gain` 是生长验证的**阈值比较**，非乘性更新（无状态改写、无自指）→ R3 不匹配
 # lingshu/world/channel_credibility.py:123 # `evidence = 1.0 - alpha`：跨语句且名字未登记 ⇒ 机制上抓不到（**不是**性质上不是保持率，值得人工看一眼）
-# lingshu/core/core.py:1698/1707/1708:R2   # `math.sqrt(p * (1 - p) / n)` 伯努利标准误 → EX3
+# lingshu/core/core.py:1736/1745/1746:R2   # `math.sqrt(p * (1 - p) / n)` 伯努利标准误 → EX3
 # lingshu/gen/hexgen_c1_real.py:464-465:R2 # 双线性插值权重 `*(1 - fy)` → EX4
 # lingshu/gen/hexgen_self_source.py:236/240/411/413:R2|R3  # alpha 合成 `obj*(1-pc)+dark*pc` → EX4
 # 以上每一条都有对应的豁免回归测试（tests/test_time_core_lint.py::test_judgement_regressions_not_reported
-# 带「源行守卫」EXPECTED_MARKERS，行号漂移会当场报错而不是恒真）。
+# 带「形态锚」EXPECTED_MARKERS：按源码片段在文件内定位，片段被删除/改写会当场报错而不是恒真）。
