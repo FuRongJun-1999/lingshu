@@ -162,34 +162,52 @@ def query_match(detections: List[Dict], lib: ConnectionLibrary,
     return [best]
 
 
+def _conn_matches(conn: Dict, det: Dict) -> bool:
+    """单条 conn 与单个检测是否匹配（类型/方位/颜色判据）。"""
+    det_obj = det["obj"].split("|")
+    det_shape, det_color, det_pos = det_obj[0], det_obj[1], det["pos"]
+    if det_shape != conn["type"]:
+        return False
+    zone = conn.get("zone", "*")
+    if zone != "*" and det_pos not in _ZONES.get(zone, set()):
+        return False
+    color = conn.get("color", "*")
+    if color != "*" and det_color != color:
+        return False
+    return True
+
+
 def _match_score(rec: Dict, detections: List[Dict]) -> float:
-    """单条记录的匹配度 = 被支持的连接数 / 总连接数。"""
-    if not detections:
+    """单条记录的匹配度 = 被支持的连接数 / 总连接数。
+
+    conn→detection 为二部图，用增广路求**最大匹配**：命中数只取决于「有哪些
+    conn 能被哪些检测满足」，与 detections 的输入顺序无关。原实现为贪心
+    first-fit（取第一个匹配的未用检测即 break），通配 conn 会抢占具体 conn
+    需要的检测，使命中数随 detections 顺序变化（verdict 可在 ACCEPT/DEFER
+    间翻转）。最大匹配保证顺序无关且命中数最优。
+    """
+    conns = rec["connections"]
+    if not detections or not conns:
         return 0.0
-    hits = 0
-    used = set()
-    for conn in rec["connections"]:
+    # match_det[j] = 分配给第 j 个检测的 conn 下标（-1 表示未匹配）
+    match_det = [-1] * len(detections)
+
+    def try_assign(ci: int, seen: List[bool]) -> bool:
+        """为 conn ci 寻找增广路（把它匹配到某个检测，允许改配已有 conn）。"""
         for di, det in enumerate(detections):
-            if di in used:
+            if seen[di] or not _conn_matches(conns[ci], det):
                 continue
-            det_shape = det["obj"].split("|")[0]
-            det_color = det["obj"].split("|")[1]
-            det_pos = det["pos"]
-            # 类型匹配
-            if det_shape != conn["type"]:
-                continue
-            # 方位匹配(*=通配)
-            zone = conn.get("zone", "*")
-            if zone != "*" and det_pos not in _ZONES.get(zone, set()):
-                continue
-            # 颜色匹配(*=通配)
-            color = conn.get("color", "*")
-            if color != "*" and det_color != color:
-                continue
+            seen[di] = True
+            if match_det[di] == -1 or try_assign(match_det[di], seen):
+                match_det[di] = ci
+                return True
+        return False
+
+    hits = 0
+    for ci in range(len(conns)):
+        if try_assign(ci, [False] * len(detections)):
             hits += 1
-            used.add(di)
-            break
-    return hits / len(rec["connections"]) if rec["connections"] else 0.0
+    return hits / len(conns)
 
 
 def save_report(report: Dict, path: str) -> str:
