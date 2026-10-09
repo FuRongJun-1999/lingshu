@@ -501,7 +501,7 @@ EXPECTED_MARKERS = {
     ("lingshu/world/gap_dual.py", 103): "retain=1.0 - self.decay",        # EX5（实参内）
     ("lingshu/nn/hex_train.py", 289): "d_before * retain_gain",           # 阈值比较，非更新
     ("lingshu/world/channel_credibility.py", 123): "evidence = 1.0 - alpha",
-    ("lingshu/core/core.py", 1698): "math.sqrt(cer * (1 - cer) / n)",     # EX3
+    ("lingshu/core/core.py", 1773): "math.sqrt(cer * (1 - cer) / n)",     # EX3
     ("lingshu/gen/hexgen_c1_real.py", 464): "* (1 - fy)",                 # EX4 插值
     ("lingshu/gen/hexgen_c1_real.py", 465): "fy * fx",                    # EX4 插值
     ("lingshu/gen/hexgen_self_source.py", 236): "* (1.0 - pc",            # EX4 合成
