@@ -82,11 +82,16 @@ def _escape_hatch_open() -> bool:
 
 
 def _norm(path: str) -> str:
-    """路径归一（大小写/相对/尾分隔符无关）。"""
+    """路径归一（大小写/**符号链接**/相对/尾分隔符无关）。"""
     if _os is None:
         return path
     try:
-        return _os.path.normcase(_os.path.abspath(path))
+        # issue #343：`realpath`（非 `abspath`）——同一目录经「软链/junction 路径」与
+        # 「真实路径」两种别名出现时归一到同一键。判定「脚本目录」两侧必须用**同一**
+        # 归一：`sys.path[0]` 由解释器在启动期写定、**保留** argv0 的未解析形态
+        # （实测：经 junction 启动时 `sys.path[0]` 仍是 junction 路径），若只把
+        # `main_script_dir` 一侧改 realpath，反而会把原本相符的两侧改成不符 ⇒ 护栏失效。
+        return _os.path.normcase(_os.path.realpath(path))
     except Exception:  # 防御：非法路径按原样比较
         return path
 
@@ -182,9 +187,16 @@ def ensure_scrubbed() -> bool:
 def main_script_dir():
     """`python <script>.py` 形态下 `sys.path[0]` 所指向的**脚本目录**（或 None）。
 
-    `-c`（argv0 == '-c'）/ `-m`（argv0 为模块文件，其目录通常不在 sys.path）/
-    REPL 形态返回 None。脚本目录同属「解释器隐式塞入的解析面」，不属部署方
+    `-c`（argv0 == '-c'）/ REPL 形态返回 None。`-m`（argv0 为模块文件，其目录
+    通常不在 sys.path）返回该模块文件所在目录——两者均非 `sys.path[0]` 的脚本
+    目录面，故不构成误排除。脚本目录同属「解释器隐式塞入的解析面」，不属部署方
     显式声明面 ⇒ `component_resolver.safe_search_path()` 亦将其排除。
+
+    issue #343：路径经 `realpath` 归一（与 `_norm` 同一归一，两侧方可比），
+    且当 argv0 **已不可解析**时退回进程启动期由解释器写定的 `sys.path[0]`——
+    否则「启动期相对 argv0 + import 前 chdir」会让 `abspath(argv0)` 相对**新**
+    cwd 解析（`isfile` 落空 ⇒ 旧实现返回 None）⇒ 脚本目录不被排除 ⇒ 同目录
+    毒组件被导入执行。
     """
     argv = _sys.argv
     if not argv:
@@ -195,10 +207,23 @@ def main_script_dir():
     if _os is None:
         return None
     try:
-        if not _os.path.isfile(argv0):
-            return None
-        return _os.path.dirname(_os.path.abspath(argv0))
+        if _os.path.isfile(argv0):
+            return _os.path.dirname(_os.path.realpath(argv0))
     except Exception:
+        return None
+    # argv0 已不可解析（典型：import 前 chdir ⇒ 相对 argv0 相对新 cwd 找不到）。
+    # 退回 `sys.path[0]`：`python <script>.py` 形态下即启动期写定的脚本目录绝对
+    # 路径（与 cwd 无关）；`-m` 形态为启动 cwd（与 cwd 面重合，保守多排除一项，
+    # 无害）；`-c`/REPL 形态为 `''` ⇒ 仍返回 None。
+    try:
+        p0 = _sys.path[0] if _sys.path else None
+    except Exception:  # pragma: no cover - sys.path 异常
+        return None
+    if not isinstance(p0, str) or not p0:
+        return None
+    try:
+        return _os.path.realpath(p0)
+    except Exception:  # pragma: no cover
         return None
 
 

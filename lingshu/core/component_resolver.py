@@ -90,9 +90,14 @@ class ComponentDiscoveryWarning(UserWarning):
 
 
 def _norm(path: str) -> str:
-    """路径归一（大小写/相对/尾分隔符无关），用于判定 cwd 条目。"""
+    """路径归一（大小写/**符号链接**/相对/尾分隔符无关），用于判定 cwd / 脚本目录条目。
+
+    issue #343：改用 `realpath` 并与 `_pathguard._norm` **同归一**——`sys.path[0]`
+    由解释器写定、保留 argv0 的未解析形态（经 junction/symlink 启动时即别名路径），
+    故「脚本目录」两侧必须同样解析软链，否则同一目录的两种别名互相判不等 ⇒ 排除失效。
+    """
     try:
-        return os.path.normcase(os.path.abspath(path))
+        return os.path.normcase(os.path.realpath(path))
     except Exception:  # 防御：非法路径按原样比较
         return path
 
