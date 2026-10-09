@@ -8,7 +8,7 @@
     {
      "file": "anchor_verify.py",
      "src": "aeis.anchor_verify",
-     "sha256": "b7a593816503e304",
+     "sha256": "d735e65c689b88c6",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
