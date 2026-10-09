@@ -65,5 +65,4 @@ jobs:
           python -m pytest tests/ \
             --ignore=tests/test_brain_store.py \
             --deselect=tests/test_hex_text.py::test_spatial_detect_finds_single_object \
-            --deselect=tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt \
             -v
