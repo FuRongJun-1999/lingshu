@@ -118,9 +118,9 @@ class WorldModel:
                     dx = e.pos[0] - t.pos[0]
                     dz = e.pos[2] - t.pos[2]
                     dist = math.hypot(dx, dz)
-                    if kind == "left_of" and dx <= 0:
+                    if kind == "left_of" and dx >= 0:
                         e.pos = (t.pos[0] - 1.2, e.pos[1], t.pos[2]); moved = True
-                    elif kind == "right_of" and dx >= 0:
+                    elif kind == "right_of" and dx <= 0:
                         e.pos = (t.pos[0] + 1.2, e.pos[1], t.pos[2]); moved = True
                     elif kind == "near" and (dist > 1.0 or dist < 0.3):
                         e.pos = (t.pos[0] + 0.8, e.pos[1], t.pos[2] + 0.3); moved = True
