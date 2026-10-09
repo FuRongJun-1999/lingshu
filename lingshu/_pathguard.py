@@ -63,6 +63,15 @@ _REMOVED_KINDS = []     # 累计移除条目「种类」（'' / '.' / cwd；不�
 _KEPT_KINDS = []        # 逃生口打开时被保留的 cwd 类条目「种类」
 _WARN_EMITTED = False   # 逃生口告警是否已发出
 
+# ---- 受控面启动期快照（issue #288 · D-2）-----------------------------------
+# 受控面 = 白名单组件**允许**被解析到的面。它必须在**进程启动时刻**（本模块
+# 首次 import 时，即 lingshu 包的最早落点）一次性判定并冻结，**不再随判定时的
+# cwd 变化**；相对路径条目（其目标由 cwd 决定）**不**计入受控面。
+_SNAPSHOT_DONE = False
+_STARTUP_CWD = None          # 启动时刻的 cwd（归一；供分类，不外泄）
+_STARTUP_SCRIPT_DIR = None   # 启动时刻的脚本目录（原始路径，供分类）
+_CONTROLLED_ENTRIES = ()     # 启动时刻判定的受控面条目（绝对、非 cwd、非脚本目录、非相对）
+
 
 class CwdImportsAllowed(UserWarning):
     """逃生口 `LINGSHU_ALLOW_CWD_IMPORTS` 被打开（cwd/空串解析面未被消除）。"""
@@ -238,6 +247,78 @@ def is_script_dir_entry(entry) -> bool:
         return False
 
 
+def _is_relative_entry(entry) -> bool:
+    """条目是否为**相对路径**（含空串 / `.` / `./` / `.\\`）。
+
+    相对条目的目标目录由**判定时的 cwd** 决定 ⇒ 不可信、不属部署方显式声明面
+    ⇒ 一律不计入受控面（issue #288 · D-2）。空串与 `.` 同属此列。
+    """
+    if not isinstance(entry, str):
+        return True
+    if entry == "" or entry in (".", "./", ".\\"):
+        return True
+    if _os is None:
+        return True
+    try:
+        return not _os.path.isabs(entry)
+    except Exception:  # pragma: no cover
+        return True
+
+
+def startup_controlled_entries() -> tuple:
+    """**启动期快照**的受控面条目（issue #288 · D-2）。
+
+    返回在本模块首次 import 时一次性判定的元组，判定依据：
+      · **绝对路径**（相对条目目标由 cwd 决定 ⇒ 不计入）；
+      · **非 cwd**（`_is_cwd_entry` 命中的条目——`''` / `.` / 启动期 cwd）；
+      · **非脚本目录**（`python <script>.py` 的 `sys.path[0]` 脚本目录面）。
+
+    **关键性质**：本函数返回的是**冻结快照**，与调用时刻的 cwd 无关——
+    进程启动后 `os.chdir()` 到任何位置都不会改变其内容（D-2 的核心诉求：
+    受控面由启动时刻或显式配置（`LINGSHU_COMPONENT_ROOT`）确定，不吃 cwd 判定）。
+    """
+    _capture_controlled_surface()
+    return _CONTROLLED_ENTRIES
+
+
+def startup_cwd():
+    """启动时刻的 cwd（归一）；不可用时为 None。仅作诊断，不外泄绝对路径。"""
+    _capture_controlled_surface()
+    return _STARTUP_CWD
+
+
+def _capture_controlled_surface() -> None:
+    """在进程启动期（本模块 import 时）一次性判定并冻结受控面。幂等。"""
+    global _SNAPSHOT_DONE, _STARTUP_CWD, _STARTUP_SCRIPT_DIR, _CONTROLLED_ENTRIES
+    if _SNAPSHOT_DONE:
+        return
+    _SNAPSHOT_DONE = True
+    if _os is None:
+        _CONTROLLED_ENTRIES = ()
+        return
+    try:
+        _STARTUP_CWD = _norm(_os.getcwd())
+    except Exception:  # pragma: no cover - cwd 不可用
+        _STARTUP_CWD = None
+    _STARTUP_SCRIPT_DIR = main_script_dir()
+    out = []
+    for e in list(_sys.path):
+        if not isinstance(e, str) or e == "":
+            continue                      # 空串 = cwd 解析面
+        if _is_relative_entry(e):
+            continue                      # 相对条目：cwd 依赖 ⇒ 非受控面
+        if _is_cwd_entry(e) is not None:
+            continue                      # 启动期 cwd（scrub 后应已移除，防御再判）
+        if _STARTUP_SCRIPT_DIR is not None:
+            try:
+                if _norm(e) == _norm(_STARTUP_SCRIPT_DIR):
+                    continue              # 脚本目录面：非部署方显式声明
+            except Exception:  # pragma: no cover
+                pass
+        out.append(e)
+    _CONTROLLED_ENTRIES = tuple(out)
+
+
 def pathguard_report() -> dict:
     """路径护栏只读摘要（供 component_resolver / self_check 观测）。
 
@@ -254,8 +335,16 @@ def pathguard_report() -> dict:
         "kept_cwd_kinds": list(_KEPT_KINDS),
         "warning_emitted": _WARN_EMITTED,
         "cwd_entries_now": sum(1 for e in entries if _is_cwd_entry(e) is not None),
+        # issue #288 · D-2：受控面 = 启动期快照（不吃判定时 cwd）；只报计数与
+        # 启动期 cwd 是否可用，不含任何绝对路径。
+        "controlled_surface_count": len(_CONTROLLED_ENTRIES),
+        "controlled_surface_snapshot": _SNAPSHOT_DONE,
+        "startup_cwd_available": _STARTUP_CWD is not None,
     }
 
 
 # 导入本模块即执行护栏（`lingshu/__init__.py` 首行 import 本模块 ⇒ 最早落点）。
 _IMPORT_REMOVED = scrub()
+# issue #288 · D-2：在**启动期**（scrub 之后，cwd/空串条目已消除）一次性冻结
+# 受控面快照——此后无论 cwd 如何变化，受控面判定不变。
+_capture_controlled_surface()

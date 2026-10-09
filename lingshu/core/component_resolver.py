@@ -52,6 +52,7 @@ import warnings
 from .._pathguard import (
     main_script_dir as _main_script_dir,
     pathguard_report as _pathguard_report,
+    startup_controlled_entries as _startup_controlled_entries,
 )
 
 # 白名单：仓内以裸名解析的全部组件（含 AEIS `aeis/__init__.py` 注册别名集）。
@@ -141,8 +142,33 @@ def configured_roots() -> list:
     return [p for p in raw.split(os.pathsep) if p.strip()]
 
 
+def _is_relative_entry(entry) -> bool:
+    """条目是否为**相对路径**（含空串 / `.` / `./` / `.\\`）。
+
+    issue #288 · D-2：相对条目的目标目录由**判定时的 cwd** 决定，不属部署方显式
+    声明面 ⇒ 一律不计入受控面。旧实现靠 `_is_cwd_entry`（吃判定时 cwd）间接排除
+    「恰好等于当前 cwd 的相对条目」——cwd 一变，同一条目的判定就变（#273/#275 的
+    根因面）。本函数**不看 cwd**，只按「是否绝对路径」判定，故与判定时刻无关。
+    """
+    if not isinstance(entry, str):
+        return True
+    if entry == "" or entry in (".", "./", ".\\"):
+        return True
+    return not os.path.isabs(entry)
+
+
 def safe_search_path() -> list:
-    """受控搜索面：显式配置根在前，其后为 sys.path 的非 cwd/非脚本目录条目（去重保序）。"""
+    """受控搜索面：**启动期快照**的受控面条目 ＋ 显式配置根（去重保序）。
+
+    issue #288 · D-2：受控面不再由**判定时**的 `sys.path` 与 cwd 现算，而是取
+    `_pathguard` 在**进程启动期**冻结的快照（`startup_controlled_entries`）——
+    启动后 `os.chdir()` 到任何位置都不改变受控面（旧实现吃 cwd，见 `_is_cwd_entry`）。
+    快照只含**绝对路径**条目且已排除 cwd / 脚本目录；**相对路径条目一律不计入**
+    （其目标由 cwd 决定，属 #273/#275 的核心面）。
+
+    另注意：显式配置根（`LINGSHU_COMPONENT_ROOT`）**先加且永不受** cwd/脚本目录
+    判定影响 ⇒ 部署方声明的组件位置始终可达（正对照，防过度收紧）。
+    """
     roots: list = []
     seen: set = set()
 
@@ -154,8 +180,10 @@ def safe_search_path() -> list:
 
     for p in configured_roots():
         _add(p)
-    for entry in list(sys.path):
-        if _is_cwd_entry(entry) or _is_script_dir_entry(entry):
+    for entry in _startup_controlled_entries():
+        if not isinstance(entry, str) or entry == "":
+            continue
+        if _is_relative_entry(entry):          # 防御：快照不应含相对条目
             continue
         _add(entry)
     return roots
@@ -241,6 +269,9 @@ def discovery_report() -> dict:
         "script_dir_excluded": _main_script_dir() is not None,
         "script_dir_excluded_count": sum(1 for p in entries if _is_script_dir_entry(p)),
         "cwd_available": cwd_ok,
+        # issue #288 · D-2：受控面 = 启动期快照（不吃判定时 cwd）。
+        # 只增字段，不含本机绝对路径。
+        "relative_entries_excluded": sum(1 for p in entries if _is_relative_entry(p)),
         # issue #156 v2：路径护栏状态（cwd/空串条目是否已从 sys.path 消除、
         # 逃生口是否被打开、移除了哪些「种类」）——只增字段，不含本机绝对路径。
         "path_scrub": _pg,
