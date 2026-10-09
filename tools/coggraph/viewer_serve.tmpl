@@ -35,7 +35,8 @@ def node_detail(nid):
     if MDCG and p:
         fp = os.path.join(MDCG, p.replace("/", os.sep))
         if os.path.isfile(fp):
-            with io.open(fp, encoding="utf-8", errors="replace") as f:
+            # utf-8-sig 剥 BOM：BOM 会让 startswith("---") 判否，front matter 被整段当正文展示（issue #412 同族）。
+            with io.open(fp, encoding="utf-8-sig", errors="replace") as f:
                 raw = f.read()
             if raw.startswith("---"):
                 end = raw.find("\n---", 3)

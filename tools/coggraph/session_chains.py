@@ -53,7 +53,8 @@ def main(argv=None):
 
     t0 = time.time()
     node_sess, node_ts = {}, {}
-    with io.open(args.audit, encoding="utf-8", errors="replace") as f:
+    # utf-8-sig 剥 BOM：json.loads 首行遇 U+FEFF 直接抛异常被 except 吞掉，首条 add 事件丢失（issue #412 同族）。
+    with io.open(args.audit, encoding="utf-8-sig", errors="replace") as f:
         for line in f:
             if '"add"' not in line:
                 continue
