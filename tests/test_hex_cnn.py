@@ -75,9 +75,10 @@ def main():
     img[40:80, 60:100] = 255  # 中央白块
     feat, grid = image_to_grid(img, cells_across=32)
     check("晶格尺寸合理", feat.shape[0] >= 4 and feat.shape[1] == 32, str(feat.shape))
-    # 白块 (x 60~100, y 40~80) → 实测亮 cell 集中在 (r=5..7, q=7..10)
-    check("白块区域 cell 亮于角落", feat[6, 8].mean() > feat[1, 1].mean() + 50,
-          f"块内={feat[6, 8].mean():.0f} 角落={feat[1, 1].mean():.0f}")
+    # 白块 (x 60~100, y 40~80) → 全白 cell 在 (r=10..17, q=12..19)，块心 (x80,y60) ≈ (r=13, q=15)
+    # （旧探针 (6, 8) 是在横向越出画幅 √3 倍的晶格上实测的，见 tests/test_hex_grid_extent.py）
+    check("白块区域 cell 亮于角落", feat[13, 15].mean() > feat[1, 1].mean() + 50,
+          f"块内={feat[13, 15].mean():.0f} 角落={feat[1, 1].mean():.0f}")
     vis = grid_to_image(feat, grid, scale=6)
     check("可视化画布非空且亮度合理", vis.shape[0] > 50 and vis.mean() > 5,
           f"{vis.shape} mean={vis.mean():.1f}")
