@@ -1144,7 +1144,7 @@ class LayeredStore:
 
     def search_content(self, query: str, layers: List[MemoryLayer] = None,
                        limit: int = 20) -> List[Tuple[STNode, float]]:
-        """内容检索：多词 OR 预筛（含同义词扩展）+ 二元组 Jaccard 取最大扩展相似度"""
+        """内容检索：多词 OR 预筛（含同义词扩展）+ 原查询二元组 Jaccard 相似度排序"""
         q = query.strip()
         if not q:
             return []
@@ -1175,15 +1175,11 @@ class LayeredStore:
                 c.execute("SELECT * FROM nodes LIMIT 500")
             rows = c.fetchall()
         scored = []
-        # 评分用原查询二元组重叠率（召回导向）；扩展词只负责预筛召回不稀释评分
-        qb = self._bigrams(q)
+        # 评分用原查询二元组 Jaccard（含并集分母，与 char_bigram_jaccard 同式）；
+        # 扩展词只负责预筛召回不稀释评分
         for row in rows:
             node = STNode.from_row(tuple(row))
-            nb = self._bigrams(node.content)
-            if qb:
-                sim = len(qb & nb) / len(qb)
-            else:
-                sim = 0.0
+            sim = self.char_bigram_jaccard(q, node.content)
             tag_bonus = 0.05 if any(t in q or q in t for t in node.tags) else 0.0
             scored.append((node, min(1.0, sim + tag_bonus)))
         # 同分按重要性降序（高质量记忆优先，避免并列截断排挤重要节点）
