@@ -5314,8 +5314,11 @@ class SpacetimeMemoryEngine:
             "anchor_count": len(anchors),
             "structure_ok": len(structures) >= 2,
             "structure_count": len(structures),
-            "self_ok": len(self_nodes) > 0 or self.self_model.identity != "",
-            "self_model_exists": self.self_model.identity != "",
+            # 以持久化 SELF 层为准：runtime self_model 在 __init__ 无条件构造（identity
+            # 恒为非空默认值"协议实例"），用其作判据会使 self_ok 恒 True，无法发现失忆/无
+            # 自我——与同函数 anchor_ok / structure_ok 的纯持久化口径保持一致。
+            "self_ok": len(self_nodes) > 0,
+            "self_model_exists": len(self_nodes) > 0,
             "open_blindspots": len(self.store.list_blindspots(status="open")),
             "skills_count": self.store.count_skills(),
             "context_count": self.store.count_layer(MemoryLayer.CONTEXT),
