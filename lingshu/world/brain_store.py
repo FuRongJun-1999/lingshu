@@ -30,7 +30,11 @@
   `AEIS_DESIGNER_KEY` / `*_API_KEY` / `*_TOKEN` / `*_SECRET` / `*_PASSWORD` 等
   凭据**不再随继承环境交给脑侧子进程**（旧法「只剔 `MDCG_*`」是黑名单，对凭据面
   fail-open）。继承的 `MDCG_*` 仍被剔除（防在役库被无意命中）；凭据若确需传入，
-  必须经 `extra_env` **显式**声明（有意为之、可审计）。再注入下面的显式覆盖；
+  必须经 `extra_env` **显式**声明（有意为之、可审计）。**`HIVE_` 前缀不再放行**
+  （#227 续）：脑侧子进程（`python -X utf8 -m md_cg.mcp_server`）只在
+  `cg(op=ccg, action=units)` 工具面上经 `md_cg/units.py` 具名读 `HIVE_JOBS_DIR` /
+  `HIVE_EXE`（二者已入 `_ENV_ALLOW_NAMES`），凭据形状的 `HIVE_API_KEY` /
+  `HIVE_ORCH_TOKEN(_FILE)` / `HIVE_SUBAGENT_API_KEY` 一律不透传。再注入下面的显式覆盖；
 - `pythonpath` 必须显式给出（参数或 `BRAIN_PYTHONPATH`），否则 `ValueError`；
 - `root` 未给出且 `BRAIN_ROOT` 为空时，脑侧将回落到其缺省根——**调用方务必
   显式给隔离/目标根**（测试与生产都不例外）；
@@ -93,13 +97,25 @@ _ENV_ALLOW_NAMES = frozenset({
     # 宿主自省（解释器/编译扩展常用）
     "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER",
     "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "OS",
+    # 部署方显式配置面（**具名**，非前缀）——#227 续收敛：脑侧子进程
+    # `python -X utf8 -m md_cg.mcp_server` 的 `cg(op=ccg, action=units)` 工具面
+    # 经 `md_cg/units.py`（`ENV_JOBS_DIR` / `ENV_EXE`）读这两个名字定位蜂巢作业池
+    # 与可执行文件；缺省会回落到**脑包仓内**路径（`units.jobs_dir` / `units.exe_path`），
+    # 故非必需——重定向部署方可继承，或按需经 `extra_env` 显式声明。
+    # **不设 `HIVE_` 前缀**：前缀会顺带放行 `HIVE_API_KEY` / `HIVE_ORCH_TOKEN` /
+    # `HIVE_ORCH_TOKEN_FILE` / `HIVE_SUBAGENT_API_KEY` 等凭据形状名，而这些名字只在
+    # hive 服务/执行器侧（`hive/serve_start.py` / `hive/exec.py` / `hive/orch.py`，
+    # 由蜂巢自身进程树拉起）被读，**不在** `md_cg.mcp_server` 的读取面上。
+    "HIVE_JOBS_DIR", "HIVE_EXE",
 })
 
 #: 子进程 env **白名单·前缀**（部署方显式配置面）。`PYTHON*` 覆盖 PYTHONPATH /
 #: PYTHONUTF8 / PYTHONHOME / PYTHONIOENCODING / PYTHONDONTWRITEBYTECODE 等。
 #: 刻意**不含 `MDCG_`**——继承的 `MDCG_*` 仍须剔除（防在役库被无意命中），
 #: `MDCG_ROOT` / `MDCG_STG_STATE` 由 `_brain_env` 显式注入。
-_ENV_ALLOW_PREFIXES = ("PYTHON", "HIVE_", "LINGSHU_", "LC_")
+#: 亦**不含 `HIVE_`**（#227 续）：前缀过宽会把凭据形状名整体放行；脑侧确需的两个
+#: 非凭据名 `HIVE_JOBS_DIR` / `HIVE_EXE` 走上面的 `_ENV_ALLOW_NAMES` **具名**放行。
+_ENV_ALLOW_PREFIXES = ("PYTHON", "LINGSHU_", "LC_")
 
 
 def _env_is_allowed(name: str) -> bool:
