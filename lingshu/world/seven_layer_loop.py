@@ -58,7 +58,8 @@ class SevenLayerLoop:
     def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
                  window: int = 6, budget: int = 2, policy: str = "curiosity",
                  world: Optional[SceneSimulator] = None):
-        self.world = world or SceneSimulator(size=size, ground_level=ground_level)
+        self.world = world or SceneSimulator(size=size, ground_level=ground_level,
+                                             seed=seed)
         self.explorer = CuriosityExplorer(size=size, ground_level=ground_level,
                                           seed=seed, window=window, world=self.world)
         self.budget = max(1, int(budget))
