@@ -68,7 +68,14 @@ Pillow 12.2.0 / 12.3.0——`pyproject.toml` 中 extras 的版本区间由此收
 `lingshu.world.scenario.ScenarioContext` 将同一组记忆用于角色材料、世界状态、
 故事提纲、历史证据和有界因果推演，保留四栏条件、来源及脑端资格。
 它是只读消费入口；角色子知识不会进入现实证据线，未实现的正文生成不冒充完成。
-用法、验收及待项目确认的设计点见 [场景推演整合 v0.1](docs/plans/场景推演整合_v0.1.md)。
+安装轻核后即可运行五任务合成演示：
+
+```sh
+python -X utf8 -m lingshu.world.scenario_cli demo --mode all
+```
+
+现有 SQLite 图、脑端 MCP、PNG 呈现和独立验收见 [运行与交付](docs/scenario_usage.md)。
+待项目理论核的设计点见 [场景推演整合 v0.1](docs/plans/场景推演整合_v0.1.md)。
 
 ## 联系与贡献
 

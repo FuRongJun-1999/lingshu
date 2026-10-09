@@ -220,14 +220,18 @@ class ScenarioContext:
                 edges.append(edge)
         gaps = list(self._gaps) + cross_domain
         for n in facts:
+            if n["provenance"]["source"] == "unknown":
+                gaps.append("source_undeclared:" + n["id"])
             if not _declared(n["conditions"]):
                 gaps.append("undeclared_conditions:" + n["id"])
             if n["body_window"].get("truncated"):
                 gaps.append("body_window_truncated:" + n["id"])
             if n["qualification"] != "ACCEPT":
                 gaps.append("qualification_pending:" + n["id"])
-        report = {"mode": mode, "state": "ACCEPT",
-            "domain": "real" if mode == "history" or not self.role_id else "role", "scope": {
+        domains = sorted({self._domain(n) for n in facts})
+        domain = ("mixed" if len(domains) > 1 else domains[0] if domains else
+                  "role" if mode != "history" and self.role_id else "real")
+        report = {"mode": mode, "state": "ACCEPT", "domain": domain, "domains": domains, "scope": {
             "role_id": self.role_id, "session_id": self.session_id, "origin": self.origin},
             "facts": facts, "edges": edges, "gaps": gaps, "payload": {},
             "boundary": "消费视图，不验证新事实、不生成正文、不写入或升格记忆"}
@@ -248,6 +252,9 @@ class ScenarioContext:
             for n in facts:
                 names = _tags_with(n["tags"], "ent:")
                 if not names or not n["spatial"]:
+                    continue
+                if len(names) != 1:
+                    gaps.append("ambiguous_entity_name:" + n["id"])
                     continue
                 sp = n["spatial"]
                 if not all(isinstance(sp.get(axis), (int, float))
@@ -273,7 +280,8 @@ class ScenarioContext:
                 gaps.append("spatial_entities_missing")
         elif mode == "story":
             outline, cyclic = self._outline(facts, edges)
-            report["payload"] = {"outline": outline, "fiction": bool(self.role_id),
+            report["payload"] = {"outline": outline,
+                                 "fiction": None if domain == "mixed" else domain == "role",
                                  "background": [n for n in facts if self._background(n)],
                                  "cyclic": cyclic}
             if cyclic:
@@ -338,6 +346,7 @@ class ScenarioContext:
             for nid in ready:
                 n = remaining.pop(nid)
                 outline.append({"node_id": nid, "text": n["content"],
+                                "domain": ScenarioContext._domain(n),
                                 "depends_on": sorted(parents[nid])})
         return outline, []
 
@@ -369,7 +378,11 @@ class ScenarioContext:
                 result["paths"].append({"node_ids": list(seen), "edges": list(path),
                     "hypothesis": any(not e["verified"] or e["source_evidence"] != "extracted"
                                       or not _declared(e["conditions"]) for e in path)
-                                      or any(nodes[nid]["qualification"] != "ACCEPT" for nid in seen)})
+                                      or any(nodes[nid]["qualification"] != "ACCEPT"
+                                             or not _declared(nodes[nid]["conditions"])
+                                             or nodes[nid]["body_window"].get("truncated")
+                                             or nodes[nid]["provenance"]["source"] == "unknown"
+                                             for nid in seen)})
                 continue
             successors = outgoing.get(current, [])
             if len(path) >= depth:

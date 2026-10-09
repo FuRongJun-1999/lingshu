@@ -68,7 +68,8 @@ def test_one_persistent_graph_drives_five_tasks_without_writes(journey):
     story = ctx.view("story")
     outline = [step["node_id"] for step in story["payload"]["outline"]]
     assert outline.index("switch") < outline.index("lamp1")
-    assert story["payload"]["fiction"] is True
+    assert story["payload"]["fiction"] is None and story["domain"] == "mixed"
+    assert next(n for n in story["payload"]["outline"] if n["node_id"] == "real")["domain"] == "real"
     assert "bob" not in outline and "private" not in outline
     history = ctx.view("history")
     assert {n["id"] for n in history["facts"]} == {"real", "guess"}
@@ -120,7 +121,7 @@ def test_fictional_cause_cannot_become_a_real_world_evidence_path(journey):
     assert report["payload"]["paths"] == []
     assert "cross_domain_edge:fiction-to-real" in report["gaps"]
     assert ctx.view("history")["domain"] == "real"
-    assert ctx.view("world")["domain"] == "role"
+    assert ctx.view("world")["domain"] == "mixed"
 
 
 def test_snapshots_and_return_values_cannot_change_store_or_other_views(journey):
@@ -234,6 +235,54 @@ def test_host_state_does_not_leak_into_same_named_role_entity():
     assert "ambiguous_entity_domain:keeper" in report["gaps"]
     assert next(n for n in report["facts"] if n["id"] == "real-keeper")["attributes"]["state"] == "happy"
     assert next(n for n in report["facts"] if n["id"] == "role-keeper")["attributes"] == {}
+
+
+def test_mixed_material_is_not_labeled_as_one_fictional_world():
+    brain = BrainRead([record("real"), record("fiction", tags=["fixture", "role:alice", "event"])])
+    report = ScenarioContext.from_brain(brain, "material", role_id="alice").view("story")
+    assert report["domain"] == "mixed"
+    assert report["domains"] == ["real", "role"]
+    assert report["payload"]["fiction"] is None
+    assert {n["node_id"]: n["domain"] for n in report["payload"]["outline"]} == {
+        "real": "real", "fiction": "role"}
+    role_only = ScenarioContext.from_brain(BrainRead([brain.results[1]]), "fiction", role_id="alice")
+    assert role_only.view("story")["payload"]["fiction"] is True
+    real_only = ScenarioContext.from_brain(BrainRead([brain.results[0]]), "real")
+    assert real_only.view("story")["payload"]["fiction"] is False
+
+
+def test_missing_source_stays_a_gap_even_when_brain_qualification_is_accept():
+    report = ScenarioContext.from_brain(BrainRead([record("unknown", tags=["event"])]), "record").view("story")
+    assert report["state"] == "DEFER" and "source_undeclared:unknown" in report["gaps"]
+    assert report["facts"][0]["qualification"] == "ACCEPT"
+
+
+@pytest.mark.parametrize("extra", [{"truncated": True}, {"bad_conditions": True}])
+def test_accepted_nodes_with_incomplete_body_or_conditions_still_yield_hypotheses(extra):
+    start, end = record("start"), record("end")
+    if extra.get("bad_conditions"):
+        start["node"]["frontmatter"]["condition_space"] = {"existence_constraint": "museum"}
+    else:
+        start["node"].update(extra)
+    start["node"]["frontmatter"]["edges"] = [{"id": "edge", "target": "end",
+        "relation_type": "causal", "condition_space": end["node"]["frontmatter"]["condition_space"],
+        "verified": True, "source_evidence": "extracted"}]
+    report = ScenarioContext.from_brain(BrainRead([start, end]), "record").view(
+        "causal", start_id="start", end_id="end")
+    assert report["state"] == "DEFER"
+    assert report["payload"]["paths"][0]["hypothesis"] is True
+
+
+def test_multiple_entity_names_are_not_silently_mapped_to_the_first():
+    raw = record("ambiguous", tags=["external", "ent:first", "ent:second"])
+    raw["node"]["frontmatter"].update(spatial={"coords3d": {"x": 0, "y": 1, "z": 5}},
+                                      state_attributes={"state": "on"})
+    class States(BrainRead):
+        def call(self, name, args):
+            return {"items": []} if name == "stg" else super().call(name, args)
+    report = ScenarioContext.from_brain(States([raw]), "entity").view("world")
+    assert report["payload"]["entities"] == []
+    assert "ambiguous_entity_name:ambiguous" in report["gaps"]
 
 
 def test_invalid_selection_and_oversized_brain_response_do_not_change_budget(journey):
