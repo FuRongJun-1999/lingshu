@@ -63,6 +63,24 @@ lingshu
 - 私有内容模块（身体侧非公开线）**永不入本仓**，不得被引用或概括；
 - 本仓所有文档不写本机绝对路径字面量。
 
+### 6.1 锚点层写入面：一律 fail-closed（维护者 2026-10-10 裁定）
+
+**锚点层是不可变声明层，属极度重要的信息**——其写入面**一律 fail-closed**：
+
+- 进入不可遗忘共享层的**唯一**入口是 `SpacetimeMemoryEngine.register_external_anchor`
+  （`lingshu/core/core.py`），其 `ANCHOR_KINDS` 是**封闭白名单**，恰为
+  `pre_access_stance` / `introspection` / `external_calibration` 三项；
+- 白名单之外的 kind 一律 `ValueError`，**不做**静默降级、**不**自动放行新 kind；
+  新增 kind 属设计取舍、须经裁定，不得由实施者顺手放宽；
+- 该入口另带设计者密钥闸（未配置/不匹配即 `PermissionError`），与「提案→复核→终裁」
+  同款 fail-closed 取向。
+
+> **裁定出处**：维护者 2026-10-10 裁定（对应公开 issue「版本迭代记录无写入入口：
+> `ANCHOR_KINDS` 只认三种」）——「关于锚点层确实是极度重要的信息，需要收紧」。
+> 即维持三 kind 白名单、不放行第四种。
+> **守卫**：`tests/test_issue329_anchor_kinds_guard.py`（钉死取值 + 防第二份硬编码 +
+> 写入门槛 + 记录惯例单一真源）。
+
 ---
 
 ## 七、引入登记

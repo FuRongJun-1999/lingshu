@@ -2326,6 +2326,34 @@ class SpacetimeMemoryEngine:
         self.store.add_node(node)
         return node
 
+    # ---- 结构层「重要事件」记录惯例（唯一真源） ----
+    # 此前该惯例在四处**内联复制**（adjust_attention_weight / migrate_v17_coordinates /
+    # adjudicate_verifier_standard / register_external_anchor），格式统一为 `[tag] 内容`
+    # 且带同款角色分支；其中 `pending_sync` 标签**只有一处**带、另三处漏 ⇒ 同一惯例
+    # 的实现已漂移（lingshu issue #329 附带缺陷）。现收归单一真源：本常量 + 本辅助。
+    SUB_PENDING_SYNC_TAG = "pending_sync"
+
+    def _write_structure_record(self, record: str, tag: str,
+                                extra_tags: List[str] = None) -> Optional[STNode]:
+        """结构层「重要事件」记录惯例（唯一收口）。
+
+        PRIMARY ⇒ 写结构层（不可遗忘）；SUB ⇒ 写知识层副本，并**一律**带
+        `SUB_PENDING_SYNC_TAG`（待父节点同步为验证副本）。写失败静默（与既有
+        四处一致：记录不阻断主流程）。
+        """
+        tags = [tag] + list(extra_tags or [])
+        try:
+            if self.role == Role.PRIMARY:
+                n = self.add_structure_node(record, importance=0.9)
+            else:
+                n = self.add_perception(record, importance=0.9,
+                                        tags=tags + [self.SUB_PENDING_SYNC_TAG])
+            if n:
+                self.store.tag_node(n.id, tag)
+            return n
+        except Exception:
+            return None
+
     # ==================== 边操作 ====================
 
     def add_edge(self, source_id: str, target_id: str,
@@ -2681,6 +2709,16 @@ class SpacetimeMemoryEngine:
 
     # ==================== 外部锚点（M10 · 盲区29 缓解） ====================
 
+    #: 锚点层写入的**唯一白名单**（fail-closed）。
+    #:
+    #: 锚点层是**不可变声明层**，属**极度重要的信息**——其写入面一律 fail-closed：
+    #: 只有本白名单内的 kind 可经 `register_external_anchor` 进入不可遗忘共享层，
+    #: 白名单外一律 `ValueError`（**不**做静默降级、**不**自动放行新 kind）。
+    #: 本白名单为**封闭集**，新增 kind 属设计取舍、须经裁定，不得由实施者顺手放宽。
+    #:
+    #: 裁定出处：维护者 2026-10-10 裁定（lingshu issue #329）——「关于锚点层确实是
+    #: 极度重要的信息，需要收紧」，即维持三 kind 白名单、**不放行第四种**。
+    #: 守卫 `tests/test_issue329_anchor_kinds_guard.py` 钉死取值并防松动。
     ANCHOR_KINDS = ("pre_access_stance", "introspection", "external_calibration")
 
     def register_external_anchor(self, kind: str, content: str,
@@ -2709,7 +2747,11 @@ class SpacetimeMemoryEngine:
             content=f"[{kind}] {content}", modality="anchor",
             spatial_coordinates={}, temporal_coordinate=time.time(),
             condition_space=cs, importance=0.9, confidence=0.8,
-            layer=MemoryLayer.KNOWLEDGE, tags=["external_anchor", kind])
+            layer=MemoryLayer.KNOWLEDGE,
+            # SUB 写知识层副本 ⇒ 与 `_write_structure_record` 同一惯例，**一律**带
+            # `SUB_PENDING_SYNC_TAG`（issue #329：此前四处同惯例内联复制、
+            # `pending_sync` 只一处带 ⇒ 已收归单一真源）。
+            tags=["external_anchor", kind, self.SUB_PENDING_SYNC_TAG])
         self.store.add_node(node)
         return node
 
@@ -4360,15 +4402,7 @@ class SpacetimeMemoryEngine:
             return False
         self._attention_policy.set_weight(key, value, source, reason, role)
         record = f"[attention_weight] {key}={value}（{role} · {source}）{reason}"
-        try:
-            if self.role == Role.PRIMARY:
-                n = self.add_structure_node(record, importance=0.9)
-            else:
-                n = self.add_perception(record, importance=0.9, tags=["attention_weight"])
-            if n:
-                self.store.tag_node(n.id, "attention_weight")
-        except Exception:
-            pass
+        self._write_structure_record(record, "attention_weight")
         return True
 
     # ==================== v1.7 多模态（MULTIMODAL-REV1 · D-001~D-005） ====================
@@ -4402,15 +4436,7 @@ class SpacetimeMemoryEngine:
         self.store.conn.commit()
         if migrated:
             event = f"[migration] v1.7 坐标字段分离：{migrated} 节点语义键迁移至 semantic_coordinates"
-            try:
-                if self.role == Role.PRIMARY:
-                    n = self.add_structure_node(event, importance=0.9)
-                else:
-                    n = self.add_perception(event, importance=0.9, tags=["migration", "v1.7"])
-                if n:
-                    self.store.tag_node(n.id, "migration")
-            except Exception:
-                pass
+            self._write_structure_record(event, "migration", extra_tags=["v1.7"])
         return {"migrated_nodes": migrated}
 
     def ingest_frame(self, frame_data: Dict, entity_hint: str = None,
@@ -4813,16 +4839,7 @@ class SpacetimeMemoryEngine:
             if result["param"] == "deviation_threshold" and self._cognition:
                 self._cognition.deviation_threshold = result["value"]
             record = f"[verifier_standard] {result['param']}={result['value']} 终裁通过（{adjudicator}）"
-            try:
-                if self.role == Role.PRIMARY:
-                    vnode = self.add_structure_node(record, importance=0.9)
-                else:
-                    vnode = self.add_perception(record, importance=0.9,
-                                                tags=["verifier_standard", "pending_sync"])
-                if vnode:
-                    self.store.tag_node(vnode.id, "verifier_standard")
-            except Exception:
-                pass
+            self._write_structure_record(record, "verifier_standard")
         return True
 
     def list_verifier_standards(self, status: str = None) -> List[Dict]:
