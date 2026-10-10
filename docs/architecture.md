@@ -106,4 +106,6 @@ lingshu
 | 2026-10-06 | **世界模型 × 脑 适配器**：`lingshu/world/brain_store.py`（MCP stdio 客户端 + `BrainStore`/`BrainEngine`/`connect`；M1 读向＋M2 写向最小闭环）＋ `tests/test_brain_store.py`（隔离库端到端 10 断言）——intake 见 `docs/intake/brain-store-v0.1/` | **本仓新件**（依 0.8.0「身体×脑」对接设计四裁定之一＝适配器归身体侧；对端 `dsh-memory` 承接 spatial 直存与组合冒烟腿） | CLEAN（机械扫描 2 文件 0 命中；连接参数零本机路径字面量；端到端实证：`ingest_scene`→世界重建逐项断言，零改动对接） | `fb4b98b` |
 | 2026-10-08 | 身体侧导出 v0.2：固化物 `kernels_img0.json`（白箱固化产物，source 字段级脱敏；核数值与源逐位一致）＋ 构造性测试件 8 件（`tests/test_hex_{cnn,composite,gen,hier,ortho,search,text,train}.py`——理论稿点名证据所在面；`test_hex_text` 含 2 项已知红＝上游同跑同红）——intake 见 `docs/intake/body-export-v0.2/` | 身体侧真源（AEIS）续批；模块刷新判定＝**无过时**（52 件与上游现源管线产物逐件比对，2 处本仓既有脱敏差异保留不刷新） | CLEAN（新增面 0 命中：tests 9 / assets 1 / intake 3；扩展审计覆盖 .json；全仓复扫 8 处既有面复核记录见 intake `AUDIT.md`） | `dc1cc3b` |
 
+| 2026-10-09 | 场景消费整合 v0.1：共享场景 API + demo/local/brain CLI + 五任务/只读库/真实 MCP 验收；intake 见 `docs/intake/scenario-v0.1/` | **本仓新件**，身体侧消费入口，复用现有 core/WorldModel/MCP | 内容/隐私双清单 CLEAN；隔离合成数据，资格不升格；接口与可见性取舍交理论核 | [PR #375（提交见 PR）](https://github.com/FuRongJun-1999/lingshu/pull/375) |
+
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*
