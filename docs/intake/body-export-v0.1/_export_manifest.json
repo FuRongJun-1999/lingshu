@@ -470,7 +470,7 @@
     {
      "file": "hex_search.py",
      "src": "aeis.hex_search",
-     "sha256": "11c85f9672bc8ff3",
+     "sha256": "ae6cd031237c791b",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,
@@ -492,7 +492,7 @@
     {
      "file": "hex_train.py",
      "src": "aeis.hex_train",
-     "sha256": "b7c6b765b8fe800f",
+     "sha256": "6f0d95e1d24f958f",
      "rewrites": 2,
      "sanitized": 1,
      "patches": 0,

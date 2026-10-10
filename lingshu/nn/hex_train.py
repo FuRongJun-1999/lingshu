@@ -384,11 +384,29 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
                      samples_per_step: int = 16, batch: int = 64,
                      steps: int = 60, seed: int = 7) -> Dict:
     """ELF x-prediction 背书的目标：预测干净 cell（非噪声）。
-    conv 核支路的有限差分调整，conv 段冻结 mix/fc（预训练只调特征前端）。"""
+    conv 核支路的有限差分调整，conv 段冻结 mix/fc（预训练只调特征前端）。
+
+    ── 预算随晶格分辨率自适应（2026-10-10）────────────────────────────────
+    原 `steps` 标定于 **10×16 = 160 cell** 的旧晶格（`images_to_lattices` 旧
+    采样几何）。#116（`9bc4985`）修正 `image_to_grid` 横向越界后，同一
+    `cells_across=16` 的晶格行数由 10 抬到 18（288 cell）——每步只随机抽
+    `samples_per_step` 个 conv 参数做有限差分，**步数不变而 cell 数近翻倍**
+    时，「每个 cell 分到的更新预算」被稀释，20 步不足以让重建损失稳定下行
+    （实测 seed=7：`0.96974→1.05096`，末点恰抽到高值；前序探针 steps=100
+    时 `final≈0.80910 < init`，证明是预算不足而非更新方向错）。故按 cell 数
+    等比放大步数，令 `steps` 保持「每 cell 更新预算」的语义（与
+    `calibrate_thresholds` 按数据分位自适应同一取向：预算随输入规模走，
+    不钉死一个与分辨率耦合的常数）。`REF_CELLS=160` 即原标定分辨率。
+    注：本条**只动预算**，不触碰 `vec = net.conv.ravel()` /
+    `vec[pi] -= lr * g` 的原地更新路径（`#340` 靶区）与 `curve` 的评估口径。
+    """
     rng = np.random.default_rng(seed)
-    curve = []
     conv_vec_len = net.K * 7
-    for step in range(steps):
+    n_cells = int(x.shape[1] * x.shape[2])
+    REF_CELLS = 160                     # 原 steps 标定的旧晶格规模（10×16）
+    eff_steps = max(1, int(round(steps * n_cells / REF_CELLS)))
+    curve = []
+    for step in range(eff_steps):
         idx = rng.permutation(len(x))[:batch]
         xb = x[idx]
         masked = xb.copy()
@@ -415,7 +433,7 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
         net.conv = vec.reshape(net.K, 7)
         curve.append(round(recon_loss(), 5))
     return {"algo": ALGO + "+selfsup", "init": curve[0], "final": curve[-1],
-            "curve": curve}
+            "curve": curve, "steps": eff_steps, "n_cells": n_cells}
 
 
 # ==================== 类别条件卡 · 四态判定（三层分工） ====================

@@ -60,14 +60,31 @@ def test_single_object_converges_shallow(net):
 
 
 def test_two_object_needs_recursion(net):
-    """双物体:递归搜索应检出两个位置(单层平铺做不到的)。"""
+    """双物体:递归搜索应检出两个位置(单层平铺做不到的)。
+
+    判据沿革(本机实测,seed 固定、逐位可复现):
+      · 导入值 0.5 —— dc1cc3b(2026-10-08 导入提交)引入,此后**从未标定**。
+        它是照**改前采样几何**(`image_to_grid` 横向节距误作 s)的旧基线逐位钉的:
+        该几何下本口径实测恰 `6/12 = 0.5`,即阈值**零余量**(`0.5 >= 0.5` 卡线通过)。
+        追不到理论出处——仓内最近的理论值(《白箱原生网络_长期路线_v1》§一
+        M4.2「双物体完全匹配 ≥25%」/ M4.3「3 物体双位置级检出 ≥80%」)既不同名
+        也不同口径。**这是经验标定,不是理论值。**
+      · 转红与修复:9bc4985(#116 修正横向越界)抬高纵向分辨率后,根节点能量
+        分布变化 ⇒ 根节点恒 ACCEPT 短路递归(`hex_search.py` 根节点可 ACCEPT),
+        本口径塌到 `0/12`。修实现(根节点不得直接 ACCEPT)后回到 `12/12`。
+      · 新阈值 0.75 —— 锚定**修复后实际行为**:本口径在 20 个数据种子(13..32)
+        上实测区间 `0.917~1.0`(seed=13 即本用例 `1.0`);取 0.75 留 0.167 余量
+        (≥ 2 个样本),仍能当场抓住「根节点短路」类退化(0/12)与部分退化(≤6/12)。
+      · 削掉的判别力:**举不出**。本阈值由 0.5 **上调**至 0.75(收紧,非放宽),
+        「改后抓不到、改前能抓」的场景不存在;判别力只增不减。
+    """
     lat, metas = build(12, 2, seed=13)
     both = 0
     for i in range(12):
         found, _ = recursive_search(net, lat[i:i + 1], max_depth=2)
         if len({f["pos"] for f in found}) >= 2:
             both += 1
-    assert both / 12 >= 0.5, f"双物体双位置检出: {both}/12"
+    assert both / 12 >= 0.75, f"双物体双位置检出: {both}/12"
 
 
 def test_pruning_effective(net):
@@ -103,12 +120,50 @@ def test_pruning_effective(net):
         f"剪枝率低于新基线量级(粗筛排除不足): {total_rej}/{total_vis}"
 
 
+def test_root_never_accepts_directly(net):
+    """守卫:根节点(depth==0)不得直接 ACCEPT 短路递归。
+
+    理论依据:《自研蜂窝CNN_理论稿_v0.1》§八开篇明记「`min_share` 声明了却
+    从未生效」——根节点若可 ACCEPT,`depth==0` 即返回,递归分支永不发生,
+    自适应深度死区(§八.3)与「双物体需递归」两条性质同时失效(实测:根节点
+    恒 ACCEPT 时死区计数恒 0、双位置检出 0/12)。
+
+    定点变异自证:把 `hex_search.recursive_search` 里的
+    `allow_accept=(depth > 0)` 改回 `allow_accept=True`(即根节点可 ACCEPT),
+    本断言立即变红(`found` 出现 depth==0 的条目、visited 回到 1)。
+    """
+    lat, _ = build(12, 1, seed=5)
+    for i in range(12):
+        found, stats = recursive_search(net, lat[i:i + 1], max_depth=2)
+        assert stats["visited"] >= 2, \
+            f"根节点短路了递归(visited={stats['visited']})"
+        assert all(f["depth"] >= 1 for f in found), \
+            f"根节点不得直接 ACCEPT: {[(f['pos'], f['depth']) for f in found]}"
+
+
 def test_search_report_structure(net):
+    """位置命中率判据 + 报告结构。
+
+    判据沿革(本机实测,seed 固定、逐位可复现):
+      · 导入值 0.3 —— dc1cc3b(导入提交)引入,此后**从未标定**;`pos_hit` 这个量
+        在本仓理论/文档里**零命中**(`grep -rn "pos_hit" --include=*.md .` = 0 条)。
+        它是照**改前采样几何**的旧基线钉的:旧几何下本口径实测 `0.312`,余量仅
+        0.012(**近乎零余量**)。**这是经验标定,不是理论值。**
+      · 转红与修复:9bc4985(#116 修正横向越界)后,根节点恒 ACCEPT 短路递归 ⇒
+        塌到 `0.125`。修实现(根节点不得直接 ACCEPT)后回到 `0.938`。
+      · 新阈值 0.75 —— 锚定**修复后实际行为**:本口径在 20 个数据种子(17..36)
+        上实测区间 `0.875~1.0`(seed=17 即本用例 `0.938`);取 0.75 留 0.125 余量,
+        仍能当场抓住「搜索退化成整图一个中心象限」类退化(0.125)。
+      · 削掉的判别力:**举不出**。本阈值由 0.3 **上调**至 0.75(收紧,非放宽),
+        「改后抓不到、改前能抓」的场景不存在;判别力只增不减。
+      · 旁注(另一刀,不在本用例):pos_hit_rate/obj_match_rate 只算召回、不计
+        误报(#394),那是指标无甄别力的问题,与本条阈值无关。
+    """
     lat, metas = build(8, 2, seed=17)
     rep = search_report(net, lat, metas, max_depth=2)
     assert set(rep) >= {"pos_hit_rate", "obj_match_rate", "avg_visited",
                         "prune_rate"}
-    assert rep["pos_hit_rate"] > 0.3, f"双物体位置命中应显著: {rep}"
+    assert rep["pos_hit_rate"] > 0.75, f"双物体位置命中应显著: {rep}"
 
 
 def test_blindspot_honest(net):

@@ -104,6 +104,37 @@ def test_selfsup_recon_loss_drops():
     assert r["final"] < r["init"], f"重建损失未降: {r['init']}→{r['final']}"
 
 
+def test_selfsup_budget_scales_with_resolution():
+    """守卫:pretrain_selfsup 的步数预算随晶格 cell 数自适应。
+
+    根因(#116 副作用,2026-10-10):`steps` 标定于旧 10×16=160 cell 晶格;
+    #116(9bc4985)修正 image_to_grid 横向越界后,同一 cells_across 的晶格 cell
+    数近翻倍(16 列 10→18 行),常数预算被稀释 ⇒ 重建损失不再稳定下行(实测
+    seed=7 `0.96974→1.05096`;见 `pretrain_selfsup` docstring)。
+
+    定点变异自证:把 `pretrain_selfsup` 里的 `REF_CELLS` 调成极大值(如 10**9,
+    等价于关闭自适应,eff_steps 恒 == steps),第一条断言立即变红
+    (`r16["steps"] == r8["steps"] == 20`,不再满足 `>`)。
+    """
+    xs, _ = _toy_images(8)
+    from lingshu.nn.hex_train import images_to_lattices
+    lat16 = normalize_lattices(images_to_lattices(xs, cells_across=16))
+    lat8 = normalize_lattices(images_to_lattices(xs, cells_across=8))
+    n16 = lat16.shape[1] * lat16.shape[2]
+    n8 = lat8.shape[1] * lat8.shape[2]
+    r16 = pretrain_selfsup(HexNet(n_class=2, seed=2), lat16, steps=20)
+    r8 = pretrain_selfsup(HexNet(n_class=2, seed=2), lat8, steps=20)
+    assert r16["steps"] > r8["steps"], \
+        f"预算应随分辨率放大: {r16['steps']} vs {r8['steps']}"
+    assert r16["steps"] == int(round(20 * n16 / 160))
+    assert r8["steps"] == int(round(20 * n8 / 160))
+    # 两条分辨率下都必须下行——预算自适应后不再出现「预算被稀释」的假上行
+    assert r16["final"] < r16["init"], \
+        f"高分辨率未下行: {r16['init']}→{r16['final']}"
+    assert r8["final"] < r8["init"], \
+        f"低分辨率未下行: {r8['init']}→{r8['final']}"
+
+
 def test_class_cards_structure():
     xs, ys = _toy_images(16)
     from lingshu.nn.hex_train import images_to_lattices
