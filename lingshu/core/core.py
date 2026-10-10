@@ -1385,19 +1385,26 @@ class LayeredStore:
             sim = self.char_bigram_jaccard(q, node.content)
             tag_bonus = 0.05 if any(t in q or q in t for t in node.tags) else 0.0
             scored.append((node, FTSIndex.blend(min(1.0, sim + tag_bonus), bm), bm))
-        # 逐字命中：查询原文逐字出现在 content / tags 中（原 LIKE 路径的主命中语义）。
+        # 逐字命中闸门（与原 LIKE 路径语义对齐）：
+        #   · 查询原文逐字出现在某节点的 content / tags 中时，只返回原路径 LIKE 预筛会命中的
+        #     节点——即查询原文或其同义词展开项（terms）任一逐字出现者——逐字含原文者排最前。
+        #     同义展开不可省：上游 #44 的 similar 建边要在逐字命中的新节点之外找到经同义词
+        #     （如「记忆」→「记录」）命中的旧节点（tests/test_longterm_gate_p1_defects.py）。
+        #   · 查询原文无逐字命中（自然语言问句、带空格的关键词串）时不设闸门，交 BM25 部分
+        #     匹配——这正是原路径退化为「扫前 500 行」的情形。
         ql = q.lower()
+        lterms = [t.lower() for t in terms if t]
 
-        def _verbatim(node):
-            return ql in (node.content or "").lower() or any(
-                ql in str(t).lower() for t in (node.tags or []))
-        has_verbatim = any(_verbatim(x[0]) for x in scored)
+        def _has(node, ts):
+            c = (node.content or "").lower()
+            tg = [str(t).lower() for t in (node.tags or [])]
+            return any(t in c or any(t in x for x in tg) for t in ts)
+        has_verbatim = any(_has(x[0], [ql]) for x in scored)
         if ctx and scored and not has_verbatim:
             scored = self._fts_context_smooth(q, scored, layers)
-        # 精确度优先（与原路径语义对齐）：逐字包含查询原文的节点排在最前（原 LIKE 主命中），
-        # 其余名额按 BM25 部分匹配补足——不排他：上游 #44 的 similar 建边要求「逐字命中的
-        # 新节点之外，相似旧节点仍出现在 top-k」（tests/test_longterm_gate_p1_defects.py）。
-        scored.sort(key=lambda x: (not _verbatim(x[0]), -x[1], -x[2], -x[0].importance))
+        if has_verbatim:
+            scored = [x for x in scored if _has(x[0], lterms)]
+        scored.sort(key=lambda x: (not _has(x[0], [ql]), -x[1], -x[2], -x[0].importance))
         results = [(n, s) for n, s, _ in scored[:limit]]
         touch = self._retrieval_touches_recency()
         for node, _ in results:
