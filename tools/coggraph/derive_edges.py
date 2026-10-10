@@ -117,10 +117,10 @@ def main(argv=None):
     by_id = {n["id"]: n for n in nodes}
 
     # 已有显式连接的无序对（避免推导边重复显式语义）
-    exist_pairs = set()
+    explicit_pairs = set()
     for e in explicit:
         a, b = e["s"], e["t"]
-        exist_pairs.add((a, b) if a <= b else (b, a))
+        explicit_pairs.add((a, b) if a <= b else (b, a))
 
     edges = []
     hubs = {}
@@ -131,13 +131,19 @@ def main(argv=None):
         hubs[hid]["count"] += count
         return hid
 
+    # 推导边按（无序对, 类型）去重：不同规则的语义不同，都值得保留。
+    # 旧实现用跨规则共享的 exist_pairs 只按节点对去重 ⇒ 先执行的 R1 小桶两两边
+    # 占位，R1_pair(0.5) 挤掉 R5_body_crossref(0.8)，同桶笔记间的正文互引永远
+    # 建不出来、naming_report 的 Q2/Q3（只数 R5 入边）随桶归属改变判定（issue #411）。
+    derived_keys = set()
+
     def add(s, t, etype, rule, weight):
         if s == t:
             return False
         pair = (s, t) if s <= t else (t, s)
-        if pair in exist_pairs:
+        if pair in explicit_pairs or (pair, etype) in derived_keys:
             return False
-        exist_pairs.add(pair)
+        derived_keys.add((pair, etype))
         edges.append({"s": s, "t": t, "type": etype, "derived": True, "rule": rule, "weight": round(weight, 3)})
         return True
 
@@ -287,7 +293,9 @@ def main(argv=None):
                 if not os.path.isfile(fp):
                     continue
                 try:
-                    with io.open(fp, encoding="utf-8", errors="replace") as f:
+                    # utf-8-sig 剥 BOM：带 BOM 的正文会让 FMHEAD（^---\n）匹配失败，
+                    # R5 把整段前言（含 front matter）当正文参与互引匹配（issue #412 同族）。
+                    with io.open(fp, encoding="utf-8-sig", errors="replace") as f:
                         raw = f.read()
                 except Exception:
                     continue
