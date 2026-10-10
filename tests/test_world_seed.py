@@ -98,6 +98,53 @@ def test_world_learner_passes_seed_to_world():
             != WorldLearner(size=24, seed=2).world._rng.random())
 
 
+# ==================== ② seed 必须达「世界构建」流，不只达「实体行为」流 ====================
+# 缺陷：SceneSimulator.__init__ 构造 VoxelWorld 时**未透传 seed** ⇒ VoxelWorld 恒用
+# 自身缺省 seed=0，`build_flatland` 的种树位置与 SceneSimulator.seed 无关。
+# 即 SceneSimulator.seed 只播种实体行为流（wander），对世界构建无影响。
+
+def _terrain(seed):
+    """经 SceneSimulator 取得**地形布局**（VoxelWorld.blocks 快照）。
+
+    注意：`create_scene()` 返回的 `blocks` 是**计数**（int），不是布局——用它做
+    相等比较会恒真（方块总数与树位置无关）。必须取 `world.blocks`（{(x,y,z): 块}）。
+    """
+    from lingshu.world.scene_simulator import SceneSimulator
+
+    sim = SceneSimulator(size=24, seed=seed)
+    sim.create_scene(trees=4, water=True)
+    return dict(sim.world.blocks)
+
+
+def test_scene_terrain_differs_by_seed():
+    assert _terrain(1) != _terrain(2), \
+        "seed 未达世界构建流 ⇒ 两个 seed 的地形逐位相同（世界构建维度消融无效）"
+
+
+def test_scene_same_seed_terrain_reproducible():
+    assert _terrain(7) == _terrain(7)
+
+
+def test_voxelworld_direct_seed_still_works():
+    """VoxelWorld 直接用法不受影响：其自身 seed 参数照旧生效。"""
+    from lingshu.world.voxel_world import VoxelWorld
+
+    a = VoxelWorld(size=24, seed=1)
+    a.build_flatland(trees=4, water=True)
+    b = VoxelWorld(size=24, seed=2)
+    b.build_flatland(trees=4, water=True)
+    assert a.blocks != b.blocks
+
+
+def test_scene_passes_seed_to_its_voxel_world():
+    """直接核对透传：SceneSimulator(seed=N).world._rng 必须与 VoxelWorld(seed=N) 同流。"""
+    from lingshu.world.scene_simulator import SceneSimulator
+    from lingshu.world.voxel_world import VoxelWorld
+
+    assert (SceneSimulator(size=24, seed=5).world._rng.random()
+            == VoxelWorld(size=24, seed=5)._rng.random())
+
+
 if __name__ == "__main__":
     import traceback
 
