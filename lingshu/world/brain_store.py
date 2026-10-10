@@ -426,6 +426,8 @@ class BrainStore:
         """cg(op=read) 取候选 → **适配器侧按 tag 过滤**（裁定三：零脑改）→ BrainNode。
 
         坐标取 `frontmatter.spatial.coords3d`（裁定二）；状态取槽位投影。
+        limit 为标签过滤前的候选预算；保留既有 max(1, int(limit)) 地板，
+        所以 limit=0 仍请求一个候选，不表示空查询。状态投影另受 500 条预算约束。
 
         `limit` 译为脑端条数参数 `k`（issue #2）：脑端 `cg(op=read)` 的条数口径
         是 `k`（`_int_arg(a, "k", 20)`）；`limit` 在非 `budget_tokens` 路径**不被
@@ -538,10 +540,10 @@ def connect(python: Optional[str] = None, pythonpath: Optional[str] = None,
 # ---------------------------------------------------------------------------
 
 
-def load_world_from_brain(agent_or_store, tag: str = "spatial"):
-    """M1 便捷：脑为底重建世界模型（scene_model.load_world_from_memory 零改动）。"""
+def load_world_from_brain(agent_or_store, tag: str = "spatial", limit: int = 200):
+    """M1 便捷：按显式候选预算重建世界模型（默认 200，非全库枚举）。"""
     from .scene_model import load_world_from_memory
-    return load_world_from_memory(agent_or_store, tag=tag)
+    return load_world_from_memory(agent_or_store, tag=tag, limit=limit)
 
 
 def ingest_scene_to_brain(agent: BrainAgent, scene_desc: str, tag: str = "spatial"):
