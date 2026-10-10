@@ -1676,41 +1676,36 @@ class LayeredStore:
                       (_dumps_tags(node.tags), node_id))
             self.conn.commit()
 
+    @_transactional
     def restore_node(self, node_id: str) -> bool:
         """把节点从归档态还原为活跃态：清 `archived` 标签并恢复归档前的 importance。
 
         归档前的 importance 记在 `pre_archive_importance=<值>` 标签里（由
-        `forget_advisor` 写入）。没有该标签时退化为只清标签。
+        `forget_advisor` 写入）。没有该标签（或不可解析为float）时退化为只清标签。
         返回是否发生了状态变更。
         """
         node = self.get_node(node_id)
         if node is None or "archived" not in node.tags:
             return False
-        raw = None
-        for t in node.tags:
-            if t.startswith("pre_archive_importance="):
-                raw = t.split("=", 1)[1]
-                break
-        with self._lock:
-            c = self.conn.cursor()
-            new_tags = [t for t in node.tags
-                        if t != "archived"
-                        and not t.startswith("pre_archive_importance=")]
-        if raw is None:
-            c.execute("UPDATE nodes SET tags=? WHERE id=?",
-                      (_dumps_tags(new_tags), node_id))
-        else:
+        new_tags = [t for t in node.tags
+                    if t != "archived"
+                    and not t.startswith("pre_archive_importance=")]
+        raw = next((t.split("=", 1)[1] for t in node.tags
+                    if t.startswith("pre_archive_importance=")), None)
+        imp = None
+        if raw is not None:
             try:
                 imp = float(raw)
             except ValueError:
                 imp = None
+        with self._lock:
+            c = self.conn.cursor()
             if imp is None:
                 c.execute("UPDATE nodes SET tags=? WHERE id=?",
                           (_dumps_tags(new_tags), node_id))
             else:
                 c.execute("UPDATE nodes SET tags=?, importance=? WHERE id=?",
                           (_dumps_tags(new_tags), imp, node_id))
-        self.conn.commit()
         return True
 
     # ==================== 情境层（M4） ====================
