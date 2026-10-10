@@ -145,20 +145,18 @@ def test_persist_and_reopen(tmp_path, fts_on):
     assert e2.store.search_content(QUESTION, limit=1)[0][0].content == TARGET
 
 
-def test_verbatim_hits_rank_first(fts_on):
-    """查询原文有逐字命中时，逐字命中排在最前（原 LIKE 主命中语义）；部分重叠的节点只补后位。"""
+def test_verbatim_hits_keep_legacy_precision(fts_on):
+    """查询原文有逐字命中时只返回原 LIKE 预筛会命中的节点，不混入仅部分重叠的节点
+    （上游 test_core_thread_safety 依赖此语义）。"""
     e = SpacetimeMemoryEngine(":memory:")
     a = e.add_perception("子线程写入", skip_dedup=True)
-    b = e.add_perception("主线程写入日志", skip_dedup=True)
-    ids = [h[0].id for h in e.store.search_content("子线程写入", limit=10)]
-    assert ids[0] == a.id
-    assert e.store.search_content("子线程写入", limit=1)[0][0].id == a.id
-    assert set(ids) <= {a.id, b.id}
+    e.add_perception("主线程写入日志", skip_dedup=True)
+    assert [h[0].id for h in e.store.search_content("子线程写入", limit=10)] == [a.id]
 
 
 def test_verbatim_does_not_hide_similar_nodes(fts_on):
-    """逐字命中不排他：新快照逐字含查询时，相似旧节点仍须出现在 top-k
-    （上游 #44：longterm_snapshot / prefeed 依赖 search_content 建 similar 边）。"""
+    """闸门按原 LIKE 预筛语义含同义词展开：新快照逐字含查询时，经同义词（记忆→记录）
+    命中的相似旧节点仍须出现在 top-k（上游 #44：longterm_snapshot / prefeed 依赖它建 similar 边）。"""
     e = SpacetimeMemoryEngine(":memory:")
     old = e.add_perception("六边形蜂窝网格等距邻居编码方式的旋转等变上限记录", skip_dedup=True)
     q = "记忆：六边形蜂窝网格等距邻居编码方式的旋转等变上限与对称群阶数"
