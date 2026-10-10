@@ -4784,6 +4784,10 @@ class SpacetimeMemoryEngine:
         降级口径（issue #16）：目标库不存在的表跳过并计入 `skipped_tables`；
         否则导出产物一旦含 `entities` 行，回灌同样抛 `OperationalError`。
 
+        事务边界：独立调用成功时提交；失败时撤销本次导入并释放写锁。
+        若调用方已有事务，则使用嵌套 savepoint，保留其提交/回滚权；SQLite
+        自身取消整笔事务（如 RAISE(ROLLBACK)）时仍遵循数据库原有语义。
+
         返回值指标口径（**勿与 `verify_integrity()` 的 `orphan_edges` 混用**）：
         `dangling_rows` 是**按「违规行」去重**的计数——导入后跑 `PRAGMA
         foreign_key_check`，该指令对**每一条**被违反的外键约束各回一行；同一行若
@@ -4800,36 +4804,43 @@ class SpacetimeMemoryEngine:
         """
         with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        c = self.store.conn.cursor()
-        existing = self._existing_tables()
-        counts = {}
-        skipped = []
-        for table in self.M13_TABLES:
-            if table not in existing:
-                skipped.append(table)
-                continue
-            rows = data.get(table, [])
-            if not rows:
-                counts[table] = 0
-                continue
-            cols = list(rows[0].keys())
-            placeholders = ",".join("?" for _ in cols)
-            col_sql = ",".join(cols)
-            for r in rows:
-                c.execute(f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})",
-                          tuple(r.get(col) for col in cols))
-            counts[table] = len(rows)
-        self.store.conn.commit()
-        # 恢复自检：SQLite 默认不强制外键（连接未开 PRAGMA foreign_keys），备份
-        # 自带的悬挂边会被原样恢复，事后只能靠调用方主动调 verify_integrity；
-        # 故导入后当场体检，把「恢复了损坏备份」这件事随返回值交付（不拦写入）。
-        c.execute("PRAGMA foreign_key_check")
-        # 按 (表名, rowid) 去重 ⇒ 两端全悬挂的**同一条边**只计 1。对照
-        # verify_integrity()["orphan_edges"] 按边×端点累加，同一场景计 2；两处
-        # 口径不同（详见本方法 docstring），不要把这一个数当成那一个数。
-        dangling = {(table, rid) for table, rid, *_ in c.fetchall()}
-        return {"imported": counts, "skipped_tables": skipped,
-                "dangling_rows": len(dangling), "integrity_ok": not dangling}
+        with self.store._lock:
+            c = self.store.conn.cursor()
+            savepoint = "m13_import_" + uuid.uuid4().hex
+            c.execute(f"SAVEPOINT {savepoint}")
+            try:
+                existing = self._existing_tables()
+                counts = {}
+                skipped = []
+                for table in self.M13_TABLES:
+                    if table not in existing:
+                        skipped.append(table)
+                        continue
+                    rows = data.get(table, [])
+                    if not rows:
+                        counts[table] = 0
+                        continue
+                    cols = list(rows[0].keys())
+                    placeholders = ",".join("?" for _ in cols)
+                    col_sql = ",".join(cols)
+                    for r in rows:
+                        c.execute(f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})",
+                                  tuple(r.get(col) for col in cols))
+                    counts[table] = len(rows)
+                # 恢复自检仍只报告、不拦截默认外键关闭时的悬挂引用；校验本身
+                # 抛异常也必须回滚，因此放在释放 savepoint（提交）之前。
+                c.execute("PRAGMA foreign_key_check")
+                # 按 (表名, rowid) 去重，与 orphan_edges 的边×端点口径不同。
+                dangling = {(table, rid) for table, rid, *_ in c.fetchall()}
+                c.execute(f"RELEASE SAVEPOINT {savepoint}")
+            except BaseException:
+                # 部分 SQLite 错误会自行取消整笔事务，此时 savepoint 已不存在。
+                if self.store.conn.in_transaction:
+                    c.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    c.execute(f"RELEASE SAVEPOINT {savepoint}")
+                raise
+            return {"imported": counts, "skipped_tables": skipped,
+                    "dangling_rows": len(dangling), "integrity_ok": not dangling}
 
     def verify_integrity(self) -> Dict:
         """M13：完整性校验（边引用节点存在性 + 表计数）
