@@ -85,8 +85,9 @@ STDLIB_ALLOWED = frozenset({
     "threading", "queue", "time", "uuid",
     # 存储
     "sqlite3",
-    # IO / 文本 / 数值 / 随机
-    "io", "re", "math", "random",
+    # IO / 文本 / 数值 / 随机（difflib：矛盾感知 contradiction.py 引入——标准库字符级对齐；
+    # 守卫按设计判红「未知裸名」，此处补分类而非放宽判据）
+    "io", "re", "math", "random", "difflib",
     # 命令行 / 子进程
     "argparse", "subprocess",
 })
