@@ -27,6 +27,9 @@ import uuid
 import os
 import hmac as _hmac
 import threading
+import weakref
+import functools
+import contextlib
 from typing import Optional, List, Dict, Any, Tuple, Set
 from dataclasses import dataclass, field, asdict
 from enum import Enum
@@ -359,6 +362,59 @@ class Role(Enum):
     SUB = "sub"           # 子节点/辅助实例：仅本地层（知识层、情境层、自我层）
 
 
+class _ThreadConn:
+    """线程连接槽：登记表（`LayeredStore._conns`）的单元。
+
+    为什么需要这层壳（PR #202 的连接按线程分配留下了两个未处置的边界）：
+    ① `sqlite3.Connection` **不支持弱引用**（`weakref.ref(conn)` 抛 TypeError），
+       也不允许注入属性（`conn.commit = ...` 抛 AttributeError）——无法直接把连接
+       放进 WeakSet，也无法给连接挂 `__del__`；
+    ② 线程退出后 `threading.local` 的线程存储被释放，本槽随之失去强引用 ⇒
+       `__del__` 关闭连接。close 会回滚未提交事务并释放 SQLite 写锁，于是
+       「线程结束了但连接不关闭」的写锁泄漏不再发生，登记表也不再随线程数无界增长。
+    """
+
+    # `__weakref__` 必须显式列出：定义 `__slots__` 后类默认不再带弱引用槽，
+    # 而登记表 `_conns` 是 WeakSet（按槽做弱引用）。
+    __slots__ = ("conn", "_closed", "__weakref__")
+
+    def __init__(self, conn):
+        self.conn = conn
+        self._closed = False
+
+    def close(self):
+        """关闭连接（幂等）：关闭会回滚悬挂事务，从而释放写锁。"""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self.conn.close()
+        except Exception:
+            pass  # 已关闭/被其它线程回收：关闭是尽力而为，不阻断生命周期收尾
+
+    def __del__(self):
+        # 线程退出 → threading.local 释放本槽 → 这里关闭连接（回滚悬挂事务、释放写锁）。
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
+def _transactional(fn):
+    """把整个方法收进一条写事务：正常提交、异常回滚。
+
+    为什么用装饰器而不是逐点 `with self.conn:`——本文件写点有 40 处、分散在两个类，
+    逐点包裹的漏改风险与 diff 噪音都高；装饰器把事务边界钉在「方法」粒度，且可被
+    静态守卫机械核验（tests/test_core_thread_safety.py 的 AST 用例：凡含写语句的方法
+    必须带本装饰器，新增写点漏挂即红）。
+    """
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        with self._tx():
+            return fn(self, *args, **kwargs)
+    return wrapper
+
+
 class LayeredStore:
     """
     五层记忆结构，严格区分共享层与本地层。
@@ -398,10 +454,17 @@ class LayeredStore:
         # 路径（bad parameter or other API misuse）。每线程一条连接后，异常面清零，
         # 同时保住了连接级 PRAGMA 与 :memory: 的既有语义。
         self._local = threading.local()
-        self._conns = []                      # 保活：连接关闭后共享内存库即消失
+        # 在线连接登记表（WeakSet）：连接槽随线程退出被回收并关闭，故这里**不**持有
+        # 强引用——旧实现用强引用列表登记，线程退出后连接对象不 GC ⇒ 不关闭 ⇒ 其
+        # 可能悬挂的写事务持锁不放（「库写不进去」），且登记表随线程数无界增长。
+        self._conns = weakref.WeakSet()
         self._memory_dsn = (self._MEMORY_DSN.format(uuid.uuid4().hex[:12])
                             if db_path == ":memory:" else None)
-        self._connect(self._memory_dsn or db_path)
+        # 锚连接（强引用）：`file:...?mode=memory&cache=shared` 的共享内存库需要**至少
+        # 一条连接存活**才不消失（旧注释「保活」即此意）。旧实现靠 _conns 的强引用
+        # 列表顺带保活；改弱引用后必须显式留一条，否则创建线程一旦退出、本线程连接
+        # 被回收，内存库即整体消失，PR #202 的「:memory: 跨线程可见」随之失效。
+        self._anchor = self._connect(self._memory_dsn or db_path)
         # v1.16 图架构增强：WAL 模式（读写不互锁，MCP 长事务不再阻塞其他连接）
         # + busy_timeout（锁等待而非立即报错）
         if db_path != ":memory:":
@@ -429,7 +492,12 @@ class LayeredStore:
         self._lock = threading.Lock()
 
     def _connect(self, dsn: str):
-        """建立本线程的连接并登记；连接级 PRAGMA 必须逐连接重设。"""
+        """建立本线程的连接并登记，返回登记用的连接槽（`_ThreadConn`）。
+
+        连接级 PRAGMA 必须逐连接重设。槽是本线程连接的唯一强引用之一（另一份在
+        `_local.slot`）：线程退出 → 线程存储释放 → 槽被回收 → `__del__` 关闭连接
+        （回滚未提交事务、释放写锁）。
+        """
         # check_same_thread=False：close() 由收尾线程（常为主线程）统一关闭本实例登记的
         # 全部连接；若保持默认 True，跨线程 c.close() 会抛 ProgrammingError 并被 close()
         # 的 except Exception 吞掉 ⇒ 本线程之外的连接实际未关（登记却已清空）＝连接泄漏。
@@ -442,18 +510,43 @@ class LayeredStore:
                 c.execute("PRAGMA journal_size_limit=512000000")
             except Exception:
                 pass
-        self._local.conn = c
-        self._conns.append(c)
-        return c
+        slot = _ThreadConn(c)
+        self._local.slot = slot
+        self._conns.add(slot)
+        return slot
 
     @property
     def conn(self) -> sqlite3.Connection:
         """本线程的连接；首次访问时按需建立（每线程一条，互不共享）。"""
-        c = getattr(self._local, "conn", None)
-        if c is None:
-            c = self._connect(self._memory_dsn or self.db_path)
-        return c
+        slot = getattr(self._local, "slot", None)
+        if slot is None or slot.conn is None:
+            slot = self._connect(self._memory_dsn or self.db_path)
+        return slot.conn
 
+    @contextlib.contextmanager
+    def _tx(self):
+        """写事务边界：正常提交、异常回滚。
+
+        本类的写路径形如 `c = self.conn.cursor(); c.execute(...); self.conn.commit()`。
+        若异常落在 execute 与 commit 之间（语句报错、约束冲突、commit 自身失败…），
+        旧实现既无 commit 也无 rollback ⇒ SQLite 隐式事务被挂在连接上 ⇒ 该连接持有
+        写锁不放（其它写者等满 busy_timeout=30000ms 后报 database is locked）。
+        本上下文管理器把「execute → commit」收成单一原子边界，异常必定 rollback
+        后原样抛出。
+        """
+        conn = self.conn
+        try:
+            yield conn
+        except BaseException:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        else:
+            conn.commit()
+
+    @_transactional
     def _init_tables(self):
         c = self.conn.cursor()
         # 启动只读化（2026-09-01 多进程写锁竞争修复②）：全部关键表已存在且
@@ -612,6 +705,7 @@ class LayeredStore:
 
     # ---------- 节点操作 ----------
 
+    @_transactional
     def add_node(self, node: STNode) -> str:
         """写入节点并返回 id。共享层（anchor/structure）仅 PRIMARY 角色可写，
         其余角色写入即拒（PermissionError）——多角色写权限边界。"""
@@ -641,6 +735,7 @@ class LayeredStore:
         c.execute("SELECT key, value FROM engine_meta")
         return dict(c.fetchall())
 
+    @_transactional
     def set_meta(self, key: str, value: str) -> None:
         """写引擎元数据（upsert）。"""
         with self._lock:
@@ -658,6 +753,7 @@ class LayeredStore:
             return None
         return STNode.from_row(tuple(row))
 
+    @_transactional
     def delete_node(self, node_id: str) -> bool:
         """仅允许删除非锚点/非结构层的节点"""
         node = self.get_node(node_id)
@@ -672,6 +768,7 @@ class LayeredStore:
             self.conn.commit()
         return True
 
+    @_transactional
     def update_node_confidence(self, node_id: str, delta: float):
         """更新节点置信度（验证单元复核后调用）"""
         with self._lock:
@@ -699,6 +796,7 @@ class LayeredStore:
 
     # ---------- 边操作 ----------
 
+    @_transactional
     def add_edge(self, edge: STEdge) -> str:
         """写入有向边并返回 id（边的条件空间决定路由资格——条件挂在边上）。"""
         with self._lock:
@@ -716,6 +814,7 @@ class LayeredStore:
             return None
         return STEdge.from_row(tuple(row))
 
+    @_transactional
     def verify_edge(self, edge_id: str, new_confidence: float = None):
         """验证单元复核后标记边为已验证"""
         with self._lock:
@@ -1084,6 +1183,7 @@ class LayeredStore:
 
     # ---------- 衰减引擎 ----------
 
+    @_transactional
     def decay_cycle(self, factor: float = 0.02, min_confidence: float = 0.1):
         """
         对未验证的边执行指数衰减。
@@ -1246,6 +1346,7 @@ class LayeredStore:
                 self.increment_access(nid)
         return nodes
 
+    @_transactional
     def tag_node(self, node_id: str, tag: str):
         """给节点追加标签（幂等：已含该标签则不重复写）。"""
         node = self.get_node(node_id)
@@ -1274,6 +1375,7 @@ class LayeredStore:
 
     # ==================== 盲区注册表（M2 · D-001 语义判定） ====================
 
+    @_transactional
     def add_blindspot(self, code: str, description: str, severity: str = "medium",
                       category: str = "operational",
                       predictability: str = "pending_assessment") -> str:
@@ -1305,6 +1407,7 @@ class LayeredStore:
                            "predictability": d.get("predictability", "pending_assessment")})
         return result
 
+    @_transactional
     def resolve_blindspot(self, blindspot_id: str):
         """消解盲区（status→resolved 并记 resolved_at）——盲区学习闭环终点。"""
         c = self.conn.cursor()
@@ -1314,6 +1417,7 @@ class LayeredStore:
 
     # ==================== 技能记忆（M9） ====================
 
+    @_transactional
     def add_skill(self, name: str, description: str, procedure: str, confidence: float = 0.5) -> str:
         """登记技能卡（名称/描述/步骤/初始置信度），返回技能 id。"""
         sid = f"sk_{uuid.uuid4().hex[:8]}"
@@ -1344,6 +1448,7 @@ class LayeredStore:
         c.execute("SELECT COUNT(*) FROM skills")
         return c.fetchone()[0]
 
+    @_transactional
     def update_skill_confidence(self, skill_id: str, delta: float):
         """技能置信度增量更新（clamp 到 [0,1]，正=成功经验/负=失败经验）。"""
         c = self.conn.cursor()
@@ -1353,6 +1458,7 @@ class LayeredStore:
 
     # ==================== 固化流水线（M6 · D-003 终裁门槛） ====================
 
+    @_transactional
     def add_promotion_proposal(self, node_id: str, requester: str, reason: str) -> str:
         """提交层晋升提案（节点申请跨层升格，如 context→knowledge），返回提案 id。"""
         pid = f"pp_{uuid.uuid4().hex[:8]}"
@@ -1362,6 +1468,7 @@ class LayeredStore:
         self.conn.commit()
         return pid
 
+    @_transactional
     def verify_promotion(self, proposal_id: str, verified_by: str):
         """复核晋升提案（status→verified 并记录复核人）——晋升双签制第二签。"""
         c = self.conn.cursor()
@@ -1369,6 +1476,7 @@ class LayeredStore:
                   (verified_by, proposal_id))
         self.conn.commit()
 
+    @_transactional
     def adjudicate_promotion(self, proposal_id: str, adjudicated_by: str, approved: bool,
                              designer_key: str = None) -> Optional[str]:
         """维生系统终裁（D-007 需设计者密钥）。仅 status='verified'（经验证单元复核）的提案可终裁（D-003）。
@@ -1393,6 +1501,7 @@ class LayeredStore:
 
     # ==================== 遗忘门控（M7） ====================
 
+    @_transactional
     def protect_node(self, node_id: str, reason: str):
         """按 3.2 节不可遗忘类别保护：no_forget 标记 + 保护登记，衰减跳过"""
         c = self.conn.cursor()
@@ -1411,6 +1520,7 @@ class LayeredStore:
 
     # ==================== 冲突标记（M5） ====================
 
+    @_transactional
     def register_conflict(self, a_id: str, b_id: str,
                           condition_space: ConditionSpace = None) -> Optional[STEdge]:
         """矛盾记忆显式标记：OPPOSITE 边（未验证，置信度0.3），待验证单元复核"""
@@ -1448,6 +1558,7 @@ class LayeredStore:
                   (f"%{tag}%", limit))
         return [STNode.from_row(tuple(r)) for r in c.fetchall()]
 
+    @_transactional
     def update_blindspot_status(self, blindspot_id: str, status: str):
         """更新盲区状态（P0-3 终态流转）"""
         c = self.conn.cursor()
@@ -1469,6 +1580,7 @@ class LayeredStore:
                   params + [limit])
         return [STNode.from_row(tuple(r)) for r in c.fetchall()]
 
+    @_transactional
     def update_node_importance(self, node_id: str, delta: float):
         """重要度更新（P1-4 巩固）"""
         c = self.conn.cursor()
@@ -1588,6 +1700,7 @@ class LayeredStore:
                 "top_influence": [{"node_id": n, "concept_influence": v} for n, v in top_influence],
                 "movers": movers[:50]}
 
+    @_transactional
     def _write_influence(self, node_id: str, infl: float):
         """concept_influence 写入 state_attributes（可检索/可查）。"""
         c = self.conn.cursor()
@@ -1667,6 +1780,7 @@ class LayeredStore:
         return {"node_id": nid, "status": "pending",
                 "conditions": cond_pack["values"], "importance": importance}
 
+    @_transactional
     def insight_verify(self, insight_id: str, level: str = "V2",
                        evidence: object = None) -> Dict:
         """提交验证证据（§4.3）：V2/V3（或 V1 且证据≥3=多次复现）→ verified；否则 pending。
@@ -1774,6 +1888,7 @@ class LayeredStore:
                 "assumption": "默认假设 C1≥0.6 ∧ 跨域 ∧ 低压力（未经统计确认）",
                 "conditions": {"memory_retrievability": c1, "cross_domain": c3, "pressure": c5}}
 
+    @_transactional
     def append_skill_procedure(self, skill_id: str, step: str):
         """技能程序追加（P1-3 技能获取：版本+1）"""
         c = self.conn.cursor()
@@ -1789,6 +1904,7 @@ class LayeredStore:
 
     # ==================== v1.5 扩展（A-1/A-2/A-3） ====================
 
+    @_transactional
     def add_rejected_path(self, path_type: str, description: str, reason: str,
                           evidence: str = "") -> str:
         """登记被否决的路径（负路由沉淀：错误答案留档防重蹈），返回 id。"""
@@ -1810,6 +1926,7 @@ class LayeredStore:
                  "evidence": r[4], "status": r[5], "created_at": r[6], "consumed_at": r[7]}
                 for r in c.fetchall()]
 
+    @_transactional
     def mark_rejected_path_consumed(self, rejected_id: str):
         """标记否决路径已消费（同类问题复用该否决答案后）。"""
         c = self.conn.cursor()
@@ -1817,6 +1934,7 @@ class LayeredStore:
                   (time.time(), rejected_id))
         self.conn.commit()
 
+    @_transactional
     def add_verifier_standard(self, name: str, param: str, value: float, reason: str,
                               proposer: str) -> str:
         """登记校验器标准参数提案（阈值类修订的可追溯载体），返回 id。"""
@@ -1840,6 +1958,7 @@ class LayeredStore:
                  "adjudicator": r[8], "status": r[9], "created_at": r[10], "decided_at": r[11]}
                 for r in c.fetchall()]
 
+    @_transactional
     def review_verifier_standard(self, vid: str, reviewer: str, approved: bool) -> bool:
         """独立复核（验证单元自我回避）"""
         c = self.conn.cursor()
@@ -1853,6 +1972,7 @@ class LayeredStore:
         self.conn.commit()
         return True
 
+    @_transactional
     def cs_review_verifier_standard(self, vid: str, reviewer: str, approved: bool) -> bool:
         """条件空间复核（3.3.1 节）"""
         c = self.conn.cursor()
@@ -1866,6 +1986,7 @@ class LayeredStore:
         self.conn.commit()
         return True
 
+    @_transactional
     def adjudicate_verifier_standard(self, vid: str, adjudicator: str,
                                      approved: bool, designer_key: str = None) -> Optional[Dict]:
         """维生系统终裁（D-007 需设计者密钥）：仅 cs_approved（独立复核+条件空间复核通过）可终裁（A-2 制衡）"""
@@ -1894,6 +2015,7 @@ class LayeredStore:
                  "action": r[4], "severity": r[5], "enabled": bool(r[6]), "created_at": r[7]}
                 for r in c.fetchall()]
 
+    @_transactional
     def add_escalation_point(self, code: str, trigger: str, condition: str,
                              action: str, severity: str = "medium") -> str:
         """登记升级点（危机触发器：触发条件→处置动作），返回 id。"""
@@ -1904,6 +2026,7 @@ class LayeredStore:
         self.conn.commit()
         return eid
 
+    @_transactional
     def log_action(self, action_type: str, summary: str = "",
                    node_ids: list = None, outcome: dict = None,
                    context: dict = None) -> None:
@@ -1922,6 +2045,7 @@ class LayeredStore:
                    json.dumps(context or {}, ensure_ascii=False)))
         self.conn.commit()
 
+    @_transactional
     def set_escalation_enabled(self, escalation_id: str, enabled: bool,
                                designer_key: str = None):
         """启用/停用升级点（危机响应开关）。
@@ -1957,12 +2081,10 @@ class LayeredStore:
 
     def close(self):
         """关闭本实例登记的全部连接（Agent 生命周期终点调用）。"""
-        for c in self._conns:
-            try:
-                c.close()
-            except Exception:
-                pass  # 已关闭/被其它线程回收：关闭是尽力而为，不阻断生命周期收尾
-        self._conns = []
+        for slot in list(self._conns):
+            slot.close()
+        self._conns = weakref.WeakSet()
+        self._anchor = None
 
 
 # =============================================================================
@@ -1974,6 +2096,12 @@ class SpacetimeMemoryEngine:
     协议实例核心引擎，封装 LayeredStore 并提供高层 API。
     符合智能论 v3.2 第四章规范。
     """
+
+    @contextlib.contextmanager
+    def _tx(self):
+        """写事务边界（委托 store）：正常提交、异常回滚。语义见 LayeredStore._tx。"""
+        with self.store._tx():
+            yield self.store.conn
 
     def __init__(self, db_path: str = ":memory:", identity: str = "协议实例", role: Role = Role.PRIMARY):
         self.store = LayeredStore(db_path, role=role)
@@ -2661,6 +2789,7 @@ class SpacetimeMemoryEngine:
         """验证单元复核 + 3.3.1 条件空间复核（调用方记录复核结论）"""
         self.store.verify_promotion(proposal_id, verified_by)
 
+    @_transactional
     def adjudicate_promotion(self, proposal_id: str, adjudicated_by: str, approved: bool,
                              designer_key: str = None) -> bool:
         """维生系统终裁（D-007 需设计者密钥）：仅经验证单元复核的提案可终裁；通过后才写结构层（不可逆）"""
@@ -2774,6 +2903,7 @@ class SpacetimeMemoryEngine:
 
     # ==================== v1.11 知识飞轮（FLYWHEEL-REV1） ====================
 
+    @_transactional
     def _note_reuse(self, node_ids: List[str]):
         """复用追踪（P0-2 度量：同轮同节点去重）。
 
@@ -4407,6 +4537,7 @@ class SpacetimeMemoryEngine:
 
     # ==================== v1.7 多模态（MULTIMODAL-REV1 · D-001~D-005） ====================
 
+    @_transactional
     def migrate_v17_coordinates(self) -> Dict:
         """D-003 迁移：spatial_coordinates 中语义键 → semantic_coordinates；迁移事件记入结构层（不可遗忘）"""
         c = self.store.conn.cursor()
@@ -4439,6 +4570,7 @@ class SpacetimeMemoryEngine:
             self._write_structure_record(event, "migration", extra_tags=["v1.7"])
         return {"migrated_nodes": migrated}
 
+    @_transactional
     def ingest_frame(self, frame_data: Dict, entity_hint: str = None,
                      state_hint: Dict = None, semantic_attention: Dict = None,
                      condition_space: ConditionSpace = None) -> STNode:
@@ -4570,6 +4702,7 @@ class SpacetimeMemoryEngine:
             return {}
         return self._semantic_provider.to_coordinates(text)
 
+    @_transactional
     def annotate_semantics(self, node_id: str) -> bool:
         """为既有节点补写语义坐标（M11 迁移工具）"""
         node = self.store.get_node(node_id)
@@ -4644,6 +4777,7 @@ class SpacetimeMemoryEngine:
         return {"exported_nodes": len(data.get("nodes", [])), "path": output_path,
                 "tables": len(data) - 1, "skipped_tables": skipped}
 
+    @_transactional
     def import_all(self, input_path: str) -> Dict:
         """M13：全库导入（恢复/迁移/6.5 合并基础）
 
@@ -4897,6 +5031,7 @@ class SpacetimeMemoryEngine:
 
     # ---- A-4 信息差收敛速率指标（独立观测层 · DEVIATION-004） ----
 
+    @_transactional
     def record_info_gap(self, d_norm: float = None, trust_complement: float = None,
                         behavior_deviation: float = None, connection_drift: float = None,
                         prediction_error: float = None) -> float:
@@ -5293,6 +5428,7 @@ class SpacetimeMemoryEngine:
         """执行一次衰减周期（v1.16：透传 min_confidence 给 store 层）"""
         self.store.decay_cycle(factor, min_confidence=min_confidence)
 
+    @_transactional
     def forget_advisor(self, stale_days: float = 30.0, low_value: float = 0.2,
                        archived_imp: float = 0.1) -> Dict:
         """主动遗忘决策器（v1.16 · J 维进化：被动时间衰减 → 主动价值遗忘）。
