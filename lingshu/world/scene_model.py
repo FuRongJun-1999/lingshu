@@ -201,6 +201,83 @@ class WorldModel:
 
     # ---- 渲染 ----
 
+    def _occluder_layers(self, cam: Camera3D, screen_w: int, screen_h: int):
+        """不透明实体 → [(depth, [(x,y),...]), ...]（投影多边形 + 最近面深度），近→远排序。
+
+        只取盒类（box/pillar）——它们在 World3D 里不透明且遮挡角色；sphere/disk
+        的近似盒同样适用。投影点不足 3 个（整体在相机后方）时跳过。
+        """
+        from PIL import Image, ImageDraw
+        layers = []
+        for obj in self.scene.objects:
+            corners = obj.corners()
+            near_pts, far_pts, zs = [], [], []
+            ok_proj = True
+            for i, c in enumerate(corners):
+                sp = cam.project(c, screen_w, screen_h)
+                if sp is None:
+                    ok_proj = False
+                    break
+                (near_pts if i < 4 else far_pts).append(sp)
+                zs.append(c[2] - cam.cz)     # 相机系深度（project 内同口径）
+            if not ok_proj:
+                continue
+            # 两个侧面各自栅格化后取并集：8 点直接连多边形会自交，奇偶规则误判
+            mask = Image.new("1", (screen_w, screen_h), 0)
+            dr = ImageDraw.Draw(mask)
+            for quad in (near_pts, far_pts):
+                if len(quad) >= 3:
+                    dr.polygon(quad, fill=1)
+            nearest = min(max(z, 0.1) for z in zs)
+            layers.append((nearest, mask))
+        layers.sort(key=lambda t: t[0])
+        return layers
+
+    def _mask_occluded(self, sil, layer, cam: Camera3D, screen_w: int, screen_h: int, occluders):
+        """把 silhouette 中被更近不透明实体挡住的部件像素从 alpha 层抹除。
+
+        部件代表深度 = 角色中心 z + 部件 depth 偏移（与 Silhouette3D._to_3d 同口径）。
+        判据：部件的任一投影顶点落在某层遮挡多边形内且该层深度 < 部件深度 ⇒
+        该顶点被遮挡；部件全部顶点均被同一（或更深）层遮挡时整件抹除——
+        部件级判定避免逐像素软边带来的碎斑，也保持 O(部件×遮挡层) 的开销。
+        """
+        from PIL import ImageDraw
+
+        px, py, w, h = layer.getpixel((0, 0))[0], 0, screen_w, screen_h  # noqa: F841
+        draw = ImageDraw.Draw(layer)
+        center_z = sil.center[2]
+        # 优先 FK 顶点（PR #435 语义），旧 Silhouette3D 退回 rotated_points
+        _pts_of = getattr(sil, "fk_points", None)
+        for part in sil.parts:
+            pz = center_z + part.depth
+            raw_pts = _pts_of(part) if _pts_of else part.rotated_points()
+            pts = []
+            for p2 in raw_pts:
+                sp = cam.project((sil.center[0] + p2[0], sil.center[1] + p2[1], pz),
+                                 screen_w, screen_h)
+                if sp is None:
+                    pts = None
+                    break
+                pts.append(sp)
+            if not pts:
+                continue
+            # 部件顶点是否全部被「更近的实体」盖住
+            def covered(pt):
+                x, y = pt
+                xi, yi = int(x), int(y)
+                if not (0 <= xi < screen_w and 0 <= yi < screen_h):
+                    return False
+                for depth, mask in occluders:
+                    if depth >= pz - 1e-9:
+                        break           # occluders 近→远：到这里已不比部件近
+                    if mask.getpixel((xi, yi)):
+                        return True
+                return False
+
+            if pts and all(covered(pt) for pt in pts):
+                draw.polygon(pts, fill=(0, 0, 0, 0))
+        return layer
+
     def render(self, screen_w: int = 500, screen_h: int = 500,
                camera: Optional[Camera3D] = None,
                background: Tuple[int, int, int] = (250, 248, 244),
@@ -220,9 +297,17 @@ class WorldModel:
                                 ground_color=(235, 230, 220))
 
         # 2. 轮廓角色（C 级合成：RGBA 层 paste，替代逐像素循环）
+        #    跨表示深度遮挡：先为不透明实体（box/pillar 等盒类）构建「遮挡掩码」——
+        #    把每个实体的投影多边形按其**最近面深度**分层；再对 silhouette 的每个部件
+        #    求代表深度（角色中心 z + 部件 depth 偏移），部件深度 > 该像素上更近实体
+        #    的深度 ⇒ 该部件像素被遮挡，从 alpha 层抹除（issue #419：角色整段在
+        #    不透明墙后仍被无条件 paste，穿墙显示 797 px）。
+        occluders = self._occluder_layers(cam, screen_w, screen_h)
         for name, sil in self._silhouettes.items():
             layer = sil.render(screen_w, screen_h, camera=cam,
                                background=background, alpha=True)
+            if occluders:
+                layer = self._mask_occluded(sil, layer, cam, screen_w, screen_h, occluders)
             img.paste(layer, (0, 0), layer)   # 以自身 alpha 为 mask
 
         # 3. 骨架线条叠加（fatfish → 精细 47 关节骨架）
