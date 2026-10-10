@@ -32,6 +32,9 @@ class SilhouettePart:
 
     关节支持：pivot（2D 旋转中心）+ angle（弧度）——渲染时先绕 pivot 旋转
     顶点再投影，实现四肢/尾巴摆动（动画与姿态）。
+    parent：骨骼父部件名（None=根）。姿态求解时父部件的旋转会**级联**到
+    子部件（子部件的 pivot 与顶点先随父链做前向运动学变换，再绕自身 pivot
+    旋转），否则前臂仍绕「未旋转」的原始肘位置转，肢体在肘部断开（issue #404）。
     """
     name: str
     points: List[Tuple[float, float]]    # 轮廓（多边形顶点）
@@ -40,6 +43,7 @@ class SilhouettePart:
     outline: Tuple[int, int, int] = (40, 30, 35)   # 线条色（漫画描边）
     pivot: Optional[Tuple[float, float]] = None    # 旋转中心（2D，相对角色中心）
     angle: float = 0.0                             # 绕 pivot 的旋转角（弧度）
+    parent: Optional[str] = None                   # 骨骼父部件名（FK 级联）
 
     def rotated_points(self) -> List[Tuple[float, float]]:
         """返回旋转后的轮廓点（无 pivot 时原样）。"""
@@ -74,6 +78,64 @@ class Silhouette3D:
                 p.angle = angle
                 break
         return self
+
+    # ---- 前向运动学（父子级联）----
+    def fk_points(self, part: "SilhouettePart") -> List[Tuple[float, float]]:
+        """部件顶点的**世界**坐标（父链角度级联后的结果）。
+
+        无 parent（或父链上所有角度为 0）时与 rotated_points() 逐位一致；
+        有 parent 时：顶点自根向叶逐级旋转（每级绕**该级 FK 后**的 pivot 转
+        该级角度——祖先的 pivot 本身也随更上层旋转移动），最后绕自身 pivot
+        （同样已 FK）旋转自身角度。父部件名不存在按根处理（与 joint() 的
+        「找不到就跳过」同风格，不抛异常）。
+        """
+        by_name = {p.name: p for p in self.parts}
+        # 1) 自叶向根收集 chain，再反转为 根 → 叶（part 自身不在 chain 内）
+        chain = []
+        seen = {part.name}
+        cur = part
+        while cur is not None and cur.parent and cur.parent not in seen:
+            parent = by_name.get(cur.parent)
+            if parent is None:
+                break
+            chain.append(parent)
+            seen.add(parent.name)
+            cur = parent
+        chain.reverse()
+        # 2) FK 后的 pivot：pivot 是一个「点」，走与顶点完全相同的级联
+        #    （绕每级 FK 后的 pivot 转每级角度），但不转**自身**部件的角度。
+        def fk_pivot(p):
+            pv = p.pivot
+            if pv is None:
+                return None
+            pts = [pv]
+            for anc in chain:
+                if anc is p:
+                    break
+                if anc.pivot is None or anc.angle == 0.0:
+                    continue
+                c, s = math.cos(anc.angle), math.sin(anc.angle)
+                ax, ay = fk_pivot(anc)
+                pts = [(ax + (x - ax) * c - (y - ay) * s,
+                        ay + (x - ax) * s + (y - ay) * c) for x, y in pts]
+            return pts[0]
+
+        # 3) 顶点自根向叶级联旋转（每级绕该级 FK 后的 pivot）
+        pts = list(part.points)
+        for anc in chain:
+            if anc.pivot is None or anc.angle == 0.0:
+                continue
+            c, s = math.cos(anc.angle), math.sin(anc.angle)
+            ax, ay = fk_pivot(anc)
+            pts = [(ax + (x - ax) * c - (y - ay) * s,
+                    ay + (x - ax) * s + (y - ay) * c) for x, y in pts]
+        # 4) 自身角度（绕自身 FK 后的 pivot）
+        if part.pivot is None or part.angle == 0.0:
+            return pts
+        c, s = math.cos(part.angle), math.sin(part.angle)
+        cx, cy = fk_pivot(part)
+        return [(cx + (x - cx) * c - (y - cy) * s,
+                 cy + (x - cx) * s + (y - cy) * c) for x, y in pts]
 
     # ---- 投影 ----
 
@@ -114,12 +176,12 @@ class Silhouette3D:
             img = Image.new("RGB", (screen_w, screen_h), background)
         draw = ImageDraw.Draw(img)
 
-        # 每个部件：旋转后顶点 → 3D → 屏幕多边形
+        # 每个部件：FK 级联旋转后的顶点 → 3D → 屏幕多边形
         projected = []
         for part in self.parts:
             poly = []
             ok = True
-            for p2 in part.rotated_points():
+            for p2 in self.fk_points(part):
                 p3 = self._to_3d(p2, part.depth)
                 sp = cam.project(p3, screen_w, screen_h)
                 if sp is None:
@@ -415,7 +477,7 @@ def fatfish_skinned(center: Tuple[float, float, float] = (0, 0.85, 5.0),
                  (wr[0] + arm_w * 0.35, wr[1]),
                  (wr[0] - arm_w * 0.35, wr[1])]
         s.add_part(SilhouettePart(f"lower_{side}", lower, depth=0.10, color=skin, outline=line,
-                                  pivot=el, angle=0.0))
+                                  pivot=el, angle=0.0, parent=f"upper_{side}"))
 
     # ---- 腿（髋→膝→踝 皮肤色，含大腿上段连接躯干）----
     hip_j = J("hip")                     # 骨盆（躯干底）
@@ -439,14 +501,14 @@ def fatfish_skinned(center: Tuple[float, float, float] = (0, 0.85, 5.0),
                  (kn[0] + leg_w * 0.8, kn[1]),
                  (kn[0] - leg_w * 0.8, kn[1])]
         s.add_part(SilhouettePart(f"thigh_{side}", thigh, depth=0.14, color=skin, outline=line,
-                                  pivot=hp, angle=0.0))
+                                  pivot=hp, angle=0.0, parent=f"thigh_top_{side}"))
         # 小腿（膝→踝，比大腿细）
         calf = [(kn[0] - calf_w, kn[1]),
                 (kn[0] + calf_w, kn[1]),
                 (an[0] + calf_w * 0.7, an[1]),
                 (an[0] - calf_w * 0.7, an[1])]
         s.add_part(SilhouettePart(f"calf_{side}", calf, depth=0.14, color=skin, outline=line,
-                                  pivot=kn, angle=0.0))
+                                  pivot=kn, angle=0.0, parent=f"thigh_{side}"))
 
     # ---- 猫耳（head_top 关节，加大 + 内耳粉色——猫娘标志特征）----
     # 视觉验收修复（2026-08-29）：底边 0.045h 过宽呈喇叭状——收窄为立耳三角
@@ -483,7 +545,8 @@ def fatfish_skinned(center: Tuple[float, float, float] = (0, 0.85, 5.0),
         seg = [(p0[0] - w0, p0[1]), (p0[0] + w0, p0[1]),
                (p1[0] + w1, p1[1]), (p1[0] - w1, p1[1])]
         s.add_part(SilhouettePart(f"tail{i + 1}", seg, depth=0.22 + i * 0.01,
-                                  color=fur, outline=line, pivot=p0, angle=0.0))
+                                  color=fur, outline=line, pivot=p0, angle=0.0,
+                                  parent=(f"tail{i}" if i > 0 else None)))
     # ---- LOD 细节层次（注意力深度 → 部件过滤）----
     # L3（高注意力/特写）：全部部件
     # L2（中）：保留关键特征（眼/嘴/胸廓髋部/躯干四肢），省略细部（眉/唇高光/骨盆线）
@@ -655,7 +718,7 @@ def fatfish_skeleton(center: Tuple[float, float, float] = (0, 0.85, 5.0),
     s.add_part(SilhouettePart("shoulder_l", arm_l_up, depth=0.10, color=skin, outline=line,
                               pivot=shoulder_l))
     s.add_part(SilhouettePart("elbow_l", arm_l_lo, depth=0.10, color=skin, outline=line,
-                              pivot=elbow_l))
+                              pivot=elbow_l, parent="shoulder_l"))
     # 右臂
     shoulder_r = (0.18 * h, 0.68 * h)
     elbow_r = (0.22 * h, 0.55 * h)
@@ -667,7 +730,7 @@ def fatfish_skeleton(center: Tuple[float, float, float] = (0, 0.85, 5.0),
     s.add_part(SilhouettePart("shoulder_r", arm_r_up, depth=0.10, color=skin, outline=line,
                               pivot=shoulder_r))
     s.add_part(SilhouettePart("elbow_r", arm_r_lo, depth=0.10, color=skin, outline=line,
-                              pivot=elbow_r))
+                              pivot=elbow_r, parent="shoulder_r"))
 
     # ---- 腿（分节：大腿 + 小腿，pivot 髋/膝）----
     # 左腿（z=0.14）
@@ -681,7 +744,7 @@ def fatfish_skeleton(center: Tuple[float, float, float] = (0, 0.85, 5.0),
     s.add_part(SilhouettePart("hip_l", leg_l_up, depth=0.14, color=skin, outline=line,
                               pivot=hip_l))
     s.add_part(SilhouettePart("knee_l", leg_l_lo, depth=0.14, color=skin, outline=line,
-                              pivot=knee_l))
+                              pivot=knee_l, parent="hip_l"))
     # 右腿
     hip_r = (0.08 * h, 0.42 * h)
     knee_r = (0.10 * h, 0.26 * h)
@@ -693,7 +756,7 @@ def fatfish_skeleton(center: Tuple[float, float, float] = (0, 0.85, 5.0),
     s.add_part(SilhouettePart("hip_r", leg_r_up, depth=0.14, color=skin, outline=line,
                               pivot=hip_r))
     s.add_part(SilhouettePart("knee_r", leg_r_lo, depth=0.14, color=skin, outline=line,
-                              pivot=knee_r))
+                              pivot=knee_r, parent="hip_r"))
 
     # ---- 尾巴（多节：3 节，pivot 逐节，能摆动）----
     tail_base = (-0.24 * h, 0.44 * h)
@@ -709,9 +772,9 @@ def fatfish_skeleton(center: Tuple[float, float, float] = (0, 0.85, 5.0),
     s.add_part(SilhouettePart("tail1", tail_sec1, depth=0.22, color=fur, outline=line,
                               pivot=tail_base))
     s.add_part(SilhouettePart("tail2", tail_sec2, depth=0.23, color=fur, outline=line,
-                              pivot=t1))
+                              pivot=t1, parent="tail1"))
     s.add_part(SilhouettePart("tail3", tail_sec3, depth=0.24, color=fur, outline=line,
-                              pivot=t2))
+                              pivot=t2, parent="tail2"))
     return s
 
 
