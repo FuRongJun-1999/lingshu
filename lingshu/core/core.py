@@ -1659,6 +1659,60 @@ class LayeredStore:
             c.execute("UPDATE nodes SET tags=? WHERE id=?", (_dumps_tags(node.tags), node_id))
             self.conn.commit()
 
+    @_transactional
+    def untag_node(self, node_id: str, tag: str):
+        """移除节点上的某个标签（`tag_node` 的对称操作，幂等）。
+
+        此前全仓只有 `tag_node`（追加），没有对应的移除入口，导致
+        `forget_advisor` 写下的 `archived` 标签无法用公开 API 清除，节点被
+        永久锁在归档态（`forget_advisor` 内 `if "archived" in tags: continue`）。
+        见 issue #448。
+        """
+        node = self.get_node(node_id)
+        if node and tag in node.tags:
+            node.tags = [t for t in node.tags if t != tag]
+            c = self.conn.cursor()
+            c.execute("UPDATE nodes SET tags=? WHERE id=?",
+                      (_dumps_tags(node.tags), node_id))
+            self.conn.commit()
+
+    def restore_node(self, node_id: str) -> bool:
+        """把节点从归档态还原为活跃态：清 `archived` 标签并恢复归档前的 importance。
+
+        归档前的 importance 记在 `pre_archive_importance=<值>` 标签里（由
+        `forget_advisor` 写入）。没有该标签时退化为只清标签。
+        返回是否发生了状态变更。
+        """
+        node = self.get_node(node_id)
+        if node is None or "archived" not in node.tags:
+            return False
+        raw = None
+        for t in node.tags:
+            if t.startswith("pre_archive_importance="):
+                raw = t.split("=", 1)[1]
+                break
+        with self._lock:
+            c = self.conn.cursor()
+            new_tags = [t for t in node.tags
+                        if t != "archived"
+                        and not t.startswith("pre_archive_importance=")]
+        if raw is None:
+            c.execute("UPDATE nodes SET tags=? WHERE id=?",
+                      (_dumps_tags(new_tags), node_id))
+        else:
+            try:
+                imp = float(raw)
+            except ValueError:
+                imp = None
+            if imp is None:
+                c.execute("UPDATE nodes SET tags=? WHERE id=?",
+                          (_dumps_tags(new_tags), node_id))
+            else:
+                c.execute("UPDATE nodes SET tags=?, importance=? WHERE id=?",
+                          (_dumps_tags(new_tags), imp, node_id))
+        self.conn.commit()
+        return True
+
     # ==================== 情境层（M4） ====================
 
     def enforce_context_cap(self, max_size: int):
@@ -6248,7 +6302,8 @@ class SpacetimeMemoryEngine:
           ① 访问信号：CONTEXT 层 access_count==0 且 last_access 距今 > stale_days
           ② 低价值信号：CONTEXT 层 importance < low_value
         决策：归档（tags 加 archived + importance 降至 archived_imp）——
-        recall 的 importance 加权自然降权（可逆：恢复 importance 即解除）。
+        recall 的 importance 加权自然降权（可逆：用 store.restore_node(node_id)
+        清 archived 标签并恢复归档前的 importance，issue #448）。
         锚点/结构层 no_forget 保护；KNOWLEDGE 层不动（长期知识）。
         """
         import time as _t
@@ -6279,8 +6334,10 @@ class SpacetimeMemoryEngine:
                     signal += 1  # 低价值信号
                 if signal >= 1:
                     # 归档：importance 降至 archived_imp + tags 加 archived
+                    # 记下归档前的 importance，供 store.restore_node() 还原（issue #448）
                     new_imp = archived_imp
-                    new_tags = list(dict.fromkeys(tags + ["archived"]))
+                    new_tags = list(dict.fromkeys(
+                        tags + ["pre_archive_importance=%r" % (imp,), "archived"]))
                     c.execute("UPDATE nodes SET importance=?, tags=? WHERE id=?",
                               (new_imp, _dumps_tags(new_tags, ensure_ascii=False), nid))
                     archived += 1
@@ -6288,7 +6345,8 @@ class SpacetimeMemoryEngine:
                     kept += 1
             self.store.conn.commit()
         return {"archived": archived, "kept": kept,
-                "note": "主动遗忘：未被使用的 CONTEXT 记忆归档（importance 降权，可逆）"}
+                "note": "主动遗忘：未被使用的 CONTEXT 记忆归档（importance 降权；"
+                        "调 store.restore_node(node_id) 可还原）"}
 
     def start_auto_decay(self, interval: float = 60.0):
         """启动后台衰减线程"""
