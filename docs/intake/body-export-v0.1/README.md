@@ -63,6 +63,18 @@ lingshu/
 
 ## 六、复核记录
 
+- **2026-10-10 本地 fork 修改**：世界模型的6个既有文件在用户授权下修复，
+  `_export_manifest.json` 的 `sha256` 核验当前工作区的 LF 归一内容，
+  `base_sha256` 保留本次修改前的登记值，`working_tree_update` 记录基线提交及报告。
+  这不是重新从私有侧导出。新增 `motion.py`、bench及回归测试
+  不属于原61项导出清单，其完整指纹与前后证据见
+  [改动与测量报告](../../world_model_optimization.md)。
+- 同日追逐预测修正继续修改其中3个文件，清单 `follow_up.previous_sha256` 保留
+  上一轮工作区指纹；[调查及验证](../../world_model_optimization.md)
+  记录逐实体归因、原bench对比、额外种子与近距离压力测试。
+- 提交前整合上游 `c22385c` 测量，并继续合入 `777e18f`，保留上游修复；清单同时记录
+  `integration_base_sha256`，与历史两轮读数分开登记。
+
 - 双清单机械审计：`AUDIT.md`（0 命中）；误报复核先例（`SelfModel`/`_self_cognition`/`f://enum`）记录在
   审计器源码注释中。
 - 导出清单与逐文件指纹：`_export_manifest.json`（含每文件的改写数、精修数、隐藏引用扫描结果）。

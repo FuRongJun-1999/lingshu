@@ -88,20 +88,29 @@ class SevenLayerLoop:
     def _verify(self, predictions: Dict) -> Dict:
         """L5 锚定验证：外部观察者全实体对比（有世界访问权）。"""
         hits, total = 0, 0
+        point_hits = 0
+        distances, bounds = [], []
         details = []
         for eid, p in predictions.items():
             e = self.world.entities.get(eid)
             if e is None:
                 continue
             dist = math.dist(p["predicted"], tuple(e.pos))
+            distances.append(dist)
+            bounds.append(p["bound"])
+            point_hits += dist < self.explorer.hit_threshold
             hit = dist < p["bound"]
             if hit:
                 hits += 1
             total += 1
             details.append({"entity": eid, "mode": p["mode"], "hit": hit,
                             "distance": round(dist, 4)})
-        rate = round(hits / total, 4) if total else 1.0
+        rate = round(hits / total, 4) if total else None
         return {"hits": hits, "total": total, "hit_rate": rate,
+                "bound_coverage": rate,
+                "point_hit_rate": round(point_hits / total, 4) if total else None,
+                "mean_distance": round(sum(distances) / total, 4) if total else None,
+                "mean_bound": round(sum(bounds) / total, 4) if total else None,
                 "details": details}
 
     def step(self) -> Dict:
@@ -127,19 +136,14 @@ class SevenLayerLoop:
                              "entities": len(self.world.entities)}
         # L1 感知机（好奇选定的实体，缸中之脑）
         self.explorer.observe(entities=chosen)
-        # 生成先验注入理解（缺陷单 #396）：本轮观测 vs 上一预测（L4 已填
-        # `_last_prediction`）→ 预测-观测不一致计数，喂好奇 IG 的「异常加成」
-        # 分量。与 curiosity_explorer.explore_tick 同口径（predict→observe→
-        # _count_anomalies）；旧码此闭环从不调用，七层宣称的异常反馈形同虚设。
-        n_anom = self.explorer._count_anomalies(chosen)
+        anomalies = self.explorer._count_anomalies(chosen)
         rec["L1_perception"] = {"observed": list(chosen),
-                                "observed_count": len(chosen),
-                                "anomalies": n_anom}
+                                "observed_count": len(chosen), "anomalies": anomalies}
         # L5 锚定验证（外部观察者全实体）
         ver = self._verify(pred["predictions"])
-        rec["L5_verification"] = {"hit_rate": ver["hit_rate"],
-                                  "hits": ver["hits"], "total": ver["total"]}
-        self.hit_history.append(ver["hit_rate"])
+        rec["L5_verification"] = {key: val for key, val in ver.items() if key != "details"}
+        if ver["hit_rate"] is not None:
+            self.hit_history.append(ver["hit_rate"])
         # L2 时空记忆图（观测序列 + 世界图）
         rec["L2_memory"] = {"history_len": len(self.explorer.history),
                             "entities": {eid: list(n.pos)
@@ -168,8 +172,10 @@ class SevenLayerLoop:
         return {"status": "ok", "ticks": int(n), "loop_tick": self.tick,
                 "overall_hit_rate": self._overall_hit_rate()}
 
-    def _overall_hit_rate(self) -> float:
-        return round(sum(self.hit_history) / len(self.hit_history), 4)             if self.hit_history else 1.0
+    def _overall_hit_rate(self) -> Optional[float]:
+        total = sum(rec["L5_verification"]["total"] for rec in self.audit)
+        hits = sum(rec["L5_verification"]["hits"] for rec in self.audit)
+        return round(hits / total, 4) if total else None
 
     # ---- 闭环报告与审计 ----
 
@@ -195,10 +201,10 @@ class SevenLayerLoop:
             "L7_decision": {"policy": self.policy, "budget": self.budget,
                             "obs_distribution": dict(self.explorer.obs_counts)},
             "closed_loop_enhancement": {
-                "early_hit_rate": round(sum(early) / len(early), 4) if early else 1.0,
-                "late_hit_rate": round(sum(late) / len(late), 4) if late else 1.0,
+                "early_hit_rate": round(sum(early) / len(early), 4) if early else None,
+                "late_hit_rate": round(sum(late) / len(late), 4) if late else None,
                 "improvement": round(sum(late) / len(late) - sum(early) / len(early), 4)
-                if early and late else 0.0},
+                if early and late else None},
             "loop_closed": True,
         }
 

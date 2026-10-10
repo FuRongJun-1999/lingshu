@@ -216,7 +216,8 @@ class SimulationLoop:
             self.scene.step(n=1)                      # ② 物理结算（模型不可见内部）
             self.wm.perceive(observations=self._observe())  # ③ 观察（遮蔽注入点）
             v = self.wm.verify()                      # ④ 验证（外部观察者）
-            self._rolling_rates.append(v["hit_rate"])
+            if v["hit_rate"] is not None:
+                self._rolling_rates.append(v["hit_rate"])
             self._growth_tick(v)                      # ⑤ 拓扑生长/回退
             self._wal("episode", {                    # ⑥ 留痕（全量快照）
                 "nodes": self._snapshot_nodes(),
@@ -231,7 +232,7 @@ class SimulationLoop:
             "ticks": int(n), "tick": self.wm.tick,
             "rolling_hit_rate": round(sum(self._rolling_rates)
                                       / len(self._rolling_rates), 4)
-            if self._rolling_rates else 1.0,
+            if self._rolling_rates else None,
             "growth_summary": {
                 "born": sum(1 for g in self._growth_log
                             if g["event"] in ("growth", "re-grow")),
@@ -276,7 +277,7 @@ class SimulationLoop:
     def _hit_for(self, verify_result: Dict, eid: str) -> Optional[bool]:
         for d in verify_result.get("details", []):
             if d["entity"] == eid:
-                return bool(d["hit"])
+                return d["hit"] if d["hit"] is not None else None
         return None
 
     def _traj(self, eid: str) -> List[Tuple[float, float, float]]:
@@ -595,7 +596,7 @@ class SimulationLoop:
             lines.append(f"- {tag}: {n['category']} id={eid} "
                          f"pos=({n['pos'][0]}, {n['pos'][1]}, {n['pos'][2]}) "
                          f"confidence={round(n['confidence'], 3)}")
-        rate = round(self._rolling_rates[-1], 4) if self._rolling_rates else 1.0
+        rate = round(self._rolling_rates[-1], 4) if self._rolling_rates else None
         lines += ["", f"命中率: {rate} | 节点 {g['node_count']} | "
                   f"边 {g['edge_count']} | WAL {self._seq} 条",
                   f"growth: born={sum(1 for x in self._growth_log if x['event'] in ('growth', 're-grow'))} "
@@ -650,7 +651,7 @@ class SimulationLoop:
                 "anomaly_count": g["anomaly_count"],
                 "rolling_hit_rate": round(sum(self._rolling_rates)
                                           / len(self._rolling_rates), 4)
-                if self._rolling_rates else 1.0,
+                if self._rolling_rates else None,
                 "hypotheses_active": len(self._hypotheses),
                 "growth_events": len(self._growth_log),
                 "wal_records": len(self.wal),
