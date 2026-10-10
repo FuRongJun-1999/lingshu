@@ -56,6 +56,7 @@ env:
     tests/test_core_export_all.py
     tests/test_scene_follow_patrol.py
     tests/test_issue145_causal_depth_cycles.py
+    tests/test_causal_end_id_truncation.py
     tests/test_coggraph_r4_and_viewer.py
     tests/test_coggraph_generic_tag.py
     tests/test_hexgen_multi_seed_metric.py

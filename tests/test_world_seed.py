@@ -98,6 +98,49 @@ def test_world_learner_passes_seed_to_world():
             != WorldLearner(size=24, seed=2).world._rng.random())
 
 
+# ==================== ⑤ 两个残留透传点（同 PR #12 同族补修） ====================
+# 背景：`e18562f`（外部 PR #12）只修了上述三条构造链；`SceneSimulator` 在仓内共有
+# 5 处构造点，另两处仍把 seed 丢掉——「换个 seed 重跑」在这两条路径上依旧是空转。
+
+def test_spacetime_consistency_passes_seed_to_scene():
+    """SpacetimeConsistency 此前签名里连 seed 都没有 ⇒ 内部物理世界恒为 42。"""
+    from lingshu.world.spacetime_consistency import SpacetimeConsistency
+
+    a = SpacetimeConsistency(size=24, seed=1).scene._rng.random()
+    b = SpacetimeConsistency(size=24, seed=2).scene._rng.random()
+    assert a != b, "seed 被丢弃 ⇒ 两个 seed 的物理世界逐位相同（消融无效）"
+
+
+def test_spacetime_consistency_default_seed_is_42():
+    """缺省必须等价历史硬编码 42 —— 既有实验读数不被动改变。"""
+    from lingshu.world.spacetime_consistency import SpacetimeConsistency
+
+    assert (SpacetimeConsistency(size=24).scene._rng.random()
+            == SpacetimeConsistency(size=24, seed=42).scene._rng.random())
+
+
+def test_core_scene_simulator_passes_seed():
+    """引擎工具面 `scene_simulator(action="step"|"state")` 此前不认 params.seed。"""
+    from lingshu.core.core import SpacetimeMemoryEngine
+
+    def _rng(seed):
+        e = SpacetimeMemoryEngine(":memory:")
+        e.scene_simulator("state", {"size": 24, "seed": seed})
+        return e._scene._rng.random()
+
+    assert _rng(1) != _rng(2), "params.seed 被丢弃 ⇒ 物理世界恒为 42（消融无效）"
+
+
+def test_core_scene_simulator_default_seed_is_42():
+    from lingshu.core.core import SpacetimeMemoryEngine
+
+    e1 = SpacetimeMemoryEngine(":memory:")
+    e1.scene_simulator("state", {"size": 24})
+    e2 = SpacetimeMemoryEngine(":memory:")
+    e2.scene_simulator("state", {"size": 24, "seed": 42})
+    assert e1._scene._rng.random() == e2._scene._rng.random()
+
+
 if __name__ == "__main__":
     import traceback
 

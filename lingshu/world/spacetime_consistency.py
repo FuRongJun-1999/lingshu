@@ -54,14 +54,15 @@ class SpacetimeConsistency:
       - prediction_history()：预测验证历史（可审计）
     """
 
-    def __init__(self, size: int = 24, ground_level: int = 1,
+    def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
                  window: int = 20, hit_threshold: float = 0.5,
                  drift_rate: float = 0.7, drift_ticks: int = 5,
                  consistent_rate: float = 0.85,
                  min_consistent_ticks: int = 50,
                  wander_bound_factor: float = 1.5,
                  wander_bound_pad: float = 0.2):
-        self.scene = SceneSimulator(size=size, ground_level=ground_level)
+        self.scene = SceneSimulator(size=size, ground_level=ground_level,
+                                    seed=seed)
         self.window = max(1, int(window))
         self.hit_threshold = float(hit_threshold)
         self.drift_rate = float(drift_rate)
