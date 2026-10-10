@@ -38,7 +38,7 @@ def build_crops(seed=11, n=96, n_objects=1):
         labs["shape"].append(lb["obj"].split("|")[0])
         labs["color"].append(lb["obj"].split("|")[1])
         labs["obj"].append(lb["obj"])
-        labs["pos"].append("r4")
+        labs["pos"].append("r%d" % (qy * 3 + qx + 1))
     return np.stack(crops), {k: np.array(v) for k, v in labs.items()}
 
 
@@ -57,6 +57,7 @@ def main():
     args = ap.parse_args()
     steps = args.steps or (8 if args.quick else 400)
     n = 24 if args.quick else 96
+    st = args.steps or (6 if args.quick else 60)
 
     crops, labs = build_crops(n=n)
     print("crop batch:", crops.shape)
@@ -80,7 +81,6 @@ def main():
 
     hn = HexNet(n_kernels=4, n_mix=8, seed=7)
     yb = np.array([i % 10 for i in range(len(crops))])
-    st = 6 if args.quick else 60
     dt2, _ = timeit(lambda: train_infogap(hn, crops, yb, max_steps=st,
                                           samples_per_step=8))
     print("train_infogap(%d steps, sps=8)  : %.2f s" % (st, dt2))
