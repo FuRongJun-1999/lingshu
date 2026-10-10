@@ -287,7 +287,9 @@ def main(argv=None):
                 if not os.path.isfile(fp):
                     continue
                 try:
-                    with io.open(fp, encoding="utf-8", errors="replace") as f:
+                    # utf-8-sig 剥 BOM：带 BOM 的正文会让 FMHEAD（^---\n）匹配失败，
+                    # R5 把整段前言（含 front matter）当正文参与互引匹配（issue #412 同族）。
+                    with io.open(fp, encoding="utf-8-sig", errors="replace") as f:
                         raw = f.read()
                 except Exception:
                     continue

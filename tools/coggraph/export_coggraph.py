@@ -70,7 +70,9 @@ def eol(text):
 
 
 def parse_md(path):
-    with io.open(path, encoding="utf-8", errors="replace") as f:
+    # utf-8-sig：剥掉 UTF-8 BOM（U+FEFF）——Windows 记事本等编辑器保存的笔记常带 BOM，
+    # 用纯 utf-8 读会让 FM_RE（^---\n）匹配失败，整篇记忆被静默计入 skipped_md（issue #412）。
+    with io.open(path, encoding="utf-8-sig", errors="replace") as f:
         t = f.read()
     m = FM_RE.match(t)
     if not m:
