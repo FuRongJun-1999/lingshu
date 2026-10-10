@@ -8,13 +8,15 @@
     {
      "file": "anchor_verify.py",
      "src": "aeis.anchor_verify",
-     "sha256": "19ee9b4fccf08248",
+     "sha256": "b91c162d2e101a01",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
      "hidden_refs": [],
      "externals": [],
-     "unresolved_top": []
+     "unresolved_top": [],
+     "integration_base_sha256": "19ee9b4fccf08248",
+     "base_sha256": "bc17584f080d16fc"
     },
     {
      "file": "anchored_verification.py",
@@ -52,13 +54,15 @@
     {
      "file": "curiosity_explorer.py",
      "src": "aeis.curiosity_explorer",
-     "sha256": "4ee3bd03298685a9",
+     "sha256": "a254c7a7456d5752",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
      "hidden_refs": [],
      "externals": [],
-     "unresolved_top": []
+     "unresolved_top": [],
+     "integration_base_sha256": "4ee3bd03298685a9",
+     "base_sha256": "6bbc5af89375129a"
     },
     {
      "file": "gap_dual.py",
@@ -132,13 +136,15 @@
     {
      "file": "seven_layer_loop.py",
      "src": "aeis.seven_layer_loop",
-     "sha256": "3101e88c7535bf6c",
+     "sha256": "065e6b30eba02d24",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
      "hidden_refs": [],
      "externals": [],
-     "unresolved_top": []
+     "unresolved_top": [],
+     "integration_base_sha256": "3101e88c7535bf6c",
+     "base_sha256": "6ceb5c9aca0d0e2d"
     },
     {
      "file": "shapes.py",
@@ -231,13 +237,15 @@
     {
      "file": "wm_simloop.py",
      "src": "aeis.wm_simloop",
-     "sha256": "ef63a55502e7405e",
+     "sha256": "d02d137f520399f8",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
      "hidden_refs": [],
      "externals": [],
-     "unresolved_top": []
+     "unresolved_top": [],
+     "integration_base_sha256": "ef63a55502e7405e",
+     "base_sha256": "64addc4736a015a5"
     },
     {
      "file": "world3d.py",
@@ -253,24 +261,28 @@
     {
      "file": "world_learner.py",
      "src": "aeis.world_learner",
-     "sha256": "32f46cbf8ef9a231",
+     "sha256": "9066b4cf784d0a56",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
      "hidden_refs": [],
      "externals": [],
-     "unresolved_top": []
+     "unresolved_top": [],
+     "integration_base_sha256": "32f46cbf8ef9a231",
+     "base_sha256": "278670df630ea04b"
     },
     {
      "file": "world_model.py",
      "src": "aeis.world_model",
-     "sha256": "d8c018b9645c1c35",
+     "sha256": "97a0f817684fa51e",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
      "hidden_refs": [],
      "externals": [],
-     "unresolved_top": []
+     "unresolved_top": [],
+     "integration_base_sha256": "d8c018b9645c1c35",
+     "base_sha256": "4e7c7ad0ffcfea85"
     }
    ],
    "private_hits": []
@@ -621,5 +633,24 @@
    "private_hits": []
   }
  },
- "note": "导出副本；上游 AEIS 为真源（单向引入）"
+ "note": "导出副本；上游 AEIS 为真源（单向引入）",
+ "working_tree_update": {
+  "date": "2026-10-10",
+  "kind": "local_fork_modification",
+  "base_commit": "abb52d005fe6300b3e9b5fd022a5a64d33096693",
+  "report": "docs/world_model_optimization.md",
+  "note": "sha256 verifies current LF-normalized working files; base_sha256 preserves the pre-patch registration. This is not a new upstream export.",
+  "follow_up": {
+   "kind": "pursuit_prediction",
+   "report": "docs/world_model_optimization.md",
+   "previous_sha256": {
+    "world_learner.py": "1b98116bdebba309",
+    "world_model.py": "cacb978b958b47eb",
+    "curiosity_explorer.py": "7a9bc65fc2306194"
+   }
+  },
+  "integration_base": "777e18f62dfe6918ad271437b887c78d020f0ea4",
+  "benchmark_base": "c22385cb2d75f36bc12fd1de4449edbf92be8698",
+  "metrics_migration": "docs/world_model_metrics_migration.md"
+ }
 }

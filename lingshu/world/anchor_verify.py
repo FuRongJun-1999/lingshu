@@ -73,21 +73,41 @@ class AnchorVerification:
         # 时钟（#160）：可注入以做确定性「跨时间稳定」测试；缺省 wall clock。
         self._clock = clock or time.time
         self._anchors: Dict[str, Dict] = {}
+        self._evidence_seq = 0
 
     # ---- 多通道证据记录 ----
 
     def add_channel_evidence(self, anchor_id: str, channel: str,
-                             evidence: float, strong: Optional[bool] = None) -> Dict:
+                             evidence: float, strong: Optional[bool] = None, *,
+                             observation_tick: Optional[int] = None,
+                             evidence_id: Optional[str] = None) -> Dict:
         """记录某通道对锚点的验证证据。
 
         channel: visual/tactile/audio/action/prediction/search/graph
         evidence: 该通道证据强度 [0,1]（1=完全支持，0=完全反对）
         strong: 显式指定强弱；缺省按通道类型（tactile/action/audio=强）
+        observation_tick: 同一观测时刻只可推进一次稳定轮数。
+        evidence_id: 同通道重复递交同一证据时幂等（含 registry 更新）。
+        缺省时每次提交视为一次新观测；verify 本身不产生新证据。
         """
         rec = self._anchors.setdefault(anchor_id, {
             "channel_evidence": {}, "channel_conflicts": {},
             "verified_rounds": 0, "confirmation": "NOT_ACCEPTED",
         })
+        seen = rec.setdefault("_evidence_ids", set())
+        key = (channel, evidence_id)
+        if evidence_id is not None and key in seen:
+            return self.anchor_state(anchor_id)
+        if observation_tick is not None:
+            if observation_tick < rec.get("_latest_tick", observation_tick):
+                return self.anchor_state(anchor_id)
+            rec["_latest_tick"] = observation_tick
+            rec["_round"] = ("tick", observation_tick)
+        else:
+            self._evidence_seq += 1
+            rec["_round"] = ("submission", self._evidence_seq)
+        if evidence_id is not None:
+            seen.add(key)
         # #402：NaN/±inf 不得被钳制表达式放行——实测 Python 的 min(1.0, nan)=1.0
         #   会把 NaN 证据抬成"最强支持"（1.0）而绕过全称量闸。非有限值一律
         #   fail-closed 归零（无证据），再钳到 [0,1]。
@@ -146,11 +166,22 @@ class AnchorVerification:
         strong_evidence = [v for c, v in ev.items() if c in STRONG_CHANNELS]
         strong_ok = any(v > KL_THRESHOLD for v in strong_evidence) if strong_evidence else False
 
-        # ③ 跨时间稳定
-        stable_ok = rec["verified_rounds"] >= STABLE_ROUNDS
-
         # ④ 无矛盾
         no_conflict = len(rec["channel_conflicts"]) < CONFLICT_THRESHOLD
+
+        # ③ 新观测推进稳定轮数；重复读验证结果不得创造新证据。
+        fresh = rec.get("_round") != rec.get("_verified_round")
+        if ch_ok and strong_ok and no_conflict:
+            now = self._clock()
+            last = rec.get("last_stable_ts")
+            if fresh and (last is None or now - last >= STABLE_MIN_INTERVAL):
+                rec["verified_rounds"] += 1
+                rec["last_stable_ts"] = now
+            rec["_verified_round"] = rec.get("_round")
+        else:
+            rec["verified_rounds"] = 0
+            rec["last_stable_ts"] = None
+        stable_ok = rec["verified_rounds"] >= STABLE_ROUNDS
 
         # 幸存者内加权（只排序）：仅对【已过全称量闸】的幸存通道、按本轮证据
         #   强度加权排序，产出分层依据；零历史依赖（见 _survivor_weighting）。
@@ -171,24 +202,6 @@ class AnchorVerification:
             confirmation = "NOT_ACCEPTED"
 
         rec["confirmation"] = confirmation
-        # 稳定轮数推进（#160 时间门槛 / #400 断链清零）
-        #   · 只有 ACCEPT_strong / ACCEPT_stable 才算「稳定轮」，且相邻稳定轮必须
-        #     间隔 ≥ STABLE_MIN_INTERVAL——毫秒内连调 N 次只算同一时刻的一次观测，
-        #     不得累加成跨时间稳定轮数（原实现无任何时间/轮次门槛）。
-        #   · 其余结论（ACCEPT_weak / NOT_ACCEPTED）⇒ 连续稳定链断裂，清零重数：
-        #     对齐 docstring「verified_rounds: 连续稳定轮数」与条件③「跨时间稳定」。
-        #     原实现只对 NOT_ACCEPTED 清零，ACCEPT_weak 既不清零也不推进＝悬空态
-        #     （#400；注：该悬空态在 ch_ok 全称量闸下已不可达，此处一并收口口径）。
-        if confirmation in ("ACCEPT_strong", "ACCEPT_stable"):
-            now = self._clock()
-            last = rec.get("last_stable_ts")
-            if last is None or (now - last) >= STABLE_MIN_INTERVAL:
-                rec["verified_rounds"] += 1
-                rec["last_stable_ts"] = now
-        else:
-            rec["verified_rounds"] = 0
-            rec["last_stable_ts"] = None
-
         return self.anchor_state(anchor_id)
 
     # ---- 幸存者内加权（只排序 · 零历史依赖 · 防马太效应）----

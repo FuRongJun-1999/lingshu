@@ -47,7 +47,7 @@ class CuriosityExplorer(WorldLearner):
 
     继承 WorldLearner 的学得模型/预测/模式推断机制，新增：
       - observe(entities)：子集观测（有限带宽传感器）
-      - explore_tick/explore：好奇探索循环（选择→观测→学习→世界演化）
+      - explore_tick/explore：好奇探索循环（选择→预测→世界演化→观测→学习）
       - _info_gain/_prediction_bound：好奇心的计算
       - uncertainty()/uncertainty_curve：不确定度轨迹
       - probe()：全带宽探针评估
@@ -81,7 +81,7 @@ class CuriosityExplorer(WorldLearner):
     def observe(self, entities: Optional[List[str]] = None) -> Dict:
         """观测实体子集（有限带宽）；entities=None 时观测全部（兼容基类/探针）。"""
         if entities is None:
-            return super().observe()
+            entities = list(self.world.entities)
         self.tick += 1
         obs = self._sensor_read(entities)
         for eid, o in obs.items():
@@ -118,7 +118,8 @@ class CuriosityExplorer(WorldLearner):
         if not self.model:
             self.learn()
         if self._is_stationary(eid):
-            return self.hit_threshold   # 静止 = 最可预测
+            age = max(0, self.tick - self.last_observed.get(eid, self.tick))
+            return self.hit_threshold * (1 + age / float(self.window))
         m = self.model
         speed = m.get("per_entity", {}).get(eid, {}).get("speed_est", 0.3)
         pers = m.get("per_entity", {}).get(eid, {}).get("persistence", 0.0)
@@ -126,8 +127,10 @@ class CuriosityExplorer(WorldLearner):
         if rel:
             t_speed = m.get("per_entity", {}).get(rel["target"], {}).get("speed_est", 0.3)
             t_pers = m.get("per_entity", {}).get(rel["target"], {}).get("persistence", 0.0)
-            if rel["relation"] == "seek" and t_pers < self.entropy_threshold:
+            if rel["relation"] == "seek" and t_speed > 1e-6 and t_pers < self.entropy_threshold:
                 bound = max(self._reach(speed), self._reach(t_speed)) + self.hit_threshold
+            elif rel["relation"] == "seek" and rel.get("confidence", 0.0) < pers:
+                bound = self._reach(speed)
             elif rel["relation"] == "seek":
                 bound = self.hit_threshold + 0.05
             else:
@@ -167,7 +170,7 @@ class CuriosityExplorer(WorldLearner):
         """
         eids = list(self.world.entities.keys())
         n = len(eids)
-        if n == 0:
+        if not n:
             return [], {}
         b = max(1, min(int(budget), n))
         if policy == "curiosity":
@@ -189,7 +192,8 @@ class CuriosityExplorer(WorldLearner):
         for eid in chosen:
             exp = self._last_prediction.get(eid)
             n = self.nodes.get(eid)
-            if exp is None or n is None:
+            if (exp is None or n is None or n.last_seen != self.tick
+                    or exp.get("target_tick", self.tick) != self.tick):
                 continue
             if math.dist(exp["predicted"], tuple(n.pos)) >= exp["bound"]:
                 self._anomaly_counts[eid] = self._anomaly_counts.get(eid, 0) + 1
@@ -197,10 +201,10 @@ class CuriosityExplorer(WorldLearner):
         return n_anom
 
     def explore_tick(self, budget: int = 2, policy: str = "curiosity") -> Dict:
-        """探索一步：预测（好奇心依据）→ 选择 → 观测 → 学习 → 世界演化。"""
+        """探索一步：选择→预测→世界演化→真实观测→对比→学习。"""
         chosen, scores = self._select(budget, policy)
-        if self.model:
-            self.predict(horizon=1)
+        self.predict(horizon=1)
+        self.world.step(n=1)
         self.observe(entities=chosen)
         self._count_anomalies(chosen)
         self.learn()
@@ -209,7 +213,6 @@ class CuriosityExplorer(WorldLearner):
                  "ig_scores": scores, "mean_bound": mean_bound}
         self.exploration_log.append(entry)
         self.uncertainty_curve.append(mean_bound)
-        self.world.step(n=1)
         return entry
 
     def explore(self, ticks: int = 40, budget: int = 2,
@@ -230,25 +233,9 @@ class CuriosityExplorer(WorldLearner):
         return round(sum(bounds) / len(bounds), 4) if bounds else 1.0
 
     def probe(self, ticks: int = 15) -> Dict:
-        """全带宽探针：观测所有实体，评估学得模型 held-out 命中率。"""
-        learned_hits = naive_hits = total = 0
-        for _ in range(max(1, int(ticks))):
-            lp = self.predict(horizon=1)
-            before = {eid: tuple(n.pos) for eid, n in self.nodes.items()}
-            self.world.step(n=1)
-            self.observe()
-            actual = {eid: tuple(n.pos) for eid, n in self.nodes.items()}
-            for eid, p in lp["predictions"].items():
-                if eid not in actual:
-                    continue
-                total += 1
-                if math.dist(p["predicted"], actual[eid]) < p["bound"]:
-                    learned_hits += 1
-                if math.dist(before.get(eid, actual[eid]), actual[eid])                         < self.hit_threshold:
-                    naive_hits += 1
-        return {"tick": self.tick, "probe_ticks": int(ticks), "outcomes": total,
-                "learned_rate": round(learned_hits / total, 4) if total else 1.0,
-                "naive_rate": round(naive_hits / total, 4) if total else 1.0}
+        """全带宽冻结参数评估，沿用统一点误差与范围覆盖口径。"""
+        result = self.eval_phase(ticks, include_oracle=False)
+        return {**result, "probe_ticks": int(ticks)}
 
     def _build_world(self) -> "CuriosityExplorer":
         """标准测试世界：追逐链 player(wander)←wolf(seek)←rabbit(flee)。
@@ -285,14 +272,19 @@ class CuriosityExplorer(WorldLearner):
                 ex.explore_tick(budget=budget, policy=pol)
             pr = ex.probe(ticks=probe_ticks)
             results[pol] = {
+                "metric_version": pr["metric_version"],
+                "hit_threshold": pr["hit_threshold"],
                 "probe_rate": pr["learned_rate"],
                 "naive_rate": pr["naive_rate"],
+                "bound_coverage": pr["bound_coverage"],
+                "mean_distance": pr["mean_distance"],
+                "mean_bound": pr["mean_bound"],
                 "final_uncertainty": ex.uncertainty_curve[-1],
                 "uncertainty_min": min(ex.uncertainty_curve),
                 "obs_distribution": dict(ex.obs_counts),
                 "curve": list(ex.uncertainty_curve),
             }
-        return {"budget": int(budget), "explore_ticks": int(explore_ticks),
+        return {"metric_version": 2, "budget": int(budget), "explore_ticks": int(explore_ticks),
                 "results": results}
 
     # ================= 导出 =================
