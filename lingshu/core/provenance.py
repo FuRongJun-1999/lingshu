@@ -351,9 +351,16 @@ def from_legacy(tags: Any, created_at: Optional[float] = None,
     methods = []
     if "白箱校验" in ts:
         methods.append("whitebox_code")
-    if "llm_verify" in low:
-        methods.append("llm_verify")
+    # 与 to_tags 同一取值域；旧中文别名仍保留，声明方式按首次出现去重。
+    for t in ts:
+        method = t.lower()
+        if method in VERIFY_METHODS and method != "none" and method not in methods:
+            methods.append(method)
     p.verify_methods = methods or ["none"]
+    for t in ts:
+        if t.startswith("vref:"):
+            p.verify_ref = t.split(":", 1)[1]
+            break
 
     if not p.session_id and p.source in ("user", "assistant"):
         p.synthetic.append("session_id")
