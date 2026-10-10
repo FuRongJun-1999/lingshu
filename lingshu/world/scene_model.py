@@ -300,6 +300,13 @@ def ingest_scene(agent, scene_desc: str, store=None, tag: str = "spatial"):
         state = parts[3] if len(parts) > 3 else "neutral"
         content = f"场景实体 {name}（{cat}）位于 ({x},{y},{z})，状态 {state}"
         # 优先走 engine.add_perception（支持 spatial_coordinates）；退化用 agent.remember
+        # skip_dedup=True：场景导入是「主动沉淀类写入」，每行是带独立空间锚点/实体
+        # 身份的观测，必须保留自己的节点身份。否则同一实体的连续观测（如移动跟踪
+        # 坐标从 (0,0.85,5) 变到 (0.1,0.85,5)，Jaccard 0.914 ≥ 阈值 0.85）被 M5
+        # 去重短路成旧节点（core.py add_perception 命中即 `return best`），新观测
+        # 静默丢失，而调用方仍按返回的新节点 id 记状态、世界重建回落到旧坐标。
+        # 判据来源：core.py:2348 skip_dedup 的引入理由（v1.26c，主动沉淀类写入）；
+        # 同款先例 core.py:4925 subgraph_replace 亦传 skip_dedup=True。
         if engine is not None and hasattr(engine, "add_perception"):
             node = engine.add_perception(
                 content,
@@ -307,6 +314,7 @@ def ingest_scene(agent, scene_desc: str, store=None, tag: str = "spatial"):
                 spatial_coordinates={"x": x, "y": y, "z": z},
                 tags=[tag, f"cat:{cat}", f"ent:{name}", "world_model"],
                 entities=[name],
+                skip_dedup=True,
             )
         else:
             node = agent.remember(

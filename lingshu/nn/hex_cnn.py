@@ -288,13 +288,28 @@ def selfsup_finetune(img_arr: np.ndarray, kernel_name: str = "center_surround",
 
 
 def save_consolidated(kernels: Dict[str, np.ndarray], meta: Dict, path: str) -> str:
-    """白箱固化：学完的核参数 + 训练元数据落盘（JSON——可直读可审计）。"""
+    """白箱固化：学完的核参数 + 训练元数据落盘（JSON——可直读可审计）。
+
+    原子落盘：先写同目录临时档再 os.replace 顶替目标档——写入中途失败（含
+    元数据不可序列化）时目标档保持原样，不会被先截断成空档/半截坏档。
+    """
     payload = {"algo": ALGO, "consolidated": True,
                "kernels": {k: [round(float(x), 6) for x in v] for k, v in kernels.items()},
                **meta}
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=1)
+    tmp = f"{path}.tmp-{os.getpid()}"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     return path
 
 

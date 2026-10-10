@@ -155,6 +155,10 @@ def extract_spatiotemporal_primitives(frames):
 
 
 # ============ 四、时空记忆图写入（看见→记住） ============
+# 时空锚点必备字段（remember 的产物契约；缺失即视为损坏/幻觉事件）
+_EVENT_FIELDS = ("t_start", "t_end", "direction", "speed", "period", "moving", "label")
+
+
 class SpatiotemporalMemory:
     """时空记忆图：事件 → 时空锚点（时间/位置/运动模式）+ 记忆边。
     零 LLM 确定性记忆（对接灵枢语义时空图的感知侧入口）。"""
@@ -192,9 +196,31 @@ class SpatiotemporalMemory:
         return out
 
     def verify_consistency(self):
-        """自校验：回忆 vs 已记事件一致性（记忆无幻觉）"""
+        """自校验：回忆 vs 已记事件一致性（记忆无幻觉）。
+
+        旧实现 `len(self.recall()) == len(self.events)` 恒真——recall() 无查询时
+        就是把 self.events 逐条 append 出来，两侧长度是同一个数的两次读数，
+        任何「记了却回忆不出 / 回忆出没记过的」都发现不了（#302）。
+
+        新判据（按「看见→记住→回忆」白箱闭环的可观测环节逐项核对）：
+          ① 全量回忆与已记事件的**条数与顺序**一致（recall(None) 的召回完整性）；
+          ② 每条已记事件具备时空锚点必备字段（_EVENT_FIELDS）；
+          ③ 每条已记事件都能被 recall 以该事件自身字段查询**命中**（召回可达性）；
+          ④ 每条回忆出的事件确实是 self.events 中的同一对象（无凭空多出的幻觉事件）。
+        任一条不成立即判不一致（返回 False），不再恒真。
+        """
         recalled = self.recall()
-        return len(recalled) == len(self.events)
+        if len(recalled) != len(self.events):
+            return False
+        if any(a is not b for a, b in zip(recalled, self.events)):
+            return False
+        for e in self.events:
+            if not all(k in e for k in _EVENT_FIELDS):
+                return False
+            hits = self.recall(dict(e))
+            if not any(h is e for h in hits):
+                return False
+        return True
 
 
 # ============ 五、合成时空场景（演示数据，无真实视频） ============

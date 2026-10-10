@@ -204,11 +204,19 @@ class HexNet:
         return np.concatenate([self.conv.ravel(), self.mix.ravel(), self.fc.ravel()])
 
     def set_vec(self, vec: np.ndarray):
+        """从平铺参数向量载入参数。
+
+        #340：三段都必须 `.copy()`。连续 ndarray 上的 `vec[a:b]` 是**视图**，
+        `.reshape` 不改变这一事实——直接持有会把模型参数别名到调用方缓冲上：
+        调用方事后原地改自己的 `vec`（train_infogap 的 `vec[pi] -= lr*...`
+        更新路径正是如此）会静默改写模型参数，绕过 set_vec 的显式载入。
+        判据来源：经验标定，HEAD 实测 `np.shares_memory(net.conv, vec) is True`。
+        """
         i, k7 = 0, self.K * 7
-        self.conv = vec[i:i + k7].reshape(self.K, 7); i += k7
+        self.conv = vec[i:i + k7].reshape(self.K, 7).copy(); i += k7
         mk = self.M * self.K
-        self.mix = vec[i:i + mk].reshape(self.M, self.K); i += mk
-        self.fc = vec[i:i + self.C * self.M].reshape(self.C, self.M)
+        self.mix = vec[i:i + mk].reshape(self.M, self.K).copy(); i += mk
+        self.fc = vec[i:i + self.C * self.M].reshape(self.C, self.M).copy()
 
     def n_params(self) -> int:
         return self.K * 7 + self.M * self.K + self.C * self.M

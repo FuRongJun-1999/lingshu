@@ -33,6 +33,9 @@ v2 补强（issue #156 第二版）：
   - **脚本目录**（`python <script>.py` 形态的 `sys.path[0]`）同属「解释器隐式
     塞入的解析面」，不再被当作受控面 ⇒ 白名单名不从脚本目录解析（见
     `_is_script_dir_entry` / `_pathguard.main_script_dir`）。
+  - **启动面**（issue #421）：`python -m <mod>` 形态下解释器注入的是**启动 cwd
+    （包根）**，同属此列；`main_script_dir()` 按**启动期快照**返回该面 ⇒ 判定
+    不随 import 后的 `chdir` 漂移（旧实现吃判定时 cwd/argv0 ⇒ 启动目录被保留）。
 
 范围边界（精确）：本模块封的是**组件发现面**（白名单 15 名的裸名解析不经
 cwd/空串/脚本目录条目）；「消除一切经 `sys.path` 的裸名解析（含标准库）」由
@@ -126,7 +129,9 @@ def _is_script_dir_entry(entry) -> bool:
 
     脚本目录同属「解释器隐式塞入」的解析面（非部署方显式声明），故亦不视为
     受控面（v2 补强：上一版只判 cwd/空串 ⇒ 脚本目录 != cwd 时毒白名单组件
-    仍被执行）。
+    仍被执行）。issue #421：`python -m <mod>` 形态下解释器注入的是**启动 cwd
+    （包根）**，`_pathguard.main_script_dir()` 现按**启动期快照**返回该面 ⇒ 本
+    函数同时覆盖 `-m` 启动目录（判定不随 import 后的 chdir 漂移）。
     """
     if not isinstance(entry, str) or entry == "":
         return False

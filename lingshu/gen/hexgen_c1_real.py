@@ -821,9 +821,9 @@ def fit(measured, ids):
                       and it["shape"] == b for o in measured["by_id"][it["id"]]]
                 if not va or not vb:
                     continue
-                gap = min(vb) - max(va)                     # b 在上 (lo=a, hi=b)
+                pair_sep = min(vb) - max(va)                # b 在上 (lo=a, hi=b)
                 rev = min(va) - max(vb)                     # a 在上
-                g, lo_is_a = (gap, True) if gap >= rev else (rev, False)
+                g, lo_is_a = (pair_sep, True) if pair_sep >= rev else (rev, False)
                 #   **选择键＝成对 d′**（|均值差| ÷ 合并标准差），而不是「间隔 ÷ 类内极差」——
                 #   后者会被「类内极差小的维」骗：R283 实测 (triangle,diamond) 上 `harm5` 的相对
                 #   间隔 1.845 盖过 `peak_prom` 的 1.722，可 harm5 的绝对间隔只有 0.133（噪声级），
@@ -1108,7 +1108,12 @@ def evaluate(measured, fit_, ids, tag="", loo=False):
     #   某件的物体数 = 真值数量 n（有 prompt 时），故 pattern 基线 = Σ(n·1[该件花纹=多数类]) / Σn
     tp_w = [("plain" if it["truth"]["pattern"] == "plain" else "patterned", it["truth"]["n"])
             for it in items if it["truth"]]
-    maj_p = Counter(p for p, _n in tp_w).most_common(1)
+    #   多数类按**样本数（真值物体数 n）**加权选，与上面「基线口径」注释里的比率口径同源
+    #   （按「件」选会在「多物体 plain 件少 / 单物体 patterned 件多」的语料上把类选反 ⇒ 基线低报）。
+    maj_p = Counter()
+    for p, _n in tp_w:
+        maj_p[p] += int(_n)
+    maj_p = maj_p.most_common(1)
     maj_ = maj_p[0][0] if maj_p else None
     tot_w = sum(n for _p, n in tp_w)
     pat_base = ([maj_, round(sum(n for p, n in tp_w if p == maj_) / max(1, tot_w), 4)]

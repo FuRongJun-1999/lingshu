@@ -17,8 +17,11 @@
   + 状态取**槽位投影**（`stg(op=state_chain)`，slot=「状态」）→
   `scene_model.load_world_from_memory(brain_store)` 直接可用。
 - **M2 写向（身体观测入脑）**：`BrainEngine.add_perception` → `mdcg_remember`
-  （tags + `spatial.coords3d` 直存）；状态写入经 `store.conn` 垫片翻译为
-  `cg(op=state_event)` **记账**（事件是源、槽位是投影）→
+  （tags + `spatial.coords3d` 直存；密级 `sensitivity` / 来源 `role` /
+  `condition_space` 显式透传，未具名的关键字一律 `TypeError` 不静默吞——
+  issue #364）；状态写入经 `store.conn` 垫片翻译为
+  `cg(op=state_event)` **记账**（事件是源、槽位是投影；**subject＝节点 id**，
+  非实体名——实体名跨场景不唯一，issue #366）→
   `scene_model.ingest_scene(brain_agent, desc)` 直接可用（含状态）。
 
 传输：**MCP stdio**（逐行 JSON-RPC，与「身体件经 MCP 连脑的真实通路」一致）。
@@ -364,7 +367,8 @@ class _ConnShim:
 
     契约：只认 `UPDATE nodes SET state_attributes=? WHERE id=?` 一条形态——
     payload 为 `{"state": ...}` JSON、第二参数为节点 id；翻译为
-    `cg(op=state_event)`（subject=该节点的实体名、slot=「状态」、kind=acquisition）。
+    `cg(op=state_event)`（subject=**该节点 id**、slot=「状态」、kind=acquisition
+    ——issue #366：实体名跨场景不唯一，不作台账键）。
     其它 SQL 抛 NotImplementedError（不静默吞）；状态事件未入账时抛
     `BrainError`（同样不静默吞）。legacy 侧 `commit()` 为无操作。
     """
@@ -402,11 +406,16 @@ class BrainStore:
         self.scene_tag = scene_tag
         self.seed_query = seed_query
         self.conn = _ConnShim(self)          # legacy ingest_scene 的直写出口
-        self._node_meta: Dict[str, Dict[str, str]] = {}   # node_id → {"ent": 名}
 
     # ---- M1 读向 ----
     def _state_map(self) -> Dict[str, str]:
-        """活动状态槽位投影：subject → value（slot=「状态」；一次查询全量取回）。"""
+        """活动状态槽位投影：subject → value（slot=「状态」；一次查询全量取回）。
+
+        subject **＝节点 id**（不是实体名，issue #366）：台账是全局 append-only
+        的，实体名在同一脑根内的多个场景间不唯一——用实体名作键时，另一场景的
+        同名实体会覆盖本场景的状态（后写盖先写）。节点 id 全局唯一，故状态按
+        「哪个节点」记账，读回时按节点 id 取（见 get_nodes_by_tag / record_state）。
+        """
         resp = self.client.call("stg", {"op": "state_chain", "limit": 500})
         m: Dict[str, str] = {}
         for u in (resp.get("items") or []):
@@ -459,14 +468,11 @@ class BrainStore:
                 coords = {"x": float(sp.get("x", 0.0)),
                           "y": float(sp.get("y", 0.0)),
                           "z": float(sp.get("z", 0.0))}
-            ent = ""
-            for t in tags:
-                if str(t).startswith("ent:"):
-                    ent = str(t)[4:]
-                    break
-            state = states.get(ent)
+            nid = str(node.get("id") or fm.get("id") or "")
+            # 状态按**节点 id** 取（#366：实体名跨场景不唯一，不作台账键）。
+            state = states.get(nid)
             out.append(BrainNode(
-                id=str(node.get("id") or fm.get("id") or ""),
+                id=nid,
                 content=str(node.get("content") or ""),
                 tags=tags,
                 spatial_coordinates=coords,
@@ -475,11 +481,16 @@ class BrainStore:
 
     # ---- M2 写向（垫片目标）----
     def record_state(self, node_id: str, state: Optional[str]) -> bool:
-        """把 legacy 的状态写翻译成 `cg(op=state_event)` 记账（subject=实体名）。"""
+        """把 legacy 的状态写翻译成 `cg(op=state_event)` 记账（subject=**节点 id**）。
+
+        subject 用节点 id 而非实体名（issue #366）：台账是全局 append-only 的，
+        实体名在同一脑根内的多场景间不唯一，用实体名会让另一场景的同名实体改掉
+        本场景的状态；节点 id 全局唯一，状态按节点记账、按节点读回
+        （_state_map / get_nodes_by_tag 同口径）。
+        """
         if not state:
             return False
-        ent = (self._node_meta.get(node_id) or {}).get("ent") or node_id
-        r = self.client.call("cg", {"op": "state_event", "subject": ent,
+        r = self.client.call("cg", {"op": "state_event", "subject": str(node_id),
                                     "slot": STATE_SLOT, "old": None,
                                     "new": str(state), "kind": "acquisition",
                                     "evidence": "ingest_scene→brain(conn 垫片)"})
@@ -495,20 +506,53 @@ class BrainEngine:
     def add_perception(self, content: str, importance: float = 0.6,
                        spatial_coordinates: Optional[Dict[str, float]] = None,
                        tags: Optional[List[str]] = None,
-                       entities: Optional[List[str]] = None, **_kw) -> NodeRef:
+                       entities: Optional[List[str]] = None,
+                       sensitivity: Optional[str] = None,
+                       role: Optional[str] = None,
+                       condition_space: Optional[dict] = None,
+                       skip_dedup: bool = False,
+                       **_kw) -> NodeRef:
+        """`mdcg_remember` 直写一条观测（含 spatial.coords3d 直存）。
+
+        **密级/来源显式透传**（issue #364）：`sensitivity`（密级）与 `role`
+        （来源证据：user=外部惊奇 / command·tool-output=内部确定性）、
+        `condition_space`（条件空间）**原样进 `mdcg_remember` 的 args**。此前本
+        方法用 `**_kw` 把这三个名字静默吞掉：调用方声明 `private` 的观测按脑端
+        缺省 `internal` 落盘（脑端 `docindex.DEFAULT_SENSITIVITY`），无令牌访客
+        即可检索重建该实体——隐私边界被**静默降级**，且调用方无从察觉。
+
+        **未知关键字 fail-closed**（同 #364）：凡未在上面具名的关键字一律
+        `TypeError`，不得静默丢弃——「声明了却落不了盘」正是本缺陷的成因。
+        新增调用方参数须在此显式声明并透传。
+
+        `skip_dedup`：legacy 调用形（`scene_model.ingest_scene`）透传的 M5 去重
+        开关。脑侧本层是**直写**（`gated=False`），脑端直写路径不做同构去重
+        （脑包 `md_cg/mcp_server.py`「直写不去重是文档化现状」），故此处显式
+        接收并**如实记录为脑侧无操作**——不静默吞掉名字，也不假装它生效。
+        """
+        if _kw:
+            raise TypeError(
+                "BrainEngine.add_perception 不接受未透传的关键字参数 %s——"
+                "它们不会进 mdcg_remember（静默吞参＝声明静默失效，issue #364）；"
+                "请在方法签名里显式声明并透传"
+                % (sorted(_kw),))
         args = {"content": content, "layer": "contextual", "gated": False,
                 "importance": float(importance), "tags": list(tags or [])}
+        if sensitivity is not None:
+            args["sensitivity"] = sensitivity
+        if role is not None:
+            args["role"] = role
+        if condition_space is not None:
+            args["condition_space"] = condition_space
         if spatial_coordinates:
             args["spatial"] = {"coords3d": {k: float(v)
                                             for k, v in spatial_coordinates.items()}}
         r = self.store.client.call("mdcg_remember", args)
         if not r.get("ok") or not r.get("id"):
             raise BrainError("mdcg_remember 未成功：%r" % (r,))
-        nid = str(r["id"])
-        ent = (entities or [None])[0]
-        if ent:
-            self.store._node_meta[nid] = {"ent": str(ent)}
-        return NodeRef(id=nid)
+        # `entities` 保留以兼容 legacy 调用形（scene_model.ingest_scene 传实体名）；
+        # 状态台账已改按节点 id 记账（issue #366），不再需要实体名映射。
+        return NodeRef(id=str(r["id"]))
 
 
 class BrainAgent:

@@ -28,7 +28,8 @@ import），把 `sys.path` 中**解释器隐式塞入的 cwd / 空串条目**移
   - **逃生口** `LINGSHU_ALLOW_CWD_IMPORTS=1` 被显式打开（见下，等于放弃本层）；
   - `python <script>` 且**脚本目录 != cwd** 时，脚本目录条目（本模块不移除它，
     属部署/脚本面）；该面下的**白名单组件**由 `component_resolver` 另行排除
-    （`safe_search_path` 排除脚本目录）；
+    （`safe_search_path` 排除启动面）；`python -m` 形态下解释器注入的**启动 cwd
+    （包根）**同属此列（issue #421：启动面按**启动期快照**判定，不吃判定时 cwd）；
   - cwd 条目在 `lingshu` import **之后**被重新插入 `sys.path`（本模块只在
     import 期一次性消除；无持续守卫）；
   - `python -S` 极简启动（`os` 可能尚未加载，护栏降级为只处理 `''`/`.`）。
@@ -71,6 +72,36 @@ _SNAPSHOT_DONE = False
 _STARTUP_CWD = None          # 启动时刻的 cwd（归一；供分类，不外泄）
 _STARTUP_SCRIPT_DIR = None   # 启动时刻的脚本目录（原始路径，供分类）
 _CONTROLLED_ENTRIES = ()     # 启动时刻判定的受控面条目（绝对、非 cwd、非脚本目录、非相对）
+
+
+# ---- 启动期「解释器注入的启动面」快照（issue #421）--------------------------
+# `sys.path[0]` 由解释器在**进程启动期**按启动形态写定，是本进程里唯一不随
+# 「判定时 cwd」漂移的启动面记录：
+#   · `python <script>.py` ⇒ 脚本目录；· `python -m <mod>` ⇒ 启动 cwd（包根）；
+#   · `python -c` / REPL ⇒ `''`（非绝对 ⇒ 不计入）。
+# 必须在 `scrub()` **之前**取值：`-m` 形态下该条目**等于启动 cwd**，scrub 会把它
+# 移出 `sys.path`，取值晚了只会读到被挤上来的下一条。
+# `-P` / `PYTHONSAFEPATH=1`（`sys.flags.safe_path`）下解释器**不注入**任何条目 ⇒
+# 此时 `sys.path[0]` 是部署方条目（PYTHONPATH / site-packages），**不可**当启动面。
+def _capture_startup_launch_dir():
+    """冻结启动期 `sys.path[0]`（解释器注入面）；不可判定时 None。"""
+    try:
+        if bool(getattr(_sys.flags, "safe_path", False)):
+            return None
+        p0 = _sys.path[0] if _sys.path else None
+    except Exception:  # pragma: no cover - sys.path / sys.flags 异常
+        return None
+    if not isinstance(p0, str) or not p0 or _os is None:
+        return None
+    try:
+        if not _os.path.isabs(p0):
+            return None
+    except Exception:  # pragma: no cover - 非法路径
+        return None
+    return p0
+
+
+_STARTUP_LAUNCH_DIR = _capture_startup_launch_dir()
 
 
 class CwdImportsAllowed(UserWarning):
@@ -194,19 +225,35 @@ def ensure_scrubbed() -> bool:
 
 
 def main_script_dir():
-    """`python <script>.py` 形态下 `sys.path[0]` 所指向的**脚本目录**（或 None）。
+    """启动期由解释器**注入**的「启动面」目录（或 None）。
 
-    `-c`（argv0 == '-c'）/ REPL 形态返回 None。`-m`（argv0 为模块文件，其目录
-    通常不在 sys.path）返回该模块文件所在目录——两者均非 `sys.path[0]` 的脚本
-    目录面，故不构成误排除。脚本目录同属「解释器隐式塞入的解析面」，不属部署方
-    显式声明面 ⇒ `component_resolver.safe_search_path()` 亦将其排除。
+    语义 = 「解释器在进程启动期隐式塞进 `sys.path` 的那个条目所指向的目录」：
+      · `python <script>.py` ⇒ 脚本目录；
+      · `python -m <mod>` ⇒ **启动 cwd（包根）**——`-m` 形态下 `sys.path[0]` 就是它，
+        而非模块文件所在目录；
+      · `-c` / REPL（`sys.path[0] == ''`）与 `-P` / `PYTHONSAFEPATH=1`
+        （解释器不注入）⇒ None。
 
-    issue #343：路径经 `realpath` 归一（与 `_norm` 同一归一，两侧方可比），
-    且当 argv0 **已不可解析**时退回进程启动期由解释器写定的 `sys.path[0]`——
-    否则「启动期相对 argv0 + import 前 chdir」会让 `abspath(argv0)` 相对**新**
-    cwd 解析（`isfile` 落空 ⇒ 旧实现返回 None）⇒ 脚本目录不被排除 ⇒ 同目录
-    毒组件被导入执行。
+    这些均属「解释器隐式塞入的解析面」、不属部署方显式声明面 ⇒
+    `component_resolver.safe_search_path()` 亦将其排除。
+
+    issue #421：该值在**本模块 import 时**（`scrub()` 之前）一次性冻结为
+    `_STARTUP_LAUNCH_DIR`，**不再**由判定时的 `sys.argv[0]` / `os.getcwd()` /
+    `sys.path[0]` 现算。旧实现在「import 前 chdir」时三者同时漂移：`-m` 形态下
+    `sys.path[0]` 是启动 cwd，chdir 后它既不再等于 cwd（逃过 scrub）、又不等同
+    `dirname(argv0)`（逃过脚本目录排除）⇒ 启动目录被当受控面保留，其下同名毒组件
+    被导入执行。冻结后启动面与判定时刻无关（快照语义）。
+
+    issue #343：快照经 `realpath` 归一（与 `_norm` 同一归一），故「别名路径启动」
+    与「真实路径」两侧可比；`argv0` 不可解析时不再退回**判定时**的 `sys.path[0]`
+    （#421 的漂移面），而用启动期快照。
     """
+    if _STARTUP_LAUNCH_DIR is not None:
+        try:
+            return _os.path.realpath(_STARTUP_LAUNCH_DIR)
+        except Exception:  # pragma: no cover - 非法路径
+            return _STARTUP_LAUNCH_DIR
+    # 快照缺失（-P / PYTHONSAFEPATH / sys.path 异常）⇒ 退回 argv0 判定（原行为）。
     argv = _sys.argv
     if not argv:
         return None
@@ -237,7 +284,11 @@ def main_script_dir():
 
 
 def is_script_dir_entry(entry) -> bool:
-    """条目是否等于 `python <script>.py` 的脚本目录。"""
+    """条目是否等于启动期由解释器**注入**的启动面目录（`main_script_dir()`）。
+
+    issue #421 起该面含 `python -m <mod>` 的**启动 cwd（包根）**，不再只指
+    `python <script>.py` 的脚本目录；判定用启动期冻结快照，不吃判定时 cwd。
+    """
     sd = main_script_dir()
     if sd is None or not isinstance(entry, str) or entry == "":
         return False

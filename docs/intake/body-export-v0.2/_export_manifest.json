@@ -36,8 +36,8 @@
   {
    "file": "tests/test_hex_gen.py",
    "src": "tests/test_hex_gen.py",
-   "bytes": 12503,
-   "sha256": "85331c0ae9c8afc7",
+   "bytes": 12507,
+   "sha256": "fbfcbe63d0d199b6",
    "rewrites": 4,
    "patches": 0,
    "sanitized": 0
@@ -81,8 +81,8 @@
   {
    "file": "tests/test_hex_train.py",
    "src": "tests/test_hex_train.py",
-   "bytes": 8316,
-   "sha256": "9e70c7b087ffe4cb",
+   "bytes": 9625,
+   "sha256": "47eb8a7651af6c39",
    "rewrites": 11,
    "patches": 0,
    "sanitized": 0

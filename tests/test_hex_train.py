@@ -42,6 +42,31 @@ def test_conv_batch_matches_single():
         np.testing.assert_allclose(b[i], s, atol=1e-5)
 
 
+def test_set_vec_does_not_alias_caller_buffer():
+    """守卫(#340):HexNet.set_vec 不得把模型参数别名到调用方缓冲。
+
+    判据来源:经验标定(件 #340 取证)——HEAD 实测
+    `np.shares_memory(net.conv, vec) is True`,且调用方 `vec[:] += 1e3` 后
+    `get_vec()` 读数随之整体 +1e3(静默改参,绕过 set_vec 的显式载入)。
+    根因:连续 ndarray 上的切片是视图,`.reshape` 仍是视图。
+
+    断言三件事:① 三段参数均不与调用方缓冲共享内存;② 调用方原地改自己的
+    vec 后,模型参数读数逐位不变;③ 载入语义本身仍正确(copy 不改变取值)。
+    """
+    net = HexNet(n_kernels=3, n_mix=4, n_class=5, seed=1)
+    vec = net.get_vec()
+    net.set_vec(vec)
+    for name, arr in (("conv", net.conv), ("mix", net.mix), ("fc", net.fc)):
+        assert not np.shares_memory(arr, vec), f"{name} 别名到调用方缓冲"
+    snap = net.get_vec().copy()
+    vec += 1e3                                   # 调用方原地改自己的缓冲
+    assert np.array_equal(net.get_vec(), snap), "调用方写入穿透到模型参数"
+    # 载入语义仍正确:喂一条已知向量,读回逐位相等
+    v2 = np.arange(net.n_params(), dtype=np.float64)
+    net.set_vec(v2)
+    assert np.array_equal(net.get_vec(), v2)
+
+
 def test_branch_deadzone_freezes():
     """支路死区: 更新量分辨率设极大→全部冻结(信息差进死区,支路终止)。"""
     xs, ys = _toy_images()

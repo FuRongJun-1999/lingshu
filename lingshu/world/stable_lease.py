@@ -48,7 +48,7 @@ class StableLease:
         eff_ttl = ttl if ttl is not None else self.ttl
         self._leases[key] = {
             "t_verified": now, "ttl": eff_ttl, "confidence": confidence,
-            "state": "stable", "expires_at": now + eff_ttl,
+            "state": "stable" if self._params_ok(eff_ttl, confidence) else "weak", "expires_at": now + eff_ttl,
         }
         # 记录保留（不可遗忘——P1-003 边界）：历史由调用方持有，这里仅标记
         return self.state(key)
@@ -66,6 +66,18 @@ class StableLease:
         # 指数衰减核 exp(-γ·t)：TTL 超时 = confidence 衰减至弱阈值以下
         decayed_conf = lease["confidence"] * math.exp(-self.gamma * age)
         weak_conf = decayed_conf < self.weak_threshold
+
+        # 非有限输入闸（#196）：NaN/±Inf 使 `age >= ttl` 与 `decayed < weak_threshold`
+        # 恒为 False ⇒ 控制流直落末尾 stable 分支（「数值坏了」被译成「租约有效」）。
+        # 故先拦：任一非有限 ⇒ 降级 weak（不可判，待重新验证），不给 stable。
+        # 判据：本模块 3.2.2 `S ∈ stable ⟺ (t-t_verified) < TTL ∧ …`——非有限时
+        # 该合取式无法成立，不得判 stable；降级口径见 P1-003（降级≠删除）。
+        if not self._finite(age, lease["ttl"], decayed_conf,
+                            lease["confidence"], self.gamma,
+                            self.weak_threshold):
+            lease["state"] = "weak"  # 降级（作用于状态，不删除记录——P1-003）
+            return {"key": key, "state": "weak", "in_lease": False,
+                    "reason": "非有限输入（NaN/Inf）——不可判，降级待重新验证"}
 
         if expired or weak_conf:
             lease["state"] = "weak"  # 降级（作用于状态，不删除记录）
@@ -85,7 +97,8 @@ class StableLease:
         now = time.time()
         lease["t_verified"] = now
         lease["confidence"] = confidence
-        lease["state"] = "stable"
+        lease["state"] = ("stable" if self._params_ok(lease["ttl"], confidence)
+                          else "weak")
         lease["expires_at"] = now + lease["ttl"]
         return self.state(key)
 
@@ -106,3 +119,20 @@ class StableLease:
                 "t_verified": round(lease["t_verified"], 1),
                 "ttl": lease["ttl"], "confidence": lease["confidence"],
                 "expires_at": round(lease["expires_at"], 1)}
+
+    # ---- 非有限输入闸（#196）----
+    # NaN/±Inf 与任何阈值比较恒为 False，`age >= ttl` / `decayed < weak_threshold`
+    # 都不成立 ⇒ 控制流直落末尾 stable 分支（「数值坏了」被译成「租约有效」）。
+    # 故 acquire/renew/check 先判有限性，任一非有限一律降级 weak（不可判，待重新
+    # 验证），不给 stable。判据（理论）：3.2.2 `S ∈ stable ⟺ (t-t_verified) < TTL
+    # ∧ ¬conflict`——TTL/置信度非有限时该合取式无法成立，不得判 stable；降级口径
+    # 见 P1-003 边界（降级作用于状态，不删除记录）。
+
+    @staticmethod
+    def _finite(*xs) -> bool:
+        """全部为有限实数（NaN/±Inf → False）。非有限输入闸的唯一判据。"""
+        return all(math.isfinite(float(x)) for x in xs)
+
+    def _params_ok(self, ttl, confidence) -> bool:
+        """本参数组能否支撑 stable：租约时长/确认度/衰减核/弱阈值皆须有限。"""
+        return self._finite(ttl, confidence, self.gamma, self.weak_threshold)

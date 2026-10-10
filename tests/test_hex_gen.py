@@ -58,7 +58,7 @@ def run_checks():
                       "zone": POS[rng.integers(9)]} for _ in range(k)]
             img, log = render_relations(parts, size=size, seed=t)
             check_img = img.shape == (size, size, 3) and img.mean() > 0
-            v = verify_constructive(parts, log)
+            v = verify_constructive(parts, img)
             n_ok += v["matched"]
             n_all += v["total"]
             if not check_img:
@@ -94,7 +94,7 @@ def run_checks():
                       "zone": POS[rng.integers(9)]} for _ in range(k)]
             tp = transform_relations(parts, op)
             img, log = render_relations(tp, size=48, seed=t)
-            v = verify_constructive(tp, log)
+            v = verify_constructive(tp, img)
             n_ok += v["matched"]
             n_all += v["total"]
         rate = n_ok / n_all
@@ -148,8 +148,8 @@ def run_checks():
                       "pattern": PATTERNS[rng2.integers(3)],
                       "size": ["small", "medium", "large"][rng2.integers(3)]}
                      for _ in range(k)]
-            _, log = render_relations(parts, size=size, seed=t)
-            v = verify_constructive(parts, log)
+            img, log = render_relations(parts, size=size, seed=t)
+            v = verify_constructive(parts, img)
             n_ok += v["matched"]
             n_all += v["total"]
         rate = n_ok / n_all
@@ -230,8 +230,8 @@ def run_checks():
                        "zone": POS[rng4.integers(9)]} for _ in range(k)]
         s = shift_relations(base_parts, int(rng4.integers(-2, 3)),
                             int(rng4.integers(-2, 3)))
-        _, log = render_relations(s["parts"], size=48, seed=t)
-        v = verify_constructive(s["parts"], log)
+        img, log = render_relations(s["parts"], size=48, seed=t)
+        v = verify_constructive(s["parts"], img)
         n_ok += v["matched"]
         n_all += v["total"]
         n_drop_expect += sum(1 for p in base_parts

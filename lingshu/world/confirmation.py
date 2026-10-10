@@ -39,9 +39,15 @@ def _sigmoid(x: float) -> float:
 def kl_binary(p_after: float, p_before: float) -> float:
     """二值信念分布 KL(p_after || p_before)：信息增益的离散近似。
     KL = p_after·log(p_after/p_before) + (1-p_after)·log((1-p_after)/(1-p_before))
-    仅当信念改变时 > 0；p_after==p_before → 0（自我应答自动出局）。"""
-    p_after = max(1e-9, min(1 - 1e-9, float(p_after)))
-    p_before = max(1e-9, min(1 - 1e-9, float(p_before)))
+    仅当信念改变时 > 0；p_after==p_before → 0（自我应答自动出局）。
+    非有限输入（NaN/±inf）→ 0.0（#402：无信息＝fail-closed，不得被钳制表达式
+    放行——实测 min(1-1e-9, nan)=1-1e-9 会把 NaN 概率抬成"几乎必然"）。"""
+    p_after = float(p_after)
+    p_before = float(p_before)
+    if not (math.isfinite(p_after) and math.isfinite(p_before)):
+        return 0.0
+    p_after = max(1e-9, min(1 - 1e-9, p_after))
+    p_before = max(1e-9, min(1 - 1e-9, p_before))
     return (p_after * math.log(p_after / p_before)
             + (1 - p_after) * math.log((1 - p_after) / (1 - p_before)))
 
@@ -51,6 +57,10 @@ def gain_task(p_after: float, p_before: float, task_relevance: float = 1.0) -> f
     Gain_task = 任务相关性 × KL(p_after || p_before)。
     无关维度（task_relevance=0）→ Gain=0 → 无目的猎奇自动出局。"""
     kl = kl_binary(p_after, p_before)
+    # #402：非有限任务相关性 fail-closed 归零（不得被钳制表达式抬成满相关）
+    task_relevance = float(task_relevance)
+    if not math.isfinite(task_relevance):
+        task_relevance = 0.0
     return max(0.0, kl * max(0.0, min(1.0, task_relevance)))
 
 

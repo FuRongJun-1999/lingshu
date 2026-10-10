@@ -164,10 +164,18 @@ def summarize(reads, items):
         t = truth_of.get(sid)
         if not t:
             continue
+        #   花纹列读者只出**二档** `plain`/`patterned`（`predict` 的 `pattern`，见
+        #   hexgen_c1_real.py:958），而 prompt 真值是**三档**（`plain`/`striped`/`dotted`，
+        #   `parse_prompt`，hexgen_c1_real.py:120）。两者必须先降到同一档再比：判据取
+        #   C 线既有口径 `evaluate` 的 `tpat`（hexgen_c1_real.py:1074-1075，「花纹（二档
+        #   plain vs patterned）」列）。直接拿二档读出比三档真值，会让所有 striped/dotted
+        #   件恒判不兑现（issue #390）。代价：二档比较**削掉了 striped vs dotted 的判别力**
+        #   —— 该列现在只能判「有无花纹」；三档读出的判别力由 C 线 `pattern3_rate` 承担。
+        tpat = "plain" if t["pattern"] == "plain" else "patterned"
         for r in rs:
             hon["shape"].append(float(r["shapes"] == sorted([t["shape"]] * t["n"])))
             hon["color"].append(float(r["colors"] == sorted([t["color"]] * t["n"])))
-            hon["pattern"].append(float(r["patterns"] == sorted([t["pattern"]] * t["n"])))
+            hon["pattern"].append(float(r["patterns"] == sorted([tpat] * t["n"])))
             hon["count"].append(float(r["n_read"] == t["n"]))
 
     #   ③ 件内方差 vs 类间差（逐特征）

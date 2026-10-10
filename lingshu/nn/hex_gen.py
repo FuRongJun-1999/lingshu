@@ -8,7 +8,7 @@
   compile_description(text)   中文描述 → 部件关系清单（复用 hex_text.parse_description）
   render_relations(parts)     关系 → 图像 + 落格日志（每个部件画到哪个 zone，
                               复用 hex_composite._paint 的形状/花纹渲染词汇）
-  verify_constructive(parts, log) 构造性验证：落格日志与文本三元组直接比对
+  verify_constructive(parts, img) 构造性验证：**渲染像素**与文本三元组比对
                               → 条件兑现率（P1① 主验收口径，不依赖识别端）
   ZONE_TRANSFORMS + transform_relations  P1③ 交付物：9 宫格 zone 映射表与
                               关系层变换（变换作用于关系描述层，分辨率无关）
@@ -101,6 +101,15 @@ EXT_SHAPES = {"square", "rectangle", "star", "heart", "hexagon", "diamond"}
 def ext_color_rgb(name_en: str):
     """开放词汇色名（英文）→ RGB；未知名回退红（缺省落账原则）。"""
     return _OPEN_RGB.get(name_en, (220, 40, 40))
+
+
+def _part_rgb(color: str):
+    """部件色名 → RGB（渲染与验证共用同一查表，防两侧口径漂移）。
+
+    与 hex_composite._COLORS_RGB 优先、开放词汇表次之、未知回退红——
+    即 render_relations 绘制部件时用的同一口径。
+    """
+    return _COLORS_RGB.get(color) or ext_color_rgb(color)
 
 
 def _poly_points(shape: str, cx: int, cy: int, rad: int):
@@ -243,10 +252,9 @@ def render_relations(parts: List[Dict], size: int = 48, seed: int = 7,
             size // 7 if size_attr == "large" else size // 10)
         if shape in EXT_SHAPES:
             _paint_polygon(img, shape, cx, cy, rad,
-                           ext_color_rgb(color), pattern)
+                           _part_rgb(color), pattern)
         else:
-            rgb = _COLORS_RGB.get(color) or ext_color_rgb(color)
-            _paint(img, shape, cx, cy, rad, rgb, pattern)
+            _paint(img, shape, cx, cy, rad, _part_rgb(color), pattern)
         zone_landed = rc_zone(min(2, max(0, cy * 3 // size)),
                               min(2, max(0, cx * 3 // size)))
         log.append({"part": i, "shape": shape, "color": color,
@@ -265,28 +273,69 @@ def render_relations(parts: List[Dict], size: int = 48, seed: int = 7,
 
 # ==================== 构造性验证（P1① 主验收口径）====================
 
-def verify_constructive(parts: List[Dict], log: List[Dict]) -> Dict:
-    """落格日志 vs 关系三元组直接比对 → 条件兑现率。
+_COLOR_TOL = 120          # 部件色像素判定阈值（与 hex_composite.extract_attributes 同口径）
 
-    兑现 = zone_landed==zone 且 shape/color/pattern/size 一致（渲染做到
-    了描述说的）。不依赖识别端（hex_query 存档上限 89.6% 会卡线——
-    调研报告 P1 修正）。
+
+def _bg_level(img: np.ndarray) -> np.ndarray:
+    """背景色估计（全图逐通道中位：部件面积占比小，中位落在背景上）。"""
+    return np.median(img.reshape(-1, 3).astype(int), axis=0)
+
+
+def _color_separable(rgb, bg) -> float:
+    """部件色与背景估计的距离（逐通道绝对差求和）。
+
+    < _COLOR_TOL 时，背景像素本身就会落进部件色判据窗口——该部件在**这张图**
+    的背景上不可判别（如噪声底上的 black、白底上的 white），不记为兑现。
     """
-    matched, misses = 0, []
+    return float(np.abs(np.array(rgb) - np.asarray(bg)).sum())
+
+
+def verify_constructive(parts: List[Dict], img: np.ndarray) -> Dict:
+    """渲染像素 vs 关系三元组 → 条件兑现率（P1① 主验收口径）。
+
+    判据（只读 img 像素，不读渲染器落格日志）：对每个部件，在**期望 zone**
+    的像素窗口（由 parts 的 zone 与 img 尺寸算出）内，存在 ≥1 个该部件色的
+    像素 ⇒ 该部件的 zone 与 color 条件兑现。
+
+    为什么是像素而不是日志（#295）：日志是渲染器自己产出的账，拿它的
+    zone_landed/shape/color 与期望比，是恒等比对（自己核对自己），不构成验证；
+    像素是渲染器的输出本身，属独立证据。
+
+    判别力边界（诚实落账，不猜）：
+      - 覆盖 zone + color 两项。旧实现里 shape/pattern/size 三项比的也是日志
+        字段（同样无判别力），本判据不再声称覆盖它们；这三项的像素证据在
+        verify_readback（次级指标，extract_attributes 独立读图）。
+      - zone 判据=期望 zone 窗口内存在该色像素（不是「部件中心落在期望 zone」）：
+        相邻 zone 的溢出像素可满足它，且同 zone 内同色多部件无法逐件区分。
+      - 与背景估计不可分的色（_color_separable < _COLOR_TOL，如噪声底上的
+        black）计 unverifiable，从兑现率分母剔除（不记为兑现）。
+      - 仅需 1 个像素：dotted/striped 小部件在 48px 下本身就可能只剩几个像素。
+    """
+    size = img.shape[0]
+    q = size // 3
+    bg = _bg_level(img)
+    matched, unverifiable, misses = 0, 0, []
     for i, p in enumerate(parts):
-        entry = next((e for e in log if e["part"] == i), None)
-        ok = (entry is not None
-              and entry["zone_landed"] == p["zone"]
-              and entry["shape"] == p["shape"]
-              and entry["color"] == p["color"]
-              and entry.get("pattern") == p.get("pattern", "solid")
-              and entry.get("size") == p.get("size", "medium"))
-        matched += int(ok)
-        if not ok:
-            misses.append({"part": i, "spec": p, "log": entry})
-    rate = matched / max(1, len(parts))
+        r, c = zone_rc(p["zone"])
+        rgb = _part_rgb(p["color"])
+        sep = _color_separable(rgb, bg)
+        if sep < _COLOR_TOL:
+            unverifiable += 1
+            misses.append({"part": i, "spec": p, "reason": "色与背景不可分",
+                           "color_bg_dist": round(sep, 1)})
+            continue
+        roi = img[r * q:(r + 1) * q, c * q:(c + 1) * q].astype(int)
+        n = int((np.abs(roi - np.array(rgb)).sum(axis=2) < _COLOR_TOL).sum())
+        if n > 0:
+            matched += 1
+        else:
+            misses.append({"part": i, "spec": p, "reason": "期望 zone 内无该色像素",
+                           "pixels": 0})
+    scored = len(parts) - unverifiable
+    rate = matched / scored if scored else 0.0
     return {"rate": round(rate, 4), "matched": matched,
-            "total": len(parts), "misses": misses}
+            "total": len(parts), "scored": scored,
+            "unverifiable": unverifiable, "misses": misses}
 
 
 # ==================== 属性回读（次级指标 · 像素级独立验证）====================
@@ -378,7 +427,7 @@ def generate_from_text(text: str, size: int = 48, seed: int = 7,
         parts = transform_relations(parts, transform)
     img, log = render_relations(parts, size=size * supersample, seed=seed,
                                 supersample=supersample)
-    verdict = verify_constructive(parts, log)
+    verdict = verify_constructive(parts, img)
     readback = (verify_readback(img, parts, log)
                 if size >= 96 else {"note": "48px 低于提取器面积下限，不计"})
     return {"image": img, "parts": parts, "log": log,

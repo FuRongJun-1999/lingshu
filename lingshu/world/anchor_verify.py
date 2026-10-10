@@ -69,7 +69,13 @@ class AnchorVerification:
             "channel_evidence": {}, "channel_conflicts": {},
             "verified_rounds": 0, "confirmation": "ACCEPT_weak",
         })
-        evidence = max(0.0, min(1.0, float(evidence)))
+        # #402：NaN/±inf 不得被钳制表达式放行——实测 Python 的 min(1.0, nan)=1.0
+        #   会把 NaN 证据抬成"最强支持"（1.0）而绕过全称量闸。非有限值一律
+        #   fail-closed 归零（无证据），再钳到 [0,1]。
+        evidence = float(evidence)
+        if not math.isfinite(evidence):
+            evidence = 0.0
+        evidence = max(0.0, min(1.0, evidence))
         rec["channel_evidence"][channel] = evidence
         # 更新注册表可信度（若有）
         if self.registry is not None:
