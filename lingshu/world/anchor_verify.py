@@ -38,6 +38,21 @@ KL_THRESHOLD = 0.05       # 强验证 realized_KL 达标线
 STABLE_ROUNDS = 3         # 跨时间稳定轮数
 CONFLICT_THRESHOLD = 2    # 矛盾通道数（≥2 个通道冲突 → 降级）
 
+# #160：确认（ACCEPT_*）所需的最少**独立通道数**。
+#   判据来源：本模块头 7-10「单一通道 = 自证陷阱」、14「多通道一致才确认」，
+#   与理论 §3.3 第 2 条「3D锚点可信度 = 多模态交叉 + 物理一致 + 时间一致」
+#   （docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md）。
+#   单通道时「每维硬下限」all() 恒真 ⇒ 单通道可自称「通道一致」，即自证陷阱。
+MIN_CHANNELS = 2
+
+# #160：相邻「稳定轮」的最小时间间隔（秒）——「跨时间稳定」的时间门槛。
+#   同一证据在毫秒内被重复喂入只算**同一时刻的一次观测**，不得累加成跨时间稳定轮数。
+#   判据来源：条件③「跨时间稳定」与理论 §3.3 第 2 条「时间一致」；具体量级为
+#   **工程标定（经验值，追不到理论章节）**，同本文件其它阈值一样可随实测校准
+#   （confirmation.py 的 DEV-004 口径）。重新评估条件：实测出现「分钟级复现过严
+#   导致合法锚点无法升 stable」或「秒级连调仍被视作跨时间」时重标。
+STABLE_MIN_INTERVAL = 60.0
+
 
 class AnchorVerification:
     """多感知机锚点验证器。
@@ -45,14 +60,18 @@ class AnchorVerification:
     为每个锚点维护：
       - channel_evidence: {channel: evidence_score}  各通道对该锚点的验证证据
       - channel_conflicts: {channel: reason}         通道矛盾记录
-      - verified_rounds: 连续稳定轮数
-      - confirmation: ACCEPT_weak/strong/stable
+      - verified_rounds: 连续稳定轮数（#160：须时间分离；#400：非稳定轮清零）
+      - confirmation: ACCEPT_weak/strong/stable | NOT_ACCEPTED
+        （#400：**未验证/无证据时 fail-closed 取 NOT_ACCEPTED**，不得乐观兜底为
+          ACCEPT_weak——完全反驳的锚点读数曾是 ACCEPT_weak）
     """
 
-    def __init__(self, graph=None, registry=None, lease=None):
+    def __init__(self, graph=None, registry=None, lease=None, clock=None):
         self.graph = graph                # SemanticAnchorGraph（可选）
         self.registry = registry          # ChannelCredibilityRegistry（可选）
         self.lease = lease                # StableLease（可选）
+        # 时钟（#160）：可注入以做确定性「跨时间稳定」测试；缺省 wall clock。
+        self._clock = clock or time.time
         self._anchors: Dict[str, Dict] = {}
 
     # ---- 多通道证据记录 ----
@@ -67,23 +86,30 @@ class AnchorVerification:
         """
         rec = self._anchors.setdefault(anchor_id, {
             "channel_evidence": {}, "channel_conflicts": {},
-            "verified_rounds": 0, "confirmation": "ACCEPT_weak",
+            "verified_rounds": 0, "confirmation": "NOT_ACCEPTED",
         })
         # #402：NaN/±inf 不得被钳制表达式放行——实测 Python 的 min(1.0, nan)=1.0
         #   会把 NaN 证据抬成"最强支持"（1.0）而绕过全称量闸。非有限值一律
         #   fail-closed 归零（无证据），再钳到 [0,1]。
         evidence = float(evidence)
-        if not math.isfinite(evidence):
+        finite = math.isfinite(evidence)
+        if not finite:
             evidence = 0.0
         evidence = max(0.0, min(1.0, evidence))
         rec["channel_evidence"][channel] = evidence
         # 更新注册表可信度（若有）
+        # #119：本方法的 evidence 语义是**支持强度**（1=完全支持，0=完全反对）。
+        #   注册表要的是「本次观测的置信度」：命中 ⇒ = evidence；未命中 ⇒ =
+        #   **反证强度 = 1 - evidence**。原实现把 evidence 直接当未命中的置信度，
+        #   于是反证越强（evidence 越小）扣分越少、evidence=0（完全反驳）时
+        #   n_eff=0 零扣分——方向反了。非有限输入无信息（fail-closed，#402）⇒ 不扣分。
         if self.registry is not None:
             is_strong = strong if strong is not None else channel in STRONG_CHANNELS
             if evidence >= 0.5:
                 self.registry.record_hit(channel, evidence, strong=is_strong)
             else:
-                self.registry.record_miss(channel, evidence, strong=is_strong)
+                refutation = (1.0 - evidence) if finite else 0.0
+                self.registry.record_miss(channel, refutation, strong=is_strong)
         return self.anchor_state(anchor_id)
 
     # ---- 确认度判定 ----
@@ -103,13 +129,18 @@ class AnchorVerification:
 
         ev = rec["channel_evidence"]
         if not ev:
-            return {"anchor_id": anchor_id, "confirmation": "ACCEPT_weak",
+            # #400：无任何证据 = 未验证 ⇒ fail-closed 取 NOT_ACCEPTED
+            #   （原返回 ACCEPT_weak——零证据被乐观判为「弱确认」）。
+            return {"anchor_id": anchor_id, "confirmation": "NOT_ACCEPTED",
                     "verified_rounds": 0, "note": "无任何通道证据"}
 
         # ① 通道一致：全称量闸（每维硬下限，任一通道证据 < 阈值即资格不过）
         #    对齐 confirmation.py:94-95 口径；不用算术平均——平均会被多弱通道
         #    稀释单通道的强反证（0.0 反证被 4×1.0 弱通道抬到 0.8 而放行＝被淹没的根因）。
-        ch_ok = bool(ev) and all(v >= CONF_THRESHOLD for v in ev.values())
+        #    #160：单通道时 all() 恒真（＝自证陷阱，见模块头 7-10）⇒ 「通道一致」
+        #    至少需要 MIN_CHANNELS 个独立通道，单通道不构成一致，判不过闸。
+        ch_ok = (len(ev) >= MIN_CHANNELS
+                 and all(v >= CONF_THRESHOLD for v in ev.values()))
 
         # ② 强验证：至少一个强通道证据 ≥ KL 阈值
         strong_evidence = [v for c, v in ev.items() if c in STRONG_CHANNELS]
@@ -140,11 +171,23 @@ class AnchorVerification:
             confirmation = "NOT_ACCEPTED"
 
         rec["confirmation"] = confirmation
-        # 稳定轮数推进
+        # 稳定轮数推进（#160 时间门槛 / #400 断链清零）
+        #   · 只有 ACCEPT_strong / ACCEPT_stable 才算「稳定轮」，且相邻稳定轮必须
+        #     间隔 ≥ STABLE_MIN_INTERVAL——毫秒内连调 N 次只算同一时刻的一次观测，
+        #     不得累加成跨时间稳定轮数（原实现无任何时间/轮次门槛）。
+        #   · 其余结论（ACCEPT_weak / NOT_ACCEPTED）⇒ 连续稳定链断裂，清零重数：
+        #     对齐 docstring「verified_rounds: 连续稳定轮数」与条件③「跨时间稳定」。
+        #     原实现只对 NOT_ACCEPTED 清零，ACCEPT_weak 既不清零也不推进＝悬空态
+        #     （#400；注：该悬空态在 ch_ok 全称量闸下已不可达，此处一并收口口径）。
         if confirmation in ("ACCEPT_strong", "ACCEPT_stable"):
-            rec["verified_rounds"] += 1
-        elif confirmation == "NOT_ACCEPTED":
+            now = self._clock()
+            last = rec.get("last_stable_ts")
+            if last is None or (now - last) >= STABLE_MIN_INTERVAL:
+                rec["verified_rounds"] += 1
+                rec["last_stable_ts"] = now
+        else:
             rec["verified_rounds"] = 0
+            rec["last_stable_ts"] = None
 
         return self.anchor_state(anchor_id)
 
@@ -176,18 +219,27 @@ class AnchorVerification:
 
     def channel_conflict_detect(self, anchor_id: str, channel: str,
                                 expected: str, actual: str) -> Dict:
-        """检测通道矛盾：某通道观测与锚点声明不符 → 冲突记录。
+        """检测通道矛盾：某通道观测与锚点声明**不符** → 冲突记录。
 
         expected: 锚点当前声明（如"椅子"）
         actual: 该通道观测（如"箱子"）
+        #401：只有 expected != actual 才是矛盾。原实现**无条件登记**——expected ==
+        actual 的「一致观测」也被记成冲突并清零该通道证据，把一致观测译成矛盾。
         返回冲突记录；冲突通道数 ≥ CONFLICT_THRESHOLD → 建议降级。
         """
         rec = self._anchors.setdefault(anchor_id, {
             "channel_evidence": {}, "channel_conflicts": {},
-            "verified_rounds": 0, "confirmation": "ACCEPT_weak",
+            "verified_rounds": 0, "confirmation": "NOT_ACCEPTED",
         })
+        # 归一化后逐字比较（容忍大小写/首尾空白差异；不引入模糊匹配）
+        if str(expected).strip().casefold() == str(actual).strip().casefold():
+            # 一致观测：不登记冲突、不清零证据（消除「假冲突」）
+            result = self.anchor_state(anchor_id)
+            result["conflict_detected"] = False
+            result["conflict_count"] = len(rec["channel_conflicts"])
+            return result
         conflict = {"channel": channel, "expected": expected, "actual": actual,
-                    "ts": time.time()}
+                    "ts": self._clock()}
         rec["channel_conflicts"][channel] = conflict
         # 冲突 → 该通道证据清零
         rec["channel_evidence"][channel] = 0.0
@@ -206,7 +258,7 @@ class AnchorVerification:
             "channel_conflicts": {k: {"expected": v["expected"], "actual": v["actual"]}
                                   for k, v in rec.get("channel_conflicts", {}).items()},
             "verified_rounds": rec.get("verified_rounds", 0),
-            "confirmation": rec.get("confirmation", "ACCEPT_weak"),
+            "confirmation": rec.get("confirmation", "NOT_ACCEPTED"),
             "tier_basis": list(rec.get("tier_basis", [])),
         }
 
@@ -215,7 +267,7 @@ class AnchorVerification:
         out = {}
         for aid, rec in self._anchors.items():
             out[aid] = {
-                "confirmation": rec.get("confirmation", "ACCEPT_weak"),
+                "confirmation": rec.get("confirmation", "NOT_ACCEPTED"),
                 "channels": len(rec.get("channel_evidence", {})),
                 "conflicts": len(rec.get("channel_conflicts", {})),
             }

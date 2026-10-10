@@ -3,12 +3,16 @@
 """认知图可视化 · 构建器（graph.json + derived_edges.json → viewer_graph.json + index.html）
 
 布局在 Python 端确定性预计算（桶网格 + 黄金角散布），前端只负责渲染与过滤。
-cytoscape.min.js 首次运行时自动下载到输出目录（离线可用）。
+cytoscape.min.js 首次运行时自动下载到输出目录（离线可用），下载与复用都按
+CYTO_SHA256 校验内容（固定版本 + 内容指纹，见 fetch_cytoscape）。
+
+#245：动态层名/边类型拼进 innerHTML 前一律经 esc()（文本位 &<>、属性位再加引号）。
 """
 from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
 import io
 import json
 import math
@@ -18,6 +22,9 @@ import time
 import urllib.request
 
 CYTO_URL = "https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"
+# 固定版本 + 内容指纹（SRI 口径）：只接受该 URL 的官方产物。
+# 判据来源：经验标定——2026-10-10 对 CYTO_URL 实测 sha256（见 tests/test_coggraph_viewer_security_guard.py）。
+CYTO_SHA256 = "83e8c54a6bec655bfd81df07df605649c268af69aeca67a5ea2da54ea42dac81"
 
 LAYER_COLOR = {
     "knowledge": "#4C8DFF", "contextual": "#F5A623", "structural": "#9B59B6",
@@ -74,17 +81,19 @@ const layerNameZh = {"knowledge":"知识","contextual":"情境","structural":"�
 const edgeNameZh = {"explicit":"显式关系","part_of":"组成关系","counterpart":"对应关系","above":"上位关系","untyped":"未标注关系","hierarchical":"层级关系","causal":"因果关系","similar":"相似关系","sequential":"时序先后","derived_from":"派生自","tag_similar":"标签相似","same_bucket":"同桶","same_source":"同源引用","in_bucket":"同桶成员","same_day":"同日创建","in_session":"会话内","R1_same_bucket":"同桶推导(R1)","R1_same_bucket_pair":"同桶成对(R1)","R2_same_source":"同源推导(R2)","R3_tag_jaccard":"标签相似推导(R3)","R4_same_day":"同日推导(R4)","R6_session_chain":"会话先后链(R6)","R6_session_hub":"会话枢纽(R6)","body_crossref":"正文互引"};
 const DEFAULT_EDGE_ON = new Set(['hierarchical','similar','part_of','causal','counterpart','above','untyped','body_crossref','sequential','derived_from']);
 function chip(c){return '<span class="chip" style="background:'+c+'"></span>';}
-function esc(s){return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+// 转义用于拼进 innerHTML 的动态值：文本位需 &<>，属性位（title=/value="…"）还需引号，
+// 否则层名/边类型里的 `"` 可逃逸出属性再注入标签（存储型 XSS，#245）。
+function esc(s){return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 async function load(){
   G = await (await fetch('viewer_graph.json')).json();
   document.getElementById('layers').innerHTML = Object.keys(G.layer_count).map(l=>{
     const c = layerColor[l]||'#888';
-    return '<label title="'+l+'"><input type="checkbox" class="lf" value="'+l+'" checked>'+chip(c)+(layerNameZh[l]||l)+' ('+G.layer_count[l]+')</label>';
+    return '<label title="'+esc(l)+'"><input type="checkbox" class="lf" value="'+esc(l)+'" checked>'+chip(c)+esc(layerNameZh[l]||l)+' ('+G.layer_count[l]+')</label>';
   }).join('');
   document.getElementById('etypes').innerHTML = Object.keys(G.edge_type_count).map(t=>{
     const c = ruleColor[t]||'#666'; const on = DEFAULT_EDGE_ON.has(t); const zh = edgeNameZh[t]||t;
-    return '<label title="'+t+'"><input type="checkbox" class="ef" value="'+t+'"'+(on?' checked':'')+'>' + '<span class="sw" style="background:'+c+'"></span>'+zh+' ('+G.edge_type_count[t]+')</label>';
+    return '<label title="'+esc(t)+'"><input type="checkbox" class="ef" value="'+esc(t)+'"'+(on?' checked':'')+'>' + '<span class="sw" style="background:'+c+'"></span>'+esc(zh)+' ('+G.edge_type_count[t]+')</label>';
   }).join('');
   build();
   bind();
@@ -202,20 +211,53 @@ def center_hubs(pos, hubs_by_id, all_edges, ndigits=1):
     return pos
 
 
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def fetch_cytoscape(out_dir):
+    """确保 out_dir/cytoscape.min.js 是**固定版本且内容校验通过**的 cytoscape。
+
+    修复 #251：旧实现仅以「文件存在且 >100000 字节」判定可复用（不校验内容），
+    被替换 / 损坏 / 版本漂移的同名文件会被静默复用；下载产物也不校验。
+    现在复用与下载两条路径都做 SHA256 校验，期望指纹 = 固定版本官方产物（CYTO_SHA256）。
+
+    离线 / 测试可用环境变量 LINGSHU_CYTO_SHA256 显式声明**自备**产物的期望指纹
+    （默认仍走固定值）；它只用于放置自备副本，不改变默认的固定校验。
+    """
     p = os.path.join(out_dir, "cytoscape.min.js")
+    expect = os.environ.get("LINGSHU_CYTO_SHA256") or CYTO_SHA256
     if os.path.isfile(p) and os.path.getsize(p) > 100000:
-        return p, "已有"
+        got = _sha256_file(p)
+        if got != expect:
+            raise SystemExit(
+                "cytoscape.min.js 校验失败：期望 sha256=%s，实得 %s（文件 %s）。"
+                "请删除该文件后重试（将重新下载并校验），或放置固定版本 %s"
+                % (expect, got, p, CYTO_URL))
+        return p, "已有（校验通过）"
+    last = ""
     for attempt in range(3):
         try:
             req = urllib.request.Request(CYTO_URL, headers={"User-Agent": "lingshu-viewer"})
-            with urllib.request.urlopen(req, timeout=120) as r, open(p, "wb") as f:
-                f.write(r.read())
-            return p, "已下载"
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data = r.read()
+            got = hashlib.sha256(data).hexdigest()
+            if got != expect:
+                raise SystemExit(
+                    "cytoscape 下载校验失败：期望 sha256=%s，实得 %s（%s）——拒绝写入被篡改/"
+                    "版本漂移的产物。" % (expect, got, CYTO_URL))
+            with open(p, "wb") as f:
+                f.write(data)
+            return p, "已下载（校验通过）"
         except Exception as e:
             last = str(e)
             time.sleep(3)
-    raise SystemExit("cytoscape 下载失败（离线环境请手工放置 cytoscape.min.js 到 %s）：%s" % (out_dir, last))
+    raise SystemExit("cytoscape 下载失败（离线环境请手工放置固定版本 cytoscape.min.js 到 %s，"
+                     "其 sha256 须为 %s）：%s" % (out_dir, expect, last))
 
 
 def main(argv=None):
@@ -225,7 +267,9 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--mdcg-root", default=os.environ.get("MDCG_ROOT", ""))
     ap.add_argument("--naming", default="", help="naming_report.json（可选，提供命名锚定分类）")
-    ap.add_argument("--synonyms", default="", help="synonym_groups.json（可选，做同义/重复归并）")
+    ap.add_argument("--synonyms", default="", help="synonym_groups.json（同义归并候选；仅在 --merge-synonyms 时生效）")
+    ap.add_argument("--merge-synonyms", action="store_true",
+                    help="显式启用视图层同义归并（默认关闭，只作待复核候选，不自动归并）")
     args = ap.parse_args()
 
     with io.open(args.graph, encoding="utf-8") as f:
@@ -244,9 +288,12 @@ def main(argv=None):
     d_edge_count = len(d_edges)
 
     # ---- 同义/重复归并：别名节点重映射到 canonical（仅视图层，不改真源）
+    # #410：synonym_groups.json 是**待复核**候选（README/⑤ 宣称「不自动归并」）。
+    #   旧实现只要给了 --synonyms 就无条件重映射别名 ⇒ 一键链路默认自动归并，与宣称相悖。
+    #   现改为**显式** --merge-synonyms 才归并；默认仅保留候选、不合并节点。
     alias_to_canon = {}
     merged_alias_count = 0
-    if args.synonyms and os.path.isfile(args.synonyms):
+    if args.merge_synonyms and args.synonyms and os.path.isfile(args.synonyms):
         with io.open(args.synonyms, encoding="utf-8") as f:
             syn = json.load(f)
         for m in syn.get("groups", []):

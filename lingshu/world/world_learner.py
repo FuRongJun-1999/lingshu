@@ -162,11 +162,20 @@ class WorldLearner:
         return (round(sum(scores) / len(scores), 3) if scores else 0.0,
                 len(scores))
 
-    def _recent_dir(self, eid: str) -> Optional[Tuple[float, float, float]]:
-        """最近位移方向（单位化）。"""
+    def _recent_dir(self, eid: str,
+                    window: Optional[int] = None) -> Optional[Tuple[float, float, float]]:
+        """最近位移方向（单位化）。
+
+        只扫最近 window 条观测（缺省 self.window，与 _motion_stats 同口径）——
+        此前正序扫描**全部** history：history 随 tick 线性增长，而 predict 对
+        每个实体每步都调用本函数，评估循环（eval_phase/next_state_loss）因此
+        随观测数放大成 O(tick²)（缺陷单 #397 资源耗尽）。超出窗口的陈旧位移
+        不再参与，与 persistence 的窗口口径一致。
+        """
+        w = window or self.window
         prev = None
         last = None
-        for rec in self.history:
+        for rec in self.history[-w:]:
             cur = rec["entities"].get(eid)
             if cur is None:
                 prev = None
@@ -230,14 +239,21 @@ class WorldLearner:
         return (round(nx, 2), pos[1], round(nz, 2))
 
     def predict(self, horizon: int = 1) -> Dict:
-        """用学得模型预测下一状态（观测面）。
+        """用学得模型预测 horizon 步后的状态（观测面）。
 
         模式：
           - exact：确定性追逐（目标可精确预测）→ bound=hit_threshold
           - chase_stochastic：追逐随机目标 → max(自身,目标)可达域+阈值（D1）
           - directed_noisy：直线运动（flee/follow）→ 略宽
           - bounded_stochastic：随机行为 → 可达域（D2）
+
+        horizon（预测步数，≥1）：在同一 shadow 上按学得模型反复外推 h 步，
+        返回末步预测。随机/可达域模式每步预测＝当前位置（不推进 shadow），
+        其结果与步数无关；确定性模式（exact/bounded_noisy）随步数前推。
+        判据来源：本组缺陷单 #159——此前 horizon 只被回填进返回值，对预测
+        结果零作用（predict(horizon=N) 与 horizon=1 逐位相同）。
         """
+        h = max(1, int(horizon)) if horizon is not None else 1
         if not self.model:
             self.learn()
         m = self.model
@@ -246,54 +262,55 @@ class WorldLearner:
         rel_by_src = {r["source"]: r for r in m.get("relations", [])}
         stoch_targets = set(m.get("stochastic_targets", []))
         pred: Dict[str, Dict] = {}
-        for eid, n in ordered:
-            speed = m.get("per_entity", {}).get(eid, {}).get("speed_est", 0.3)
-            pers = m.get("per_entity", {}).get(eid, {}).get("persistence", 0.0)
-            rel = rel_by_src.get(eid)
-            use_rel = (rel is not None and rel["target"] in shadow
-                       and (pers >= self.entropy_threshold or eid in stoch_targets))
-            if use_rel:
-                t = shadow[rel["target"]]
-                dx, dz = (t[0] - shadow[eid][0], t[2] - shadow[eid][2])
-                if rel["relation"] == "flee":
-                    dx, dz = -dx, -dz
-                dl = math.hypot(dx, dz)
-                d = (0.0, 0.0, 0.0) if dl < 1e-6 else (dx / dl, 0.0, dz / dl)
-                if eid in stoch_targets:
-                    t_speed = m.get("per_entity", {}).get(rel["target"], {}).get("speed_est", 0.3)
-                    bound = max(self._reach(speed), self._reach(t_speed)) + self.hit_threshold
-                    pred[eid] = {"predicted": list(shadow[eid]), "bound": round(bound, 3),
-                                 "mode": "chase_stochastic"}
-                elif rel["relation"] == "seek":
-                    np_ = self._apply_move(shadow[eid], speed, d)
-                    shadow[eid] = np_
-                    pred[eid] = {"predicted": list(np_),
-                                 "bound": round(self.hit_threshold + 0.05, 3),
-                                 "mode": "exact"}
-                else:
-                    np_ = self._apply_move(shadow[eid], speed, d)
-                    shadow[eid] = np_
-                    pred[eid] = {"predicted": list(np_),
-                                 "bound": round(self.hit_threshold + speed * 0.3, 3),
-                                 "mode": "bounded_noisy"}
-            elif pers >= self.entropy_threshold:
-                dr = self._recent_dir(eid)
-                if dr:
-                    np_ = self._apply_move(shadow[eid], speed, dr)
-                    shadow[eid] = np_
-                    pred[eid] = {"predicted": list(np_),
-                                 "bound": round(self.hit_threshold + speed * 0.4, 3),
-                                 "mode": "bounded_noisy"}
+        for _ in range(h):
+            for eid, n in ordered:
+                speed = m.get("per_entity", {}).get(eid, {}).get("speed_est", 0.3)
+                pers = m.get("per_entity", {}).get(eid, {}).get("persistence", 0.0)
+                rel = rel_by_src.get(eid)
+                use_rel = (rel is not None and rel["target"] in shadow
+                           and (pers >= self.entropy_threshold or eid in stoch_targets))
+                if use_rel:
+                    t = shadow[rel["target"]]
+                    dx, dz = (t[0] - shadow[eid][0], t[2] - shadow[eid][2])
+                    if rel["relation"] == "flee":
+                        dx, dz = -dx, -dz
+                    dl = math.hypot(dx, dz)
+                    d = (0.0, 0.0, 0.0) if dl < 1e-6 else (dx / dl, 0.0, dz / dl)
+                    if eid in stoch_targets:
+                        t_speed = m.get("per_entity", {}).get(rel["target"], {}).get("speed_est", 0.3)
+                        bound = max(self._reach(speed), self._reach(t_speed)) + self.hit_threshold
+                        pred[eid] = {"predicted": list(shadow[eid]), "bound": round(bound, 3),
+                                     "mode": "chase_stochastic"}
+                    elif rel["relation"] == "seek":
+                        np_ = self._apply_move(shadow[eid], speed, d)
+                        shadow[eid] = np_
+                        pred[eid] = {"predicted": list(np_),
+                                     "bound": round(self.hit_threshold + 0.05, 3),
+                                     "mode": "exact"}
+                    else:
+                        np_ = self._apply_move(shadow[eid], speed, d)
+                        shadow[eid] = np_
+                        pred[eid] = {"predicted": list(np_),
+                                     "bound": round(self.hit_threshold + speed * 0.3, 3),
+                                     "mode": "bounded_noisy"}
+                elif pers >= self.entropy_threshold:
+                    dr = self._recent_dir(eid)
+                    if dr:
+                        np_ = self._apply_move(shadow[eid], speed, dr)
+                        shadow[eid] = np_
+                        pred[eid] = {"predicted": list(np_),
+                                     "bound": round(self.hit_threshold + speed * 0.4, 3),
+                                     "mode": "bounded_noisy"}
+                    else:
+                        pred[eid] = {"predicted": list(shadow[eid]),
+                                     "bound": round(self._reach(speed), 3),
+                                     "mode": "bounded_stochastic"}
                 else:
                     pred[eid] = {"predicted": list(shadow[eid]),
                                  "bound": round(self._reach(speed), 3),
                                  "mode": "bounded_stochastic"}
-            else:
-                pred[eid] = {"predicted": list(shadow[eid]),
-                             "bound": round(self._reach(speed), 3),
-                             "mode": "bounded_stochastic"}
         self._last_prediction = pred   # 生成先验（供好奇异常检测/状态导出）
-        return {"tick": self.tick, "horizon": horizon, "predictions": pred}
+        return {"tick": self.tick, "horizon": h, "predictions": pred}
 
     # ================= 遮挡重建（自监督损失 · V-JEPA 式） =================
 

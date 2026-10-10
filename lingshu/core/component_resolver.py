@@ -42,6 +42,15 @@ cwd/空串/脚本目录条目）；「消除一切经 `sys.path` 的裸名解析
 `lingshu._pathguard` 承担。同进程代码可读 `os.environ`（密钥面）与
 `sys.modules` 预置/别名冒充属**设计级**事项，不在本模块处理。
 
+v3 收窄（issue #275 · #156 v2 的回归）：上一版 finder 对白名单 15 个**通用顶层名**
+不区分调用方，找不到即 `raise` ⇒ 宿主项目里同名的自有模块（`vision.py` /
+`body.py` / `game_web/` …）在 `import lingshu.core` 之后一律 `ModuleNotFoundError`，
+逃生口也无效。现按 `_importer_is_lingshu()` 只对**包内发起的**组件导入保留上述
+收口；宿主发起的同名导入 `return None` 交还后续 finder。**削掉的判别力**：本模块
+不再保证「宿主进程里任何代码 import 这些名字都拿不到 cwd/脚本目录里的同名模块」
+——那本就不是本模块要保护的面（组件是引擎内部约定，非对外 API）；引擎自身的
+组件导入仍逐字维持 v2 收口。
+
 零外部依赖 · 纯标准库（D-005）。
 """
 
@@ -194,15 +203,73 @@ def safe_search_path() -> list:
     return roots
 
 
+# 本包根目录（用于判定调用栈帧是否来自 lingshu 包内）
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _importer_is_lingshu() -> bool:
+    """当前这次裸名导入是否由 **lingshu 包内的代码**发起（issue #275）。
+
+    判定：沿调用栈向上找第一个「有归属」的帧，看它属于 lingshu 包内还是宿主。
+
+      · 包内：模块名以 `lingshu` 开头，或模块文件位于本包根目录之下 ⇒ True
+        （引擎自己的组件导入，须继续走 #156 的受控面收口）；
+      · 宿主 / `__main__` / 其它库 ⇒ False（`return None` 交还后续 finder）。
+
+    无法取得调用栈（非 CPython 实现等）时返回 True —— 保守维持 #156 的收口
+    （宁可多收，不可放松安全面）。本函数**不改变**受控面本身的判定，只决定
+    「找不到时是 raise 还是 return None」，故不放宽任何安全判据。
+    """
+    try:
+        frame = sys._getframe(1)
+    except Exception:  # pragma: no cover - 非 CPython / 帧不可用
+        return True
+    while frame is not None:
+        name = frame.f_globals.get("__name__")
+        if isinstance(name, str) and name and not name.startswith(
+                ("importlib", "lingshu.core.component_resolver")):
+            if name == "lingshu" or name.startswith("lingshu."):
+                return True
+            f = frame.f_globals.get("__file__")
+            if isinstance(f, str) and f:
+                try:
+                    if os.path.abspath(f).startswith(_PKG_ROOT + os.sep):
+                        return True
+                except Exception:  # pragma: no cover - 非法路径
+                    pass
+            return False
+        frame = frame.f_back
+    return False
+
+
 class _ComponentFinder:
     """meta_path finder：只对 `COMPONENT_NAMES` 生效，不走 cwd/空串条目。
 
-    被询问时（即 `sys.modules` 未命中——别名缺失）在受控面上查找；找不到即
-    抛原生同文本 `ModuleNotFoundError`（**不**回落到 cwd 解析面），并告警。
+    被询问时（即 `sys.modules` 未命中——别名缺失）在受控面上查找；受控面命中
+    即返回 spec。受控面**未命中**时分两种（issue #275）：
+
+      · 调用栈来自 lingshu 包内（引擎自己的组件导入）⇒ 按「组件缺失」抛原生
+        同文本 `ModuleNotFoundError`（**不**回落到 cwd 解析面），并告警；
+      · 调用栈来自宿主代码 ⇒ `return None` 交还后续 finder——`vision` / `body`
+        / `game_web` 等**通用顶层名**不属 lingshu 组件面，宿主自有同名模块
+        必须能被标准 `PathFinder` 按 `sys.path` 正常解析。
+
+    issue #275（#156 v2 的回归）：本 finder 装在 `sys.meta_path[0]` 且对白名单
+    15 个**通用顶层名**（`vision` / `body` / `game_web` / `semantic_space` …）不
+    区分调用方、找不到即 `raise`——宿主项目里同名的自有模块，在 `import
+    lingshu.core` 之后一律 `ModuleNotFoundError`（逃生口也无效，因为排除
+    cwd/脚本目录是**本 finder** 的行为）。修法：**只对「调用栈来自 lingshu 包内」
+    的导入**保留严格收口；宿主发起的同名导入 `return None`，交还后续 finder
+    （由标准 `PathFinder` 按 `sys.path` 解析宿主自己的模块）。
     """
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in COMPONENT_NAMES:
+            return None
+        if not _importer_is_lingshu():
+            # issue #275：宿主进程发起的同名导入不属 lingshu 组件面 ⇒ 一律
+            # 交还后续 finder（由标准 PathFinder 按 sys.path 解析宿主自己的
+            # 模块）。**先于**受控面查找判定，故宿主绝不会被本守卫截走。
             return None
         roots = safe_search_path()
         spec = importlib.machinery.PathFinder.find_spec(fullname, roots)

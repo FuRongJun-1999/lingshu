@@ -124,6 +124,35 @@ def register_shape(category: str, parts: List[Part]) -> None:
     SHAPE_LIBRARY[category] = parts
 
 
+def _recenter_parts(parts: List[Part]) -> None:
+    """把部件坐标平移到「以物体中心为零点」（就地修改）。
+
+    :29 的部件契约是 `pos(相对物体中心)`，但内置形状库此前按「以物体底部为零点」
+    的直觉写坐标（person 躯干 y=0.4、头 y=0.95；table 腿 y=−0.2），于是
+    world3d._draw_part 的 `物体中心 + pos` 把整体相对物体中心抬高/压低——
+    地面物体的部件因此悬空（person 脚离地 0.55m）或陷地。
+    此处按部件包围盒中心归零，使 pos 真正相对物体中心。
+    """
+    xs = [p["pos"][0] for p in parts]
+    ys = [p["pos"][1] for p in parts]
+    zs = [p["pos"][2] for p in parts]
+    lo = [min(v - s / 2 for v, s in zip(xs, [p["size"][0] for p in parts])),
+          min(v - s / 2 for v, s in zip(ys, [p["size"][1] for p in parts])),
+          min(v - s / 2 for v, s in zip(zs, [p["size"][2] for p in parts]))]
+    hi = [max(v + s / 2 for v, s in zip(xs, [p["size"][0] for p in parts])),
+          max(v + s / 2 for v, s in zip(ys, [p["size"][1] for p in parts])),
+          max(v + s / 2 for v, s in zip(zs, [p["size"][2] for p in parts]))]
+    cx, cy, cz = ((lo[i] + hi[i]) / 2 for i in range(3))
+    for p in parts:
+        x, y, z = p["pos"]
+        p["pos"] = (x - cx, y - cy, z - cz)
+
+
+# 内置形状库统一归零：pos 以物体中心为零点（与 :29 契约一致）
+for _parts in SHAPE_LIBRARY.values():
+    _recenter_parts(_parts)
+
+
 def get_shape(category: str) -> List[Part]:
     """查询类别形状；未注册 → 空列表（调用方用默认单一图元回退）。"""
     return SHAPE_LIBRARY.get(category, [])

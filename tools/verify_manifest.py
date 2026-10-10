@@ -55,8 +55,10 @@
     0  成功：所有清单可解析，且无 MISSING、无 MALFORMED；非 strict 下 MISMATCH
        **不算失败**（清单未声明指纹指向哪一侧，属既有事实）。`--strict` 且零 MISMATCH
        同样是 0。
-    1  结构性 / 内容失败：存在 MISSING / MALFORMED / 清单不可解析；**目录里零清单
-       也是 1**——这是刻意语义，不是空真：「没发现任何清单」必须与「清单全部通过」
+    1  结构性 / 内容失败：存在 MISSING / MALFORMED / 清单不可解析 / **清单结构损坏**
+       （容器类型错、条目非对象、缺 `file` 或 `file` 非字符串——均记入 `summary` 的
+       `unparseable` 一列）；**目录里零清单、或清单在盘却零条目，也是 1**——这是刻意
+       语义，不是空真：「没发现任何清单 / 一条也没登记出来」必须与「清单全部通过」
        在退出码上可区分（否则扫描面被清空时会静默变绿）。
     2  用法 / 路径错误：未知参数、多余位置参数、`--repo-root` 不存在或不是目录
        （与同批 `tools/time_core_lint.py` 的 `2` **完全一致**）。
@@ -204,42 +206,61 @@ def normalize_relpath(raw: str) -> str:
 
 
 def iter_records(payload):
-    """按冻结的路径解析规则产出 (raw_path, recorded_sha256, recorded_bytes, absolute)。
+    """按冻结的路径解析规则产出 `(records, defects)`。
 
-    只做结构读取，不做判定；非法条目（缺 file / file 非字符串）跳过。
-    `absolute` 为真时 `raw_path` 只用于内部判定，绝不进输出（输出脱敏）。
+    `records`：`(raw_path, recorded_sha256, recorded_bytes, absolute)` 元组列表。
+    `defects`：**结构损坏**的原因串列表（容器类型错 / 条目非对象 / 缺 `file` 或
+    `file` 非字符串）。`absolute` 为真时 `raw_path` 只用于内部判定，绝不进输出（输出脱敏）。
+
+    #408：旧实现对上述损坏一律 `continue` **静默跳过** ⇒ 一份被改坏（如 `files`
+    成了字符串）的清单被当成「零条目」而 `summary` 无 missing/malformed ⇒ 退出码 0
+    （「清单全部通过」）。现在每一处跳过都**记账**为 `defects`，由 `inspect_manifest`
+    升级为清单级错误——结构损坏不得被当作零条目，否则扫描面被清空时会静默变绿
+    （见模块头「退出码」1 的刻意语义）。
     """
     records = []
+    defects = []
     blocks = payload.get("blocks")
+    if blocks is not None and not isinstance(blocks, dict):
+        defects.append("blocks 不是对象（%s）" % type(blocks).__name__)
     if isinstance(blocks, dict):
         for block in sorted(blocks):
             node = blocks[block]
             files = node.get("files") if isinstance(node, dict) else None
             if not isinstance(files, list):
+                defects.append("blocks.%s.files 不是数组" % block)
                 continue
-            for item in files:
+            for idx, item in enumerate(files):
                 if not isinstance(item, dict):
+                    defects.append("blocks.%s.files[%d] 不是对象" % (block, idx))
                     continue
                 name = item.get("file")
                 if not isinstance(name, str) or not name:
+                    defects.append("blocks.%s.files[%d].file 缺失或非字符串"
+                                   % (block, idx))
                     continue
                 records.append(("lingshu/%s/%s" % (block, name), item.get("sha256"),
                                 item.get("bytes"), is_unsafe_absolute(name)))
-        return records
+        return records, defects
 
     for key in ("artifacts", "tests"):
         array = payload.get(key)
-        if not isinstance(array, list):
+        if array is None:
             continue
-        for item in array:
+        if not isinstance(array, list):
+            defects.append("%s 不是数组（%s）" % (key, type(array).__name__))
+            continue
+        for idx, item in enumerate(array):
             if not isinstance(item, dict):
+                defects.append("%s[%d] 不是对象" % (key, idx))
                 continue
             name = item.get("file")
             if not isinstance(name, str) or not name:
+                defects.append("%s[%d].file 缺失或非字符串" % (key, idx))
                 continue
             records.append((name, item.get("sha256"), item.get("bytes"),
                             is_unsafe_absolute(name)))
-    return records
+    return records, defects
 
 
 def classify(root: Path, root_resolved: Path, raw_path: str, recorded_sha,
@@ -333,8 +354,9 @@ def inspect_manifest(root: Path, manifest_path: Path) -> dict:
         return block
 
     root_resolved = root.resolve()
+    records, defects = iter_records(payload)
     details = [classify(root, root_resolved, raw, sha, size, absolute)
-               for raw, sha, size, absolute in iter_records(payload)]
+               for raw, sha, size, absolute in records]
     details.sort(key=lambda item: item["path"])
 
     # 长度分布 = 所有「登记值确为字符串」的条目长度集合（与文本模式同一口径）
@@ -348,6 +370,13 @@ def inspect_manifest(root: Path, manifest_path: Path) -> dict:
     block["malformed"] = sum(1 for item in details if item["status"] == STATUS_MALFORMED)
     block["sha256_lengths"] = sorted(lengths)
     block["details"] = details
+
+    # #408：结构损坏（容器类型错 / 条目非对象 / 缺 file）或零条目不得静默当「全通过」。
+    # 前者给出损坏位置，后者兜住「清单被清空/容器名写错」这类没有逐条损坏的形态。
+    if defects:
+        block["error"] = "malformed-manifest: " + "; ".join(defects[:4])
+    elif not details:
+        block["error"] = "empty-manifest: 清单登记零条目（结构损坏或被清空）"
     return block
 
 
@@ -364,11 +393,13 @@ def collect(root: Path):
 
 
 def decide_exit(summary: dict, strict: bool) -> int:
-    """四码退出判定：0 成功 / 1 结构损坏（含零清单，刻意语义）/ 3 strict 口径分歧。
+    """四码退出判定：0 成功 / 1 结构损坏（含零清单、零条目，刻意语义）/ 3 strict 口径分歧。
 
     用法与路径错误（2）不经过本函数，由 `_Parser.error` 与 `main` 的 repo-root 校验直接返回。
     """
-    if summary["manifests"] == 0:
+    # #408：`manifests == 0`（零清单）与 `entries == 0`（清单在盘却一条也没登记出来）
+    # 都要判 1——否则清单被清空/改坏时 summary 无 missing/malformed，会静默变绿。
+    if summary["manifests"] == 0 or summary["entries"] == 0:
         return EXIT_DEFECT
     if summary["unparseable"] or summary["missing"] or summary["malformed"]:
         return EXIT_DEFECT

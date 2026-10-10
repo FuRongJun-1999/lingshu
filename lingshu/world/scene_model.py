@@ -340,10 +340,31 @@ def ingest_scene(agent, scene_desc: str, store=None, tag: str = "spatial"):
     return written
 
 
+def _node_recency(n) -> Optional[float]:
+    """节点观测时新度：temporal_coordinate → last_access → created_at，无则 None。
+
+    身体侧 STNode 三者皆有（core.py:159 STNode）；脑侧 BrainNode 无任何时间字段
+    （brain_store.py:359）→ None，调用方据此回落 store 返回序（不臆造新序）。
+    """
+    for attr in ("temporal_coordinate", "last_access", "created_at"):
+        v = getattr(n, attr, None)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return float(v)
+    return None
+
+
 def load_world_from_memory(agent_or_store, tag: str = "spatial") -> WorldModel:
     """从记忆库遍历 `spatial` 标签节点 → 重建世界模型场景。
 
     记忆就是缓存：场景 = 记忆节点的实时投影；新增/更新记忆节点即改场景。
+
+    同名实体的多观测取**最新一条**（缺陷单 #282）：世界模型每个实体名只占一个
+    位置，同一实体的连续观测（如移动跟踪）必须由**最新**观测定义当前坐标。旧码
+    按 store 返回序逐条 `add_entity`，同名后写覆盖前写——而身体侧 store 的返回序
+    是 `importance DESC, last_access DESC`（core.py:1557，最新在前），于是最后写入
+    的是**最旧**观测，新观测反被丢弃、重建世界回落到陈旧坐标，「新增记忆节点即
+    改场景」不成立。故按实体名归并：有时间字段者取时新度最大者；全无时间字段者
+    （脑侧 BrainNode）保持旧行为（store 返回序末条胜出），不臆造新序。
     """
     store = getattr(agent_or_store, "store", agent_or_store)
     if not hasattr(store, "get_nodes_by_tag"):
@@ -352,6 +373,7 @@ def load_world_from_memory(agent_or_store, tag: str = "spatial") -> WorldModel:
             store = getattr(engine, "store", store)
     nodes = store.get_nodes_by_tag(tag, limit=200)
     wm = WorldModel()
+    grouped: Dict[str, List[Tuple[Optional[float], tuple]]] = {}
     for n in nodes:
         sp = n.spatial_coordinates or {}
         if not sp:
@@ -369,6 +391,12 @@ def load_world_from_memory(agent_or_store, tag: str = "spatial") -> WorldModel:
         sa = n.state_attributes or {}
         if isinstance(sa, dict) and sa.get("state"):
             state = sa["state"]
+        grouped.setdefault(name, []).append(
+            (_node_recency(n), (cat, pos, state)))
+    for name, cands in grouped.items():
+        timed = [c for c in cands if c[0] is not None]
+        _, (cat, pos, state) = (max(timed, key=lambda c: c[0])
+                                if timed else cands[-1])
         wm.add_entity(name, category=cat, pos=pos, state=state)
     wm.build()
     return wm

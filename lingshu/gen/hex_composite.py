@@ -301,7 +301,13 @@ def extract_attributes(img: np.ndarray, quadrant: str, color: str,
     runs_per_row = []
     for r in rows:
         row = mask[r]
-        runs_per_row.append(int(np.count_nonzero(row[1:] & ~row[:-1]) + 1))
+        #   #171：`count_nonzero(row[1:] & ~row[:-1])` 数的是 **False→True 的上升沿**，
+        #   只在「行首为 True」时上升沿数才等于色段数；行首为 False（部件不贴象限左缘，
+        #   绝大多数情形）时首段没有上升沿 ⇒ 必须**按行首补 1**，否则一行一段被数成 2
+        #   （docstring 的 `tx = 每着色行的水平色段数` 即判据来源；缺省先验 1.35 亦按
+        #   正确口径标定：实心行 =1.0、非实心最小 ≈1.67，中点 ≈1.33）。
+        runs_per_row.append(int(np.count_nonzero(row[1:] & ~row[:-1])
+                                + (1 if row[0] else 0)))
     tx = float(np.mean(runs_per_row))
     cols = np.where(mask.any(axis=0))[0]
     vert_max = 0.0

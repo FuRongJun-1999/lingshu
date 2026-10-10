@@ -21,7 +21,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 
 try:
     import yaml
@@ -69,14 +69,45 @@ def eol(text):
     return "\r\n" if "\r\n" in text else "\n"
 
 
+class _NoAliasLoader(yaml.SafeLoader):
+    """SafeLoader ＋ 禁用 YAML 别名（issue #373）。
+
+    别名（`*name`）在展开期把被引用节点整棵复制进引用点：配合锚点嵌套，极小
+    的 frontmatter 即可产出 9^n 个节点（「十亿笑」）——单条笔记写出 GB~TB 的
+    graph.json；自引用别名还会截断/损坏既有产物。锚点本身（`&name`）不复制数据、
+    无放大能力，故只禁别名。判据来源：issue #373 复现（本机实测 6 层 ×9 扇出
+    ⇒ graph.json 2.7 MB，扇出再加两层即 GB 级）。
+    """
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.events.AliasEvent):
+            raise yaml.constructor.ConstructorError(
+                None, None, "禁用 YAML 别名（issue #373：别名展开会放大产物）",
+                self.peek_event().start_mark)
+        return super().compose_node(parent, index)
+
+
+def norm_created(v):
+    """created_at 归一为 JSON 可序列化形态（issue #290）。
+
+    YAML 把 `2026-01-01` 解析成 datetime.date，把 `2026-01-01T00:00:00Z` 解析成
+    datetime.datetime；二者 json.dump 直接 TypeError。数字/字符串原样返回。
+    """
+    if isinstance(v, (datetime, date)):
+        return v.isoformat()
+    return v
+
+
 def parse_md(path):
-    with io.open(path, encoding="utf-8", errors="replace") as f:
+    # encoding="utf-8-sig"：带 UTF-8 BOM 的记忆 .md 也能匹配 `^---\\n`（issue #412，
+    # 旧码按 utf-8 读 ⇒ BOM 使 frontmatter 正则失配、整篇静默跳过）。无 BOM 时
+    # utf-8-sig 与 utf-8 等价。
+    with io.open(path, encoding="utf-8-sig", errors="replace") as f:
         t = f.read()
     m = FM_RE.match(t)
     if not m:
         return None
     try:
-        fm = yaml.safe_load(m.group(1))
+        fm = yaml.load(m.group(1), Loader=_NoAliasLoader)
     except Exception:
         return None
     if not isinstance(fm, dict):
@@ -130,10 +161,14 @@ def main(argv=None):
                 bucket = rel_dir.split("/", 1)[1]
             elif rel_dir not in (".", ""):
                 bucket = rel_dir
-            if args.bucket and bucket and not any(bucket.startswith(b) for b in args.bucket):
+            # --bucket 指定后必须排除 bucket=="" 的根节点（issue #290）；旧码
+            # `bucket and not any(...)` 在 bucket=="" 时短路为 False ⇒ 根节点被放行。
+            if args.bucket and not any(bucket.startswith(b) for b in args.bucket):
                 continue
 
-            nid = fm.get("id") or os.path.splitext(fn)[0]
+            # YAML 数字 id（如 `id: 12345`）会解析成 int；归一为 str，否则
+            # sorted((id, sha)) 混排抛 TypeError（issue #290）。
+            nid = str(fm.get("id") or os.path.splitext(fn)[0])
             layers[layer] += 1
             if bucket:
                 buckets[bucket] += 1
@@ -148,14 +183,25 @@ def main(argv=None):
                 tgt = e.get("target") or e.get("to") or e.get("id")
                 if tgt:
                     edges.append({"s": nid, "t": str(tgt), "type": et, "derived": False})
-            if df:
-                for t2 in re.split(r"[,\s]+", str(df)):
-                    t2 = t2.strip()
-                    if t2:
-                        edges.append({"s": nid, "t": t2, "type": "derived_from", "derived": False})
+            # derived_from 可能是标量串（"a, b"）或 YAML 列表（[a, b]）。列表若直接
+            # str() 会拼成 "['a', 'b']" 的伪目标、随后因悬空被剔除 ⇒ 静默丢边（issue #298）。
+            if isinstance(df, (list, tuple)):
+                df_targets = [str(x) for x in df]
+            elif df:
+                df_targets = re.split(r"[,\s]+", str(df))
+            else:
+                df_targets = []
+            for t2 in df_targets:
+                t2 = t2.strip()
+                if t2:
+                    edges.append({"s": nid, "t": t2, "type": "derived_from", "derived": False})
 
-            dr = fm.get("doc_ref") or {}
-            cr = fm.get("code_ref") or {}
+            # doc_ref / code_ref 可能是 dict（{root, path}）或标量路径串；旧码直接
+            # .get 假定 dict ⇒ 标量时 AttributeError 使整次导出崩（issue #291）。
+            dr = fm.get("doc_ref")
+            cr = fm.get("code_ref")
+            dr = dr if isinstance(dr, dict) else {}
+            cr = cr if isinstance(cr, dict) else {}
             ref = (dr or cr).get("root", "")
             nodes.append({
                 "id": nid,
@@ -164,7 +210,7 @@ def main(argv=None):
                 "bucket": bucket,
                 "tags": fm.get("tags") or [],
                 "importance": fm.get("importance", 0),
-                "created": fm.get("created_at", 0),
+                "created": norm_created(fm.get("created_at", 0)),
                 "sha": sha,
                 "ref_root": neutral_root_id(ref),
                 "ref_dir": neutral_path(os.path.dirname(str((dr or cr).get("path", "")).replace("\\", "/")).replace("\\", "/")),

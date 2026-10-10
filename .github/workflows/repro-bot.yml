@@ -8,20 +8,34 @@ name: repro-bot
 #    （起草期的本地验证记录不随仓发布——回溯请按 git 历史查本件引入提交。）
 #
 # 安全模型（本 workflow 的成立前提，改动前先读）：
-#   · **不传任何 secret**：job 只持有 `github.token`（自动令牌，权限已被下面
-#     permissions 收窄到 issues: write + contents: read），且该令牌**不进**被测
-#     脚本的进程环境——①「抽取并限时执行」步骤自身不挂 GH_TOKEN（取正文在上一步
-#     经 gh api 落盘）；②执行核脚本对被跑子进程的 env 再做清洗（剔除
-#     GITHUB_*/GH_*/ACTIONS_*/RUNNER_* 与含 TOKEN|SECRET|PASSWORD|CREDENTIAL 的键）。
-#   · checkout 用 persist-credentials: false——不把令牌落进检出仓的 .git/config。
+#   · **执行与回评分属不同 job / 不同 runner**（#241 的收口口径）：
+#       - `prep`   ：唯一取正文的 job，正文取自**打标签那一刻的事件载荷快照**
+#                    （`$GITHUB_EVENT_PATH` 的 `.issue.body`），**不调 API、不持任何令牌**
+#                    （#144① 的 TOCTOU 收口）；
+#       - `exec`   ：跑不可信代码的 job，**无 issue 令牌、无 `issues: write`**；
+#                    与 `prep`/`report` 之间只经 artifact（正文进、报告出）交换；
+#       - `report` ：唯一回评/打标签的 job，带 `github.token`（issues: write）。
+#     为什么必须分 job 而不是「同 job 内某一步不挂 token」：同 job 的各步共享同一
+#     runner（同 uid、同一进程树、同一 `$GITHUB_ENV`/`$GITHUB_PATH` 注入面）。被执行的
+#     不可信代码①可经父进程 environ（Linux `/proc/<ppid>/environ`）把执行核清洗掉的键
+#     取回，②可写 `$GITHUB_ENV`/`$GITHUB_PATH` 影响**后续步骤**，③其残留孙进程可在
+#     「回评」步之前改写报告文件。分 job 后这三条都够不到带令牌的那台 runner。
+#     （执行核 `scripts/extract_and_run_issue_repro.py::_child_env` 的清洗只封被测
+#      子进程**自己的** env，**不是** job 隔离——别把它当边界用。）
+#   · **不传任何 secret**：`github.token` 只出现在 `report` job（权限被下面
+#     permissions 收窄到 issues: write + contents: read）；`prep`/`exec` 两 job
+#     **都不持令牌**（`prep` 只读本机事件载荷、`exec` 跑不可信代码）；
+#     checkout 用 persist-credentials: false 不落凭据。
 #   · **绝不用自托管 runner**（同 gate.yml 口径）：这里执行的是不可信代码，
 #     自托管 runner 等于把内网/凭据面直接暴露给被执行的脚本。
-#   · 限时＋一次性宿主：脚本内 600 s 超时；本 job 30 分钟上限；托管 runner 用完即弃。
+#   · 限时＋一次性宿主：脚本内 600 s 超时；exec job 30 分钟上限；托管 runner 用完即弃。
 #   · 触发面双重收窄：**只有** `run-repro` 标签 **且** 打标签者在允许名单内才触发。
-#   · 事件载荷（issue 正文——攻击者可控文本）**从不进 shell 脚本正文**：正文只经
-#     `gh api` 落盘成文件、由 python 脚本读取处理（对齐 pr-lint.yml 的注入面纪律）。
+#   · 事件载荷（issue 正文——攻击者可控文本）**从不进 shell 脚本正文**：正文由
+#     `prep` job 的 `jq` 从 `$GITHUB_EVENT_PATH` 读文件落盘（**不经 shell 内插**，
+#     对齐 pr-lint.yml 的注入面纪律），再经 artifact 交给 exec job。
 #
 # 权限：issues: write（回评 + 打状态标签）＋ contents: read（checkout）。
+#   注意：`prep` job **不需要任何令牌**——它只读本机事件载荷文件。
 
 on:
   issues:
@@ -40,23 +54,58 @@ env:
   PYTHONIOENCODING: "utf-8"
 
 jobs:
-  repro:
-    # ── 触发门：标签名＋打标签者允许名单 ─────────────────────────────────
-    # 允许名单常量（本 workflow 内**唯一一处**，改动只动此行）；
-    # 多账号写法：contains(fromJSON('["a","b"]'), github.event.sender.login)
+  # ── prep：唯一取正文的 job（正文＝打标签时刻的事件载荷快照，不持令牌）────────
+  # 触发门放在这里（本 workflow 内**唯一一处**门）——exec/report 经 needs 串联，
+  # 门不通过时它们自动 skip。
+  # 允许名单常量（改动只动这一行）；
+  # 多账号写法：contains(fromJSON('["a","b"]'), github.event.sender.login)
+  prep:
     if: >-
       github.event.label.name == 'run-repro' &&
       github.event.sender.login == 'FuRongJun-1999'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      # #144①（TOCTOU）：正文**不再**在运行时调 `gh api` 重取，而取**打标签那一刻**
+      # 的事件载荷快照（`$GITHUB_EVENT_PATH` 的 `.issue.body`）——维护者审的与机器人
+      # 跑的必须是同一份正文。若运行时重取，报告人可在「审完 → 打标签 → 执行」之间
+      # 改正文，把被执行的脚本换成另一份（旧实现即如此：`gh api … --jq .body`）。
+      # 事件载荷是攻击者可控文本，仍**不进** shell 正文：由 `jq` 读文件落盘成
+      # `issue_body.md`，交 python 执行核处理（对齐 pr-lint.yml 的注入面纪律）。
+      # 本 job 因此**不需要任何令牌**（不再调 API）。
+      - name: 取 issue 正文（打标签时刻的事件载荷快照；不重取 ⇒ 无 TOCTOU）
+        run: |
+          jq -r '.issue.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/issue_body.md"
+          echo "正文（打标签时刻快照）已落盘：$RUNNER_TEMP/issue_body.md（$(wc -c < "$RUNNER_TEMP/issue_body.md") 字节）"
+
+      - name: 上传正文 artifact（交给 exec job）
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # actions/upload-artifact@v4
+        with:
+          name: issue-body
+          path: ${{ runner.temp }}/issue_body.md
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── exec：跑不可信代码的 job（**无** issue 令牌 / **无** issues: write）──────
+  exec:
+    needs: prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      rc: ${{ steps.repro.outputs.rc }}
+    steps:
+      # 第三方 Action 钉到提交 SHA（#251：本件执行不可信代码，尤其不能吃可移动标签）。
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # actions/checkout@v4
         with:
           ref: main
           # 不落凭据到 .git/config——被测代码可能读检出仓
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -70,8 +119,14 @@ jobs:
       - name: Clone 脑端公开仓（dsh-memory）供 MDCG_BRAIN_PYTHONPATH
         continue-on-error: true
         # 失败**不**红；下一步会**显式**标注 SKIP 原因，绝不静默通过。
+        # #251：按固定提交 SHA 取（不用可移动的 HEAD），避免上游漂移静默改变被测脑核。
+        env:
+          DSH_MEMORY_SHA: 98d6b899533a82fb1047f952987229c62a9929fb
         run: |
-          git clone --depth 1 https://github.com/FuRongJun-1999/dsh-memory.git "$RUNNER_TEMP/dsh-memory"
+          git init -q "$RUNNER_TEMP/dsh-memory"
+          git -C "$RUNNER_TEMP/dsh-memory" remote add origin https://github.com/FuRongJun-1999/dsh-memory.git
+          git -C "$RUNNER_TEMP/dsh-memory" fetch --depth 1 origin "$DSH_MEMORY_SHA"
+          git -C "$RUNNER_TEMP/dsh-memory" checkout -q FETCH_HEAD
 
       - name: 决定脑端路径（可达则传入；否则显式 SKIP）
         id: brainpp
@@ -84,17 +139,15 @@ jobs:
             echo "::warning::脑端公开仓不可达（clone 失败或缺 md_cg/mcp_server.py）——不传 MDCG_BRAIN_PYTHONPATH；依赖脑端的复现脚本将自行报错（读数照贴，不静默通过）。"
           fi
 
-      - name: 取 issue 正文（gh api 落盘；仅本步骤带 token）
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}" \
-            --jq .body > "$RUNNER_TEMP/issue_body.md"
-          echo "正文已落盘：$RUNNER_TEMP/issue_body.md（$(wc -c < "$RUNNER_TEMP/issue_body.md") 字节）"
+      - name: 取回正文 artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # actions/download-artifact@v4
+        with:
+          name: issue-body
+          path: ${{ runner.temp }}
 
-      - name: 抽取并限时执行复现脚本（无 token；读数写 report 文件）
+      - name: 抽取并限时执行复现脚本（本 job 无令牌；读数写 report 文件）
         id: repro
-        # ⚠️ 本步骤**故意不挂** GH_TOKEN——被执行的脚本不得接触任何令牌。
+        # ⚠️ 本 job **不持有** issues 令牌——被执行的脚本不得接触任何令牌。
         run: |
           set +e
           python -X utf8 scripts/extract_and_run_issue_repro.py \
@@ -109,6 +162,31 @@ jobs:
           # 读数不是 CI 失败——成败语义由 repro-done/repro-failed 标签表达；
           # 本步骤永不红（红=机器人自身坏了，会体现在后续步骤/日志）。
           exit 0
+
+      - name: 上传报告 artifact（交给 report job 回贴）
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # actions/upload-artifact@v4
+        with:
+          name: repro-report
+          path: ${{ runner.temp }}/repro_report.md
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── report：唯一回评/打标签的 job（带 issues: write 令牌）────────────────────
+  # 与 exec **不同 runner**：exec 上残留的孙进程够不到本 job 的文件面/令牌面。
+  report:
+    needs: exec
+    if: ${{ !cancelled() && needs.exec.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: 取回报告 artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # actions/download-artifact@v4
+        with:
+          name: repro-report
+          path: ${{ runner.temp }}
 
       - name: 确保状态标签存在（幂等）
         env:
@@ -131,7 +209,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ steps.repro.outputs.rc }}" = "0" ]; then
+          if [ "${{ needs.exec.outputs.rc }}" = "0" ]; then
             gh issue edit "${{ github.event.issue.number }}" \
               --repo "${{ github.repository }}" --add-label repro-done
           else

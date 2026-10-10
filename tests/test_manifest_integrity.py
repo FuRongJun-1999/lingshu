@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""test_manifest_integrity.py —— 冻结规格 PR-1 文件 B 的断言集（14 条）。
+"""test_manifest_integrity.py —— 冻结规格 PR-1 文件 B 的断言集（17 条）。
 
 用途
     守护 `tools/verify_manifest.py` 与仓库既有 intake 登记（`docs/intake/*/
@@ -26,6 +26,10 @@
       计数、断言 2/3 不经工具，MATCH 分支的**逐条语义**仍由 9/10 独立锁住。
     - 断言 8 覆盖 strict 负路径（MISMATCH → 3），断言 14 覆盖 strict 正路径
       （全 MATCH → 0），两条合起来锁住 `--strict` 的两个分支。
+    - 断言 15-17（#408）：清单**结构损坏**（容器类型错 / 条目非对象 / 缺 `file`）或
+      零条目时，工具必须退出 1 而不是静默当「零条目、全通过」。定点变异：把
+      `iter_records` 的记账改回 `continue` 静默跳过、并去掉 `decide_exit` 的
+      `entries == 0` 判据 ⇒ 这三条必红（旧实现退 0）。
     - fixture 一律用 `write_bytes`：Windows 上文本模式会把 `\\n` 写成 `\\r\\n`，
       实算 sha256 与预期不符会破坏「前缀匹配」正例。
     - 反例仓库只创建 `docs/intake/x/_export_manifest.json` 与所需被登记文件，
@@ -342,6 +346,77 @@ def test_14_strict_with_all_matching_entries_exits_0(tmp_path):
     assert payload["summary"]["match"] == 1, payload["summary"]
     assert payload["summary"]["mismatch"] == 0, payload["summary"]
     assert payload["exit_code"] == 0
+
+
+# ---------------------------------------------------------------- 15-17：结构损坏不得静默变绿（#408）
+
+def test_15_corrupted_container_type_is_not_silently_green(tmp_path):
+    """#408：`files` 被改坏成非数组时，旧实现 `continue` 静默跳过 ⇒ 零条目 ⇒ 退出 0。
+
+    修复后必须判结构损坏（退出 1，不是「清单全部通过」）。
+    """
+    root = _fake_repo(tmp_path, {"blocks": {"world": {"files": "not-a-list"}}})
+    result = _run_tool(["--repo-root", str(root), "--json"])
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["exit_code"] == 1
+    assert payload["summary"]["unparseable"] == 1, payload["summary"]
+    assert payload["summary"]["missing"] == 0 and payload["summary"]["malformed"] == 0
+    assert payload["manifests"][0]["error"].startswith("malformed-manifest:"), \
+        payload["manifests"][0]
+
+    # 另一形态：blocks 本身不是对象（旧实现直接落到 artifacts/tests 分支 ⇒ 同样静默零条目）
+    root2 = _fake_repo(tmp_path / "b", {"blocks": [1, 2, 3]})
+    result2 = _run_tool(["--repo-root", str(root2), "--json"])
+    assert result2.returncode == 1, result2.stdout + result2.stderr
+    assert json.loads(result2.stdout)["summary"]["unparseable"] == 1
+
+
+def test_16_corrupted_entry_shape_is_not_silently_dropped(tmp_path):
+    """#408：条目非对象 / 缺 `file` 时旧实现 `continue` 静默丢条 ⇒ 退出 0。修复后退出 1。"""
+    bad_no_file = _fake_repo(
+        tmp_path / "a",
+        {"artifacts": [{"sha256": "0" * 16}]},  # 缺 file
+    )
+    result = _run_tool(["--repo-root", str(bad_no_file), "--json"])
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert json.loads(result.stdout)["summary"]["unparseable"] == 1
+
+    bad_item = _fake_repo(
+        tmp_path / "b",
+        {"tests": ["not-an-object", {"file": "", "sha256": "0" * 16}]},  # 非对象 + 空 file
+    )
+    result2 = _run_tool(["--repo-root", str(bad_item), "--json"])
+    assert result2.returncode == 1, result2.stdout + result2.stderr
+    payload2 = json.loads(result2.stdout)
+    assert payload2["summary"]["unparseable"] == 1
+    assert payload2["manifests"][0]["error"].startswith("malformed-manifest:")
+
+
+def test_17_zero_entry_manifest_is_defect_but_valid_one_is_green(tmp_path):
+    """#408：清单在盘却零条目 ⇒ 退出 1（旧实现只检 manifests==0，会静默变绿）。
+
+    正对照：同一形状下有一条有效登记 ⇒ 退出 0（防把正常清单误判为损坏）。
+    """
+    empty = _fake_repo(tmp_path / "empty", {"blocks": {}})
+    result = _run_tool(["--repo-root", str(empty), "--json"])
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["summary"]["manifests"] == 1, payload["summary"]
+    assert payload["summary"]["entries"] == 0, payload["summary"]
+    assert payload["manifests"][0]["error"].startswith("empty-manifest:"), \
+        payload["manifests"][0]
+
+    blob = b"hello\n"
+    ok = _fake_repo(
+        tmp_path / "ok",
+        {"artifacts": [{"file": "note.txt",
+                        "sha256": hashlib.sha256(blob).hexdigest()[:16]}]},
+        files=[("note.txt", blob)],
+    )
+    result2 = _run_tool(["--repo-root", str(ok), "--json"])
+    assert result2.returncode == 0, result2.stdout + result2.stderr
+    assert json.loads(result2.stdout)["summary"]["entries"] == 1
 
 
 if __name__ == "__main__":

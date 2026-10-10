@@ -175,11 +175,15 @@ def e_group(tmp):
                     "edges": [{"s": hid, "t": "k1", "type": "in_bucket", "derived": True, "rule": "R1_same_bucket"},
                               {"s": hid, "t": "k2", "type": "in_bucket", "derived": True, "rule": "R1_same_bucket"}]})
     # 离线：预置一个体积达标的 cytoscape.min.js，避免 fetch_cytoscape 联网
+    # （#251 后复用也要过 SHA256 校验 ⇒ 用 LINGSHU_CYTO_SHA256 声明该桩的指纹）
+    _stub = "//" + "x" * 100001
     with open(os.path.join(out, "cytoscape.min.js"), "w", encoding="utf-8") as f:
-        f.write("//" + "x" * 100001)
+        f.write(_stub)
+    import hashlib as _hl
     cmd = [sys.executable, "-X", "utf8", VIEWER, "--graph", g, "--derived", dv, "--out", out]
     p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", cwd=REPO,
-                       env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+                       env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+                                LINGSHU_CYTO_SHA256=_hl.sha256(_stub.encode()).hexdigest()))
     ok(p.returncode == 0, "E 端到端：build_viewer 退出码为 0", (p.stdout[-200:], p.stderr[-300:]))
     vg = read_json(os.path.join(out, "viewer_graph.json"))
     vn = {n["id"]: n for n in vg["nodes"]}

@@ -137,7 +137,10 @@ def load_items(corpus=CORPUS, lib_path=LIB):
             continue
         rec = lib.get(f"vs_s{iid}_{sh}_{co}")
         truth = parse_prompt(rec["tags"].get("prompt")) if rec else None
-        img = np.asarray(Image.open(os.path.join(corpus, f)))[..., :3].astype(np.float64)
+        #   `.convert("RGB")` 必须在 `np.asarray` **之前**：本语料虽为 RGBA PNG，但
+        #   `[..., :3]` 只对 4 通道图恰好等于 RGB，对 **L/P 模式图**会静默取到亮度值/调色板
+        #   索引（形状退化成 (H,3) 或数值全错），后续 `bg_color`/`rgb_to_lab` 全线失义。
+        img = np.asarray(Image.open(os.path.join(corpus, f)).convert("RGB")).astype(np.float64)
         items.append({"file": f, "id": iid, "shape": sh, "color": co, "img": img,
                       "truth": truth, "prompt": rec["tags"].get("prompt") if rec else None})
     items.sort(key=lambda it: it["id"])
@@ -281,6 +284,14 @@ def count_objects(clusters, frac=EXTRA_COMP_FRAC, share=MIN_SHARE):
         if sizes.size == 0:
             continue
         keep = np.sort(sizes[sizes >= max(MIN_PX, share * sizes.max())])[::-1]
+        #   `keep` **可为空**：簇总面积过了 `objects_of` 的 `min_px` 门、但**每个**连通分量都
+        #   小于该门时（碎片堆，如 50px 的簇由两个 25px 分量拼成）筛选后一个不剩。此时按
+        #   「每个簇计 1」的底数计 1、不再补计；原写法 `keep[1:] >= frac * keep[0]` 直接索引
+        #   空数组 ⇒ `IndexError: index 0 is out of bounds for axis 0 with size 0`，
+        #   且会使 `rule_n` 低于同处并列报出的 `clusters_n`（`:1064` 的簇计数基线）。
+        if keep.size == 0:
+            tot += 1
+            continue
         tot += 1 + int((keep[1:] >= frac * keep[0]).sum())
     return tot
 
@@ -464,12 +475,20 @@ def radial_profile(m, nbins=PROF_BINS, step=PROF_STEP, level=0.5):
     v = (mm[y0, x0] * (1 - fy) * (1 - fx) + mm[y0 + 1, x0] * fy * (1 - fx)
          + mm[y0, x0 + 1] * (1 - fy) * fx + mm[y0 + 1, x0 + 1] * fy * fx)
     inside = v >= level
-    idx = np.where(inside.any(axis=0), inside.shape[0] - 1 - np.argmax(inside[::-1], axis=0), 0)
-    prev = np.maximum(idx - 1, 0)
-    v1 = v[idx, np.arange(nbins)]
-    v0 = v[prev, np.arange(nbins)]
-    frac = np.where(np.abs(v1 - v0) > 1e-9, (level - v0) / np.maximum(v1 - v0, 1e-9), 0.0)
-    prof = rs[prev] + np.clip(frac, 0, 1) * step
+    has = inside.any(axis=0)
+    idx = np.where(has, inside.shape[0] - 1 - np.argmax(inside[::-1], axis=0), 0)
+    #   **越界点所在的区间**：`idx` 是**最后一个** ≥ level 的采样 ⇒ 越界发生在 `idx → idx+1`
+    #   之间（`idx+1` 是其后第一个 < level 的采样）。原写法取 `idx−1 → idx` 是**前一个区间**
+    #   （两点都在物体内），插值出的半径系统偏小：理想圆盘 R=30/60 实测剖面均值低报
+    #   0.59/0.68px、单箱最差 −1.2px（判据＝解析真值 R，见守卫
+    #   tests/test_hexgen_c1_real_p1_radial_rgb_count.py 的二分求根对照）。
+    nxt = np.minimum(idx + 1, v.shape[0] - 1)
+    va = v[idx, np.arange(nbins)]
+    vb = v[nxt, np.arange(nbins)]
+    den = vb - va
+    ok = np.abs(den) > 1e-9
+    frac = np.where(ok, (level - va) / np.where(ok, den, 1.0), 0.0)
+    prof = np.where(has, rs[idx] + np.clip(frac, 0, 1) * step, 0.0)
     return prof, (cy, cx)
 
 

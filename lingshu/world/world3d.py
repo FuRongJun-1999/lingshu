@@ -188,9 +188,12 @@ class Camera3D:
     def focal(self, screen_w: int) -> float:
         return (screen_w / 2) / math.tan(math.radians(self.fov_deg) / 2)
 
-    def project(self, p3: Tuple[float, float, float],
-                screen_w: int, screen_h: int) -> Optional[Tuple[float, float]]:
-        """世界 3D 点 → 屏幕 2D 点（含相机旋转/平移）。"""
+    def to_camera(self, p3: Tuple[float, float, float]) -> Tuple[float, float, float]:
+        """世界 3D 点 → 相机坐标（平移 + yaw 绕 Y + pitch 绕 X）。
+
+        相机坐标 z = 前向深度（画家算法/透视尺度口径）；与 project 同一变换，
+        保证「投影-关联」可回代（见 docs/theory/世界模型与语义时空图_完整理论
+        整理与实现路线.md §3.2：已知相机参数下的精确映射，非猜测）。"""
         x, y, z = p3
         # 平移至相机
         x -= self.cx
@@ -201,12 +204,42 @@ class Camera3D:
         x, z = x * cos_y + z * sin_y, -x * sin_y + z * cos_y
         cos_p, sin_p = math.cos(self.pitch), math.sin(self.pitch)
         y, z = y * cos_p - z * sin_p, y * sin_p + z * cos_p
+        return (x, y, z)
+
+    def project(self, p3: Tuple[float, float, float],
+                screen_w: int, screen_h: int) -> Optional[Tuple[float, float]]:
+        """世界 3D 点 → 屏幕 2D 点（含相机旋转/平移）。"""
+        x, y, z = self.to_camera(p3)
         if z <= 0.1:            # 相机后方
             return None
         f = self.focal(screen_w)
         sx = screen_w / 2 + f * x / z
         sy = screen_h / 2 - f * y / z
         return (sx, sy)
+
+    def depth_of(self, p3: Tuple[float, float, float]) -> float:
+        """相机前向深度（相机坐标 z）——画家算法排序与透视尺度口径。"""
+        return self.to_camera(p3)[2]
+
+    def unproject(self, px: float, py: float, depth: float,
+                  screen_w: int, screen_h: int) -> Tuple[float, float, float]:
+        """屏幕像素 + 相机前向深度 → 世界 3D 点（project 的精确逆）。
+
+        与 project 共用同一变换，故 project(unproject(px,py,Z)) == (px,py)
+        （「投影-关联」可回代验证）。"""
+        f = self.focal(screen_w)
+        x_cam = (px - screen_w / 2) * depth / f
+        y_cam = (screen_h / 2 - py) * depth / f
+        z_cam = depth
+        # 逆 pitch（绕 X）
+        cos_p, sin_p = math.cos(self.pitch), math.sin(self.pitch)
+        y1 = y_cam * cos_p + z_cam * sin_p
+        z1 = -y_cam * sin_p + z_cam * cos_p
+        # 逆 yaw（绕 Y）
+        cos_y, sin_y = math.cos(self.yaw), math.sin(self.yaw)
+        x2 = x_cam * cos_y - z1 * sin_y
+        z2 = x_cam * sin_y + z1 * cos_y
+        return (self.cx + x2, self.cy + y1, self.cz + z2)
 
 
 # ---------------------------------------------------------------------------
@@ -243,9 +276,16 @@ class Object3D:
             (x + hw, y + hh, z + hd), (x - hw, y + hh, z + hd),
         ]
 
-    def depth(self) -> float:
-        """相机距离（画家算法排序用）。"""
-        return self.center[2]
+    def depth(self, cam: "Camera3D" = None) -> float:
+        """相机前向深度（画家算法排序与透视尺度用）。
+
+        有相机时取相机坐标 z（与 project 同一变换）；无相机时退回世界 z
+        （仅当相机正对 Z 轴时二者相等）。判据来源：docs/theory/世界模型与语义
+        时空图_完整理论整理与实现路线.md §3.2 投影-关联——遮挡/尺度须按相机
+        坐标，不能用世界坐标冒充。"""
+        if cam is None:
+            return self.center[2]
+        return cam.depth_of(self.center)
 
 
 class World3D:
@@ -262,8 +302,8 @@ class World3D:
                   horizon_ratio: float = 0.45) -> Optional[Object3D]:
         """VPrim(2D bbox) → 3D 物体。
 
-        反投影：Z = f * 真实宽 / 像素宽；X/Y 由光心反推。
-        深度启发式：地面物体贴地（底部在地面 y=0）；天空物体保持高度。
+        反投影：Z = f * 真实宽 / 像素宽；X/Y/Z 由相机位姿反投影（project 的逆）。
+        深度启发式：地面物体贴地（底部在地面 y=0）；天空物体不低于地平线。
         同类近距物体 → 更新（时间序列收敛）。
         """
         try:
@@ -275,23 +315,27 @@ class World3D:
         cx_px = (x1 + x2) / 2
         cy_px = (y1 + y2) / 2
         w_px = max(1.0, x2 - x1)
-        f = self.camera.focal(screen_w)
-        # 反投影深度
+        cam = self.camera
+        f = cam.focal(screen_w)
+        # 反投影深度（相机前向深度）
         real_w = spec.size[0]
         Z = f * real_w / w_px
-        # 世界 X/Y（相机正对 Z 轴）
-        X = (cx_px - screen_w / 2) * Z / f
-        Y = (screen_h / 2 - cy_px) * Z / f
+        # 世界 X/Y/Z：按相机位姿反投影（project 的逆——「投影-关联」可回代，
+        # 见 docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md §3.2）
+        X, Y, Zw = cam.unproject(cx_px, cy_px, Z, screen_w, screen_h)
         # 深度启发式：贴地/天空约束
         if spec.ground:
-            Y = spec.size[1] / 2          # 底部贴地
+            Y = spec.size[1] / 2          # 底部贴地（世界 y）
         else:
-            # 天空物体：保持视差高度，且不低于地平线
+            # 天空物体：不低于地平线——取同深度地平线像素的世界高度作下界
+            # （旧式 (screen_h-horizon_px)*Z/f*0.5 的 0.5 为经验标定，追不到出处；
+            #   此处改为该参数的几何含义：地平线像素→世界高度，随相机位姿走）
             horizon_px = screen_h * horizon_ratio
-            Y = max(Y, (screen_h - horizon_px) * Z / f * 0.5)
+            _, y_horizon, _ = cam.unproject(cx_px, horizon_px, Z, screen_w, screen_h)
+            Y = max(Y, y_horizon)
         obj = Object3D(
             category=vprim.category,
-            center=(round(X, 2), round(Y, 2), round(Z, 2)),
+            center=(round(X, 2), round(Y, 2), round(Zw, 2)),
             size=spec.size, color=spec.color, shape=spec.shape,
             confidence=vprim.confidence, source=vprim.source)
         # 时间序列收敛：同类 + 距离近 → 更新位置
@@ -324,8 +368,8 @@ class World3D:
         horizon_px = screen_h * 0.45
         draw.rectangle([0, int(horizon_px), screen_w, screen_h], fill=ground_color)
 
-        # 画家算法：按深度降序（远先画）
-        for obj in sorted(self.objects, key=lambda o: -o.depth()):
+        # 画家算法：按相机深度降序（远先画）
+        for obj in sorted(self.objects, key=lambda o: -o.depth(cam)):
             self._draw_object(draw, obj, cam, screen_w, screen_h, horizon_px)
         return img
 
@@ -382,28 +426,50 @@ class World3D:
         else:
             self._draw_box(draw, temp, cam, screen_w, screen_h)
 
-    def _project_corners(self, obj: Object3D, cam: Camera3D,
-                         screen_w: int, screen_h: int):
-        pts = []
-        for p3 in obj.corners():
-            p2 = cam.project(p3, screen_w, screen_h)
-            if p2 is None:
-                return None
-            pts.append(p2)
-        return pts
+    # 近平面（相机坐标 z 下限）——与 project() 的 z<=0.1 判定同一口径
+    NEAR_EPS = 0.1
+
+    @classmethod
+    def _clip_near(cls, poly_cam, near):
+        """Sutherland-Hodgman：多边形对相机近平面 z >= near 裁剪（相机坐标）。
+
+        #403：任一角点落到近平面之后时只裁掉该部分，不得整物丢弃。
+        判据来源：docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md
+        §3.2 透视投影——近平面裁剪是多边形部分可见问题，非全有或全无。"""
+        out = []
+        n = len(poly_cam)
+        for i in range(n):
+            a = poly_cam[i]
+            b = poly_cam[(i + 1) % n]
+            a_in = a[2] >= near
+            b_in = b[2] >= near
+            if a_in:
+                out.append(a)
+            if a_in != b_in:
+                t = (near - a[2]) / (b[2] - a[2])
+                out.append(tuple(a[k] + t * (b[k] - a[k]) for k in range(3)))
+        return out
+
+    def _project_face(self, face3, cam: Camera3D, screen_w: int, screen_h: int):
+        """3D 面 → 屏幕多边形（近平面裁剪后投影）；完全在近平面后 ⇒ []。"""
+        cam_pts = [cam.to_camera(p) for p in face3]
+        clipped = self._clip_near(cam_pts, self.NEAR_EPS)
+        if len(clipped) < 3:
+            return []
+        f = cam.focal(screen_w)
+        return [(screen_w / 2 + f * p[0] / p[2], screen_h / 2 - f * p[1] / p[2])
+                for p in clipped]
 
     def _draw_box(self, draw, obj, cam, sw, sh):
-        pts = self._project_corners(obj, cam, sw, sh)
-        if not pts:
-            return
+        c = obj.corners()
         # 6 个面（近端 4 面可见性由深度序决定——MVP 画全部面，画家序）
         faces = [
-            (pts[0], pts[1], pts[2], pts[3]),   # 前面
-            (pts[4], pts[5], pts[6], pts[7]),   # 后面
-            (pts[0], pts[1], pts[5], pts[4]),   # 底面
-            (pts[3], pts[2], pts[6], pts[7]),   # 顶面
-            (pts[1], pts[2], pts[6], pts[5]),   # 右面
-            (pts[0], pts[3], pts[7], pts[4]),   # 左面
+            (c[0], c[1], c[2], c[3]),   # 前面
+            (c[4], c[5], c[6], c[7]),   # 后面
+            (c[0], c[1], c[5], c[4]),   # 底面
+            (c[3], c[2], c[6], c[7]),   # 顶面
+            (c[1], c[2], c[6], c[5]),   # 右面
+            (c[0], c[3], c[7], c[4]),   # 左面
         ]
         r, g, b = obj.color
         # 简单着色：面法线 → 明暗（顶面亮，侧面暗）
@@ -419,9 +485,12 @@ class World3D:
                 shade = 0.95
             color = (min(255, int(r * shade)), min(255, int(g * shade)),
                      min(255, int(b * shade)))
+            poly = self._project_face(face, cam, sw, sh)
+            if len(poly) < 3:
+                continue
             try:
-                draw.polygon([(p[0], p[1]) for p in face], fill=color,
-                             outline=tuple(min(255, int(c * 0.7)) for c in color))
+                draw.polygon([(p[0], p[1]) for p in poly], fill=color,
+                             outline=tuple(min(255, int(v * 0.7)) for v in color))
             except Exception:
                 pass
 
@@ -430,7 +499,7 @@ class World3D:
         if c is None:
             return
         f = cam.focal(sw)
-        r_px = f * obj.size[0] / 2 / max(0.1, obj.depth())
+        r_px = f * obj.size[0] / 2 / max(0.1, obj.depth(cam))
         r_px = max(2, min(r_px, 500))
         x, y = c
         # 简单着色：高光偏移
@@ -446,17 +515,25 @@ class World3D:
         self._draw_box(draw, obj, cam, sw, sh)
 
     def _draw_pyramid(self, draw, obj, cam, sw, sh):
-        pts = self._project_corners(obj, cam, sw, sh)
-        if not pts:
+        c = obj.corners()
+        base = (c[0], c[1], c[5], c[4])       # 底面四角（近平面裁剪后）
+        poly = self._project_face(base, cam, sw, sh)
+        if len(poly) < 3:
             return
-        apex = ((pts[0][0] + pts[1][0] + pts[4][0] + pts[5][0]) / 4,
-                (pts[0][1] + pts[1][1] + pts[4][1] + pts[5][1]) / 4 - 30)
+        apex = (sum(p[0] for p in poly) / len(poly),
+                sum(p[1] for p in poly) / len(poly) - 30)
         try:
-            draw.polygon([(pts[0][0], pts[0][1]), (pts[1][0], pts[1][1]), apex],
-                         fill=obj.color, outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
-            draw.polygon([(pts[4][0], pts[4][1]), (pts[5][0], pts[5][1]), apex],
-                         fill=tuple(min(255, int(v * 0.9)) for v in obj.color),
-                         outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
+            if len(poly) == 4:      # 未触近平面：原两三角面画法（含背面暗化）
+                draw.polygon([poly[0], poly[1], apex], fill=obj.color,
+                             outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
+                draw.polygon([poly[3], poly[2], apex],
+                             fill=tuple(min(255, int(v * 0.9)) for v in obj.color),
+                             outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
+            else:                   # 被近平面裁剪：按裁剪后底面轮廓扇形补面
+                for i in range(len(poly)):
+                    a, b = poly[i], poly[(i + 1) % len(poly)]
+                    draw.polygon([a, b, apex], fill=obj.color,
+                                 outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
         except Exception:
             pass
 
@@ -470,9 +547,9 @@ class World3D:
         }
 
     def scene_text(self) -> str:
-        """3D 场景语义描述（时空图文本形态）。"""
+        """3D 场景语义描述（时空图文本形态）——按相机深度降序（远→近）。"""
         parts = []
-        for o in sorted(self.objects, key=lambda x: -x.depth()):
+        for o in sorted(self.objects, key=lambda x: -x.depth(self.camera)):
             x, y, z = [round(v, 1) for v in o.center]
             parts.append(f"{o.category}@3D({x},{y},{z})")
         return "；".join(parts) if parts else "（空场景）"
@@ -519,7 +596,11 @@ class World3D:
 
         核心哲学（荣）：事物是其关系的总和——物体的身份由它与世界中
         其他物体的关系定义。借鉴游戏场景图/3D 场景图设计。
-        infer=True 时自动推理空间关系（相邻/支撑）。"""
+        infer=True 时自动推理空间关系（相邻/支撑）。
+
+        #262：锚点 id 由内容确定性导出（见 SemanticAnchor.__post_init__），
+        重建时把既有验证器搬过来——否则每次重建都清空全部多感知机验证记录，
+        且随机 id 让记录无法与锚点对上。"""
         try:
             from .semantic_anchor_graph import SemanticAnchorGraph, SemanticAnchor
         except ImportError:
@@ -533,6 +614,11 @@ class World3D:
         # 关系推理（空间邻近 → 相邻/支撑）
         if infer:
             g.infer_relations()
+        # 验证记录跟锚点身份走：把上一张图的验证器搬到新图（id 已确定性稳定）
+        prev = getattr(self, "_anchor_graph", None)
+        if prev is not None and getattr(prev, "_verifier", None) is not None:
+            g._verifier = prev._verifier
+            g._verifier.graph = g
         self._anchor_graph = g
         return g.to_dict()
 

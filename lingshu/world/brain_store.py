@@ -78,6 +78,15 @@ from typing import Dict, List, Optional
 STATE_SLOT = "状态"
 #: 读候选种子词（ingest_scene 写入的正文定式首词）
 SEED_QUERY = "场景实体"
+#: 状态槽位投影的单页条数（`stg(op=state_chain)` 的 `limit`）。脑端返回体是
+#: `items=units[:limit]` 且带 `truncated`（`md_cg/stg.py:state_chain`）——固定读
+#: 一页且不看 `truncated` 时，排在投影序后面的主体会被静默读成「无值」
+#: （issue #365）。超出本页时 `_state_map` 按主体补读。
+_STATE_PAGE = 500
+#: 脑端 `cg(op=read)` 的候选面全局上限（脑包 `md_cg/mdcg.py:94` 的 `GLOBAL_CAP
+#: = 500`，`cut_by_relevance` 在此截断候选）——`k` 再大也不会多给候选。本层据此
+#: 把「候选面已取尽」与「被脑端截断」区分开（issue #367）。
+BRAIN_CANDIDATE_CAP = 500
 
 #: 子进程 env **白名单·具名**（issue #227 · 凭据泄露族）——跨平台「进程运行基座」：
 #: 路径 / 临时目录 / 区域 / 主机自省。**不含任何凭据名**。
@@ -408,19 +417,49 @@ class BrainStore:
         self.conn = _ConnShim(self)          # legacy ingest_scene 的直写出口
 
     # ---- M1 读向 ----
-    def _state_map(self) -> Dict[str, str]:
-        """活动状态槽位投影：subject → value（slot=「状态」；一次查询全量取回）。
+    def _state_map(self, subjects: Optional[List[str]] = None) -> Dict[str, str]:
+        """活动状态槽位投影：subject → value（slot=「状态」）。
 
         subject **＝节点 id**（不是实体名，issue #366）：台账是全局 append-only
         的，实体名在同一脑根内的多个场景间不唯一——用实体名作键时，另一场景的
         同名实体会覆盖本场景的状态（后写盖先写）。节点 id 全局唯一，故状态按
         「哪个节点」记账，读回时按节点 id 取（见 get_nodes_by_tag / record_state）。
+
+        **截断纪律（issue #365）**：脑端 `stg(op=state_chain)` 的 `items` 是
+        `units[:limit]`、命中总数在 `count`、`truncated = count > len(items)`
+        （`md_cg/stg.py:state_chain`；投影按 `(subject, slot)` 字典序稳定排序，
+        `md_cg/state_slots.py`）。固定 `limit=500` 且不看 `truncated` 时，全库状态
+        槽位超过一页的场景，其主体若排在 500 名之后，状态会被静默读成 None
+        （世界重建回落 neutral）。故本方法：① 只投影本层真正读的槽位
+        （`slot=「状态」`下推，缩小命中集）；② 返回体 `truncated` 为真时按
+        **调用方给出的 subject** 逐个精确补读——`subject`+`slot` 过滤后每个
+        `(subject, slot)` 至多一个单元，不受全局截断影响；未给主体清单而无从
+        补读时抛 `BrainError`（「没读到」不得当作「没有值」）。
         """
-        resp = self.client.call("stg", {"op": "state_chain", "limit": 500})
         m: Dict[str, str] = {}
-        for u in (resp.get("items") or []):
-            if u.get("slot") == STATE_SLOT and u.get("state") == "active":
-                m[str(u.get("subject"))] = u.get("value")
+
+        def _absorb(items) -> None:
+            for u in (items or []):
+                if u.get("slot") == STATE_SLOT and u.get("state") == "active":
+                    m[str(u.get("subject"))] = u.get("value")
+
+        resp = self.client.call("stg", {"op": "state_chain", "slot": STATE_SLOT,
+                                        "limit": _STATE_PAGE})
+        if not resp.get("truncated"):
+            _absorb(resp.get("items"))
+            return m
+        if subjects is None:
+            raise BrainError(
+                "状态槽位投影被截断（count=%s > limit=%s）且未给出主体清单，"
+                "无法取全——不静默补 None（issue #365）"
+                % (resp.get("count"), _STATE_PAGE))
+        for sid in subjects:
+            r = self.client.call("stg", {"op": "state_chain", "subject": str(sid),
+                                         "slot": STATE_SLOT, "limit": 1})
+            if r.get("truncated"):
+                raise BrainError("按主体 %r 的状态投影仍被截断：%r（issue #365）"
+                                 % (str(sid), r))
+            _absorb(r.get("items"))
         return m
 
     #: 允许进入世界重建的脑端资格态（cg(op=read) 返回体 item["state"]，四态之一）。
@@ -445,39 +484,68 @@ class BrainStore:
         `judge_qualification`——不适用条件命中情境（query/context）即明确否决，
         不应作为可信几何注入世界重建；state 缺失（如脑端换判据面）不剔除
         （未知≠否决，fail-open，防静默清空）。
+
+        **候选面取全再过滤（issue #367）**：脑端 `cg(op=read)` 回的是词法召回
+        top-k；只取一页（`k=limit`）再在适配器侧按 tag 过滤时，别的场景把这一页
+        占满，本场景就返回 0（`load_world_from_memory` 重建出空世界）。故此处按
+        脑端返回体 `meta` 的候选总数（`pre_cap`＝截断**前**命中数，
+        `md_cg/mdcg.py:4149,4638`）逐轮加大 `k` 直到覆盖整个候选面（上限＝脑端
+        `GLOBAL_CAP=500`），再按 tag 过滤；候选面本身被脑端上限截断、`limit` 取不
+        满时抛 `BrainError`——「无匹配」与「被截断」必须可分辨，不静默返回残缺
+        世界。
         """
         if accept_states is None:
             accept_states = self.DEFAULT_ACCEPT_STATES
-        resp = self.client.call("cg", {"op": "read", "query": self.seed_query,
-                                       "k": max(1, int(limit))})
-        states = self._state_map()
-        out: List[BrainNode] = []
-        for item in (resp.get("results") or resp.get("items") or []):
-            node = item.get("node") or item
-            fm = node.get("frontmatter") or item.get("frontmatter") or {}
-            tags = list(fm.get("tags") or [])
-            if tag not in tags:
-                continue                      # 裁定三：过滤在适配器侧
-            if accept_states:
-                st = item.get("state")
-                if st and st not in accept_states:
-                    continue                  # 明确否决态不注入世界（缺省踢 REJECT）
-            sp = ((fm.get("spatial") or {}).get("coords3d") or {})
-            coords = None
-            if isinstance(sp, dict) and sp:
-                coords = {"x": float(sp.get("x", 0.0)),
-                          "y": float(sp.get("y", 0.0)),
-                          "z": float(sp.get("z", 0.0))}
-            nid = str(node.get("id") or fm.get("id") or "")
-            # 状态按**节点 id** 取（#366：实体名跨场景不唯一，不作台账键）。
-            state = states.get(nid)
-            out.append(BrainNode(
-                id=nid,
-                content=str(node.get("content") or ""),
-                tags=tags,
-                spatial_coordinates=coords,
-                state_attributes=({"state": state} if state else None)))
-        return out
+        want = max(1, int(limit))
+        k = want
+        while True:
+            resp = self.client.call("cg", {"op": "read", "query": self.seed_query,
+                                           "k": k})
+            out: List[BrainNode] = []
+            for item in (resp.get("results") or resp.get("items") or []):
+                node = item.get("node") or item
+                fm = node.get("frontmatter") or item.get("frontmatter") or {}
+                tags = list(fm.get("tags") or [])
+                if tag not in tags:
+                    continue                      # 裁定三：过滤在适配器侧
+                if accept_states:
+                    st = item.get("state")
+                    if st and st not in accept_states:
+                        continue                  # 明确否决态不注入世界（缺省踢 REJECT）
+                sp = ((fm.get("spatial") or {}).get("coords3d") or {})
+                coords = None
+                if isinstance(sp, dict) and sp:
+                    coords = {"x": float(sp.get("x", 0.0)),
+                              "y": float(sp.get("y", 0.0)),
+                              "z": float(sp.get("z", 0.0))}
+                out.append(BrainNode(
+                    id=str(node.get("id") or fm.get("id") or ""),
+                    content=str(node.get("content") or ""),
+                    tags=tags,
+                    spatial_coordinates=coords,
+                    state_attributes=None))
+            if len(out) >= want:
+                break                             # 本场景候选已够 limit
+            meta = resp.get("meta") or {}
+            _pre = meta.get("pre_cap")
+            total = int(_pre if _pre is not None
+                        else (meta.get("candidates") or 0))
+            nxt = min(total, BRAIN_CANDIDATE_CAP)
+            if nxt <= k:
+                if total > BRAIN_CANDIDATE_CAP:
+                    raise BrainError(
+                        "候选面被脑端上限截断：tag=%r 需 %d 条，取到 %d 条，"
+                        "候选总数 %d > 脑端上限 %d——不静默返回残缺世界（issue #367）"
+                        % (tag, want, len(out), total, BRAIN_CANDIDATE_CAP))
+                break                             # 候选面已取尽：真的只有这么多匹配
+            k = nxt
+        # 状态按**节点 id** 取（#366）；按 id 精确补读（#365：全量投影会截断）。
+        states = self._state_map([n.id for n in out])
+        for n in out:
+            state = states.get(n.id)
+            if state:
+                n.state_attributes = {"state": state}
+        return out[:want]
 
     # ---- M2 写向（垫片目标）----
     def record_state(self, node_id: str, state: Optional[str]) -> bool:

@@ -127,8 +127,14 @@ class SevenLayerLoop:
                              "entities": len(self.world.entities)}
         # L1 感知机（好奇选定的实体，缸中之脑）
         self.explorer.observe(entities=chosen)
+        # 生成先验注入理解（缺陷单 #396）：本轮观测 vs 上一预测（L4 已填
+        # `_last_prediction`）→ 预测-观测不一致计数，喂好奇 IG 的「异常加成」
+        # 分量。与 curiosity_explorer.explore_tick 同口径（predict→observe→
+        # _count_anomalies）；旧码此闭环从不调用，七层宣称的异常反馈形同虚设。
+        n_anom = self.explorer._count_anomalies(chosen)
         rec["L1_perception"] = {"observed": list(chosen),
-                                "observed_count": len(chosen)}
+                                "observed_count": len(chosen),
+                                "anomalies": n_anom}
         # L5 锚定验证（外部观察者全实体）
         ver = self._verify(pred["predictions"])
         rec["L5_verification"] = {"hit_rate": ver["hit_rate"],

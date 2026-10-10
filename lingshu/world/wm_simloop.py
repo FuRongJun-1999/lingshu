@@ -51,16 +51,22 @@ except ImportError:
 # ==================== 确定性几何（拓扑生长外推 · 零 rng）====================
 
 def _ray_intersect_2d(q1, u1, q2, u2) -> Optional[Tuple[float, float]]:
-    """射线 q1+t·u1 与 q2+t·u2 的 2D 交点（平行/近平行返回 None）。"""
+    """射线 q1+s·u1 与 q2+t·u2 的 2D 交点（平行/近平行返回 None）。
+
+    判据：交点须落在**两条**射线的正向前方（s≥0 且 t≥0）。只校验 s 会接受
+    「在射线 1 前方、却在射线 2 身后」的交点——那是两直线相交，不是两射线
+    相交：对发散轨迹（背离型）会给出假目标点。
+    """
     denom = u1[0] * (-u2[1]) - (-u2[0]) * u1[1]
     if abs(denom) < 1e-9:
         return None
     w = (q2[0] - q1[0], q2[1] - q1[1])
     s = (w[0] * (-u2[1]) - (-u2[0]) * w[1]) / denom
+    t = (w[1] * u1[0] - w[0] * u1[1]) / denom
+    if s < -1e-6 or t < -1e-6:         # 交点在任一条射线身后（背离运动方向）→ 无效
+        return None
     x = q1[0] + s * u1[0]
     z = q1[1] + s * u1[1]
-    if s < -1e-6:                      # 交点在身后（背离运动方向）→ 无效
-        return None
     return (x, z)
 
 
@@ -139,8 +145,8 @@ class SimulationLoop:
                  deadzone: int = 2,           # 死区：K tick 内 anomaly 阈值
                  verify_window: int = 8,      # 假设验证窗口 N
                  confirm_ratio: float = 0.5,  # 窗口内趋向占比 ≥ 此比例 → 固化
-                 persistence_window: int = 10,   # 方向持续性窗口
-                 persistence_min: float = 0.45,  # 随机游走之上 → 有未解释结构
+                 persistence_window: int = 80,   # 方向持续性窗口（整窗；见 _persistence）
+                 persistence_min: float = 0.45,  # 随机游走 null 之上 → 有未解释结构
                  clock=None):
         self.wm = world_model or UnifiedWorldModel(
             size=size, seed=seed, world=scene)
@@ -245,13 +251,20 @@ class SimulationLoop:
                    if a["entity"] == eid and a["tick"] > lo)
 
     def _persistence(self, eid: str) -> Optional[float]:
-        """方向持续性 = 净位移/路径长（随机游走 ~0.2-0.3，定向运动 > 0.45）。
-        宽随机边界（D2）会掩盖温和结构——模型已承认无知用宽边界时，
-        持续性显著高于随机游走 = 存在未解释结构（信息差的诚实信号）。"""
+        """方向持续性 = 净位移/路径长（定向运动 →1，随机游走 →0）。
+
+        判据来源：经验标定（2026-10-10，本仓随机游走 null 采样；无理论章节）。
+        net/path 的 null 分布强烈依赖样本数 n——n=10 时 p99≈0.76、max≈0.92，
+        固定阈值 0.45 落在 null 尾部之内（21% 随机游走样本越过，60/60 seed
+        触发通道②）；n=80 时 null p99≈0.25、max≈0.37（84400 样本），0.45 才
+        落在 null 之上。故本估计器要求**整窗**样本（n == persistence_window）：
+        样本不足（早期 tick / 遮蔽缺链）⇒ None，不给宽尾不可靠估计。窗口取
+        80 是本判据成立的条件（`persistence_window` 调小会让 0.45 重回 null
+        尾内、通道②对随机游走误报）。"""
         traj = [rec["entities"][eid]
                 for rec in self.wm.history[-self.persistence_window:]
                 if eid in rec["entities"]]
-        if len(traj) < 4:
+        if len(traj) < self.persistence_window:
             return None
         path = sum(math.dist(traj[i - 1], traj[i])
                    for i in range(1, len(traj)))
@@ -373,8 +386,12 @@ class SimulationLoop:
         if old is not None:                     # re-grow：摘除旧假设
             self.wm.nodes.pop(old["node"], None)
             self.wm._conditions.pop(old["node"], None)
+            # 摘除**所有与该假设关联**的边（入边 + 出边）。只删 target==hid
+            # 会漏掉假设节点自身长出的出边（world_model.infer_patterns 在假设
+            # 节点进历史时会为它推关系边），残留悬空边（源/目标已不在 nodes）。
             self.wm.edges = [e for e in self.wm.edges
-                             if e.target != old["node"]]
+                             if e.target != old["node"]
+                             and e.source != old["node"]]
         superseded = [e.to_dict() for e in self.wm.edges if e.source == subject]
         self.wm.nodes[hid] = WMNode(
             eid=hid, category="hidden_target", pos=pos, confidence=0.3,
@@ -406,7 +423,12 @@ class SimulationLoop:
         self._wal("growth", ev)
 
     def _revert(self, h: Dict, reason: str) -> None:
-        """回退假设（验证不成立不固化）；anomaly 留痕不删。"""
+        """回退假设（验证不成立不固化）；anomaly 留痕不删。
+
+        摘除**所有与该假设关联**的边（入边 + 出边）：只删 target==hid 会漏掉
+        假设节点自身的出边，残留悬空边（源/目标已不在 nodes，graph()/WAL
+        快照仍会导出它）。
+        """
         hid = h["node"]
         ev = {"tick": self.wm.tick, "event": "revert",
               "subject": self._alias_of(h.get("_subject", "")),
@@ -416,7 +438,8 @@ class SimulationLoop:
               "reason": reason}
         self.wm.nodes.pop(hid, None)
         self.wm._conditions.pop(hid, None)
-        self.wm.edges = [e for e in self.wm.edges if e.target != hid]
+        self.wm.edges = [e for e in self.wm.edges
+                         if e.target != hid and e.source != hid]
         self._hypotheses.pop(h.get("_subject", ""), None)
         self._growth_log.append(ev)
         self._wal("revert", ev)
@@ -476,16 +499,25 @@ class SimulationLoop:
 
     @staticmethod
     def parse_seed_entity(line: str):
-        """解析 flush 载荷实体行：`- entity: rabbit id=xx pos=(x, y, z) …`。"""
+        """解析 flush 载荷实体行：`- entity: {category} id={eid} pos=(x, y, z) …`。
+
+        flush 写出的类别是裸文本（无引号、无转义），类别可含空格。按分隔标记
+        定位（` id=` / ` pos=(` / `)`）而非按空格裸切——裸切会把多词类别截成
+        首词、错位字段（写读不对称 = 持久化往返损坏）。
+        """
         if not line.strip().startswith("- entity:"):
             return None
         try:
             seg = line.strip()[len("- entity:"):].strip()
-            category = seg.split()[0]
-            eid = seg.split("id=")[1].split()[0]
-            pos_seg = seg.split("pos=")[1].split(")")[0].strip("( ")
+            if " id=" not in seg or " pos=(" not in seg:
+                return None
+            category, rest = seg.split(" id=", 1)
+            eid, rest = rest.split(" pos=(", 1)
+            pos_seg = rest.split(")", 1)[0]
             pos = tuple(float(v) for v in pos_seg.split(","))
-            return {"category": category, "eid": eid,
+            if len(pos) != 3:
+                return None
+            return {"category": category.strip(), "eid": eid.strip(),
                     "pos": (pos[0], pos[1], pos[2])}
         except (IndexError, ValueError):
             return None
@@ -609,21 +641,24 @@ class SimulationLoop:
 
 if __name__ == "__main__":
     # 自测：漂移正弦遮蔽目标（确定性外部世界，模型只见追逐者轨迹）
+    # 通道②要求整窗（persistence_window=80）样本，故场景须让追逐者持续移动
+    # 至少一个窗口——场地取 48、速度降到 0.5，避免 ~27 tick 就顶到边界静止
+    # （静止后 path≈0、持续性无估计，通道②无从触发）。
     import math as _m
-    sl = SimulationLoop(wal_path=None)
+    sl = SimulationLoop(size=48, wal_path=None)
     sl.scene.create_scene(trees=0, water=False)
     t = sl.scene.add_entity("rabbit", behavior="wander", pos=(6, 1.5, 13), speed=0.0)
     a = sl.scene.add_entity("wolf", behavior="seek", goal=t,
-                            pos=(2, 1.5, 13), speed=0.8)
+                            pos=(2, 1.5, 13), speed=0.5)
     sl._mask = {t}
     sl.wm.perceive(observations=sl._observe())
 
     def drifting(scene, tick):
-        scene.entities[t].pos = (3.0 + 0.55 * tick
+        scene.entities[t].pos = (3.0 + 0.3 * tick
                                  + 2.5 * _m.sin(tick * 0.45), 1.5, 13.0)
 
     sl.step(n=1)
-    sl.step(n=30, external=drifting)
+    sl.step(n=140, external=drifting)
     rep = sl.report()
     H = [n for n in sl.wm.nodes.values() if n.attrs.get("hypothesis")]
     print("replay_consistent:", rep["replay_consistent"],

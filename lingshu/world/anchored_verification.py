@@ -111,6 +111,9 @@ class AnchoredVerification:
             baseline_ok = False
             notes.append("预测命中率低于基线 0.4（D-006）——基底不稳")
         if stable_rounds < 3:
+            # 稳定轮数不足 ⇒ 基底层未建立，必须翻旗标——否则 baseline_ok 只由
+            # hit_rate 决定，与本函数「跨时间稳定 + 预测长期命中率」的联合契约矛盾。
+            baseline_ok = False
             notes.append("跨时间稳定轮数不足（<3）——基底层未建立")
         return {"baseline_ok": baseline_ok,
                 "hit_rate": round(hit_rate, 4) if hit_rate is not None else None,

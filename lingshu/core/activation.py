@@ -16,6 +16,13 @@
 
 核心公式:
   扩散: activation(v, hop+1) = max over u∈N(v): activation(u,hop) × decay(u→v)
+        ——max-plus 口径,**不跨跳累加**(scipy 稀疏与 edge-list 降级同口径);
+        故 act 有界(≤ max(种子, 上一步先验)),不随跳数/轮数发散(issue #280)。
+  抑制(负记忆同价,第五篇;issue #229):decay(u→v) < 0 的边(opposite)走抑制通路——
+        supp(v) = max over u∈N(v): act(u)·|decay(u→v)|;act(v) ← max(act(v) − supp(v), 0),
+        即相反记忆扣减目标激活(取最强抑制,不叠加),扣减后钳制到 0。
+        判据:边衰减符号承自本文件 :15 锚点「第五篇:…负记忆同价…」;幅值 base=-1.0 为
+        经验标定(满激活源 1.0 恰抵消目标满激活)——追不到理论常数。
   衰减: decay(u→v) = base(边类型) × cond_match(两端条件空间重合率)
   自条件(ELF §3.3 同构补充,2026-09-10):
         act₀ = max(SELF_CONDITION_WEIGHT × act_prev(上一步工作态), seeds(query))
@@ -45,6 +52,8 @@ DB = os.path.join(_DATA_ROOT, "aeis_memory.db")
 AUDIT_PATH = os.path.join(_DATA_ROOT, "activation_audit.jsonl")
 
 # 条件衰减基准(边类型,工程默认值——条件智能:不同关系的信息传递保真度不同)
+# 符号语义(v0.2,issue #229):正=兴奋传导(见核心公式「扩散」);负=抑制传导,
+#   绝对值=抑制强度,走独立抑制通路(见核心公式「抑制」)。未注册边类型默认兴奋(0.5)。
 EDGE_BASE_DECAY: Dict[str, float] = {
     "causal": 0.85,        # 因果:强传导
     "similar": 0.75,       # 相似:语义联想
@@ -52,6 +61,7 @@ EDGE_BASE_DECAY: Dict[str, float] = {
     "hierarchical": 0.70,  # 层级:上下位
     "sequential": 0.60,    # 时序:邻近
     "spatial": 0.50,       # 空间:位置关联(最弱)
+    "opposite": -1.0,      # 相反/矛盾(负记忆同价,第五篇):抑制传导,幅值=经验标定
 }
 DEFAULT_DECAY = 0.5     # 未注册边类型
 
@@ -95,9 +105,11 @@ class ActivationEngine:
         self.db_path = db_path
         self.audit_path = audit_path
         self._ensure_tables()
-        self._adj = None            # 本轮稀疏邻接(node_idx 矩阵)
+        self._adj = None            # 本轮稀疏邻接(node_idx 矩阵,仅兴奋边)
+        self._adj_inh = None        # 本轮抑制邻接(仅 opposite 边,存 |decay|)
         self._node_index = None     # node_id → idx
-        self._edge_meta = None      # (src_idx, dst_idx, edge_type) 列表
+        self._edge_meta = None      # (src_idx, dst_idx, decay) 兴奋边列表
+        self._inh_meta = None       # (src_idx, dst_idx, |decay|) 抑制边列表
 
     # ---------------- 表结构(独立激活表,与内容记忆分离) ----------------
     def _ensure_tables(self):
@@ -127,6 +139,7 @@ class ActivationEngine:
         idx = {nid: i for i, nid in enumerate(node_ids)}
         n = len(node_ids)
         rows, cols, decays = [], [], []
+        inh_rows, inh_cols, inh_mags = [], [], []
         for src, dst, rtype, cs_json in edges:
             si, di = idx.get(src), idx.get(dst)
             if si is None or di is None:
@@ -137,15 +150,25 @@ class ActivationEngine:
                 cs_e = {}
             d = EDGE_BASE_DECAY.get(rtype, DEFAULT_DECAY)
             # 边条件空间与图整体条件基准的重合(边级衰减修正)——保守用 1.0(边级 cond_match 在传播时按节点对算)
-            rows.append(si); cols.append(di); decays.append(d)
+            if d < 0:  # 负记忆同价(第五篇):相反边走独立抑制通路,不进兴奋邻接(issue #229)
+                inh_rows.append(si); inh_cols.append(di); inh_mags.append(-d)
+            else:
+                rows.append(si); cols.append(di); decays.append(d)
         if csr_matrix is not None and rows:
             adj = csr_matrix((np.array(decays, dtype=np.float32), (rows, cols)),
                              shape=(n, n))
         else:
             adj = None  # 降级:edge-list 传播
+        if csr_matrix is not None and inh_rows:
+            adj_inh = csr_matrix((np.array(inh_mags, dtype=np.float32), (inh_rows, inh_cols)),
+                                 shape=(n, n))
+        else:
+            adj_inh = None  # 降级:edge-list 抑制
         self._adj = adj
+        self._adj_inh = adj_inh
         self._node_index = idx
         self._edge_meta = (rows, cols, decays)
+        self._inh_meta = (inh_rows, inh_cols, inh_mags)
         self._node_ids = node_ids
         # 节点条件空间矩阵化(节点级 cond_match 用)
         cur_cs = {}
@@ -159,6 +182,25 @@ class ActivationEngine:
                 cur_cs[nid] = {}
         con.close()
         self._node_cond = cur_cs
+
+    @staticmethod
+    def _max_plus(adj, act: np.ndarray) -> np.ndarray:
+        """max-plus 稀疏传播:out[dst] = max over src (act[src]·w[src,dst])。
+
+        scipy 的 `@` 是 Σ 半环(多源/多跳累加),自条件回注下会跨轮指数发散
+        (issue #280);本函数改用 max 半环,与 edge-list 降级路径口径一致。
+        w 非负(抑制边存 |decay| 且走独立通路),故只需最大值,不需处理负权。
+        向量化:把 CSR 的每个非零元展平成 (src, dst, w),一次 `np.maximum.at`
+        按 dst 归约——重复 dst 取最大值,与逐行写法同口径但不随行数循环。
+        """
+        n = act.shape[0]
+        out = np.zeros(n, dtype=np.float32)
+        indptr, indices, data = adj.indptr, adj.indices, adj.data
+        if data.size == 0:
+            return out
+        src = np.repeat(np.arange(n, dtype=np.int64), np.diff(indptr))
+        np.maximum.at(out, indices, act[src] * data)
+        return out
 
     # ---------------- 种子生成(同步询问→投票) ----------------
     def _seed_by_text(self, query: str, top_k: int = 12) -> List[Tuple[str, float]]:
@@ -233,12 +275,14 @@ class ActivationEngine:
             path.append({"step": 0, "phase": "self_condition",
                          "prior_workset": prior_name,
                          "weight": self_condition, "carried": len(carried_ids)})
-        # 逐跳扩散(条件衰减)
+        # 逐跳扩散(条件衰减)——max-plus 口径(issue #280):
+        #   prop[dst] = max over src (act[src]·decay),不跨跳/跨源累加,
+        #   故 act 有界(≤ max(种子,上一步先验)),不随跳数/轮数指数发散。
         for hop in range(1, hops + 1):
             prop = np.zeros(n, dtype=np.float32)
             if self._adj is not None:
-                # activation × 邻接(带衰减)——稀疏矩阵乘即全图并行传播
-                prop = self._adj.T @ act    # (dst ← src):prop[dst]=Σ act[src]·decay
+                # 稀疏图上的 max-plus 传播(scipy matvec 是 Σ 半环,会累加→发散,故不用 @)
+                prop = self._max_plus(self._adj, act)
             else:  # edge-list 降级
                 rows, cols, decays = self._edge_meta
                 for si, di, d in zip(rows, cols, decays):
@@ -249,6 +293,18 @@ class ActivationEngine:
             for di in nz:
                 pass  # V0:节点对级 cond_match 在稀疏边级计算成本高,以边类型 base 为准(声明局限)
             act = np.maximum(act, prop)
+            # 抑制通路(负记忆同价,第五篇;issue #229):opposite 边扣减目标激活,
+            #   supp[dst] = max over src (act[src]·|decay|),act[dst] ← max(act[dst]−supp,0)。
+            supp = np.zeros(n, dtype=np.float32)
+            if self._adj_inh is not None:
+                supp = self._max_plus(self._adj_inh, act)
+            else:  # edge-list 降级
+                inh_rows, inh_cols, inh_mags = self._inh_meta
+                for si, di, m in zip(inh_rows, inh_cols, inh_mags):
+                    if act[si] > 0:
+                        supp[di] = max(supp[di], act[si] * m)
+            if supp.any():
+                act = np.maximum(act - supp, 0.0)
             newly = [self._node_ids[i] for i in np.nonzero(act >= act_floor)[0]]
             path.append({"step": hop, "phase": "propagate",
                          "activated_count": len(newly),

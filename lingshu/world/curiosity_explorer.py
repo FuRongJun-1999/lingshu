@@ -59,6 +59,10 @@ class CuriosityExplorer(WorldLearner):
                  window: int = 6, world=None):
         super().__init__(size=size, ground_level=ground_level, seed=seed,
                          window=window, world=world)
+        # 保留构造配置（#345）：compare_policies 需按本实例的 size/seed 重建
+        # 同配置的对比世界，否则非缺省实例的比较结果与该实例无关。
+        self.seed = seed
+        self.ground_level = ground_level
         self.last_observed: Dict[str, int] = {}
         self.obs_counts: Dict[str, int] = {}
         self._anomaly_counts: Dict[str, int] = {}
@@ -155,9 +159,16 @@ class CuriosityExplorer(WorldLearner):
         return round(ig, 4)
 
     def _select(self, budget: int, policy: str) -> Tuple[List[str], Dict]:
-        """选择本轮观测的实体（好奇/随机/轮询）。"""
+        """选择本轮观测的实体（好奇/随机/轮询）。
+
+        空世界（无实体，issue #55）：无候选可观测，直接返回空选择——
+        旧码 `b = max(1, min(budget, 0)) = 1` 后 random 的 sample 与
+        round_robin 的 `% n`（n=0）分别崩 ValueError / ZeroDivisionError。
+        """
         eids = list(self.world.entities.keys())
         n = len(eids)
+        if n == 0:
+            return [], {}
         b = max(1, min(int(budget), n))
         if policy == "curiosity":
             scores = {e: self._info_gain(e) for e in eids}
@@ -239,13 +250,19 @@ class CuriosityExplorer(WorldLearner):
                 "learned_rate": round(learned_hits / total, 4) if total else 1.0,
                 "naive_rate": round(naive_hits / total, 4) if total else 1.0}
 
-    @staticmethod
-    def _build_world() -> "CuriosityExplorer":
+    def _build_world(self) -> "CuriosityExplorer":
         """标准测试世界：追逐链 player(wander)←wolf(seek)←rabbit(flee)。
 
         依赖链：player 是信息瓶颈（wolf 追它、rabbit 逃 wolf 间接依赖它）。
+
+        配置**透传本实例**（缺陷单 #345）：size/ground_level/seed/window 取
+        self 的构造值，使 compare_policies 在非缺省实例上比较的仍是「同世界
+        配置」。旧码硬编码 `CuriosityExplorer(size=24)`（seed=42），实例的
+        size/seed/window 被静默丢弃——引擎按 `size=48, seed=7` 建的探索器，
+        compare 却在 24/42 世界上跑，比较结果与该实例无关。
         """
-        ex = CuriosityExplorer(size=24)
+        ex = CuriosityExplorer(size=self.size, ground_level=self.ground_level,
+                               seed=self.seed, window=self.window)
         ex.world.create_scene(trees=2, water=False)
         p = ex.world.add_entity("player", behavior="wander", pos=(2, 1.5, 2), speed=0.5)
         w = ex.world.add_entity("wolf", behavior="seek", pos=(15, 1.5, 15), speed=0.6, goal=p)

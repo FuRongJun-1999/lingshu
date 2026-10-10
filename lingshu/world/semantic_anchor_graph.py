@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import time
 import uuid
@@ -74,8 +75,19 @@ class SemanticAnchor:
     confidence: float = 0.5
     provenance: str = "world3d"      # 观测来源（视角/时刻/工具）
     ts: float = field(default_factory=time.time)
-    id: str = field(default_factory=lambda: "anchor_" + uuid.uuid4().hex[:10])
+    id: str = field(default_factory=str)
     attrs: Dict = field(default_factory=dict)   # 开放属性
+
+    def __post_init__(self):
+        # 身份 = 内容（类别+空间坐标+观测来源）的确定性摘要，而非随机 uuid。
+        # 判据来源：本模块 docstring「事物是其关系的总和」——身份须由关系/内容
+        #   决定，故同一物体跨 build_anchor_graph 重建得同一 id；随机 id 会让
+        #   锚点验证记录（按 anchor_id 存）在重建后失联（#262）。
+        if not self.id:
+            raw = "%s|%.4f,%.4f,%.4f|%s" % (
+                self.category, self.center[0], self.center[1], self.center[2],
+                self.provenance)
+            self.id = "anchor_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -210,30 +222,44 @@ class SemanticAnchorGraph:
     # ---- 关系推理（确定性 · 零 LLM）----
 
     def infer_relations(self, distance_threshold: float = 1.5) -> int:
-        """空间邻近推理：近距物体 → 相邻边；上下叠放 → 支撑边。
+        """空间邻近推理：近距物体 → 相邻边；垂直叠放 → 支撑边。
 
         借鉴 3D 场景图（3D Scene Graph）的物体-关系-物体三元组。
-        返回新增边数。"""
+        返回新增边数。
+
+        支撑判据：下方物体**顶面** ≈ 上方物体**底面**（垂直叠放接触），且水平
+        邻近——对应 RELATION_TYPES["支撑"] 定义「A 支撑 B（桌子支撑杯子）」，
+        source=下方物体、target=上方物体。接触容差 contact_tol=0.1m 为经验
+        标定（模块引入提交 ac6c0ca，追不到理论章节出处）。
+        注：旧判据 `v_gap < 0.2`（中心高度差）与定义相反——等高并排物被判
+        「支撑」、真正叠放的桌子/杯子反被判「相邻」；改为按表面接触判定后，
+        判别力收紧为「仅在垂直叠放时判支撑」，等高并排一律走「相邻」。
+        """
         added = 0
         ids = list(self.anchors.keys())
+        # 已有边索引：一次扫描 O(E) 建集合，替代逐对全表扫描 O(N²·E)
+        existing = set()
+        for e in self.edges:
+            existing.add((e.source, e.target))
+            existing.add((e.target, e.source))
+        contact_tol = 0.1
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
                 a, b = self.anchors[ids[i]], self.anchors[ids[j]]
-                dist = math.dist(a.center, b.center)
-                # 是否已有边
-                has_edge = any((e.source == a.id and e.target == b.id) or
-                               (e.source == b.id and e.target == a.id)
-                               for e in self.edges)
-                if has_edge:
+                # 是否已有边（O(1) 集合查询）
+                if (a.id, b.id) in existing:
                     continue
+                dist = math.dist(a.center, b.center)
                 # 水平距离（忽略高度差）
                 h_dist = math.hypot(a.center[0] - b.center[0], a.center[2] - b.center[2])
-                v_gap = abs(a.center[1] - b.center[1])
-                if h_dist < distance_threshold and v_gap < 0.2:
-                    # 几乎同一位置不同高度 → 支撑（下撑上）
-                    lower, upper = (a, b) if a.center[1] < b.center[1] else (b, a)
+                # 支撑判据：下方物体顶面 ≈ 上方物体底面（垂直叠放接触）
+                lower, upper = (a, b) if a.center[1] <= b.center[1] else (b, a)
+                lower_top = lower.center[1] + lower.size[1] / 2
+                upper_bottom = upper.center[1] - upper.size[1] / 2
+                surface_gap = upper_bottom - lower_top
+                if h_dist < distance_threshold and abs(surface_gap) < contact_tol:
                     self.relate(lower.id, upper.id, "支撑", 0.7,
-                                attrs={"v_gap": round(v_gap, 2)})
+                                attrs={"surface_gap": round(surface_gap, 2)})
                     added += 1
                 elif dist < distance_threshold:
                     self.relate(a.id, b.id, "相邻", 0.5,
@@ -271,7 +297,13 @@ class SemanticAnchorGraph:
         """多感知机验证：记录某通道证据 → 确认度判定。
 
         核心（荣）：一个事物不能只有视觉一层信息——触觉/听觉/行动等
-        多通道协同才能确认锚点（打破视觉自证陷阱）。"""
+        多通道协同才能确认锚点（打破视觉自证陷阱）。
+
+        #262：先校验 anchor_id 在场——图里没有的锚点不得凭空建验证记录
+        （否则记录与锚点身份脱钩：phantom 锚点也能攒出 ACCEPT）。"""
+        if anchor_id not in self.anchors:
+            return {"anchor_id": anchor_id, "confirmation": "unknown",
+                    "error": "锚点不存在"}
         try:
             from .anchor_verify import AnchorVerification
         except ImportError:
@@ -283,7 +315,12 @@ class SemanticAnchorGraph:
 
     def verify_conflict(self, anchor_id: str, channel: str,
                         expected: str, actual: str) -> Dict:
-        """多通道矛盾检测：通道观测与锚点声明不符 → 冲突记录 + 降级。"""
+        """多通道矛盾检测：通道观测与锚点声明不符 → 冲突记录 + 降级。
+
+        #262：同 verify——不存在的锚点不得建记录。"""
+        if anchor_id not in self.anchors:
+            return {"anchor_id": anchor_id, "confirmation": "unknown",
+                    "error": "锚点不存在", "conflict_detected": False}
         try:
             from .anchor_verify import AnchorVerification
         except ImportError:

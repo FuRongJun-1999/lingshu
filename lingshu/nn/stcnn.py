@@ -73,10 +73,29 @@ SPATIAL_KERNEL[0] = 1.0 / 9.0
 
 # ============ 三、时空原语提取（运动/方向/速度/周期） ============
 def frame_diff(frames, threshold=0.08):
-    """帧间差分 → 运动区域掩码序列（|f(t+1)-f(t)| > 阈值）"""
+    """帧间差分 → 运动区域掩码序列（|f(t+1)-f(t)| > 阈值）。
+
+    注意（#76）：这是**绝对值**差分，「暗→亮」与「亮→暗」各出一个沿——单个亮灭
+    周期因此产生**双沿**。掩码用于运动区域/质心是正确口径，但**不能**把它当作周期
+    信号喂给 detect_period（双沿 ⇒ 读出的周期是真实周期的一半）；周期信号须用
+    `frame_rise`（每个亮灭周期只保留亮起前沿）。
+    """
     arr = np.asarray(frames, dtype=np.float32)
     diffs = np.abs(np.diff(arr, axis=0))
     return (diffs > threshold).astype(np.float32)
+
+
+def frame_rise(frames, threshold=0.08):
+    """帧间**正向**亮度变化 → 亮起前沿信号（每个亮灭周期恰一个沿）。
+
+    #76：`frame_diff` 取 |Δ|，对「暗→亮」与「亮→暗」各出一个沿 ⇒ 单个亮灭周期双沿，
+    把它交给 detect_period 读出的周期是真实周期的**一半**。周期检测只应看一个方向
+    的沿，这里只保留正向变化（亮起前沿）；`detect_period` 的前沿检测正是按此设计的。
+    """
+    arr = np.asarray(frames, dtype=np.float32)
+    rise = np.clip(np.diff(arr, axis=0), 0.0, None)
+    rise[rise <= threshold] = 0.0
+    return rise
 
 
 def motion_direction(centroids):
@@ -139,8 +158,10 @@ def extract_spatiotemporal_primitives(frames):
             centroids.append((float(xs.mean()), float(ys.mean())))
         elif centroids:
             centroids.append(centroids[-1])
-    # ③ 运动信号（每帧运动量）→ 周期检测
-    motion_signal = [float(region.sum()) for region in diffs]
+    # ③ 运动信号（每帧**亮起前沿**）→ 周期检测
+    #    #76：此处原用 frame_diff 的 |Δ| 掩码，单个亮灭周期有亮/灭两个沿 ⇒ 周期减半。
+    #    周期信号改用 frame_rise（只保留暗→亮的前沿），每个周期恰一个沿。
+    motion_signal = [float(region.sum()) for region in frame_rise(frames)]
     period = detect_period(motion_signal)
     # ④ 原语汇总
     prims = {

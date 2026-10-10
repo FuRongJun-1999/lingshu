@@ -15,6 +15,8 @@
    · 裸 `keep` 计入保持率词表（`x = x * keep` 必须命中）
    · 同一物理行 `;` 分隔的语句分别判定（`a = a*(1-pc); b = z*pc` 必须命中，行号仍精确）
    · R3 数值形状只认 `0 < literal < 1`（`x = 2.0*x` 不再误报，`v = 0.9*v + 0.1*g` 仍报）
+   · R3(a) 左值含下标 / 属性链 / 注解写法（`x[i]`、`obj.attr`、`x: T =`）仍命中；
+     左值右值非同一路径（`x[i] = y[i] * retain`）不误报（缺陷件 #407 回归）
    · 判定回归带**形态锚**（`EXPECTED_MARKERS`）：按源码片段在文件内定位豁免点，
      上方无关增删行不再误报；片段若被删除/改写（豁免点消失）仍当场报错而非恒真
    · 同一语句 R2+R3 ⇒ 输出 2 行、baseline 需 2 行
@@ -147,6 +149,39 @@ def test_r3_ema_detected(lint_dir, body, expect_rule):
     assert res.returncode == 1
     assert data["new_violations"], "R3 未被检出：%r" % body
     assert {h["rule"] for h in data["new_violations"]} == {expect_rule}
+
+
+# ------------------------------------------- R3(a) 目标形态：下标 / 属性链 / 注解
+# 判据来源：tools/time_core_lint.py 头部规则表 R3(a)「自指乘性更新 `x = … x * …`」+
+# L6（原已声称支持 `x[i] = …` 下标目标）—— 自指乘性更新与左值是否为裸名无关；
+# `obj.attr` 属性链与 `x: T = …` 注解写法由缺陷件 #407 经验标定补入。
+@pytest.mark.parametrize("body", [
+    # 下标目标
+    "def f(x, i, retain):\n    x[i] = x[i] * retain\n    return x\n",
+    # 属性链目标
+    "def f(obj, retain):\n    obj.attr = obj.attr * retain\n    return obj\n",
+    # 注解写法
+    "def f(x, retain):\n    x: float = x * retain\n    return x\n",
+    # 数值保持率形状（_KEEP_SHAPE 数值分支）配上述三种目标
+    "def f(x, i):\n    x[i] = x[i] * 0.9\n    return x\n",
+    "def f(obj):\n    obj.attr = obj.attr * 0.9\n    return obj\n",
+    "def f(x):\n    x: float = x * 0.9\n    return x\n",
+    # self.x 再带下标
+    "def f(self, i, retain):\n    self.x[i] = self.x[i] * retain\n    return self.x\n",
+])
+def test_r3_self_update_targets_beyond_bare_name(lint_dir, body):
+    """★ 回归：R3(a) 的左值含下标/属性链/注解时仍须命中（曾只认裸名与 self.x）。"""
+    data = payload(lint_dir(body))
+    assert data["new_violations"], "R3(a) 目标形态未被检出：%r" % body
+    assert {(h["line"], h["rule"]) for h in data["new_violations"]} == {(2, "R3")}, \
+        data["new_violations"]
+
+
+def test_r3_non_self_subscript_target_not_reported(lint_dir):
+    """反例：左值与右值不是同一路径（`x[i] = y[i] * 0.9`）⇒ 非自指，R3(a) 不报。"""
+    body = "def f(x, y, i):\n    x[i] = y[i] * 0.9\n    return x\n"
+    data = payload(lint_dir(body))
+    assert data["new_violations"] == [], data["new_violations"]
 
 
 # ------------------------------------------------------------- 3. 四类豁免形态

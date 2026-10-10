@@ -32,6 +32,10 @@ BUILD_VIEWER = COG / "build_viewer.py"
 WIN_ROOT = "D:\\Users\\alice\\proj"          # 报告人夹具形态（单反斜杠，本机绝对）
 WIN_HOME_LITERAL = os.path.expanduser("~")  # 跑件本机的家目录（产物里绝不该出现）
 
+# 离线占位 cytoscape.min.js 的 sha256（内容固定为 "// offline stub\n" + "x"*100001）——
+# #251 后 build_viewer 复用/下载都要过 SHA256 校验，本件用 LINGSHU_CYTO_SHA256 声明它。
+_OFFLINE_STUB_SHA256 = "07cc72e9336ee3ac63e7f212cfe87b6e741ed662ec1f1414935c9cbfc486f548"
+
 # 机器绝对路径判据
 #   · 盘符路径：C:\… / C:/…（任意位置）
 #   · POSIX 绝对路径：只认系统根目录白名单（避免把 JS 注释 `// …`、`过滤/逻辑` 这类文本误判）
@@ -110,7 +114,10 @@ class CoggraphPublicPathTests(unittest.TestCase):
         self.out = self.base / "out"
         self.out.mkdir()
         self.env = dict(os.environ, PYTHONUTF8="1", PYTHONHASHSEED="0",
-                        PYTHONPATH=str(HERE))
+                        PYTHONPATH=str(HERE),
+                        # #251 后 build_viewer 复用/下载 cytoscape 都要过 SHA256 校验；
+                        # 本件预置的是**离线占位桩**（非官方产物），故显式声明其指纹。
+                        LINGSHU_CYTO_SHA256=_OFFLINE_STUB_SHA256)
 
     # ---- 夹具与跑件 --------------------------------------------------------
     def build_source(self, docs):
@@ -327,7 +334,8 @@ class CoggraphPublicPathTests(unittest.TestCase):
         ])
         self.export()
         doc = self.derive(self.out / "graph.json")
-        # 预置占位 cytoscape.min.js（>100000 字节）⇒ fetch_cytoscape 直接返回「已有」，全程离线
+        # 预置占位 cytoscape.min.js（>100000 字节 + 指纹经 LINGSHU_CYTO_SHA256 声明）
+        # ⇒ fetch_cytoscape 校验通过后直接返回「已有」，全程离线
         write_text(str(self.out / "cytoscape.min.js"), "// offline stub\n" + "x" * 100001)
         self.run_script(BUILD_VIEWER, "--graph", self.out / "graph.json",
                         "--derived", self.base / "d1" / "derived_edges.json",

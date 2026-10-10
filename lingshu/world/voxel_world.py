@@ -69,10 +69,28 @@ class VoxelWorld:
       - trail(entity_id)：实体时空轨迹（A→B 完整记录）
       - occupancy_at(t)：某时刻的 4D 时空占用（体素快照）
       - simulate(steps)：推进 N 步（实体按速度移动）
+
+    资源上界（lingshu #325 / #368）：
+      build_flatland 按 size² 建 dict、simulate 每步给每实体追加一个轨迹点，
+      三处都无上界 ⇒ 传入大 size / 大 steps / 长时推进可把内存吃穿。现加三条
+      上界（判据来源：**经验标定，追不到理论出处**——本仓理论稿未给体素世界
+      规模口径；取同仓 HISTORY_MAX 一类「常量 + 钳制」的既有手法）：
+
+        MAX_SIZE  —— 区块边长上限，超出即钳到上界（size² 方块数随之有界）。
+        MAX_STEPS —— 单次 simulate 步数上限，超出即钳到上界（防单次调用耗尽 CPU）。
+        MAX_TRAIL —— 每实体时空轨迹保留点数上限，超出丢弃最旧（防长期推进无界增长）。
+
+      削掉的判别力：MAX_TRAIL 生效后，轨迹只保留最近 MAX_TRAIL 个点，
+      `trail()` 不再是「A→B 完整记录」、`occupancy_at(t)` 的按下标取值只对
+      保留窗口内有效（更早的历史被丢弃，无法回取）。未超上界时行为与旧版逐字相同。
     """
 
+    MAX_SIZE = 128      # 区块边长上限：size²×2 层方块，128²×2≈3.3e4，可控
+    MAX_STEPS = 10000   # 单次 simulate 步数上限
+    MAX_TRAIL = 4096    # 每实体时空轨迹保留点数上限（超出丢弃最旧）
+
     def __init__(self, size: int = 16, ground_level: int = 1, seed: int = 0):
-        self.size = size                  # 区块边长
+        self.size = min(int(size), self.MAX_SIZE)  # 区块边长（钳到 MAX_SIZE）
         self.ground_level = ground_level  # 地面高度
         self.blocks: Dict[Tuple[int, int, int], int] = {}  # (x,y,z) -> block
         self.entities: Dict[str, VoxelEntity] = {}
@@ -92,16 +110,20 @@ class VoxelWorld:
                 self.blocks[(x, self.ground_level - 1, z)] = BLOCK_DIRT
                 count += 2
         # 树（确定性随机——同 seed 同布局）
-        for _ in range(trees):
-            tx = self._rng.randint(2, self.size - 3)
-            tz = self._rng.randint(2, self.size - 3)
-            for h in range(1, 4):
-                self.blocks[(tx, self.ground_level + h, tz)] = BLOCK_WOOD
-                count += 1
-            for dx in range(-1, 2):
-                for dz in range(-1, 2):
-                    self.blocks[(tx + dx, self.ground_level + 4, tz + dz)] = BLOCK_LEAF
+        # 退化输入（issue #55）：size < 5 时 [2, size-3] 为空区间，randint 抛
+        # ValueError（empty range）。树体素需 tx∈[2,size-3] 才不越界 ⇒ 太小
+        # 的世界不放树（地面照常生成）。
+        if self.size >= 5:
+            for _ in range(trees):
+                tx = self._rng.randint(2, self.size - 3)
+                tz = self._rng.randint(2, self.size - 3)
+                for h in range(1, 4):
+                    self.blocks[(tx, self.ground_level + h, tz)] = BLOCK_WOOD
                     count += 1
+                for dx in range(-1, 2):
+                    for dz in range(-1, 2):
+                        self.blocks[(tx + dx, self.ground_level + 4, tz + dz)] = BLOCK_LEAF
+                        count += 1
         # 水
         if water and self.size >= 8:
             for dx in range(2):
@@ -135,11 +157,16 @@ class VoxelWorld:
             return None
         e.pos = tuple(float(v) for v in new_pos)
         if record:
-            self._trails[entity_id].append(self._trail_point(e))
+            self._record_trail(entity_id, self._trail_point(e))
         return e
 
     def simulate(self, steps: int = 1) -> int:
-        """推进 N 步：实体按速度移动（时空演化）。返回被推进的实体数。"""
+        """推进 N 步：实体按速度移动（时空演化）。返回被推进的实体数。
+
+        steps 钳到 [0, MAX_STEPS]（lingshu #368：门面 steps 无上限，单次调用
+        可耗尽 CPU/内存）。
+        """
+        steps = max(0, min(int(steps), self.MAX_STEPS))
         moved_entities = set()
         for _ in range(steps):
             self._step += 1
@@ -151,9 +178,16 @@ class VoxelWorld:
                 nx = max(0.5, min(self.size - 0.5, nx))
                 nz = max(0.5, min(self.size - 0.5, nz))
                 e.pos = (nx, ny, nz)
-                self._trails[eid].append(self._trail_point(e))
+                self._record_trail(eid, self._trail_point(e))
                 moved_entities.add(eid)
         return len(moved_entities)
+
+    def _record_trail(self, entity_id: str, point: Dict) -> None:
+        """追加一个时空轨迹点，并钳到 MAX_TRAIL（超出丢弃最旧，lingshu #368）。"""
+        trail = self._trails.setdefault(entity_id, [])
+        trail.append(point)
+        if len(trail) > self.MAX_TRAIL:
+            del trail[:len(trail) - self.MAX_TRAIL]
 
     def _trail_point(self, e: VoxelEntity) -> Dict:
         return {"t": self._step, "pos": tuple(round(v, 2) for v in e.pos),
