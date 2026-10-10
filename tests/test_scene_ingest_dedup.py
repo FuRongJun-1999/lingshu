@@ -109,13 +109,33 @@ def main() -> int:
 
     print("[G6] 范围控制：不传 skip_dedup 时 M5 去重仍生效")
     e3 = SpacetimeMemoryEngine(":memory:")
+    # 夹具对必须避开 #29②/#142 的「实质分歧」判据（否定标记有无 / 阿拉伯数字
+    # 字面量不同 ⇒ 另立节点）。原夹具用的是坐标 (0.0,…) vs (0.1,…) —— 恰是
+    # **数值更正**，在 #29 落地后被**刻意判为分歧并另立节点**；继续拿它测
+    # 「去重仍生效」就变成在测「#29 不生效」，与本组判据（只放开场景导入这一
+    # 条路、未全局关去重）无关。故改用「措辞不同但数字与否定标记全同」的一对
+    # （实测 Jaccard 0.9143 ≥ 阈值 0.85、_assertion_divergence 为空 ⇒ 仍判重复）。
     a = e3.add_perception("场景实体 肥鱼（fatfish）位于 (0.0,0.85,5.0)，状态 shy",
                           importance=0.6)
-    b = e3.add_perception("场景实体 肥鱼（fatfish）位于 (0.1,0.85,5.0)，状态 shy",
+    b = e3.add_perception("场景实体 肥鱼（fatfish）位于 (0.0,0.85,5.0)，状态为 shy",
                           importance=0.6)
     ok(a.id == b.id and len(_nodes(e3)) == 1,
        "G6 缺省去重路径仍短路（未全局关去重）",
        (a.id, b.id, [n.id for n in _nodes(e3)]))
+
+    print("[G7] skip_dedup=True 自身必须被独立锁住（不得被 #29 分歧判据代偿）")
+    # 覆盖重叠的现场：G1–G5 用「坐标变了」的观测对——#29② 落地后，**数值更正
+    # 本身就会被判为实质分歧并另立节点**，于是 G1–G5 即使把 scene_model 的
+    # `skip_dedup=True` 抽掉也照样全绿（实测：skip_dedup=False 单变量 ⇒ 8/8 通过）。
+    # ⇒ 那几组对 `skip_dedup=True` 已**不再有判别力**（两套机制任一生效即通过）。
+    # 本组用**逐字相同**的场景行导入两次：内容全同 ⇒ 无分歧可判 ⇒ 只有
+    # `skip_dedup=True` 能让两行各成节点；抽掉它必红（实测单变量即 1 failed）。
+    e4 = SpacetimeMemoryEngine(":memory:")
+    same_line = "肥鱼|fatfish|0,0.85,5|shy"
+    ids4 = ingest_scene(_Agent(e4), same_line + "\n" + same_line)
+    ok(len(set(ids4)) == 2 and len(_nodes(e4)) == 2,
+       "G7 逐字相同的两行场景导入仍各成节点（skip_dedup=True 生效，未被分歧判据代偿）",
+       (ids4, [n.id for n in _nodes(e4)]))
 
     print()
     print("-- %d passed, %d failed --" % (len(_PASS), len(_FAIL)))

@@ -231,7 +231,7 @@
     {
      "file": "wm_simloop.py",
      "src": "aeis.wm_simloop",
-     "sha256": "0be6bf5158dbd269",
+     "sha256": "ef63a55502e7405e",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -242,7 +242,7 @@
     {
      "file": "world3d.py",
      "src": "aeis.world3d",
-     "sha256": "86aa26ec76a784bf",
+     "sha256": "e00e8755f48fdc06",
      "rewrites": 16,
      "sanitized": 0,
      "patches": 0,
@@ -302,7 +302,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "50b4c4f9fe8ae8f3",
+     "sha256": "9910608b33638d01",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,

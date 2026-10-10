@@ -36,6 +36,7 @@ import json
 import math
 import os
 import time
+import uuid
 from typing import Dict, List, Optional, Tuple
 
 try:
@@ -561,6 +562,14 @@ class SimulationLoop:
 
         对齐 data/mdcg/contextual/arc_agi_ls20_*.md 先例格式；
         v1 不旁路写真源——真实摄取走 mdcg 正规通道（cg write/ingest）。
+
+        issue #324：`out_path` 落盘改**原子写**（同目录临时文件 + `os.replace`）——
+        旧实现 `open(out_path, "w")` 先截断再写，中途失败即留下截断坏档。
+        路径**白名单**不在此层：本方法是调用方已持有对象时的库 API；模型驱动面
+        经 `SpacetimeMemoryEngine.wm_simloop("flush")` 进入，越界闸在门面侧
+        （`_confine_simloop_out_path`）。边界（如实标注）：`os.replace` 保证
+        「目标文件要么是旧内容、要么是完整新内容」，**不**保证掉电后元数据已落盘
+        （未做目录 fsync；Windows 上亦无法对目录取句柄）。
         """
         self._flush_count += 1
         g = self.wm.graph()
@@ -605,9 +614,26 @@ class SimulationLoop:
         payload = {"id": fm["id"], "frontmatter": fm, "body_md": md}
         written = None
         if out_path:
+            # issue #324（数据丢失面）：旧实现 `open(out_path, "w")` **先截断再写**
+            # ⇒ 写中途失败即把目标文件毁成空/半截（先毁后写），且无原子性。
+            # 修法：同目录临时文件写完再 `os.replace` 换入（原子、覆盖式语义保留）。
+            # 越界/白名单闸在门面侧（`SpacetimeMemoryEngine._confine_simloop_out_path`）——
+            # 本方法是被 Python 直接持有的库 API，不做路径白名单（调用方已持对象）。
+            # 判据来源：经验标定（本件 #324）——口径取「临时文件 + os.replace」；
+            # 追不到更早出处。
             os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(md)
+            tmp_path = "%s.tmp-%s" % (out_path, uuid.uuid4().hex[:8])
+            try:
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    f.write(md)
+                os.replace(tmp_path, out_path)
+            except BaseException:
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
             written = out_path
         return {"status": "ok", "payload": payload, "written": written,
                 "note": "载荷已生成；真实摄取走 mdcg 正规通道（不旁路写真源）"}

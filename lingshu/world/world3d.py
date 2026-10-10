@@ -21,6 +21,12 @@ import time
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
+#: 渲染位图单边像素上限（issue #416）。`Image.new("RGB", (w, h))` 直接按
+#: w*h*3 字节分配，任意大尺寸即内存耗尽（`world3d` 门面把用户参数原样透传）。
+#: 4096 已远超本模块参考视角（默认 800×600）两个量级，够用且单张 ≈50MB。
+#: 判据来源：经验标定（本件 #416）——仓内无规定渲染尺寸上限的理论章节，追不到。
+MAX_SCREEN_DIM = 4096
+
 # ---------------------------------------------------------------------------
 # 类别视觉词典：语义 → 真实尺寸/颜色/形状（伪 3D 的先验）
 # ---------------------------------------------------------------------------
@@ -358,9 +364,20 @@ class World3D:
     def render(self, screen_w: int = 800, screen_h: int = 600,
                camera: Camera3D = None, background: Tuple[int, int, int] = (20, 24, 40),
                ground_color: Tuple[int, int, int] = (30, 34, 50)) -> "PIL.Image":
-        """画家算法渲染：远→近绘制 3D 物体投影。返回 PIL Image。"""
+        """画家算法渲染：远→近绘制 3D 物体投影。返回 PIL Image。
+
+        #416：位图分配前先判单边上限 `MAX_SCREEN_DIM`——`Image.new` 按
+        w*h*3 字节直接分配，任意大尺寸即内存耗尽（旧实现不设上限、静默分配）。
+        超限 fail-closed 抛 `ValueError`（**不**静默钳到上限——静默钳会让调用方
+        以为拿到了请求的尺寸）。判据来源：经验标定（本件 #416），追不到更早出处。
+        """
         from PIL import Image, ImageDraw
 
+        if screen_w > MAX_SCREEN_DIM or screen_h > MAX_SCREEN_DIM:
+            raise ValueError(
+                "#416 渲染尺寸超上限：screen_w=%r screen_h=%r > MAX_SCREEN_DIM=%d"
+                "（位图按 w*h*3 字节分配，拒绝以防内存耗尽）"
+                % (screen_w, screen_h, MAX_SCREEN_DIM))
         cam = camera or self.camera
         img = Image.new("RGB", (screen_w, screen_h), background)
         draw = ImageDraw.Draw(img)
