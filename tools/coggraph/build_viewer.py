@@ -323,7 +323,11 @@ def main(argv=None):
     layer_count = collections.Counter(n["layer"] for n in vnodes)
     doc = (HTML.replace("%%LAYER_COLOR%%", json.dumps(LAYER_COLOR))
                .replace("%%RULE_COLOR%%", json.dumps(RULE_COLOR)))
-    vgraph = {"meta": g["meta"], "nodes": vnodes, "edges": vedges,
+    # meta.derived：前端 stat 行读 G.meta.counts.edges + G.meta.derived（#413）——
+    # 旧版 derived 只在顶层，G.meta.derived 是 undefined ⇒ 边数显示 NaN。
+    meta = dict(g["meta"])
+    meta["derived"] = d_edge_count
+    vgraph = {"meta": meta, "nodes": vnodes, "edges": vedges,
               "layer_count": dict(layer_count), "edge_type_count": dict(et_count),
               "derived": d_edge_count, "merged_aliases": merged_alias_count}
 

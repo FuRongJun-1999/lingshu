@@ -66,6 +66,7 @@ env:
     tests/test_expression_render_guard.py
     tests/test_hex_grid_extent.py
     tests/test_hex_text_contracts.py
+    tests/test_coggraph_viewer_stat.py
 
 jobs:
   gate:
