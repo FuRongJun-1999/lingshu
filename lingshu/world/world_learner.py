@@ -85,6 +85,9 @@ class WorldLearner:
         self.pad = 0.2
         self.hit_threshold = 0.5
         self.entropy_threshold = 0.7
+        # 稀疏观测（issue #418）：相邻真实观测间隔 ≤ sparse_max_gap tick 才计入速度；
+        # 更长间隔视为不可信外推（方向仍可用）。默认 3——覆盖有限带宽轮询的常见间隔。
+        self.sparse_max_gap = 3
 
     # ================= 观测面（缸中之脑：只暴露位置/类别） =================
 
@@ -101,7 +104,10 @@ class WorldLearner:
             else:
                 self.nodes[eid].pos = o["pos"]
             self.nodes[eid].last_seen = self.tick
-        self.history.append({"tick": self.tick, "entities": obs})
+        # wtick：物理世界时钟（观察带宽受限时与观测序号 self.tick 解耦，issue #418）
+        self.history.append({"tick": self.tick,
+                             "wtick": getattr(self.world, "tick_count", self.tick),
+                             "entities": obs})
         return {"status": "ok", "tick": self.tick, "observed": len(obs)}
 
     def run(self, n: int = 1) -> Dict:
@@ -115,27 +121,44 @@ class WorldLearner:
 
     def _motion_stats(self, eid: str, window: Optional[int] = None
                       ) -> Tuple[float, float]:
-        """方向持续性 |mean unit|（0=随机,1=直线） + 速度估计（mean |move|）。"""
+        """方向持续性 |mean unit|（0=随机,1=直线） + 速度估计（带时间差的实速）。
+
+        缺帧（实体未出现在某帧）不再清空 prev：稀疏但真实的历史观测
+        「观测→缺帧→观测」用**距离 / tick 差**求速度（issue #418）——
+        有限带宽轮询（round_robin）下连续帧样本永远凑不齐，旧实现会把
+        已有真实观测全部丢弃、速度恒为默认 0.3。
+        长间隔（> sparse_max_gap tick）的位移不计入速度（间隔过长时间外推
+        不可信），但仍参与方向持续性（长基线方向仍有效）。
+        """
         w = window or self.window
-        moves = []
-        prev = None
+        moves = []            # (dx, dz, dt)
+        prev = None           # (pos, tick)
+        sparse_skipped = 0
         for rec in self.history[-w:]:
             cur = rec["entities"].get(eid)
             if cur is None:
-                prev = None
                 continue
             if prev is not None:
-                moves.append((cur["pos"][0] - prev[0],
-                              cur["pos"][2] - prev[2]))
-            prev = cur["pos"]
+                (ppos, ptick) = prev
+                dt = rec.get("wtick", rec["tick"]) - ptick
+                dx, dz = cur["pos"][0] - ppos[0], cur["pos"][2] - ppos[2]
+                if dt > self.sparse_max_gap:
+                    sparse_skipped += 1
+                else:
+                    moves.append((dx, dz, max(dt, 1)))
+            prev = (cur["pos"], rec.get("wtick", rec["tick"]))
         if not moves:
             return 0.0, 0.3
-        speed = sum(math.hypot(m[0], m[1]) for m in moves) / len(moves)
+        if sparse_skipped and len(moves) < 2:
+            # 仅剩的长基线样本不可靠且不足以平均——沿用默认，避免误判
+            return 0.0, 0.3
+        # 带时间差的实速：mean(|move| / dt)（匀速运动下 = 真实速度）
+        speed = sum(math.hypot(m[0], m[1]) / m[2] for m in moves) / len(moves)
         units = [m for m in moves if math.hypot(m[0], m[1]) > 1e-6]
         if not units:
             return 0.0, round(speed, 3)
-        mx = sum(m[0] / math.hypot(m[0], m[1]) for m in units) / len(units)
-        mz = sum(m[1] / math.hypot(m[0], m[1]) for m in units) / len(units)
+        mx = sum((m[0] / m[2]) / math.hypot(m[0] / m[2], m[1] / m[2]) for m in units) / len(units)
+        mz = sum((m[1] / m[2]) / math.hypot(m[0] / m[2], m[1] / m[2]) for m in units) / len(units)
         return round(math.hypot(mx, mz), 3), round(speed, 3)
 
     def _pair_tendency(self, a: str, b: str, window: Optional[int] = None
@@ -169,8 +192,7 @@ class WorldLearner:
         for rec in self.history:
             cur = rec["entities"].get(eid)
             if cur is None:
-                prev = None
-                continue
+                continue          # 缺帧跳过但保留 prev（issue #418）
             if prev is not None:
                 dx, dz = cur["pos"][0] - prev[0], cur["pos"][2] - prev[2]
                 dl = math.hypot(dx, dz)
