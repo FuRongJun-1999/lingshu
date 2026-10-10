@@ -2115,6 +2115,9 @@ class SpacetimeMemoryEngine:
         self._dedup_history: List[float] = []
         self._context_max = 200            # M4 情境层 FIFO 上限（参照 AEIS）
         self._embedding_provider = None    # M1 语义检索提供者（duck-typed 注入，D-005）
+        self._evidence = None              # 证据账本（默认关闭；见 enable_evidence_ledger）
+        if os.environ.get("LINGSHU_EVIDENCE_LEDGER") == "1":
+            self.enable_evidence_ledger()
         self._setup_v13()
         # ---- v1.5 状态（A-1~A-5） ----
         self._verifier_config = {"dedup_static": 0.85, "deviation_threshold": 0.3}
@@ -2341,9 +2344,15 @@ class SpacetimeMemoryEngine:
                        importance: float = 0.5,
                        tags: List[str] = None,
                        entities: List[str] = None,
-                       skip_dedup: bool = False) -> STNode:
+                       skip_dedup: bool = False,
+                       source: str = None,
+                       self_generated: bool = False) -> STNode:
         """
         添加一条感知（自动进入知识层）
+
+        source / self_generated（证据账本，默认关闭时忽略）：本次写入的来源与
+        是否为系统自产。启用 `enable_evidence_ledger()` 后，写入与去重命中都记一条
+        证据，置信度由账本推导——同源重复不增信，自产内容不计分（见 core/evidence.py）。
 
         skip_dedup（v1.26c）：跳过 M5 去重——主动沉淀类写入（剧情/快照/
         里程碑）需要独立节点身份，不能被合并进相似的感知节点（否则
@@ -2366,7 +2375,11 @@ class SpacetimeMemoryEngine:
                     best_sim, best = sim, n
             if best and best_sim >= threshold:
                 self.store.increment_access(best.id)
-                self.store.update_node_confidence(best.id, 0.02)
+                if getattr(self, "_evidence", None) is not None:
+                    self._evidence.record(best.id, source, self_generated=self_generated,
+                                          note="M5 去重命中")
+                else:
+                    self.store.update_node_confidence(best.id, 0.02)
                 self.store.tag_node(best.id, "duplicate")
                 return best
         cs = condition_space or ConditionSpace(
@@ -2396,7 +2409,49 @@ class SpacetimeMemoryEngine:
         if entities:
             for eid in entities:
                 self.store.tag_node(node.id, f"ent:{eid}")
+        if getattr(self, "_evidence", None) is not None:
+            self._evidence.record(node.id, source, self_generated=self_generated,
+                                  note="首次写入")
+            node.confidence = self.store.get_node(node.id).confidence
         return node
+
+    # ==================== 证据账本（置信度由证据推导 · 默认关闭） ====================
+
+    def enable_evidence_ledger(self):
+        """启用证据账本：此后 add_perception 的增信改为记证据、置信度由账本推导。"""
+        if getattr(self, "_evidence", None) is None:
+            from .evidence import EvidenceLedger
+            self._evidence = EvidenceLedger(self.store)
+        return self._evidence
+
+    def add_evidence(self, node_id: str, source: str, supports: bool = True,
+                     weight: float = 1.0, note: str = "",
+                     self_generated: bool = False) -> Dict:
+        """为节点记一条外部证据（supports=False 即反证），返回更新后的评估。"""
+        from .evidence import SUPPORT, CONTRADICT
+        ledger = self.enable_evidence_ledger()
+        ledger.record(node_id, source, SUPPORT if supports else CONTRADICT,
+                      weight=weight, self_generated=self_generated, note=note)
+        return ledger.assess(node_id)
+
+    def evidence_report(self, node_id: str) -> Dict:
+        """只读：节点的证据评估（置信度、状态、支持/反驳来源）。"""
+        return self.enable_evidence_ledger().assess(node_id)
+
+    def recall_with_evidence(self, context_content: str, limit: int = 10,
+                             include_refuted: bool = False) -> List[Dict]:
+        """召回并附上证据评估，供宿主决定「当事实说 / 带保留说 / 不说」。
+
+        与 recall() 同序；已被反驳的条目默认剔除（include_refuted=True 保留）。
+        """
+        ledger = self.enable_evidence_ledger()
+        out = []
+        for node, score in self.recall(context_content, limit=limit):
+            ev = ledger.assess(node.id)
+            if ev["status"] == "refuted" and not include_refuted:
+                continue
+            out.append({"node": node, "score": score, "evidence": ev})
+        return out
 
     # ==================== 锚点层操作 ====================
 
@@ -4273,7 +4328,8 @@ class SpacetimeMemoryEngine:
                     f"偏差={report.get('verification', {}).get('deviation')} | "
                     f"可逆性={verdict.get('reversibility')} | "
                     f"深度={report.get('depth')}")
-            self.add_perception(text, importance=0.6, tags=["reflection_chain"])
+            self.add_perception(text, importance=0.6, tags=["reflection_chain"],
+                                source="self:reflection", self_generated=True)
             self._last_reflection_chain = text
         except Exception:
             pass
