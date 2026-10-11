@@ -1,0 +1,54 @@
+{
+  "original_base": "abb52d005fe6300b3e9b5fd022a5a64d33096693",
+  "integration_base": "777e18f62dfe6918ad271437b887c78d020f0ea4",
+  "note": "Historical phases were measured before upstream integration; final candidate was measured as uncommitted files on integration_base. Hashes below normalize CRLF to LF. Ordinary benchmark source_sha256 records raw bytes.",
+  "lf_normalized_sha256": {
+    "bench/bench_world.py": "e7d88eedef3f2a9165ad31ffabc28d12e22e347fc58234516a9c179cc7fcd134",
+    "lingshu/world/motion.py": "a461d6505d79890de2e0b56c993bda1c978a377095a3ac01d968694e0c83cef0",
+    "lingshu/world/world_learner.py": "9066b4cf784d0a561c6b26caad37156ed66de46a30035cf82713dbfba556e5f7",
+    "lingshu/world/world_model.py": "97a0f817684fa51ee143302bd09f983bff9d5c308efcb7ff0c17764fb1ccccb8",
+    "lingshu/world/curiosity_explorer.py": "a254c7a7456d575296c416976d88018f7f940567673c8592bf6e42c269eaba58",
+    "lingshu/world/anchor_verify.py": "b91c162d2e101a01fe4d0906ac915ef815b1ebdd617c89489d933e26d3a1701b",
+    "lingshu/world/seven_layer_loop.py": "065e6b30eba02d249e49fe75f28b4e45fa5684f68de5cffb78fb5ffec1010c69",
+    "lingshu/world/wm_simloop.py": "d02d137f520399f8cbc279519cc69dc95f80a117142c9b600f654683b98a8e5c",
+    "tests/test_world_observation_contracts.py": "39b1bb6d39969764e9bb8dd360dc44cc7f50ad210f5c03ba9bede699823581cf",
+    "tests/test_pursuit_prediction.py": "5ceee1af25e5c70d72982ee343616bc8b0e462a78f35448b2735cfa6f249b11f"
+  },
+  "validation": {
+    "python": "3.13.13",
+    "pytest_passed": 638,
+    "subtests_passed": 73,
+    "warnings": 560,
+    "new_world_regressions": 33,
+    "excluded": [
+      "tests/test_hex_search.py",
+      "tests/test_hex_hier.py"
+    ],
+    "python_3_12_locally_tested": false,
+    "manifest_matches": 61,
+    "manifest_entries": 61,
+    "diff_check_passed": true,
+    "pr_title_check_passed": true,
+    "full_pytest_base": "c22385cb2d75f36bc12fd1de4449edbf92be8698",
+    "post_integration_targeted": {
+      "base": "777e18f",
+      "passed": 242,
+      "warnings": 826,
+      "elapsed_seconds": 18.76,
+      "full_suite_repeated": false,
+      "default_benchmark_identical": true
+    },
+    "migration_followup": {
+      "passed": 69,
+      "warnings": 2,
+      "default_benchmark_identical": true,
+      "old_head_ci": {
+        "commit": "593ba9441dc81c73dd8894f1d914ee64a174950c",
+        "python3.12": "SUCCESS",
+        "python3.13": "SUCCESS"
+      }
+    }
+  },
+  "benchmark_base": "c22385cb2d75f36bc12fd1de4449edbf92be8698",
+  "measurement_publication_commit": "593ba9441dc81c73dd8894f1d914ee64a174950c"
+}

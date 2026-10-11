@@ -33,6 +33,8 @@ import random
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
+from .motion import estimate_motion, recent_direction
+
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
     from .scene_simulator import SceneSimulator
@@ -95,8 +97,13 @@ class UnifiedWorldModel:
         #                                      # 最近一次 perceive 的真实观测快照
         #                                      # （eid → 观测位置；verify 唯一 actual 来源）
         self._obs_tick: Optional[int] = None   # 快照对应的观测时刻（tick）
+        self._pred_tick: Optional[int] = None  # 上一 generate 的时刻（tick）
+        #                                      # （verify 据此判观测快照是否新于预测）
         self._anomalies: List[Dict] = []       # 预测-观测异常事件
         self._patterns: Dict = {}              # 推断模式（relations/speed/entropy）
+        self._motion_estimates: Dict[str, Tuple[float, float]] = {}
+        self._motion_directions: Dict[str, Tuple[float, float, float]] = {}
+        self.relation_history: List[Dict] = []  # 被替代关系留痕，当前边用于预测
         self._rng = random.Random(seed)
         # 推断参数
         self.pad = 0.2
@@ -110,13 +117,24 @@ class UnifiedWorldModel:
         return [{"eid": eid, "category": e.category, "pos": tuple(e.pos)}
                 for eid, e in self.world.entities.items()]
 
-    def _track_identity(self, o: Dict) -> str:
-        """无 eid 观测：按类别 + 位置最近邻匹配已有节点（身份追踪）。"""
+    def _track_identity(self, o: Dict, taken: Optional[set] = None,
+                        positions: Optional[Dict[str, Tuple[float, float, float]]] = None) -> str:
+        """无 eid 观测：按类别 + 位置最近邻匹配已有节点（身份追踪）。
+
+        一一匹配（issue #226）：`taken` = 本帧已被占用的 eid（显式 eid 或已
+        被其它匿名观测匹配的节点），跳过它们——同一帧内一个既有节点至多
+        被一个观测占用，避免两个不同实体被静默合并到一个 eid。
+        `positions` = 帧起点节点位置快照：匹配一律基于帧起点位置，不受本帧
+        循环内 `n.pos` 就地改写影响（否则先处理的观测会改变后处理的最近邻）。
+        """
         best, best_d = None, float("inf")
         for eid, n in self.nodes.items():
+            if taken is not None and eid in taken:
+                continue
             if n.category != o["category"]:
                 continue
-            d = math.dist(n.pos, tuple(o["pos"]))
+            ref = positions.get(eid, n.pos) if positions is not None else n.pos
+            d = math.dist(ref, tuple(o["pos"]))
             if d < best_d:
                 best, best_d = eid, d
         if best is not None and best_d < 2.0:   # 追踪半径：同类别 2 体素内
@@ -133,7 +151,19 @@ class UnifiedWorldModel:
 
     def _expected(self, eid: str) -> Optional[Dict]:
         """生成先验：上一 tick 对 eid 的预期（供 perceive 一致性检查）。"""
-        return self._last_prediction.get(eid)
+        prediction = self._last_prediction.get(eid)
+        if prediction is not None and prediction.get("target_tick", self.tick) == self.tick:
+            return prediction
+        return None
+
+    def _is_hypothesis_target(self, eid: str) -> bool:
+        """该 eid 是否为模型内部假设节点（SimLoop 拓扑生长产物）。
+
+        假设节点从未被观测（不属模式推断的对象），其关系边由 wm_simloop 的
+        生长/回退单独管理——infer_patterns 的关系边更新（issue #230）须避开它。
+        """
+        n = self.nodes.get(eid)
+        return n is not None and bool(n.attrs.get("hypothesis"))
 
     def perceive(self, observations: Optional[List[Dict]] = None,
                  tool: str = "observer") -> Dict:
@@ -147,8 +177,16 @@ class UnifiedWorldModel:
         self.tick += 1
         stats = {"observed": 0, "matched": 0, "new": 0, "consistent": 0, "anomalies": 0}
         snap: Dict[str, List[float]] = {}      # 本轮真实观测快照（verify 的 actual 来源）
+        # 身份关联的一一匹配上下文（issue #226）：
+        #   frame_pos = 帧起点节点位置（匹配不受本帧就地改写影响）
+        #   taken     = 本帧已被占用的 eid（显式 eid 优先占用；匿名观测匹配后亦占用）
+        frame_pos = {eid: tuple(n.pos) for eid, n in self.nodes.items()}
+        taken = {str(o.get("eid", "")) for o in obs if str(o.get("eid", ""))}
         for o in obs:
-            eid = str(o.get("eid", "")) or self._track_identity(o)
+            eid = str(o.get("eid", ""))
+            if not eid:
+                eid = self._track_identity(o, taken=taken, positions=frame_pos)
+                taken.add(eid)                 # 一个节点本帧至多被一个观测占用
             pos = tuple(float(v) for v in o["pos"])
             snap[eid] = list(pos)
             stats["observed"] += 1
@@ -188,10 +226,13 @@ class UnifiedWorldModel:
         # 留存本轮真实观测快照与时刻（verify 只以它为 actual 来源）
         self._obs_snapshot = snap
         self._obs_tick = self.tick
-        # 4D 演化历史（观测序列记忆）
+        # 4D 演化历史（观测序列记忆）——只记本轮真实观测（snap）。
+        # 不从 self.nodes 重建：被遮蔽/假设节点本轮未被观测，其位置是模型
+        # 内部信念（陈旧记忆/拓扑假设）；把它们按 tick 记进历史，等于把模型
+        # 信念冒充成「该时刻的观测」，_motion_stats/_traj 会据此编造出
+        # 「静止未动」的假轨迹。
         self.history.append({"tick": self.tick,
-                             "entities": {eid: list(n.pos)
-                                          for eid, n in self.nodes.items()}})
+                             "entities": {eid: list(p) for eid, p in snap.items()}})
         self._patterns = {}   # 模式缓存失效（新观测后重新推断）
         return {"status": "ok", "tick": self.tick, **stats,
                 "anomaly_events": stats["anomalies"]}
@@ -199,39 +240,40 @@ class UnifiedWorldModel:
     # ================= 模式推断（观测-only 启发式） =================
 
     def _motion_stats(self, eid: str, window: int = 8) -> Tuple[float, float]:
-        """位移统计：方向一致性 |mean unit|（0=随机,1=直线） + 速度估计。"""
-        moves = []
-        prev = None
-        for rec in self.history[-window:]:
-            cur = rec["entities"].get(eid)
-            if cur is None:
-                prev = None
-                continue
-            if prev is not None:
-                m = (cur[0] - prev[0], cur[2] - prev[2])
-                moves.append(m)
-            prev = cur
-        if not moves:
-            return 0.0, 0.3
-        units = [m for m in moves if math.hypot(m[0], m[1]) > 1e-6]
-        speed = sum(math.hypot(m[0], m[1]) for m in moves) / len(moves)
-        if not units:
-            return 0.0, round(speed, 3)
-        mx = sum(m[0] / math.hypot(m[0], m[1]) for m in units) / len(units)
-        mz = sum(m[1] / math.hypot(m[0], m[1]) for m in units) / len(units)
-        return round(math.hypot(mx, mz), 3), round(speed, 3)
+        """真实观测位移/dt；没有新样本不能更新成零速度。"""
+        stats = estimate_motion(self.history, eid, window)
+        if stats is not None:
+            self._motion_estimates[eid] = stats[:2]
+            if stats[3] is not None:
+                self._motion_directions[eid] = stats[3]
+            else:
+                self._motion_directions.pop(eid, None)
+        return self._motion_estimates.get(eid, (0.0, 0.3))
 
     def _pair_tendency(self, a: str, b: str, window: int = 8) -> float:
         """a 对 b 的趋向均值：cos(位移_a, 方向_a→b)，>0.5 趋向 / <-0.5 远离。"""
+        return self._pair_stats(a, b, window)[0]
+
+    def _pair_stats(self, a: str, b: str, window: int = 8) -> Tuple[float, int]:
         scores = []
+        samples = 0
         prev = None
-        for rec in self.history[-window:]:
+        start = max(0, len(self.history) - window)
+        context = []
+        if any(a not in rec["entities"] or b not in rec["entities"]
+               for rec in self.history[start:]):
+            for index in range(start - 1, -1, -1):
+                rec = self.history[index]
+                if a in rec["entities"] and b in rec["entities"]:
+                    context = [rec]
+                    break
+        for rec in context + self.history[start:]:
             ea = rec["entities"].get(a)
             eb = rec["entities"].get(b)
             if ea is None or eb is None:
-                prev = None
                 continue
             if prev is not None:
+                samples += 1  # Observed zero motion is contrary evidence too.
                 dx, dz = ea[0] - prev[0], ea[2] - prev[2]
                 dl = math.hypot(dx, dz)
                 if dl > 1e-6:
@@ -240,7 +282,7 @@ class UnifiedWorldModel:
                     if tl > 1e-6:
                         scores.append((dx * tx + dz * tz) / (dl * tl))
             prev = ea
-        return round(sum(scores) / len(scores), 3) if scores else 0.0
+        return (round(sum(scores) / len(scores), 3) if scores else 0.0, samples)
 
     def infer_patterns(self, window: int = 8, force: bool = False) -> Dict:
         """从轨迹推断行为模式（观测-only，无世界内部访问）。
@@ -260,11 +302,18 @@ class UnifiedWorldModel:
             pat["entropy"][eid] = cons
         # 关系推断（趋向/远离）
         for a in eids:
+            # Hypotheses belong to SimulationLoop's explicit confirm/revert lifecycle.
+            if self.nodes[a].attrs.get("hypothesis") or any(
+                    e.source == a and self.nodes.get(e.target) is not None
+                    and self.nodes[e.target].attrs.get("hypothesis") for e in self.edges):
+                continue
             best_t, best_c, best_sign = None, 0.0, 0.0
+            sufficient = False
             for b in eids:
-                if a == b:
+                if a == b or self.nodes[b].attrs.get("hypothesis"):
                     continue
-                c = self._pair_tendency(a, b, window)
+                c, samples = self._pair_stats(a, b, window)
+                sufficient = sufficient or samples >= 3
                 if abs(c) > abs(best_c):
                     best_c, best_t, best_sign = c, b, c
             rel = None
@@ -273,15 +322,23 @@ class UnifiedWorldModel:
                     rel = "seek"
                 elif best_c < -0.5:
                     rel = "flee"
+            edge = None
             if rel:
                 edge = WMEdge(source=a, relation=rel, target=best_t,
                               confidence=round(min(1.0, abs(best_c)), 3),
                               evidence="inferred")
-                # 去重（同源同关系同目标）
-                if not any(e.source == a and e.relation == rel
-                           and e.target == best_t for e in self.edges):
+            if edge is not None or sufficient:
+                old = [e for e in self.edges if e.source == a and e.evidence == "inferred"]
+                previous = [(e.relation, e.target) for e in old]
+                current = [(edge.relation, edge.target)] if edge is not None else []
+                if previous != current:
+                    self.relation_history.append({"tick": self.tick, "source": a,
+                                                  "superseded": [e.to_dict() for e in old],
+                                                  "current": edge.to_dict() if edge else None})
+                self.edges = [e for e in self.edges if not (e.source == a and e.evidence == "inferred")]
+                if edge is not None:
                     self.edges.append(edge)
-                pat["relations"].append(edge.to_dict())
+            pat["relations"].extend(e.to_dict() for e in self.edges if e.source == a)
         # 行为推断
         for eid in eids:
             cons = pat["entropy"][eid]
@@ -325,94 +382,105 @@ class UnifiedWorldModel:
           - exact：确定性追逐（目标可精确预测）→ 单候选，bound=hit_threshold
           - bounded_noisy：确定性方向但有扰动/转弯（flee/follow）→ 略宽
           - bounded_stochastic：随机行为 → 可达域（预测=当前位置）
-          - chase_stochastic：追逐随机目标 → max(自身,目标)可达域 + 阈值（D1）
+          - chase_stochastic：支持的追逐方向作中心，保留随机目标宽可达域（D1）
         """
+        h = max(1, int(horizon)) if horizon is not None else 1
         if use_patterns:
             self.infer_patterns()
         shadow = {eid: tuple(n.pos) for eid, n in self.nodes.items()}
+        for eid, n in self.nodes.items():
+            age = max(0, self.tick - n.last_seen)
+            if age and self._patterns.get("entropy", {}).get(eid, 0.0) >= self.entropy_threshold:
+                direction = self._recent_move(eid) or self._motion_directions.get(eid)
+                if direction is not None:
+                    shadow[eid] = self._apply_move(n.pos, age * self._patterns["speed_estimates"][eid], direction)
         # 按 first_seen 序（≈ 物理世界插入序，保持顺序语义）
         ordered = sorted(self.nodes.items(), key=lambda kv: kv[1].first_seen)
         pred: Dict[str, Dict] = {}
-        for eid, n in ordered:
-            speed = self._patterns.get("speed_estimates", {}).get(eid, 0.3)
-            cons = self._patterns.get("entropy", {}).get(eid, 0.0)
-            rel = next((e for e in self.edges if e.source == eid), None)
-            use_rel = False
-            if rel is not None and rel.relation in ("seek", "flee") and rel.target in shadow:
-                tgt_cons = self._patterns.get("entropy", {}).get(rel.target, 0.0)
-                # 关系仅在自身方向性明确时使用（防随机实体的虚假关系）；
-                # seek 追逐随机目标 → 降级 chase_stochastic（宽可达域，D1）
-                if (cons >= self.entropy_threshold
-                        or (rel.relation == "seek" and tgt_cons < self.entropy_threshold)):
-                    use_rel = True
-            if use_rel:
-                t = shadow[rel.target]
-                dx, dz = (t[0] - shadow[eid][0], t[2] - shadow[eid][2])
-                if rel.relation == "flee":
-                    dx, dz = -dx, -dz
-                dl = math.hypot(dx, dz)
-                d = (0.0, 0.0, 0.0) if dl < 1e-6 else (dx / dl, 0, dz / dl)
-                tgt_cons = self._patterns.get("entropy", {}).get(rel.target, 0.0)
-                if rel.relation == "seek" and tgt_cons < self.entropy_threshold:
-                    # 追逐随机目标 → 可达域传播（D1）
-                    np_ = shadow[eid]
-                    bound = max(self._reach(speed),
-                                self._reach(self._patterns.get("speed_estimates",
-                                                               {}).get(rel.target, 0.3)))                             + self.hit_threshold
-                    mode = "chase_stochastic"
-                elif rel.relation == "seek":
-                    np_ = self._apply_move(shadow[eid], speed, d)
-                    shadow[eid] = np_
-                    bound = self.hit_threshold + 0.05
-                    mode = "exact"
+        for _ in range(h):
+            for eid, n in ordered:
+                speed = self._patterns.get("speed_estimates", {}).get(eid, 0.3)
+                cons = self._patterns.get("entropy", {}).get(eid, 0.0)
+                rel = next((e for e in self.edges if e.source == eid), None)
+                use_rel = False
+                if rel is not None and rel.relation in ("seek", "flee") and rel.target in shadow:
+                    tgt_cons = self._patterns.get("entropy", {}).get(rel.target, 0.0)
+                    target_speed = self._patterns.get("speed_estimates", {}).get(rel.target, 0.3)
+                    target_stochastic = target_speed > 1e-6 and tgt_cons < self.entropy_threshold
+                    # 关系仅在自身方向性明确时使用（防随机实体的虚假关系）；
+                    # seek 追逐随机目标 → 降级 chase_stochastic（宽可达域，D1）
+                    if (cons >= self.entropy_threshold
+                            or (rel.relation == "seek" and target_stochastic)):
+                        use_rel = True
+                if use_rel:
+                    t = shadow[rel.target]
+                    dx, dz = (t[0] - shadow[eid][0], t[2] - shadow[eid][2])
+                    if rel.relation == "flee":
+                        dx, dz = -dx, -dz
+                    dl = math.hypot(dx, dz)
+                    d = (0.0, 0.0, 0.0) if dl < 1e-6 else (dx / dl, 0, dz / dl)
+                    tgt_cons = self._patterns.get("entropy", {}).get(rel.target, 0.0)
+                    seek_supported = (cons >= self.entropy_threshold
+                                      and rel.confidence >= cons)
+                    if rel.relation == "seek" and target_stochastic:
+                        # 追逐随机目标 → 可达域传播（D1）
+                        np_ = self._apply_move(shadow[eid], speed, d) if seek_supported else shadow[eid]
+                        shadow[eid] = np_
+                        bound = max(self._reach(speed),
+                                    self._reach(self._patterns.get("speed_estimates",
+                                                                   {}).get(rel.target, 0.3)))                             + self.hit_threshold
+                        mode = "chase_stochastic"
+                    elif rel.relation == "seek" and not seek_supported:
+                        np_ = shadow[eid]
+                        bound = self._reach(speed)
+                        mode = "bounded_stochastic"
+                    elif rel.relation == "seek":
+                        np_ = self._apply_move(shadow[eid], speed, d)
+                        shadow[eid] = np_
+                        bound = self.hit_threshold + 0.05
+                        mode = "exact"
+                    else:
+                        # flee：方向已知但带扰动 → 略宽可达域
+                        np_ = self._apply_move(shadow[eid], speed, d)
+                        shadow[eid] = np_
+                        bound = self.hit_threshold + speed * 0.3
+                        mode = "bounded_noisy"
+                elif cons >= self.entropy_threshold:
+                    # 直线运动无关系目标（follow/巡游）→ 继续直线外推（可能转弯）
+                    # 简化：预测=当前位置 + 最近位移方向
+                    moves = self._recent_move(eid)
+                    if moves is None and n.last_seen < self.tick:
+                        moves = self._motion_directions.get(eid)
+                    if moves:
+                        d = moves
+                        np_ = self._apply_move(shadow[eid], speed, d)
+                        shadow[eid] = np_
+                        bound = self.hit_threshold + speed * 0.4
+                        mode = "bounded_noisy"
+                    else:
+                        # 随机行为 → 可达域（D2）
+                        np_ = shadow[eid]
+                        bound = self._reach(speed)
+                        mode = "bounded_stochastic"
                 else:
-                    # flee：方向已知但带扰动 → 略宽可达域
-                    np_ = self._apply_move(shadow[eid], speed, d)
-                    shadow[eid] = np_
-                    bound = self.hit_threshold + speed * 0.3
-                    mode = "bounded_noisy"
-            elif cons >= self.entropy_threshold:
-                # 直线运动无关系目标（follow/巡游）→ 继续直线外推（可能转弯）
-                # 简化：预测=当前位置 + 最近位移方向
-                moves = self._recent_move(eid)
-                if moves:
-                    d = moves
-                    np_ = self._apply_move(shadow[eid], speed, d)
-                    shadow[eid] = np_
-                    bound = self.hit_threshold + speed * 0.4
-                    mode = "bounded_noisy"
-                else:
+                    # 随机行为 → 可达域（D2）
                     np_ = shadow[eid]
                     bound = self._reach(speed)
                     mode = "bounded_stochastic"
-            else:
-                # 随机行为 → 可达域（D2）
-                np_ = shadow[eid]
-                bound = self._reach(speed)
-                mode = "bounded_stochastic"
-            pred[eid] = {"category": n.category, "behavior": n.behavior_inferred,
-                         "mode": mode, "predicted": list(np_),
-                         "bound": round(bound, 3),
-                         "confidence": round(n.confidence, 3)}
+                age = max(0, self.tick - n.last_seen)
+                bound += age * self._reach(speed)
+                pred[eid] = {"category": n.category, "behavior": n.behavior_inferred,
+                             "mode": mode, "predicted": list(np_),
+                             "bound": round(bound, 3),
+                             "confidence": round(n.confidence, 3),
+                             "observation_age": age, "target_tick": self.tick + h}
         self._last_prediction = pred
-        return {"tick": self.tick, "horizon": horizon, "predictions": pred}
+        self._pred_tick = self.tick          # 记录预测时刻（verify 的时效判据）
+        return {"tick": self.tick, "horizon": h, "predictions": pred}
 
-    def _recent_move(self, eid: str) -> Optional[Tuple[float, float, float]]:
-        """最近一次位移方向（单位化）。正序遍历历史（older→newer）。"""
-        prev = None
-        last = None
-        for rec in self.history:
-            cur = rec["entities"].get(eid)
-            if cur is None:
-                prev = None
-                continue
-            if prev is not None:
-                dx, dz = cur[0] - prev[0], cur[2] - prev[2]
-                dl = math.hypot(dx, dz)
-                if dl > 1e-6:
-                    last = (dx / dl, 0.0, dz / dl)
-            prev = cur
-        return last
+    def _recent_move(self, eid: str, window: int = 8) -> Optional[Tuple[float, float, float]]:
+        """最近一次真实观测位移方向（单位化）。"""
+        return recent_direction(self.history[-window:], eid)
 
     # ================= 验证端口（外部观察者） =================
 
@@ -427,21 +495,39 @@ class UnifiedWorldModel:
         不计入 hits/total；hit_rate 分母＝已验证项。
         快照缺失（从未 perceive）⇒ total=0 并标 `no_observation`，
         不回退到「从 nodes 重建」（那等于把自证命中放回来）。
+
+        时刻核对（issue #348）：快照必须**晚于**预测（`_obs_tick > _pred_tick`）
+        才是「预测 → 后来观测」的真验证。若 `_obs_tick <= _pred_tick`（generate
+        之后没有再 perceive，拿预测据以生成的那一帧当「实际」），则比较是
+        自证的——预测自观测状态推出、又拿同一观测打分，distance=0 恒命中。
+        此时不采用该快照计分：全部预测标 pending、`stale_observation=True`。
+        判据来源：verify 端口语义（world_model.py 模块 docstring：验证端口
+        「外部观察者逐 tick 对比」）+ 条件空间四维度的「时间窗口」维度。
         """
         snap = self._obs_snapshot
-        hits, total, pending = 0, 0, 0
+        fresh = (snap is not None and self._obs_tick is not None
+                 and self._pred_tick is not None and self._obs_tick > self._pred_tick)
+        stale = snap is not None and not fresh and self._pred_tick is not None
+        hits, total, pending, point_hits = 0, 0, 0, 0
+        distances, bounds = [], []
         details = []
         for eid, p in self._last_prediction.items():
-            actual = snap.get(eid) if snap is not None else None
-            if actual is None:                 # 未观测 ⇒ 待验证，不参与计分
+            actual = snap.get(eid) if fresh else None
+            if actual is None or p.get("target_tick", self._obs_tick) != self._obs_tick:
                 pending += 1
-                details.append({"entity": eid, "mode": p["mode"],
-                                "predicted": p["predicted"], "actual": None,
-                                "bound": p["bound"], "distance": None,
-                                "hit": None, "status": "pending"})
+                d = {"entity": eid, "mode": p["mode"],
+                     "predicted": p["predicted"], "actual": None,
+                     "bound": p["bound"], "distance": None,
+                     "hit": None, "status": "pending"}
+                if stale:
+                    d["stale"] = True
+                details.append(d)
                 continue
             dist = math.dist(p["predicted"], actual)
             hit = dist < p["bound"]
+            point_hits += dist < self.hit_threshold
+            distances.append(dist)
+            bounds.append(p["bound"])
             if hit:
                 hits += 1
             total += 1
@@ -449,25 +535,39 @@ class UnifiedWorldModel:
                             "predicted": p["predicted"], "actual": actual,
                             "bound": p["bound"], "distance": round(dist, 4),
                             "hit": hit, "status": "verified"})
-        rate = round(hits / total, 4) if total else 1.0
+        rate = round(hits / total, 4) if total else None
         self._compare = {"tick": self.tick, "hits": hits, "total": total,
                          "hit_rate": rate, "pending": pending,
+                         "bound_coverage": rate,
+                         "point_hit_rate": round(point_hits / total, 4) if total else None,
+                         "mean_distance": round(sum(distances) / total, 4) if total else None,
+                         "mean_bound": round(sum(bounds) / total, 4) if total else None,
                          "details": details}
         if snap is None:
             self._compare["no_observation"] = True
+        if stale:
+            self._compare["stale_observation"] = True
+            self._compare["obs_tick"] = self._obs_tick
+            self._compare["pred_tick"] = self._pred_tick
         return self._compare
 
     def verify_run(self, n: int = 10) -> Dict:
-        """持续运行（观察者闭环）：generate → 物理世界演化 → perceive → verify。"""
+        """持续运行（观察者闭环）：generate → 物理世界演化 → perceive → verify。
+
+        n ≤ 0（退化输入，issue #55）：零步循环 ⇒ 无最后一轮结果，`last` 为 None
+        （旧码引用未绑定的 v 直接 UnboundLocalError 崩溃）。
+        """
         rates = []
+        v = None                            # 零步时无最后一轮结果（issue #55）
         for _ in range(max(0, int(n))):
             self.generate(horizon=1)
             self.world.step(n=1)
             self.perceive()
             v = self.verify()
-            rates.append(v["hit_rate"])
+            if v["hit_rate"] is not None:
+                rates.append(v["hit_rate"])
         return {"status": "ok", "ticks": int(n), "tick": self.tick,
-                "rolling_hit_rate": round(sum(rates) / len(rates), 4) if rates else 1.0,
+                "rolling_hit_rate": round(sum(rates) / len(rates), 4) if rates else None,
                 "last": v}
 
     # ================= 记忆与导出 =================
@@ -480,6 +580,7 @@ class UnifiedWorldModel:
                             "conditions": self._conditions.get(eid, {})}
                       for eid, n in self.nodes.items()},
             "edges": [e.to_dict() for e in self.edges],
+            "relation_history": list(self.relation_history),
             "node_count": len(self.nodes),
             "edge_count": len(self.edges),
             "history_len": len(self.history),

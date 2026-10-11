@@ -42,6 +42,31 @@ def test_conv_batch_matches_single():
         np.testing.assert_allclose(b[i], s, atol=1e-5)
 
 
+def test_set_vec_does_not_alias_caller_buffer():
+    """守卫(#340):HexNet.set_vec 不得把模型参数别名到调用方缓冲。
+
+    判据来源:经验标定(件 #340 取证)——HEAD 实测
+    `np.shares_memory(net.conv, vec) is True`,且调用方 `vec[:] += 1e3` 后
+    `get_vec()` 读数随之整体 +1e3(静默改参,绕过 set_vec 的显式载入)。
+    根因:连续 ndarray 上的切片是视图,`.reshape` 仍是视图。
+
+    断言三件事:① 三段参数均不与调用方缓冲共享内存;② 调用方原地改自己的
+    vec 后,模型参数读数逐位不变;③ 载入语义本身仍正确(copy 不改变取值)。
+    """
+    net = HexNet(n_kernels=3, n_mix=4, n_class=5, seed=1)
+    vec = net.get_vec()
+    net.set_vec(vec)
+    for name, arr in (("conv", net.conv), ("mix", net.mix), ("fc", net.fc)):
+        assert not np.shares_memory(arr, vec), f"{name} 别名到调用方缓冲"
+    snap = net.get_vec().copy()
+    vec += 1e3                                   # 调用方原地改自己的缓冲
+    assert np.array_equal(net.get_vec(), snap), "调用方写入穿透到模型参数"
+    # 载入语义仍正确:喂一条已知向量,读回逐位相等
+    v2 = np.arange(net.n_params(), dtype=np.float64)
+    net.set_vec(v2)
+    assert np.array_equal(net.get_vec(), v2)
+
+
 def test_branch_deadzone_freezes():
     """支路死区: 更新量分辨率设极大→全部冻结(信息差进死区,支路终止)。"""
     xs, ys = _toy_images()
@@ -102,6 +127,37 @@ def test_selfsup_recon_loss_drops():
     net = HexNet(n_class=2, seed=2)
     r = pretrain_selfsup(net, lat, steps=20)
     assert r["final"] < r["init"], f"重建损失未降: {r['init']}→{r['final']}"
+
+
+def test_selfsup_budget_scales_with_resolution():
+    """守卫:pretrain_selfsup 的步数预算随晶格 cell 数自适应。
+
+    根因(#116 副作用,2026-10-10):`steps` 标定于旧 10×16=160 cell 晶格;
+    #116(9bc4985)修正 image_to_grid 横向越界后,同一 cells_across 的晶格 cell
+    数近翻倍(16 列 10→18 行),常数预算被稀释 ⇒ 重建损失不再稳定下行(实测
+    seed=7 `0.96974→1.05096`;见 `pretrain_selfsup` docstring)。
+
+    定点变异自证:把 `pretrain_selfsup` 里的 `REF_CELLS` 调成极大值(如 10**9,
+    等价于关闭自适应,eff_steps 恒 == steps),第一条断言立即变红
+    (`r16["steps"] == r8["steps"] == 20`,不再满足 `>`)。
+    """
+    xs, _ = _toy_images(8)
+    from lingshu.nn.hex_train import images_to_lattices
+    lat16 = normalize_lattices(images_to_lattices(xs, cells_across=16))
+    lat8 = normalize_lattices(images_to_lattices(xs, cells_across=8))
+    n16 = lat16.shape[1] * lat16.shape[2]
+    n8 = lat8.shape[1] * lat8.shape[2]
+    r16 = pretrain_selfsup(HexNet(n_class=2, seed=2), lat16, steps=20)
+    r8 = pretrain_selfsup(HexNet(n_class=2, seed=2), lat8, steps=20)
+    assert r16["steps"] > r8["steps"], \
+        f"预算应随分辨率放大: {r16['steps']} vs {r8['steps']}"
+    assert r16["steps"] == int(round(20 * n16 / 160))
+    assert r8["steps"] == int(round(20 * n8 / 160))
+    # 两条分辨率下都必须下行——预算自适应后不再出现「预算被稀释」的假上行
+    assert r16["final"] < r16["init"], \
+        f"高分辨率未下行: {r16['init']}→{r16['final']}"
+    assert r8["final"] < r8["init"], \
+        f"低分辨率未下行: {r8['init']}→{r8['final']}"
 
 
 def test_class_cards_structure():

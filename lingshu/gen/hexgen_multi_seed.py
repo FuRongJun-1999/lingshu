@@ -28,6 +28,7 @@
     --prompts 8 --seeds 5     # 子集大小与每 prompt 张数
 """
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -104,13 +105,28 @@ def gen(prompts, seeds=SEEDS, outdir=OUTDIR):
             "rows": rows}
 
 
+def _stable_id(sid, seed) -> int:
+    """确定性整数 id：`blake2b` 摘要前 8 字节 % 10**9。
+
+    #198：原式 `hash((r["sid"], r["seed"])) % 10 ** 9` 用**内建 `hash()`**——
+    `str` 的哈希受 `PYTHONHASHSEED` 随机化（Python 3 默认逐进程随机）⇒ 同一份语料
+    在两个进程里给出**不同 id**，报告不可复现、跨进程对不上。改用
+    `hashlib.blake2b`（摘要稳定、与进程无关；同仓 `semantic_anchor_graph.py:90`
+    亦用哈希摘要造 id）。数值域与旧式一致（`% 10**9`），下游只当不透明标识用。
+    """
+    raw = ("%s|%s" % (sid, seed)).encode("utf-8")
+    return int.from_bytes(hashlib.blake2b(raw, digest_size=8).digest(), "big") % 10 ** 9
+
+
 def load_multi(rows):
     """把多 seed 语料读成 `hexgen_c1_real` 的 item 形状（真值由**同一**确定性解析器给出）。"""
     items = []
     for r in rows:
         truth = C.parse_prompt(r["prompt"])
-        img = np.asarray(Image.open(r["path"]))[..., :3].astype(np.float64)
-        items.append({"file": r["path"], "id": hash((r["sid"], r["seed"])) % 10 ** 9,
+        #   与 `hexgen_c1_real.load_items` 同一口径：先 `.convert("RGB")` 再取数组
+        #   （`[..., :3]` 对 L/P 模式图会静默取到亮度值/调色板索引）。
+        img = np.asarray(Image.open(r["path"]).convert("RGB")).astype(np.float64)
+        items.append({"file": r["path"], "id": _stable_id(r["sid"], r["seed"]),
                       "shape": truth["shape"] if truth else None,
                       "color": truth["color"] if truth else None,
                       "img": img, "truth": truth, "prompt": r["prompt"],
@@ -164,10 +180,18 @@ def summarize(reads, items):
         t = truth_of.get(sid)
         if not t:
             continue
+        #   花纹列读者只出**二档** `plain`/`patterned`（`predict` 的 `pattern`，见
+        #   hexgen_c1_real.py:958），而 prompt 真值是**三档**（`plain`/`striped`/`dotted`，
+        #   `parse_prompt`，hexgen_c1_real.py:120）。两者必须先降到同一档再比：判据取
+        #   C 线既有口径 `evaluate` 的 `tpat`（hexgen_c1_real.py:1074-1075，「花纹（二档
+        #   plain vs patterned）」列）。直接拿二档读出比三档真值，会让所有 striped/dotted
+        #   件恒判不兑现（issue #390）。代价：二档比较**削掉了 striped vs dotted 的判别力**
+        #   —— 该列现在只能判「有无花纹」；三档读出的判别力由 C 线 `pattern3_rate` 承担。
+        tpat = "plain" if t["pattern"] == "plain" else "patterned"
         for r in rs:
             hon["shape"].append(float(r["shapes"] == sorted([t["shape"]] * t["n"])))
             hon["color"].append(float(r["colors"] == sorted([t["color"]] * t["n"])))
-            hon["pattern"].append(float(r["patterns"] == sorted([t["pattern"]] * t["n"])))
+            hon["pattern"].append(float(r["patterns"] == sorted([tpat] * t["n"])))
             hon["count"].append(float(r["n_read"] == t["n"]))
 
     #   ③ 件内方差 vs 类间差（逐特征）

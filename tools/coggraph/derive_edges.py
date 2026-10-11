@@ -116,11 +116,16 @@ def main(argv=None):
     explicit = g["edges"]
     by_id = {n["id"]: n for n in nodes}
 
-    # 已有显式连接的无序对（避免推导边重复显式语义）
+    # 已有显式连接的无序对（避免推导边重复显式语义）；只读，不再被推导边写入。
     exist_pairs = set()
     for e in explicit:
         a, b = e["s"], e["t"]
         exist_pairs.add((a, b) if a <= b else (b, a))
+    # 推导边去重键：**(无序对, 规则名)**，而非无序对本身（issue #411）。
+    # 旧口径把推导边也写进 exist_pairs，使先跑的规则（R1 小桶两两边，w=0.5）把
+    # 后跑的强规则（R5 正文互引，w=0.8）的同一对节点永久占位 ⇒ R5 恒为 0。
+    # 新口径：同一规则内不重复（含 R5 两个方向撞同一对的情形），不同规则可各留一条。
+    derived_pairs = set()
 
     edges = []
     hubs = {}
@@ -135,9 +140,12 @@ def main(argv=None):
         if s == t:
             return False
         pair = (s, t) if s <= t else (t, s)
-        if pair in exist_pairs:
+        if pair in exist_pairs:          # 显式边：任何推导规则都不得重复
             return False
-        exist_pairs.add(pair)
+        key = (pair, rule)               # 推导边：按 (无序对, 规则) 去重（issue #411）
+        if key in derived_pairs:
+            return False
+        derived_pairs.add(key)
         edges.append({"s": s, "t": t, "type": etype, "derived": True, "rule": rule, "weight": round(weight, 3)})
         return True
 
@@ -213,7 +221,10 @@ def main(argv=None):
     for (a, b), shared in sorted(cand.items()):
         if len(shared) < args.min_shared:   # 共享内容标签不足 → 关联太弱
             continue
-        if per_node[a] >= args.per_node_cap and per_node[b] >= args.per_node_cap:
+        # 判据来源：选项语义（--per-node-cap = 每个节点的出边上限）＋ 缺陷单 #177；
+        # 理论章节追不到，属经验标定。旧口径用 and：只有**两端都**到顶才停，
+        # 于是单端到顶仍继续加边 ⇒ 上限形同虚设（12 节点实测最大度 11 > cap 6）。
+        if per_node[a] >= args.per_node_cap or per_node[b] >= args.per_node_cap:
             continue
         jac = jaccard(content_of[a], content_of[b])
         if jac < args.tag_jac:

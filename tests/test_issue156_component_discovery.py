@@ -76,8 +76,10 @@ STDLIB_ALLOWED = frozenset({
     "json", "base64", "hashlib", "hmac",
     # 容器 / 迭代 / 类型 / 数据类 / 枚举
     "collections", "itertools", "typing", "dataclasses", "enum",
-    # 运行时 / 导入 / 告警
+    # 运行时 / 导入 / 告警（weakref/functools/contextlib：2026-10-09 连接槽生命周期
+    # 修复时 core.py 引入——标准库；守卫按设计判红「未知裸名」，此处补分类而非放宽判据）
     "sys", "os", "importlib", "warnings", "pathlib",
+    "weakref", "functools", "contextlib",
     # 并发 / 时间 / 唯一定名（queue：2026-10-09 采纳 PR #260 时 brain_store.py 引入——
     # 标准库、与 threading 同族；守卫按设计判红「未知裸名」，此处补分类而非放宽判据）
     "threading", "queue", "time", "uuid",

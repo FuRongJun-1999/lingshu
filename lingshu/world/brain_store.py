@@ -17,15 +17,27 @@
   + 状态取**槽位投影**（`stg(op=state_chain)`，slot=「状态」）→
   `scene_model.load_world_from_memory(brain_store)` 直接可用。
 - **M2 写向（身体观测入脑）**：`BrainEngine.add_perception` → `mdcg_remember`
-  （tags + `spatial.coords3d` 直存）；状态写入经 `store.conn` 垫片翻译为
-  `cg(op=state_event)` **记账**（事件是源、槽位是投影）→
+  （tags + `spatial.coords3d` 直存；密级 `sensitivity` / 来源 `role` /
+  `condition_space` 显式透传，未具名的关键字一律 `TypeError` 不静默吞——
+  issue #364）；状态写入经 `store.conn` 垫片翻译为
+  `cg(op=state_event)` **记账**（事件是源、槽位是投影；**subject＝节点 id**，
+  非实体名——实体名跨场景不唯一，issue #366）→
   `scene_model.ingest_scene(brain_agent, desc)` 直接可用（含状态）。
 
 传输：**MCP stdio**（逐行 JSON-RPC，与「身体件经 MCP 连脑的真实通路」一致）。
 脑包位置与库根一律经参数/环境注入——**本仓不写本机路径字面量**（章程六）。
 
 连接安全（缺省 fail-closed）：
-- 子进程 env **剔除继承的全部 `MDCG_*`**（防在役库被无意命中），再注入显式覆盖；
+- 子进程 env **白名单放行**（issue #227）：只透传进程运行基座与部署方显式配置面
+  （见 `_ENV_ALLOW_NAMES` / `_ENV_ALLOW_PREFIXES`），其余继承变量一律**不透传**——
+  `AEIS_DESIGNER_KEY` / `*_API_KEY` / `*_TOKEN` / `*_SECRET` / `*_PASSWORD` 等
+  凭据**不再随继承环境交给脑侧子进程**（旧法「只剔 `MDCG_*`」是黑名单，对凭据面
+  fail-open）。继承的 `MDCG_*` 仍被剔除（防在役库被无意命中）；凭据若确需传入，
+  必须经 `extra_env` **显式**声明（有意为之、可审计）。**`HIVE_` 前缀不再放行**
+  （#227 续）：脑侧子进程（`python -X utf8 -m md_cg.mcp_server`）只在
+  `cg(op=ccg, action=units)` 工具面上经 `md_cg/units.py` 具名读 `HIVE_JOBS_DIR` /
+  `HIVE_EXE`（二者已入 `_ENV_ALLOW_NAMES`），凭据形状的 `HIVE_API_KEY` /
+  `HIVE_ORCH_TOKEN(_FILE)` / `HIVE_SUBAGENT_API_KEY` 一律不透传。再注入下面的显式覆盖；
 - `pythonpath` 必须显式给出（参数或 `BRAIN_PYTHONPATH`），否则 `ValueError`；
 - `root` 未给出且 `BRAIN_ROOT` 为空时，脑侧将回落到其缺省根——**调用方务必
   显式给隔离/目标根**（测试与生产都不例外）；
@@ -66,6 +78,64 @@ from typing import Dict, List, Optional
 STATE_SLOT = "状态"
 #: 读候选种子词（ingest_scene 写入的正文定式首词）
 SEED_QUERY = "场景实体"
+#: 状态槽位投影的单页条数（`stg(op=state_chain)` 的 `limit`）。脑端返回体是
+#: `items=units[:limit]` 且带 `truncated`（`md_cg/stg.py:state_chain`）——固定读
+#: 一页且不看 `truncated` 时，排在投影序后面的主体会被静默读成「无值」
+#: （issue #365）。超出本页时 `_state_map` 按主体补读。
+_STATE_PAGE = 500
+#: 脑端 `cg(op=read)` 的候选面全局上限（脑包 `md_cg/mdcg.py:94` 的 `GLOBAL_CAP
+#: = 500`，`cut_by_relevance` 在此截断候选）——`k` 再大也不会多给候选。本层据此
+#: 把「候选面已取尽」与「被脑端截断」区分开（issue #367）。
+BRAIN_CANDIDATE_CAP = 500
+
+#: 子进程 env **白名单·具名**（issue #227 · 凭据泄露族）——跨平台「进程运行基座」：
+#: 路径 / 临时目录 / 区域 / 主机自省。**不含任何凭据名**。
+_ENV_ALLOW_NAMES = frozenset({
+    # 可执行查找 / 命令解释器
+    "PATH", "PATHEXT", "COMSPEC",
+    # Windows 目录基座（Python 解释器与 stdlib 启动期读用）
+    "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR",
+    "PROGRAMDATA", "ALLUSERSPROFILE", "PUBLIC",
+    "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES",
+    "COMMONPROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMW6432",
+    # 临时目录
+    "TEMP", "TMP", "TMPDIR",
+    # 家目录 / 账户
+    "HOME", "HOMEDRIVE", "HOMEPATH", "USERPROFILE",
+    "APPDATA", "LOCALAPPDATA",
+    "USER", "USERNAME", "USERDOMAIN", "LOGNAME",
+    # 区域 / 终端
+    "LANG", "LANGUAGE", "TZ", "TERM",
+    # 宿主自省（解释器/编译扩展常用）
+    "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER",
+    "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "OS",
+    # 部署方显式配置面（**具名**，非前缀）——#227 续收敛：脑侧子进程
+    # `python -X utf8 -m md_cg.mcp_server` 的 `cg(op=ccg, action=units)` 工具面
+    # 经 `md_cg/units.py`（`ENV_JOBS_DIR` / `ENV_EXE`）读这两个名字定位蜂巢作业池
+    # 与可执行文件；缺省会回落到**脑包仓内**路径（`units.jobs_dir` / `units.exe_path`），
+    # 故非必需——重定向部署方可继承，或按需经 `extra_env` 显式声明。
+    # **不设 `HIVE_` 前缀**：前缀会顺带放行 `HIVE_API_KEY` / `HIVE_ORCH_TOKEN` /
+    # `HIVE_ORCH_TOKEN_FILE` / `HIVE_SUBAGENT_API_KEY` 等凭据形状名，而这些名字只在
+    # hive 服务/执行器侧（`hive/serve_start.py` / `hive/exec.py` / `hive/orch.py`，
+    # 由蜂巢自身进程树拉起）被读，**不在** `md_cg.mcp_server` 的读取面上。
+    "HIVE_JOBS_DIR", "HIVE_EXE",
+})
+
+#: 子进程 env **白名单·前缀**（部署方显式配置面）。`PYTHON*` 覆盖 PYTHONPATH /
+#: PYTHONUTF8 / PYTHONHOME / PYTHONIOENCODING / PYTHONDONTWRITEBYTECODE 等。
+#: 刻意**不含 `MDCG_`**——继承的 `MDCG_*` 仍须剔除（防在役库被无意命中），
+#: `MDCG_ROOT` / `MDCG_STG_STATE` 由 `_brain_env` 显式注入。
+#: 亦**不含 `HIVE_`**（#227 续）：前缀过宽会把凭据形状名整体放行；脑侧确需的两个
+#: 非凭据名 `HIVE_JOBS_DIR` / `HIVE_EXE` 走上面的 `_ENV_ALLOW_NAMES` **具名**放行。
+_ENV_ALLOW_PREFIXES = ("PYTHON", "LINGSHU_", "LC_")
+
+
+def _env_is_allowed(name: str) -> bool:
+    """继承的环境变量名是否在白名单内（大小写无关：Windows 上 `os.environ` 键为大写）。"""
+    up = str(name).upper()
+    if up in _ENV_ALLOW_NAMES:
+        return True
+    return any(up.startswith(p) for p in _ENV_ALLOW_PREFIXES)
 
 
 class BrainError(RuntimeError):
@@ -79,8 +149,14 @@ class BrainError(RuntimeError):
 
 def _brain_env(root: Optional[str], pythonpath: Optional[str],
                extra_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """构造脑子进程 env：剔除继承 `MDCG_*` → 注入显式覆盖（隔离/连接安全单点）。"""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("MDCG_")}
+    """构造脑子进程 env（隔离/连接安全单点）。
+
+    **白名单放行**（issue #227）：只继承 `_ENV_ALLOW_NAMES` / `_ENV_ALLOW_PREFIXES`
+    命中的变量；其余（含全部凭据与继承 `MDCG_*`）一律不透传 ⇒ 再注入显式覆盖。
+    子进程由模型驱动，凭据一旦透传即落在其可读面内（`os.environ`），故本层
+    fail-closed：需要什么，谁需要谁**显式**给（`extra_env`），不靠继承顺带。
+    """
+    env = {k: v for k, v in os.environ.items() if _env_is_allowed(k)}
     if root:
         env["MDCG_ROOT"] = root
     if pythonpath:
@@ -300,7 +376,8 @@ class _ConnShim:
 
     契约：只认 `UPDATE nodes SET state_attributes=? WHERE id=?` 一条形态——
     payload 为 `{"state": ...}` JSON、第二参数为节点 id；翻译为
-    `cg(op=state_event)`（subject=该节点的实体名、slot=「状态」、kind=acquisition）。
+    `cg(op=state_event)`（subject=**该节点 id**、slot=「状态」、kind=acquisition
+    ——issue #366：实体名跨场景不唯一，不作台账键）。
     其它 SQL 抛 NotImplementedError（不静默吞）；状态事件未入账时抛
     `BrainError`（同样不静默吞）。legacy 侧 `commit()` 为无操作。
     """
@@ -338,16 +415,51 @@ class BrainStore:
         self.scene_tag = scene_tag
         self.seed_query = seed_query
         self.conn = _ConnShim(self)          # legacy ingest_scene 的直写出口
-        self._node_meta: Dict[str, Dict[str, str]] = {}   # node_id → {"ent": 名}
 
     # ---- M1 读向 ----
-    def _state_map(self) -> Dict[str, str]:
-        """活动状态槽位投影：subject → value（slot=「状态」；一次查询全量取回）。"""
-        resp = self.client.call("stg", {"op": "state_chain", "limit": 500})
+    def _state_map(self, subjects: Optional[List[str]] = None) -> Dict[str, str]:
+        """活动状态槽位投影：subject → value（slot=「状态」）。
+
+        subject **＝节点 id**（不是实体名，issue #366）：台账是全局 append-only
+        的，实体名在同一脑根内的多个场景间不唯一——用实体名作键时，另一场景的
+        同名实体会覆盖本场景的状态（后写盖先写）。节点 id 全局唯一，故状态按
+        「哪个节点」记账，读回时按节点 id 取（见 get_nodes_by_tag / record_state）。
+
+        **截断纪律（issue #365）**：脑端 `stg(op=state_chain)` 的 `items` 是
+        `units[:limit]`、命中总数在 `count`、`truncated = count > len(items)`
+        （`md_cg/stg.py:state_chain`；投影按 `(subject, slot)` 字典序稳定排序，
+        `md_cg/state_slots.py`）。固定 `limit=500` 且不看 `truncated` 时，全库状态
+        槽位超过一页的场景，其主体若排在 500 名之后，状态会被静默读成 None
+        （世界重建回落 neutral）。故本方法：① 只投影本层真正读的槽位
+        （`slot=「状态」`下推，缩小命中集）；② 返回体 `truncated` 为真时按
+        **调用方给出的 subject** 逐个精确补读——`subject`+`slot` 过滤后每个
+        `(subject, slot)` 至多一个单元，不受全局截断影响；未给主体清单而无从
+        补读时抛 `BrainError`（「没读到」不得当作「没有值」）。
+        """
         m: Dict[str, str] = {}
-        for u in (resp.get("items") or []):
-            if u.get("slot") == STATE_SLOT and u.get("state") == "active":
-                m[str(u.get("subject"))] = u.get("value")
+
+        def _absorb(items) -> None:
+            for u in (items or []):
+                if u.get("slot") == STATE_SLOT and u.get("state") == "active":
+                    m[str(u.get("subject"))] = u.get("value")
+
+        resp = self.client.call("stg", {"op": "state_chain", "slot": STATE_SLOT,
+                                        "limit": _STATE_PAGE})
+        if not resp.get("truncated"):
+            _absorb(resp.get("items"))
+            return m
+        if subjects is None:
+            raise BrainError(
+                "状态槽位投影被截断（count=%s > limit=%s）且未给出主体清单，"
+                "无法取全——不静默补 None（issue #365）"
+                % (resp.get("count"), _STATE_PAGE))
+        for sid in subjects:
+            r = self.client.call("stg", {"op": "state_chain", "subject": str(sid),
+                                         "slot": STATE_SLOT, "limit": 1})
+            if r.get("truncated"):
+                raise BrainError("按主体 %r 的状态投影仍被截断：%r（issue #365）"
+                                 % (str(sid), r))
+            _absorb(r.get("items"))
         return m
 
     #: 允许进入世界重建的脑端资格态（cg(op=read) 返回体 item["state"]，四态之一）。
@@ -372,50 +484,81 @@ class BrainStore:
         `judge_qualification`——不适用条件命中情境（query/context）即明确否决，
         不应作为可信几何注入世界重建；state 缺失（如脑端换判据面）不剔除
         （未知≠否决，fail-open，防静默清空）。
+
+        **候选面取全再过滤（issue #367）**：脑端 `cg(op=read)` 回的是词法召回
+        top-k；只取一页（`k=limit`）再在适配器侧按 tag 过滤时，别的场景把这一页
+        占满，本场景就返回 0（`load_world_from_memory` 重建出空世界）。故此处按
+        脑端返回体 `meta` 的候选总数（`pre_cap`＝截断**前**命中数，
+        `md_cg/mdcg.py:4149,4638`）逐轮加大 `k` 直到覆盖整个候选面（上限＝脑端
+        `GLOBAL_CAP=500`），再按 tag 过滤；候选面本身被脑端上限截断、`limit` 取不
+        满时抛 `BrainError`——「无匹配」与「被截断」必须可分辨，不静默返回残缺
+        世界。
         """
         if accept_states is None:
             accept_states = self.DEFAULT_ACCEPT_STATES
-        resp = self.client.call("cg", {"op": "read", "query": self.seed_query,
-                                       "k": max(1, int(limit))})
-        states = self._state_map()
-        out: List[BrainNode] = []
-        for item in (resp.get("results") or resp.get("items") or []):
-            node = item.get("node") or item
-            fm = node.get("frontmatter") or item.get("frontmatter") or {}
-            tags = list(fm.get("tags") or [])
-            if tag not in tags:
-                continue                      # 裁定三：过滤在适配器侧
-            if accept_states:
-                st = item.get("state")
-                if st and st not in accept_states:
-                    continue                  # 明确否决态不注入世界（缺省踢 REJECT）
-            sp = ((fm.get("spatial") or {}).get("coords3d") or {})
-            coords = None
-            if isinstance(sp, dict) and sp:
-                coords = {"x": float(sp.get("x", 0.0)),
-                          "y": float(sp.get("y", 0.0)),
-                          "z": float(sp.get("z", 0.0))}
-            ent = ""
-            for t in tags:
-                if str(t).startswith("ent:"):
-                    ent = str(t)[4:]
-                    break
-            state = states.get(ent)
-            out.append(BrainNode(
-                id=str(node.get("id") or fm.get("id") or ""),
-                content=str(node.get("content") or ""),
-                tags=tags,
-                spatial_coordinates=coords,
-                state_attributes=({"state": state} if state else None)))
-        return out
+        want = max(1, int(limit))
+        k = want
+        while True:
+            resp = self.client.call("cg", {"op": "read", "query": self.seed_query,
+                                           "k": k})
+            out: List[BrainNode] = []
+            for item in (resp.get("results") or resp.get("items") or []):
+                node = item.get("node") or item
+                fm = node.get("frontmatter") or item.get("frontmatter") or {}
+                tags = list(fm.get("tags") or [])
+                if tag not in tags:
+                    continue                      # 裁定三：过滤在适配器侧
+                if accept_states:
+                    st = item.get("state")
+                    if st and st not in accept_states:
+                        continue                  # 明确否决态不注入世界（缺省踢 REJECT）
+                sp = ((fm.get("spatial") or {}).get("coords3d") or {})
+                coords = None
+                if isinstance(sp, dict) and sp:
+                    coords = {"x": float(sp.get("x", 0.0)),
+                              "y": float(sp.get("y", 0.0)),
+                              "z": float(sp.get("z", 0.0))}
+                out.append(BrainNode(
+                    id=str(node.get("id") or fm.get("id") or ""),
+                    content=str(node.get("content") or ""),
+                    tags=tags,
+                    spatial_coordinates=coords,
+                    state_attributes=None))
+            if len(out) >= want:
+                break                             # 本场景候选已够 limit
+            meta = resp.get("meta") or {}
+            _pre = meta.get("pre_cap")
+            total = int(_pre if _pre is not None
+                        else (meta.get("candidates") or 0))
+            nxt = min(total, BRAIN_CANDIDATE_CAP)
+            if nxt <= k:
+                if total > BRAIN_CANDIDATE_CAP:
+                    raise BrainError(
+                        "候选面被脑端上限截断：tag=%r 需 %d 条，取到 %d 条，"
+                        "候选总数 %d > 脑端上限 %d——不静默返回残缺世界（issue #367）"
+                        % (tag, want, len(out), total, BRAIN_CANDIDATE_CAP))
+                break                             # 候选面已取尽：真的只有这么多匹配
+            k = nxt
+        # 状态按**节点 id** 取（#366）；按 id 精确补读（#365：全量投影会截断）。
+        states = self._state_map([n.id for n in out])
+        for n in out:
+            state = states.get(n.id)
+            if state:
+                n.state_attributes = {"state": state}
+        return out[:want]
 
     # ---- M2 写向（垫片目标）----
     def record_state(self, node_id: str, state: Optional[str]) -> bool:
-        """把 legacy 的状态写翻译成 `cg(op=state_event)` 记账（subject=实体名）。"""
+        """把 legacy 的状态写翻译成 `cg(op=state_event)` 记账（subject=**节点 id**）。
+
+        subject 用节点 id 而非实体名（issue #366）：台账是全局 append-only 的，
+        实体名在同一脑根内的多场景间不唯一，用实体名会让另一场景的同名实体改掉
+        本场景的状态；节点 id 全局唯一，状态按节点记账、按节点读回
+        （_state_map / get_nodes_by_tag 同口径）。
+        """
         if not state:
             return False
-        ent = (self._node_meta.get(node_id) or {}).get("ent") or node_id
-        r = self.client.call("cg", {"op": "state_event", "subject": ent,
+        r = self.client.call("cg", {"op": "state_event", "subject": str(node_id),
                                     "slot": STATE_SLOT, "old": None,
                                     "new": str(state), "kind": "acquisition",
                                     "evidence": "ingest_scene→brain(conn 垫片)"})
@@ -431,20 +574,53 @@ class BrainEngine:
     def add_perception(self, content: str, importance: float = 0.6,
                        spatial_coordinates: Optional[Dict[str, float]] = None,
                        tags: Optional[List[str]] = None,
-                       entities: Optional[List[str]] = None, **_kw) -> NodeRef:
+                       entities: Optional[List[str]] = None,
+                       sensitivity: Optional[str] = None,
+                       role: Optional[str] = None,
+                       condition_space: Optional[dict] = None,
+                       skip_dedup: bool = False,
+                       **_kw) -> NodeRef:
+        """`mdcg_remember` 直写一条观测（含 spatial.coords3d 直存）。
+
+        **密级/来源显式透传**（issue #364）：`sensitivity`（密级）与 `role`
+        （来源证据：user=外部惊奇 / command·tool-output=内部确定性）、
+        `condition_space`（条件空间）**原样进 `mdcg_remember` 的 args**。此前本
+        方法用 `**_kw` 把这三个名字静默吞掉：调用方声明 `private` 的观测按脑端
+        缺省 `internal` 落盘（脑端 `docindex.DEFAULT_SENSITIVITY`），无令牌访客
+        即可检索重建该实体——隐私边界被**静默降级**，且调用方无从察觉。
+
+        **未知关键字 fail-closed**（同 #364）：凡未在上面具名的关键字一律
+        `TypeError`，不得静默丢弃——「声明了却落不了盘」正是本缺陷的成因。
+        新增调用方参数须在此显式声明并透传。
+
+        `skip_dedup`：legacy 调用形（`scene_model.ingest_scene`）透传的 M5 去重
+        开关。脑侧本层是**直写**（`gated=False`），脑端直写路径不做同构去重
+        （脑包 `md_cg/mcp_server.py`「直写不去重是文档化现状」），故此处显式
+        接收并**如实记录为脑侧无操作**——不静默吞掉名字，也不假装它生效。
+        """
+        if _kw:
+            raise TypeError(
+                "BrainEngine.add_perception 不接受未透传的关键字参数 %s——"
+                "它们不会进 mdcg_remember（静默吞参＝声明静默失效，issue #364）；"
+                "请在方法签名里显式声明并透传"
+                % (sorted(_kw),))
         args = {"content": content, "layer": "contextual", "gated": False,
                 "importance": float(importance), "tags": list(tags or [])}
+        if sensitivity is not None:
+            args["sensitivity"] = sensitivity
+        if role is not None:
+            args["role"] = role
+        if condition_space is not None:
+            args["condition_space"] = condition_space
         if spatial_coordinates:
             args["spatial"] = {"coords3d": {k: float(v)
                                             for k, v in spatial_coordinates.items()}}
         r = self.store.client.call("mdcg_remember", args)
         if not r.get("ok") or not r.get("id"):
             raise BrainError("mdcg_remember 未成功：%r" % (r,))
-        nid = str(r["id"])
-        ent = (entities or [None])[0]
-        if ent:
-            self.store._node_meta[nid] = {"ent": str(ent)}
-        return NodeRef(id=nid)
+        # `entities` 保留以兼容 legacy 调用形（scene_model.ingest_scene 传实体名）；
+        # 状态台账已改按节点 id 记账（issue #366），不再需要实体名映射。
+        return NodeRef(id=str(r["id"]))
 
 
 class BrainAgent:

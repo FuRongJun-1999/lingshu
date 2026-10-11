@@ -28,7 +28,8 @@ import），把 `sys.path` 中**解释器隐式塞入的 cwd / 空串条目**移
   - **逃生口** `LINGSHU_ALLOW_CWD_IMPORTS=1` 被显式打开（见下，等于放弃本层）；
   - `python <script>` 且**脚本目录 != cwd** 时，脚本目录条目（本模块不移除它，
     属部署/脚本面）；该面下的**白名单组件**由 `component_resolver` 另行排除
-    （`safe_search_path` 排除脚本目录）；
+    （`safe_search_path` 排除启动面）；`python -m` 形态下解释器注入的**启动 cwd
+    （包根）**同属此列（issue #421：启动面按**启动期快照**判定，不吃判定时 cwd）；
   - cwd 条目在 `lingshu` import **之后**被重新插入 `sys.path`（本模块只在
     import 期一次性消除；无持续守卫）；
   - `python -S` 极简启动（`os` 可能尚未加载，护栏降级为只处理 `''`/`.`）。
@@ -63,6 +64,45 @@ _REMOVED_KINDS = []     # 累计移除条目「种类」（'' / '.' / cwd；不�
 _KEPT_KINDS = []        # 逃生口打开时被保留的 cwd 类条目「种类」
 _WARN_EMITTED = False   # 逃生口告警是否已发出
 
+# ---- 受控面启动期快照（issue #288 · D-2）-----------------------------------
+# 受控面 = 白名单组件**允许**被解析到的面。它必须在**进程启动时刻**（本模块
+# 首次 import 时，即 lingshu 包的最早落点）一次性判定并冻结，**不再随判定时的
+# cwd 变化**；相对路径条目（其目标由 cwd 决定）**不**计入受控面。
+_SNAPSHOT_DONE = False
+_STARTUP_CWD = None          # 启动时刻的 cwd（归一；供分类，不外泄）
+_STARTUP_SCRIPT_DIR = None   # 启动时刻的脚本目录（原始路径，供分类）
+_CONTROLLED_ENTRIES = ()     # 启动时刻判定的受控面条目（绝对、非 cwd、非脚本目录、非相对）
+
+
+# ---- 启动期「解释器注入的启动面」快照（issue #421）--------------------------
+# `sys.path[0]` 由解释器在**进程启动期**按启动形态写定，是本进程里唯一不随
+# 「判定时 cwd」漂移的启动面记录：
+#   · `python <script>.py` ⇒ 脚本目录；· `python -m <mod>` ⇒ 启动 cwd（包根）；
+#   · `python -c` / REPL ⇒ `''`（非绝对 ⇒ 不计入）。
+# 必须在 `scrub()` **之前**取值：`-m` 形态下该条目**等于启动 cwd**，scrub 会把它
+# 移出 `sys.path`，取值晚了只会读到被挤上来的下一条。
+# `-P` / `PYTHONSAFEPATH=1`（`sys.flags.safe_path`）下解释器**不注入**任何条目 ⇒
+# 此时 `sys.path[0]` 是部署方条目（PYTHONPATH / site-packages），**不可**当启动面。
+def _capture_startup_launch_dir():
+    """冻结启动期 `sys.path[0]`（解释器注入面）；不可判定时 None。"""
+    try:
+        if bool(getattr(_sys.flags, "safe_path", False)):
+            return None
+        p0 = _sys.path[0] if _sys.path else None
+    except Exception:  # pragma: no cover - sys.path / sys.flags 异常
+        return None
+    if not isinstance(p0, str) or not p0 or _os is None:
+        return None
+    try:
+        if not _os.path.isabs(p0):
+            return None
+    except Exception:  # pragma: no cover - 非法路径
+        return None
+    return p0
+
+
+_STARTUP_LAUNCH_DIR = _capture_startup_launch_dir()
+
 
 class CwdImportsAllowed(UserWarning):
     """逃生口 `LINGSHU_ALLOW_CWD_IMPORTS` 被打开（cwd/空串解析面未被消除）。"""
@@ -82,11 +122,16 @@ def _escape_hatch_open() -> bool:
 
 
 def _norm(path: str) -> str:
-    """路径归一（大小写/相对/尾分隔符无关）。"""
+    """路径归一（大小写/**符号链接**/相对/尾分隔符无关）。"""
     if _os is None:
         return path
     try:
-        return _os.path.normcase(_os.path.abspath(path))
+        # issue #343：`realpath`（非 `abspath`）——同一目录经「软链/junction 路径」与
+        # 「真实路径」两种别名出现时归一到同一键。判定「脚本目录」两侧必须用**同一**
+        # 归一：`sys.path[0]` 由解释器在启动期写定、**保留** argv0 的未解析形态
+        # （实测：经 junction 启动时 `sys.path[0]` 仍是 junction 路径），若只把
+        # `main_script_dir` 一侧改 realpath，反而会把原本相符的两侧改成不符 ⇒ 护栏失效。
+        return _os.path.normcase(_os.path.realpath(path))
     except Exception:  # 防御：非法路径按原样比较
         return path
 
@@ -180,12 +225,35 @@ def ensure_scrubbed() -> bool:
 
 
 def main_script_dir():
-    """`python <script>.py` 形态下 `sys.path[0]` 所指向的**脚本目录**（或 None）。
+    """启动期由解释器**注入**的「启动面」目录（或 None）。
 
-    `-c`（argv0 == '-c'）/ `-m`（argv0 为模块文件，其目录通常不在 sys.path）/
-    REPL 形态返回 None。脚本目录同属「解释器隐式塞入的解析面」，不属部署方
-    显式声明面 ⇒ `component_resolver.safe_search_path()` 亦将其排除。
+    语义 = 「解释器在进程启动期隐式塞进 `sys.path` 的那个条目所指向的目录」：
+      · `python <script>.py` ⇒ 脚本目录；
+      · `python -m <mod>` ⇒ **启动 cwd（包根）**——`-m` 形态下 `sys.path[0]` 就是它，
+        而非模块文件所在目录；
+      · `-c` / REPL（`sys.path[0] == ''`）与 `-P` / `PYTHONSAFEPATH=1`
+        （解释器不注入）⇒ None。
+
+    这些均属「解释器隐式塞入的解析面」、不属部署方显式声明面 ⇒
+    `component_resolver.safe_search_path()` 亦将其排除。
+
+    issue #421：该值在**本模块 import 时**（`scrub()` 之前）一次性冻结为
+    `_STARTUP_LAUNCH_DIR`，**不再**由判定时的 `sys.argv[0]` / `os.getcwd()` /
+    `sys.path[0]` 现算。旧实现在「import 前 chdir」时三者同时漂移：`-m` 形态下
+    `sys.path[0]` 是启动 cwd，chdir 后它既不再等于 cwd（逃过 scrub）、又不等同
+    `dirname(argv0)`（逃过脚本目录排除）⇒ 启动目录被当受控面保留，其下同名毒组件
+    被导入执行。冻结后启动面与判定时刻无关（快照语义）。
+
+    issue #343：快照经 `realpath` 归一（与 `_norm` 同一归一），故「别名路径启动」
+    与「真实路径」两侧可比；`argv0` 不可解析时不再退回**判定时**的 `sys.path[0]`
+    （#421 的漂移面），而用启动期快照。
     """
+    if _STARTUP_LAUNCH_DIR is not None:
+        try:
+            return _os.path.realpath(_STARTUP_LAUNCH_DIR)
+        except Exception:  # pragma: no cover - 非法路径
+            return _STARTUP_LAUNCH_DIR
+    # 快照缺失（-P / PYTHONSAFEPATH / sys.path 异常）⇒ 退回 argv0 判定（原行为）。
     argv = _sys.argv
     if not argv:
         return None
@@ -195,15 +263,32 @@ def main_script_dir():
     if _os is None:
         return None
     try:
-        if not _os.path.isfile(argv0):
-            return None
-        return _os.path.dirname(_os.path.abspath(argv0))
+        if _os.path.isfile(argv0):
+            return _os.path.dirname(_os.path.realpath(argv0))
     except Exception:
+        return None
+    # argv0 已不可解析（典型：import 前 chdir ⇒ 相对 argv0 相对新 cwd 找不到）。
+    # 退回 `sys.path[0]`：`python <script>.py` 形态下即启动期写定的脚本目录绝对
+    # 路径（与 cwd 无关）；`-m` 形态为启动 cwd（与 cwd 面重合，保守多排除一项，
+    # 无害）；`-c`/REPL 形态为 `''` ⇒ 仍返回 None。
+    try:
+        p0 = _sys.path[0] if _sys.path else None
+    except Exception:  # pragma: no cover - sys.path 异常
+        return None
+    if not isinstance(p0, str) or not p0:
+        return None
+    try:
+        return _os.path.realpath(p0)
+    except Exception:  # pragma: no cover
         return None
 
 
 def is_script_dir_entry(entry) -> bool:
-    """条目是否等于 `python <script>.py` 的脚本目录。"""
+    """条目是否等于启动期由解释器**注入**的启动面目录（`main_script_dir()`）。
+
+    issue #421 起该面含 `python -m <mod>` 的**启动 cwd（包根）**，不再只指
+    `python <script>.py` 的脚本目录；判定用启动期冻结快照，不吃判定时 cwd。
+    """
     sd = main_script_dir()
     if sd is None or not isinstance(entry, str) or entry == "":
         return False
@@ -211,6 +296,78 @@ def is_script_dir_entry(entry) -> bool:
         return _norm(entry) == _norm(sd)
     except Exception:  # pragma: no cover
         return False
+
+
+def _is_relative_entry(entry) -> bool:
+    """条目是否为**相对路径**（含空串 / `.` / `./` / `.\\`）。
+
+    相对条目的目标目录由**判定时的 cwd** 决定 ⇒ 不可信、不属部署方显式声明面
+    ⇒ 一律不计入受控面（issue #288 · D-2）。空串与 `.` 同属此列。
+    """
+    if not isinstance(entry, str):
+        return True
+    if entry == "" or entry in (".", "./", ".\\"):
+        return True
+    if _os is None:
+        return True
+    try:
+        return not _os.path.isabs(entry)
+    except Exception:  # pragma: no cover
+        return True
+
+
+def startup_controlled_entries() -> tuple:
+    """**启动期快照**的受控面条目（issue #288 · D-2）。
+
+    返回在本模块首次 import 时一次性判定的元组，判定依据：
+      · **绝对路径**（相对条目目标由 cwd 决定 ⇒ 不计入）；
+      · **非 cwd**（`_is_cwd_entry` 命中的条目——`''` / `.` / 启动期 cwd）；
+      · **非脚本目录**（`python <script>.py` 的 `sys.path[0]` 脚本目录面）。
+
+    **关键性质**：本函数返回的是**冻结快照**，与调用时刻的 cwd 无关——
+    进程启动后 `os.chdir()` 到任何位置都不会改变其内容（D-2 的核心诉求：
+    受控面由启动时刻或显式配置（`LINGSHU_COMPONENT_ROOT`）确定，不吃 cwd 判定）。
+    """
+    _capture_controlled_surface()
+    return _CONTROLLED_ENTRIES
+
+
+def startup_cwd():
+    """启动时刻的 cwd（归一）；不可用时为 None。仅作诊断，不外泄绝对路径。"""
+    _capture_controlled_surface()
+    return _STARTUP_CWD
+
+
+def _capture_controlled_surface() -> None:
+    """在进程启动期（本模块 import 时）一次性判定并冻结受控面。幂等。"""
+    global _SNAPSHOT_DONE, _STARTUP_CWD, _STARTUP_SCRIPT_DIR, _CONTROLLED_ENTRIES
+    if _SNAPSHOT_DONE:
+        return
+    _SNAPSHOT_DONE = True
+    if _os is None:
+        _CONTROLLED_ENTRIES = ()
+        return
+    try:
+        _STARTUP_CWD = _norm(_os.getcwd())
+    except Exception:  # pragma: no cover - cwd 不可用
+        _STARTUP_CWD = None
+    _STARTUP_SCRIPT_DIR = main_script_dir()
+    out = []
+    for e in list(_sys.path):
+        if not isinstance(e, str) or e == "":
+            continue                      # 空串 = cwd 解析面
+        if _is_relative_entry(e):
+            continue                      # 相对条目：cwd 依赖 ⇒ 非受控面
+        if _is_cwd_entry(e) is not None:
+            continue                      # 启动期 cwd（scrub 后应已移除，防御再判）
+        if _STARTUP_SCRIPT_DIR is not None:
+            try:
+                if _norm(e) == _norm(_STARTUP_SCRIPT_DIR):
+                    continue              # 脚本目录面：非部署方显式声明
+            except Exception:  # pragma: no cover
+                pass
+        out.append(e)
+    _CONTROLLED_ENTRIES = tuple(out)
 
 
 def pathguard_report() -> dict:
@@ -229,8 +386,16 @@ def pathguard_report() -> dict:
         "kept_cwd_kinds": list(_KEPT_KINDS),
         "warning_emitted": _WARN_EMITTED,
         "cwd_entries_now": sum(1 for e in entries if _is_cwd_entry(e) is not None),
+        # issue #288 · D-2：受控面 = 启动期快照（不吃判定时 cwd）；只报计数与
+        # 启动期 cwd 是否可用，不含任何绝对路径。
+        "controlled_surface_count": len(_CONTROLLED_ENTRIES),
+        "controlled_surface_snapshot": _SNAPSHOT_DONE,
+        "startup_cwd_available": _STARTUP_CWD is not None,
     }
 
 
 # 导入本模块即执行护栏（`lingshu/__init__.py` 首行 import 本模块 ⇒ 最早落点）。
 _IMPORT_REMOVED = scrub()
+# issue #288 · D-2：在**启动期**（scrub 之后，cwd/空串条目已消除）一次性冻结
+# 受控面快照——此后无论 cwd 如何变化，受控面判定不变。
+_capture_controlled_surface()

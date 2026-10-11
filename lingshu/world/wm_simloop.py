@@ -36,6 +36,7 @@ import json
 import math
 import os
 import time
+import uuid
 from typing import Dict, List, Optional, Tuple
 
 try:
@@ -51,16 +52,22 @@ except ImportError:
 # ==================== 确定性几何（拓扑生长外推 · 零 rng）====================
 
 def _ray_intersect_2d(q1, u1, q2, u2) -> Optional[Tuple[float, float]]:
-    """射线 q1+t·u1 与 q2+t·u2 的 2D 交点（平行/近平行返回 None）。"""
+    """射线 q1+s·u1 与 q2+t·u2 的 2D 交点（平行/近平行返回 None）。
+
+    判据：交点须落在**两条**射线的正向前方（s≥0 且 t≥0）。只校验 s 会接受
+    「在射线 1 前方、却在射线 2 身后」的交点——那是两直线相交，不是两射线
+    相交：对发散轨迹（背离型）会给出假目标点。
+    """
     denom = u1[0] * (-u2[1]) - (-u2[0]) * u1[1]
     if abs(denom) < 1e-9:
         return None
     w = (q2[0] - q1[0], q2[1] - q1[1])
     s = (w[0] * (-u2[1]) - (-u2[0]) * w[1]) / denom
+    t = (w[1] * u1[0] - w[0] * u1[1]) / denom
+    if s < -1e-6 or t < -1e-6:         # 交点在任一条射线身后（背离运动方向）→ 无效
+        return None
     x = q1[0] + s * u1[0]
     z = q1[1] + s * u1[1]
-    if s < -1e-6:                      # 交点在身后（背离运动方向）→ 无效
-        return None
     return (x, z)
 
 
@@ -139,8 +146,8 @@ class SimulationLoop:
                  deadzone: int = 2,           # 死区：K tick 内 anomaly 阈值
                  verify_window: int = 8,      # 假设验证窗口 N
                  confirm_ratio: float = 0.5,  # 窗口内趋向占比 ≥ 此比例 → 固化
-                 persistence_window: int = 10,   # 方向持续性窗口
-                 persistence_min: float = 0.45,  # 随机游走之上 → 有未解释结构
+                 persistence_window: int = 80,   # 方向持续性窗口（整窗；见 _persistence）
+                 persistence_min: float = 0.45,  # 随机游走 null 之上 → 有未解释结构
                  clock=None):
         self.wm = world_model or UnifiedWorldModel(
             size=size, seed=seed, world=scene)
@@ -209,7 +216,8 @@ class SimulationLoop:
             self.scene.step(n=1)                      # ② 物理结算（模型不可见内部）
             self.wm.perceive(observations=self._observe())  # ③ 观察（遮蔽注入点）
             v = self.wm.verify()                      # ④ 验证（外部观察者）
-            self._rolling_rates.append(v["hit_rate"])
+            if v["hit_rate"] is not None:
+                self._rolling_rates.append(v["hit_rate"])
             self._growth_tick(v)                      # ⑤ 拓扑生长/回退
             self._wal("episode", {                    # ⑥ 留痕（全量快照）
                 "nodes": self._snapshot_nodes(),
@@ -224,7 +232,7 @@ class SimulationLoop:
             "ticks": int(n), "tick": self.wm.tick,
             "rolling_hit_rate": round(sum(self._rolling_rates)
                                       / len(self._rolling_rates), 4)
-            if self._rolling_rates else 1.0,
+            if self._rolling_rates else None,
             "growth_summary": {
                 "born": sum(1 for g in self._growth_log
                             if g["event"] in ("growth", "re-grow")),
@@ -245,13 +253,20 @@ class SimulationLoop:
                    if a["entity"] == eid and a["tick"] > lo)
 
     def _persistence(self, eid: str) -> Optional[float]:
-        """方向持续性 = 净位移/路径长（随机游走 ~0.2-0.3，定向运动 > 0.45）。
-        宽随机边界（D2）会掩盖温和结构——模型已承认无知用宽边界时，
-        持续性显著高于随机游走 = 存在未解释结构（信息差的诚实信号）。"""
+        """方向持续性 = 净位移/路径长（定向运动 →1，随机游走 →0）。
+
+        判据来源：经验标定（2026-10-10，本仓随机游走 null 采样；无理论章节）。
+        net/path 的 null 分布强烈依赖样本数 n——n=10 时 p99≈0.76、max≈0.92，
+        固定阈值 0.45 落在 null 尾部之内（21% 随机游走样本越过，60/60 seed
+        触发通道②）；n=80 时 null p99≈0.25、max≈0.37（84400 样本），0.45 才
+        落在 null 之上。故本估计器要求**整窗**样本（n == persistence_window）：
+        样本不足（早期 tick / 遮蔽缺链）⇒ None，不给宽尾不可靠估计。窗口取
+        80 是本判据成立的条件（`persistence_window` 调小会让 0.45 重回 null
+        尾内、通道②对随机游走误报）。"""
         traj = [rec["entities"][eid]
                 for rec in self.wm.history[-self.persistence_window:]
                 if eid in rec["entities"]]
-        if len(traj) < 4:
+        if len(traj) < self.persistence_window:
             return None
         path = sum(math.dist(traj[i - 1], traj[i])
                    for i in range(1, len(traj)))
@@ -262,7 +277,7 @@ class SimulationLoop:
     def _hit_for(self, verify_result: Dict, eid: str) -> Optional[bool]:
         for d in verify_result.get("details", []):
             if d["entity"] == eid:
-                return bool(d["hit"])
+                return d["hit"] if d["hit"] is not None else None
         return None
 
     def _traj(self, eid: str) -> List[Tuple[float, float, float]]:
@@ -373,8 +388,12 @@ class SimulationLoop:
         if old is not None:                     # re-grow：摘除旧假设
             self.wm.nodes.pop(old["node"], None)
             self.wm._conditions.pop(old["node"], None)
+            # 摘除**所有与该假设关联**的边（入边 + 出边）。只删 target==hid
+            # 会漏掉假设节点自身长出的出边（world_model.infer_patterns 在假设
+            # 节点进历史时会为它推关系边），残留悬空边（源/目标已不在 nodes）。
             self.wm.edges = [e for e in self.wm.edges
-                             if e.target != old["node"]]
+                             if e.target != old["node"]
+                             and e.source != old["node"]]
         superseded = [e.to_dict() for e in self.wm.edges if e.source == subject]
         self.wm.nodes[hid] = WMNode(
             eid=hid, category="hidden_target", pos=pos, confidence=0.3,
@@ -406,7 +425,12 @@ class SimulationLoop:
         self._wal("growth", ev)
 
     def _revert(self, h: Dict, reason: str) -> None:
-        """回退假设（验证不成立不固化）；anomaly 留痕不删。"""
+        """回退假设（验证不成立不固化）；anomaly 留痕不删。
+
+        摘除**所有与该假设关联**的边（入边 + 出边）：只删 target==hid 会漏掉
+        假设节点自身的出边，残留悬空边（源/目标已不在 nodes，graph()/WAL
+        快照仍会导出它）。
+        """
         hid = h["node"]
         ev = {"tick": self.wm.tick, "event": "revert",
               "subject": self._alias_of(h.get("_subject", "")),
@@ -416,7 +440,8 @@ class SimulationLoop:
               "reason": reason}
         self.wm.nodes.pop(hid, None)
         self.wm._conditions.pop(hid, None)
-        self.wm.edges = [e for e in self.wm.edges if e.target != hid]
+        self.wm.edges = [e for e in self.wm.edges
+                         if e.target != hid and e.source != hid]
         self._hypotheses.pop(h.get("_subject", ""), None)
         self._growth_log.append(ev)
         self._wal("revert", ev)
@@ -476,16 +501,25 @@ class SimulationLoop:
 
     @staticmethod
     def parse_seed_entity(line: str):
-        """解析 flush 载荷实体行：`- entity: rabbit id=xx pos=(x, y, z) …`。"""
+        """解析 flush 载荷实体行：`- entity: {category} id={eid} pos=(x, y, z) …`。
+
+        flush 写出的类别是裸文本（无引号、无转义），类别可含空格。按分隔标记
+        定位（` id=` / ` pos=(` / `)`）而非按空格裸切——裸切会把多词类别截成
+        首词、错位字段（写读不对称 = 持久化往返损坏）。
+        """
         if not line.strip().startswith("- entity:"):
             return None
         try:
             seg = line.strip()[len("- entity:"):].strip()
-            category = seg.split()[0]
-            eid = seg.split("id=")[1].split()[0]
-            pos_seg = seg.split("pos=")[1].split(")")[0].strip("( ")
+            if " id=" not in seg or " pos=(" not in seg:
+                return None
+            category, rest = seg.split(" id=", 1)
+            eid, rest = rest.split(" pos=(", 1)
+            pos_seg = rest.split(")", 1)[0]
             pos = tuple(float(v) for v in pos_seg.split(","))
-            return {"category": category, "eid": eid,
+            if len(pos) != 3:
+                return None
+            return {"category": category.strip(), "eid": eid.strip(),
                     "pos": (pos[0], pos[1], pos[2])}
         except (IndexError, ValueError):
             return None
@@ -529,6 +563,14 @@ class SimulationLoop:
 
         对齐 data/mdcg/contextual/arc_agi_ls20_*.md 先例格式；
         v1 不旁路写真源——真实摄取走 mdcg 正规通道（cg write/ingest）。
+
+        issue #324：`out_path` 落盘改**原子写**（同目录临时文件 + `os.replace`）——
+        旧实现 `open(out_path, "w")` 先截断再写，中途失败即留下截断坏档。
+        路径**白名单**不在此层：本方法是调用方已持有对象时的库 API；模型驱动面
+        经 `SpacetimeMemoryEngine.wm_simloop("flush")` 进入，越界闸在门面侧
+        （`_confine_simloop_out_path`）。边界（如实标注）：`os.replace` 保证
+        「目标文件要么是旧内容、要么是完整新内容」，**不**保证掉电后元数据已落盘
+        （未做目录 fsync；Windows 上亦无法对目录取句柄）。
         """
         self._flush_count += 1
         g = self.wm.graph()
@@ -554,7 +596,7 @@ class SimulationLoop:
             lines.append(f"- {tag}: {n['category']} id={eid} "
                          f"pos=({n['pos'][0]}, {n['pos'][1]}, {n['pos'][2]}) "
                          f"confidence={round(n['confidence'], 3)}")
-        rate = round(self._rolling_rates[-1], 4) if self._rolling_rates else 1.0
+        rate = round(self._rolling_rates[-1], 4) if self._rolling_rates else None
         lines += ["", f"命中率: {rate} | 节点 {g['node_count']} | "
                   f"边 {g['edge_count']} | WAL {self._seq} 条",
                   f"growth: born={sum(1 for x in self._growth_log if x['event'] in ('growth', 're-grow'))} "
@@ -573,9 +615,26 @@ class SimulationLoop:
         payload = {"id": fm["id"], "frontmatter": fm, "body_md": md}
         written = None
         if out_path:
+            # issue #324（数据丢失面）：旧实现 `open(out_path, "w")` **先截断再写**
+            # ⇒ 写中途失败即把目标文件毁成空/半截（先毁后写），且无原子性。
+            # 修法：同目录临时文件写完再 `os.replace` 换入（原子、覆盖式语义保留）。
+            # 越界/白名单闸在门面侧（`SpacetimeMemoryEngine._confine_simloop_out_path`）——
+            # 本方法是被 Python 直接持有的库 API，不做路径白名单（调用方已持对象）。
+            # 判据来源：经验标定（本件 #324）——口径取「临时文件 + os.replace」；
+            # 追不到更早出处。
             os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(md)
+            tmp_path = "%s.tmp-%s" % (out_path, uuid.uuid4().hex[:8])
+            try:
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    f.write(md)
+                os.replace(tmp_path, out_path)
+            except BaseException:
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
             written = out_path
         return {"status": "ok", "payload": payload, "written": written,
                 "note": "载荷已生成；真实摄取走 mdcg 正规通道（不旁路写真源）"}
@@ -592,7 +651,7 @@ class SimulationLoop:
                 "anomaly_count": g["anomaly_count"],
                 "rolling_hit_rate": round(sum(self._rolling_rates)
                                           / len(self._rolling_rates), 4)
-                if self._rolling_rates else 1.0,
+                if self._rolling_rates else None,
                 "hypotheses_active": len(self._hypotheses),
                 "growth_events": len(self._growth_log),
                 "wal_records": len(self.wal),
@@ -609,21 +668,24 @@ class SimulationLoop:
 
 if __name__ == "__main__":
     # 自测：漂移正弦遮蔽目标（确定性外部世界，模型只见追逐者轨迹）
+    # 通道②要求整窗（persistence_window=80）样本，故场景须让追逐者持续移动
+    # 至少一个窗口——场地取 48、速度降到 0.5，避免 ~27 tick 就顶到边界静止
+    # （静止后 path≈0、持续性无估计，通道②无从触发）。
     import math as _m
-    sl = SimulationLoop(wal_path=None)
+    sl = SimulationLoop(size=48, wal_path=None)
     sl.scene.create_scene(trees=0, water=False)
     t = sl.scene.add_entity("rabbit", behavior="wander", pos=(6, 1.5, 13), speed=0.0)
     a = sl.scene.add_entity("wolf", behavior="seek", goal=t,
-                            pos=(2, 1.5, 13), speed=0.8)
+                            pos=(2, 1.5, 13), speed=0.5)
     sl._mask = {t}
     sl.wm.perceive(observations=sl._observe())
 
     def drifting(scene, tick):
-        scene.entities[t].pos = (3.0 + 0.55 * tick
+        scene.entities[t].pos = (3.0 + 0.3 * tick
                                  + 2.5 * _m.sin(tick * 0.45), 1.5, 13.0)
 
     sl.step(n=1)
-    sl.step(n=30, external=drifting)
+    sl.step(n=140, external=drifting)
     rep = sl.report()
     H = [n for n in sl.wm.nodes.values() if n.attrs.get("hypothesis")]
     print("replay_consistent:", rep["replay_consistent"],

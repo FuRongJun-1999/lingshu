@@ -18,18 +18,37 @@ prediction_engine · 预测能力补全（v1.9）
 import time
 from typing import Dict, List, Optional
 
+# #40：语义邻近回退（中文二元组 Jaccard）的实现来源。
+# 私域（AEIS）以裸名 `spacetime_memory_core` 命名空间注册**同一** LayeredStore；
+# 本仓形态无该别名——旧实现在此 `return 0.0`，致通道4（语义邻近）在本仓
+# **整体静默失效**（`semantic_neighbors` 恒空）。补仓内回落：
+try:  # 私域别名面（component_resolver 白名单内，勿删）
+    from spacetime_memory_core import LayeredStore as _LayeredStore
+except Exception:  # 本仓形态：回落仓内 core 的同名实现（char_bigram_jaccard 逐字同式）
+    from ..core.core import LayeredStore as _LayeredStore
+
 
 class PredictionEngine:
     """预测引擎：'图结构的过去 + 结构 → 候选未来集合'（非确定性输出）"""
 
     MIN_SAMPLES = 50          # D-006：最低样本量（置信区间收敛）
     BASE_HIT_RATE = 0.40      # D-006：基线阈值（工程初值，非协议承诺）
+    # #395：路线图生成的总量预算（资源上界）。
+    # 判据来源＝**经验标定，追不到理论出处**（本仓理论稿
+    # docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md 未给路线规模口径）；
+    # 取同仓 `core.py` HISTORY_MAX「常量 + 超限截断」既有手法。默认参数
+    # （horizon=3 · max_branches=5 ⇒ ≤155 条；core.py 调用 horizon=2）远低于此，
+    # 仅在显式大 horizon 的病态输入上生效。
+    MAX_ROUTES = 500
 
     def __init__(self, engine, attention_policy=None):
         self.engine = engine
         self.attention_policy = attention_policy   # D-005 适配器（duck-typed get_weights()）
         self.prediction_log: List[Dict] = []
         self._hit_history: List[bool] = []          # 验证闭环历史（D-006）
+        # #117：最近一次 _generate_routes 中**实际参与**的边（edge 级参与记录）——
+        # 目标节点 → 进入它的因果/时序边 id 集合。供命中反馈只强化参与边（D-40）。
+        self._last_participation: Dict[str, set] = {}
 
     # ==================== 语义邻近（通道4原料 · 经过滤门） ====================
 
@@ -51,10 +70,6 @@ class PredictionEngine:
 
     def _similarity(self, a, b) -> float:
         """语义坐标相似度（优先）或中文二元组 Jaccard（回退）"""
-        try:
-            from spacetime_memory_core import LayeredStore
-        except Exception:
-            return 0.0
         sc_a = getattr(a, "semantic_coordinates", {}) or {}
         sc_b = getattr(b, "semantic_coordinates", {}) or {}
         if sc_a and sc_b:
@@ -63,7 +78,7 @@ class PredictionEngine:
                 return SemanticSpaceProvider.similarity_coordinates(sc_a, sc_b)
             except Exception:
                 pass
-        return LayeredStore.char_bigram_jaccard(a.content, b.content)
+        return _LayeredStore.char_bigram_jaccard(a.content, b.content)
 
     # ==================== 过滤门（D-002 伪因果防护） ====================
 
@@ -126,7 +141,9 @@ class PredictionEngine:
     def predict_routes(self, start_id: str = None, blindspot_id: str = None,
                        horizon: int = 3, max_branches: int = 5) -> Dict:
         """生成式预测：候选未来路径集合（非必然未来 · uncertainty_bound）
-        v1.10：盲区驱动（blindspot_id）——unknowable 盲区不生成路线（D-003）"""
+        v1.10：盲区驱动（blindspot_id）——unknowable 盲区不生成路线（D-003）
+        #117：入口即清空参与边记录——本轮未生成的路线不留旧记录（防跨轮误强化）"""
+        self._last_participation = {}
         if blindspot_id is not None:
             bs = self._find_blindspot(blindspot_id)
             if bs is None:
@@ -147,7 +164,18 @@ class PredictionEngine:
     def _generate_routes(self, start_id: str, horizon: int, max_branches: int) -> Dict:
         """路线图生成（原 predict_routes 主体）
         v1.15 H2：预演规划——每条路线附带「条件空间序列层」，
-        每个路径节点标注该步成立的预测条件（来自边/节点条件空间的存在约束）。"""
+        每个路径节点标注该步成立的预测条件（来自边/节点条件空间的存在约束）。
+
+        #395 两道上界（旧实现只按 `depth >= horizon` 截断）：
+          ① **简单路径**：`nid in path` 即跳过——因果路线不得重访节点（环/自环
+             不再生成带重复节点的伪路线，旧实现会产出 a→b→a→b… 这类"判错"路线）。
+          ② **总量预算** `MAX_ROUTES`：路线条数达上限即停止展开——旧实现按
+             `max_branches ** horizon` 指数增长（无预算/去重）。
+        削掉的判别力（如实声明）：环状因果结构不再产出"绕环一圈"的路线；大 horizon
+        下的候选未来被截到 MAX_ROUTES 条（尾部低分路线不再出现）。两道上界只在
+        路线数**将要超过** MAX_ROUTES 时咬合（默认 core.py 调用 horizon=2）；
+        注意 #40 修复使语义邻近通道在本仓恢复，同一图上的候选边会比修复前更多
+        （通道4 由恒空变为可用），故"修复前后路线条数逐字相同"**不成立**。"""
         routes = []
 
         def _cs_label(node_id: str, edge_cs=None) -> str:
@@ -179,18 +207,26 @@ class PredictionEngine:
             if depth >= horizon:
                 return
             for nid, ec, src in self._branch_candidates(current)[:max_branches]:
+                if len(routes) >= self.MAX_ROUTES:   # #395②：总量预算（逐条严格封顶）
+                    return
+                if nid in path:      # #395①：简单路径——不重访（环/自环不成路线）
+                    continue
                 new_path = path + [nid]
                 # 该步条件：优先取 current→nid 边的条件空间
                 edge_cs = None
+                edge_id = None
                 try:
                     for e in self.engine.store.get_outgoing_edges(current):
                         if e.target_id == nid and e.relation_type.value in ("causal", "sequential"):
                             edge_cs = e.condition_space
+                            edge_id = e.id
                             break
                 except Exception:
                     pass
                 cond = _cs_label(nid, edge_cs)
                 new_conds = conditions + [cond]
+                if edge_id is not None:   # #117：记录进入 nid 的参与边（edge 级）
+                    self._last_participation.setdefault(nid, set()).add(edge_id)
                 routes.append({"path": new_path, "conf": round(conf * ec, 4),
                                "source": src, "conditions": new_conds})
                 dfs(nid, new_path, new_conds, depth + 1, conf * ec)
@@ -302,14 +338,31 @@ class PredictionEngine:
         """命中：路径强化（边置信度 +0.05）/ 未命中：衰减 + 被拒路径登记
         v1.15：note 记录到验证条目（可审计）
         v1.16（GPT 审查·自动条件化）：未命中 → 除登记被拒路径外，**自动发现
-        缺失条件并写入条件候选节点**（错误 → 新条件 → 新结构，不等待飞轮触发）"""
+        缺失条件并写入条件候选节点**（错误 → 新条件 → 新结构，不等待飞轮触发）
+
+        #117 修法（判据来源＝设计者裁定 D-40/D-41，见 docs/plans/待裁清单_v0.1.md
+        §附-E「#117 参与边记录粒度=edge 级／未命中只不增信＋记录」）：
+          命中只强化**本轮实际参与**的边（`_last_participation` 里记录的 edge id），
+          且 `verify_edge` 只收**未验证**的边——旧实现遍历目标节点**全部**因果入边、
+          无条件 `verified=1` ⇒ 一次命中即把**非参与**边一并永久标 verified
+          （`decay_cycle` 的 `WHERE e.verified = 0` 从此豁免它们）。无参与记录
+          （从未经 `predict_routes` 走到该目标节点）时 **fail-closed**：不强化任何边。
+        削掉的判别力（如实声明）：未经 `predict_routes` 的**直接反馈**不再强化
+          「目标节点的全部因果入边」——它不再产生任何增信；若目标节点的参与边早已
+          verified，本次命中同样不再增信（旧实现会重复 +0.05）。"""
         self._hit_history.append(hit)
         if len(self._hit_history) > 200:
             self._hit_history = self._hit_history[-200:]
         if hit and predicted_node_id == actual_node_id:
+            participated = self._last_participation.get(predicted_node_id) or set()
             for e in self.engine.store.get_incoming_edges(predicted_node_id):
-                if e.relation_type.value in ("causal", "sequential"):
-                    self.engine.store.verify_edge(e.id, min(1.0, e.confidence + 0.05))
+                if e.relation_type.value not in ("causal", "sequential"):
+                    continue
+                if e.verified:          # #117：已验证边不重复增信（幂等）
+                    continue
+                if e.id not in participated:
+                    continue            # #117：非本轮参与边不强化（fail-closed）
+                self.engine.store.verify_edge(e.id, min(1.0, e.confidence + 0.05))
         elif not hit:
             try:
                 self.engine.register_rejected_path(

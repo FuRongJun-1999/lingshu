@@ -116,16 +116,29 @@ def make_multimodal_scene(rng: np.random.Generator, size: int = 48,
 
 def corrupt_description(desc: str, rng: np.random.Generator,
                         corrupt_rate: float = 0.3) -> str:
-    """噪声描述:按词随机替换形状/颜色词(跨模态一致性判定的非平凡化)。"""
-    out = desc
+    """噪声描述:按词随机替换形状/颜色词(跨模态一致性判定的非平凡化)。
+    每个原文词只抽签一次、最后一次性替换:换进去的词不再被后续词条改写(否则
+    「圆形→三角形」会被「三角」词条再改一次,rate=1.0 时可改回原义);被长词覆盖的
+    短词(「圆」⊂「圆形」)不另抽签。"""
+    judged, picks = [], []                                # 已判区间 / (起, 止, 替换词)
     for words, alt, cn_tab in ((SHAPE_WORDS, SHAPES, SHAPE_CN),
                                (COLOR_WORDS, COLORS, COLOR_CN)):
         for cn_word, sem in list(words.items()):
-            if cn_word in out and rng.random() < corrupt_rate:
+            i = desc.find(cn_word)
+            while i >= 0 and any(a < i + len(cn_word) and i < b for a, b in judged):
+                i = desc.find(cn_word, i + 1)
+            if i < 0:
+                continue
+            judged.append((i, i + len(cn_word)))
+            if rng.random() < corrupt_rate:
                 others = [v for v in alt if v != sem]
                 wrong_sem = others[rng.integers(len(others))]
-                out = out.replace(cn_word, cn_tab[wrong_sem], 1)
-    return out
+                picks.append((i, i + len(cn_word), cn_tab[wrong_sem]))
+    out, last = "", 0
+    for i, j, rep in sorted(picks):
+        out += desc[last:i] + rep
+        last = j
+    return out + desc[last:]
 
 
 # ==================== 象限级子物体检测(图像路空间拆分) ====================
@@ -168,6 +181,14 @@ def spatial_detect(net: HexHierNet, lat: np.ndarray,
 
 # ==================== 图文融合一致性判定(四态) ====================
 
+def _attr_support(said: Optional[str], seen: str) -> float:
+    """单属性支持度:相符 0.5 / 冲突 0 / 子句未陈述该属性 0.25(无证据,沿用原分值)。
+    两属性都陈述时子句得分即 1 全符 / 0.5 半符 / 0 冲突。"""
+    if said is None:
+        return 0.25
+    return 0.5 if said == seen else 0.0
+
+
 def fuse_consistency(clauses: List[Dict], detections: List[Dict]) -> Dict:
     """文字子句 vs 图像检测 对齐融合 → 四态一致性判定。
     每子句得分 = 位置命中物卡的形状/颜色匹配度(1 全符/0.5 半符/0 冲突);
@@ -180,11 +201,11 @@ def fuse_consistency(clauses: List[Dict], detections: List[Dict]) -> Dict:
         for det in detections:
             m = 0.0
             if cl["pos"] == det["pos"]:
-                m = 0.5
-                sm = (cl["shape"] == det["obj"].split("|")[0])
-                cm = (cl["color"] == det["obj"].split("|")[1])
-                m += 0.25 * sm + 0.25 * cm
-            elif cl["shape"] in det["obj"] and cl["color"] in det["obj"]:
+                shape_seen, color_seen = det["obj"].split("|")
+                m = (_attr_support(cl["shape"], shape_seen)
+                     + _attr_support(cl["color"], color_seen))
+            elif (cl["shape"] and cl["color"]
+                  and cl["shape"] in det["obj"] and cl["color"] in det["obj"]):
                 m = 0.4                                     # 位置异但物体同
             best = max(best, m)
         scores.append(best)

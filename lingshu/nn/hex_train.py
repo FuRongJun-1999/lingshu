@@ -122,6 +122,64 @@ def hex_conv_batch(feat: np.ndarray, kernel7: np.ndarray) -> np.ndarray:
     return acc  # float64
 
 
+def hex_conv_batch_multi(feat: np.ndarray, kernels: np.ndarray) -> np.ndarray:
+    """一次前向算完全部核：feat (B,rows,cols,C) × kernels (K,C,7) → (B,rows,cols,K)。
+
+    语义 = 对每个 k 调用 hex_conv_batch(feat, kernels[k]).sum(axis=-1)
+    （即「逐核卷积 → 跨输入通道求和」的融合形式），但只做**一次** padding、
+    **一次** 6 邻移位、**一次** GEMM——把 O(K) 次重复的 padding/concatenate
+    折叠成常数次，并把逐核的逐元素乘加交给 BLAS。
+
+    等价性：与逐核循环的差别仅在对输入通道 C 的求和次序（∑_C 与 ∑_i 交换），
+    float64 下相对误差 ~1e-15~1e-13 量级（见 tests/test_hex_conv_fusion.py）。
+    错行偏移表、boundary=replicate、奇偶行混合规则与 hex_conv_batch 完全一致。
+
+    适用区间：本仓的实际用途是「空间维 ≥ 数格、C=3、K=6+」，此区间融合稳定
+    快 3~16x。反过来，**空间很小 ∧ 输入通道 C 很大 ∧ 输出核数 K 很小**时融合
+    会更慢（实测 C≈48-64 且 K=1 时约 0.66-0.85x：此时 (B,r,c,C,7) 的 float64
+    tap 张量写带宽成瓶颈，而逐核循环每次的临时量小得多）。本仓无此调用形态，
+    故不加分支回退、保持实现单一；将来若要在「大 C / 单核」场景复用，请先按
+    上面的判据实测再决定走哪条路径。
+    """
+    B, rows, cols, C = feat.shape
+    K = kernels.shape[0]
+    f = feat.astype(np.float64)
+    even_off = [(-1, 0), (1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+    odd_off = [(-1, 0), (1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+
+    def pad_rep(x: np.ndarray) -> np.ndarray:
+        top, bot = x[:, 0:1], x[:, -1:]
+        left, right = x[:, :, 0:1], x[:, :, -1:]
+        tl, tr = x[:, 0:1, 0:1], x[:, 0:1, -1:]
+        bl, br = x[:, -1:, 0:1], x[:, -1:, -1:]
+        mid = np.concatenate([left, x, right], axis=2)
+        topm = np.concatenate([tl, top, tr], axis=2)
+        botm = np.concatenate([bl, bot, br], axis=2)
+        return np.concatenate([topm, mid, botm], axis=1)
+
+    padded = pad_rep(f)
+
+    # taps: (B,rows,cols,C,7) —— 0 号是自身，1..6 是奇偶行混合后的邻居值。
+    # 奇数行只占一半，故「先写 even 偏移、再覆盖奇数行」比 np.where 全矩阵
+    # 选择少一次 (B,rows,cols,C) 级临时量；与 rowmask 混合逐位等价。
+    taps = np.empty((B, rows, cols, C, 7), dtype=np.float64)
+    taps[..., 0] = padded[:, 1:-1, 1:-1, :]
+    for i in range(6):
+        dq, dr = even_off[i]
+        taps[..., i + 1] = padded[:, 1 + dr: 1 + dr + rows,
+                                  1 + dq: 1 + dq + cols, :]
+        if rows > 1:
+            dq2, dr2 = odd_off[i]
+            o = padded[:, 1 + dr2: 1 + dr2 + rows,
+                       1 + dq2: 1 + dq2 + cols, :]
+            taps[:, 1::2, :, :, i + 1] = o[:, 1::2]
+
+    # 单次 GEMM：(B*rows*cols, C*7) @ (C*7, K) → (B*rows*cols, K)
+    m = taps.reshape(B * rows * cols, C * 7)
+    w = kernels.reshape(K, C * 7).T
+    return (m @ w).reshape(B, rows, cols, K)
+
+
 # ==================== HexNet：可生长的浅层蜂窝网络 ====================
 
 class HexNet:
@@ -146,11 +204,19 @@ class HexNet:
         return np.concatenate([self.conv.ravel(), self.mix.ravel(), self.fc.ravel()])
 
     def set_vec(self, vec: np.ndarray):
+        """从平铺参数向量载入参数。
+
+        #340：三段都必须 `.copy()`。连续 ndarray 上的 `vec[a:b]` 是**视图**，
+        `.reshape` 不改变这一事实——直接持有会把模型参数别名到调用方缓冲上：
+        调用方事后原地改自己的 `vec`（train_infogap 的 `vec[pi] -= lr*...`
+        更新路径正是如此）会静默改写模型参数，绕过 set_vec 的显式载入。
+        判据来源：经验标定，HEAD 实测 `np.shares_memory(net.conv, vec) is True`。
+        """
         i, k7 = 0, self.K * 7
-        self.conv = vec[i:i + k7].reshape(self.K, 7); i += k7
+        self.conv = vec[i:i + k7].reshape(self.K, 7).copy(); i += k7
         mk = self.M * self.K
-        self.mix = vec[i:i + mk].reshape(self.M, self.K); i += mk
-        self.fc = vec[i:i + self.C * self.M].reshape(self.C, self.M)
+        self.mix = vec[i:i + mk].reshape(self.M, self.K).copy(); i += mk
+        self.fc = vec[i:i + self.C * self.M].reshape(self.C, self.M).copy()
 
     def n_params(self) -> int:
         return self.K * 7 + self.M * self.K + self.C * self.M
@@ -165,9 +231,10 @@ class HexNet:
         """x:(B,r,c,1) → (logits(B,10), feats(B,M))
         池化=RMS 能量池化——边缘/差分核(DC=0)响应空间正负交替,均值池化
         会正负抵消把特征抹零(实测 pooled~0.006 梯度全灭);RMS 保留模式能量。"""
-        maps = [hex_conv_batch(x, self.conv[k])[..., 0] for k in range(self.K)]
-        h = np.stack(maps, axis=-1)                     # (B,r,c,K)
-        h = self._lrelu(h)
+        # 融合前向：一次 padding + 一次 GEMM 算完全部 K 核。
+        # 原实作是 hex_conv_batch(x, self.conv[k])[..., 0]——即**只取第 0 通道**
+        # 的卷积结果，故这里显式切到单通道，语义逐字保持。
+        h = self._lrelu(hex_conv_batch_multi(x[..., :1], self.conv[:, None, :]))
         h2 = h @ self.mix.T                             # (B,r,c,M)
         h2 = self._lrelu(h2)
         pooled = np.sqrt((h2 ** 2).mean(axis=(1, 2)) + 1e-12)
@@ -325,11 +392,29 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
                      samples_per_step: int = 16, batch: int = 64,
                      steps: int = 60, seed: int = 7) -> Dict:
     """ELF x-prediction 背书的目标：预测干净 cell（非噪声）。
-    conv 核支路的有限差分调整，conv 段冻结 mix/fc（预训练只调特征前端）。"""
+    conv 核支路的有限差分调整，conv 段冻结 mix/fc（预训练只调特征前端）。
+
+    ── 预算随晶格分辨率自适应（2026-10-10）────────────────────────────────
+    原 `steps` 标定于 **10×16 = 160 cell** 的旧晶格（`images_to_lattices` 旧
+    采样几何）。#116（`9bc4985`）修正 `image_to_grid` 横向越界后，同一
+    `cells_across=16` 的晶格行数由 10 抬到 18（288 cell）——每步只随机抽
+    `samples_per_step` 个 conv 参数做有限差分，**步数不变而 cell 数近翻倍**
+    时，「每个 cell 分到的更新预算」被稀释，20 步不足以让重建损失稳定下行
+    （实测 seed=7：`0.96974→1.05096`，末点恰抽到高值；前序探针 steps=100
+    时 `final≈0.80910 < init`，证明是预算不足而非更新方向错）。故按 cell 数
+    等比放大步数，令 `steps` 保持「每 cell 更新预算」的语义（与
+    `calibrate_thresholds` 按数据分位自适应同一取向：预算随输入规模走，
+    不钉死一个与分辨率耦合的常数）。`REF_CELLS=160` 即原标定分辨率。
+    注：本条**只动预算**，不触碰 `vec = net.conv.ravel()` /
+    `vec[pi] -= lr * g` 的原地更新路径（`#340` 靶区）与 `curve` 的评估口径。
+    """
     rng = np.random.default_rng(seed)
-    curve = []
     conv_vec_len = net.K * 7
-    for step in range(steps):
+    n_cells = int(x.shape[1] * x.shape[2])
+    REF_CELLS = 160                     # 原 steps 标定的旧晶格规模（10×16）
+    eff_steps = max(1, int(round(steps * n_cells / REF_CELLS)))
+    curve = []
+    for step in range(eff_steps):
         idx = rng.permutation(len(x))[:batch]
         xb = x[idx]
         masked = xb.copy()
@@ -337,8 +422,8 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
         masked[hole] = 0.0
 
         def recon_loss() -> float:
-            maps = [hex_conv_batch(masked, net.conv[k])[..., 0] for k in range(net.K)]
-            h = np.stack(maps, axis=-1)
+            # 原实作取 [..., 0]（只第 0 通道），此处保持同一语义
+            h = hex_conv_batch_multi(masked[..., :1], net.conv[:, None, :])
             pred = h.mean(axis=-1, keepdims=True)
             return float(((pred[hole] - xb[hole]) ** 2).mean())
 
@@ -356,7 +441,7 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
         net.conv = vec.reshape(net.K, 7)
         curve.append(round(recon_loss(), 5))
     return {"algo": ALGO + "+selfsup", "init": curve[0], "final": curve[-1],
-            "curve": curve}
+            "curve": curve, "steps": eff_steps, "n_cells": n_cells}
 
 
 # ==================== 类别条件卡 · 四态判定（三层分工） ====================

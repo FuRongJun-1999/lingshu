@@ -36,14 +36,19 @@ def deep_norm(t):
     return t.strip()
 
 def is_ordinal_diff(a, b):
-    """编辑距离为 1 时，差异字符是否为序数词（序数差异=同级概念，非同义）"""
+    """等长时，**所有**差异位置是否都为序数对（一/二…、1/2…）。
+
+    序数差异=同级概念（如"第一章第二节"vs"第二章第一节"），非同义。编辑距离 1 时
+    即单点判定；语序变体（字符多重集相同的字谜）至少两处不同，须**逐点**都是序数
+    对才算序数差异，否则是真实语序变体（#187：旧实现 `len(diffs)!=1` 时直接返回
+    `len(diffs)==0`，字谜串必然 ≥2 处不同 ⇒ 恒 False，L2 的序数守卫成死代码）。
+    来源：issue #187 报告与验收三条（非理论章节；经验标定，追不到理论出处）。
+    """
     if abs(len(a) - len(b)) > 1:
         return False
     if len(a) == len(b):
         diffs = [i for i in range(len(a)) if a[i] != b[i]]
-        if len(diffs) != 1:
-            return len(diffs) == 0
-        return a[diffs[0]] in ORDINAL and b[diffs[0]] in ORDINAL
+        return all(a[i] in ORDINAL and b[i] in ORDINAL for i in diffs)
     s, l = (a, b) if len(a) < len(b) else (b, a)
     for i in range(len(l)):
         if l[:i] + l[i+1:] == s:

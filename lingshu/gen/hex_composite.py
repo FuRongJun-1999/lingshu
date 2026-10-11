@@ -16,6 +16,8 @@
 from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 
+import math
+
 import numpy as np
 
 ALGO = "hex_composite-0.1"
@@ -299,7 +301,13 @@ def extract_attributes(img: np.ndarray, quadrant: str, color: str,
     runs_per_row = []
     for r in rows:
         row = mask[r]
-        runs_per_row.append(int(np.count_nonzero(row[1:] & ~row[:-1]) + 1))
+        #   #171：`count_nonzero(row[1:] & ~row[:-1])` 数的是 **False→True 的上升沿**，
+        #   只在「行首为 True」时上升沿数才等于色段数；行首为 False（部件不贴象限左缘，
+        #   绝大多数情形）时首段没有上升沿 ⇒ 必须**按行首补 1**，否则一行一段被数成 2
+        #   （docstring 的 `tx = 每着色行的水平色段数` 即判据来源；缺省先验 1.35 亦按
+        #   正确口径标定：实心行 =1.0、非实心最小 ≈1.67，中点 ≈1.33）。
+        runs_per_row.append(int(np.count_nonzero(row[1:] & ~row[:-1])
+                                + (1 if row[0] else 0)))
     tx = float(np.mean(runs_per_row))
     cols = np.where(mask.any(axis=0))[0]
     vert_max = 0.0
@@ -417,7 +425,18 @@ def judge_density(match: Optional[Dict], density: float,
       配方不完整(score<1) → DEFER(部件不足);
       配方完整但 density < th_dense → DEFER(依据不足——密度门);
       否则 ACCEPT。
-    REJECT 保留给显式冲突检测(两配方平分且密度都过门),v1 不启用。"""
+    REJECT 保留给显式冲突检测(两配方平分且密度都过门),v1 不启用。
+
+    非有限输入闸（#196）：density/th_dense 为 NaN 时 `density < th_dense` 恒为
+    False，控制流直落 ACCEPT——损坏数值被静默判为「通过」。此处先拦：任一
+    非有限 ⇒ DEFER（依据不足），不给通过态。
+    判据来源：四态语义「依据不足 ⇒ DEFER」见本函数既有口径；「非有限 ⇒ 不可判
+    ⇒ 不给 ACCEPT」理论未规定 NaN 语义（追不到），属工程 fail-closed 约定
+    （同仓 tests/test_issue402_nan_clamp_guard.py 头部）。阈值 th_dense 未改。
+    """
+    if not (math.isfinite(density) and math.isfinite(th_dense)):
+        return {"state": "DEFER", "reason": "非有限输入",
+                "composite": match["composite"] if match else None}
     if match is None or match["score"] < 0.999:
         return {"state": "DEFER", "reason": "配方不完整",
                 "composite": match["composite"] if match else None}

@@ -11,11 +11,23 @@
 为什么它能跑不可信代码（安全前提，改动前先读）：
   · 本脚本对被测子进程的**环境做清洗**：剔除 `GITHUB_*` / `GH_*` / `ACTIONS_*` /
     `RUNNER_*` / `INPUT_*` 前缀的键，以及名字含 TOKEN|SECRET|PASSWORD|CREDENTIAL
-    的键——被测脚本拿不到 job 令牌，也拿不到 `$GITHUB_ENV`/`$GITHUB_OUTPUT` 等
-    CI 注入面的路径（workflow 侧另有配合：取正文与回评步骤才带 GH_TOKEN，
-    执行步骤不带；checkout 用 persist-credentials: false 不落 git 凭据）。
+    的键——被测脚本的**进程 env 里**拿不到 job 令牌，也拿不到 `$GITHUB_ENV`/
+    `$GITHUB_OUTPUT` 等 CI 注入面的路径（workflow 侧另有配合：取正文与回评步骤
+    才带 GH_TOKEN，执行步骤不带；checkout 用 persist-credentials: false 不落
+    git 凭据）。
+    ⚠️ **本清洗只清「被测子进程自己的 env」，不等于同 job 隔离**（#241）：同 uid
+    的被测代码仍可读父进程 environ（如 Linux `/proc/<ppid>/environ`）把被清洗的
+    键取回，也可写 `$GITHUB_ENV`/`$GITHUB_PATH` 影响**后续步骤**。真正的边界是
+    workflow 侧那条**「执行步骤不带令牌、回评步骤才带令牌」的分步隔离**，不是本
+    清洗；同 job 内不可信代码与持令牌步骤共存即无隔离。要真隔离须让执行与回评
+    分属不同 job（仅**回评**那一步的正文来自被测输出，故可让回评 job 只做
+    `gh issue comment --body-file`）。
   · 独立临时目录（默认 mkdtemp；不写仓内）、限时执行（默认 600 s，超时 kill）。
   · 报告中的路径一律中性化（`<临时目录>`），因为报告要原样贴到公开 issue。
+  · **报告里一切来自正文的文本都经「反注入」处理**：正文围栏 info string 属攻击者
+    可控，块语言分布一律包成**行内代码**（`_inline_code`）再入报告，使其中的
+    `[x](url)` / `@提及` / `<html>` 只作字面量、不被渲染（#363）；stdout/stderr
+    走 `_md_fence` 动态围栏防撑破。报告正文只由**固定模板**拼装。
   · 解释器用 `python -X utf8`；子进程 env 强制 PYTHONUTF8=1（对齐仓工作纪律第 15 条）。
 
 抽取规则（与仓内 fenced 口径对齐：scripts/link_check.py::_FENCE_OPEN /
@@ -24,6 +36,9 @@ md_cg/docindex.py::_FENCE，即 CommonMark 围栏语义）：
   · 闭合：同行定界符字符、长度不短于开启者、且该行除定界符外无其它字符
     （围栏内写的 ` ```js ` 只算代码内容，不算闭合）。
   · 未闭合（到文末）：按「到文末收尾」收编（CommonMark 语义）。
+  · **HTML 注释（`<!-- … -->`，可跨行）内的围栏不算块**——注释在网页上不可见，
+    其中的 python 块不得被抽取执行（#235）。检测按「行首是否处于注释内」判（单趟
+    扫描，围栏内代码里的 `<!--` 不认作注释），抽出的代码仍取原文行。
   · **只选第一个 info 首词为 python|py|py3（大小写不敏感）的围栏块**；
     正文含多个 python 块时也只用第一个——报告里如实给出全部块的语言分布。
   · 无 python 块 ⇒ 显式失败（退出码 2），**不执行任何东西**。
@@ -86,19 +101,54 @@ REPORT_FOOTER = "本评论仅贴读数，不作结论。"
 # 抽取
 # ---------------------------------------------------------------------------
 
+def _advance_comment_state(line, in_comment):
+    """逐字符推进 HTML 注释状态，返回处理完该行后的 `in_comment`。
+
+    HTML 注释不可嵌套：`<!--` 开启、`-->` 闭合；同行可多次开关。注释跨行时
+    后续行的**行首**即处于注释内——那正是围栏检测要用的判据。
+    """
+    k = 0
+    while k < len(line):
+        if not in_comment:
+            s = line.find("<!--", k)
+            if s == -1:
+                return False
+            in_comment = True
+            k = s + 4
+        else:
+            e = line.find("-->", k)
+            if e == -1:
+                return True
+            in_comment = False
+            k = e + 3
+    return in_comment
+
+
 def _extract_fenced_blocks(text):
     """按 CommonMark 围栏口径抽取全部围栏块。
 
     返回 [(lang, code_first_line, code_last_line, code)]（行号为正文内 1-based，
     code_first/last 指块内**代码行**范围；空块记 first>last）。lang 为 info 首词
     小写；无 info 记 ""。
+
+    HTML 注释（`<!-- … -->`）内的围栏**不算块**（#235）——注释在网页上不可见，
+    其中的代码不得被抽取执行。按 CommonMark 块级语义单趟扫描：**行首在注释内**
+    的行不参与围栏判定；反之，围栏内（含代码里的 `<!--`）一律按原文、不认注释。
+    两条构造互不越界（`<!--` 出现在围栏内不被当注释、围栏出现在注释内不被当块）。
     """
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     blocks = []
     i, n = 0, len(lines)
+    in_comment = False
     while i < n:
+        if in_comment:
+            # 行首已在注释内 ⇒ 本行不可能开启围栏；只推进注释状态。
+            in_comment = _advance_comment_state(lines[i], True)
+            i += 1
+            continue
         m = _FENCE_OPEN.match(lines[i])
         if not m:
+            in_comment = _advance_comment_state(lines[i], False)
             i += 1
             continue
         delim = m.group(1)
@@ -154,7 +204,13 @@ def _fetch_issue_body(repo, issue, env=None):
 # ---------------------------------------------------------------------------
 
 def _child_env(extra):
-    """构造被测子进程 env：清掉令牌/CI 注入面，再注入显式覆盖。"""
+    """构造被测子进程 env：清掉令牌/CI 注入面，再注入显式覆盖。
+
+    ⚠️ 作用域**仅限被测子进程自己的 env**（#241）：同 uid 的被测代码仍可读父
+    进程 environ（如 Linux `/proc/<ppid>/environ`）把被清洗的键取回，也可写
+    `$GITHUB_ENV`/`$GITHUB_PATH` 影响**同一 job 的后续步骤**。本清洗不是隔离
+    边界——隔离边界在 workflow 的分步安排（执行步骤不带令牌）。见模块 docstring。
+    """
     env = {}
     for k, v in os.environ.items():
         if k.startswith(_ENV_DROP_PREFIXES):
@@ -207,6 +263,25 @@ def _md_fence(text):
     for m in re.finditer(r"`+", text or ""):
         longest = max(longest, len(m.group(0)))
     return "`" * max(3, longest + 1)
+
+
+def _inline_code(text):
+    """把任意**单行**文本包成 CommonMark 行内代码（定界反引号数 = 内容里最长
+    反引号串 + 1）。
+
+    为什么必须包：报告要原样贴到公开 issue，而「块语言」来自正文围栏的 info
+    string——**攻击者可控**。原样透出到围栏**之外**的 `- **抽取**：` 行，等于
+    把 `[x](url)` / `@提及` / `<html>` 直接渲染成活的 markdown（伪结论/外链/
+    提及注入，#363）。行内代码里这些字符一律为字面量，从根上不可渲染。
+
+    首/尾是反引号时按 CommonMark 规则加一个空格（渲染时被剥掉，内容不变）。
+    调用点保证 text 无空白（info 首词），故不涉及行内代码不能跨行的限制。
+    """
+    text = text or ""
+    longest = max((len(m.group(0)) for m in re.finditer(r"`+", text)), default=0)
+    ticks = "`" * (longest + 1)
+    pad = " " if (text.startswith("`") or text.endswith("`")) else ""
+    return ticks + pad + text + pad + ticks
 
 
 def _env_line():
@@ -412,7 +487,8 @@ def main(argv):
     tally = {}
     for b in blocks:
         tally[b[0] or "(无标注)"] = tally.get(b[0] or "(无标注)", 0) + 1
-    tally_line = " / ".join("%s×%d" % (k, v) for k, v in tally.items()) or "无"
+    # 块语言来自正文 info string（攻击者可控）⇒ 一律包进行内代码再入报告（#363）。
+    tally_line = " / ".join("%s×%d" % (_inline_code(k), v) for k, v in tally.items()) or "无"
 
     def _fail_report(extract_info, note, stderr_txt=""):
         report = _render_report(source=source, extract_info=extract_info,

@@ -51,8 +51,12 @@ def _rank_ok_vec(zone_calib, cells, size=SIZE):
         rc = list(zone_calib["row"]["cuts"])
         cc = list(zone_calib["col"]["cuts"])
     else:
-        rc = [size / 3.0, 2 * size / 3.0]
-        cc = [size / 3.0, 2 * size / 3.0]
+        #   缺省切点必须是**归一化分数**：`fy/fx` 是归一化坐标（下行），而 `S._cell_of_pt` 的无标定
+        #   分支也是 `int(y / size * 3)`（归一化，见 `hexgen_self_source.py:849-851`）。原先写像素值
+        #   （`size/3`）⇒ `fy < rc[0]` 恒真（`fy∈[0,1)`）⇒ 行/列恒为 0 ⇒ 掩膜退化成「全图都是 r0」。
+        #   判据来源：本文件 :48 docstring「与 `S._cell_of_pt` 同口径：冻结切点，缺省精确三等分」。
+        rc = [1 / 3.0, 2 / 3.0]
+        cc = [1 / 3.0, 2 / 3.0]
     fy = y / float(size)
     fx = x / float(size)
     row = np.where(fy < rc[0], 0, np.where(fy < rc[1], 1, 2))
@@ -102,6 +106,11 @@ def slack_vec(shape, r, dx, dy,
 def _cert_p1_core(x1, y1, L, n, shape, r, size):
     """单个 p1 的最优余量（与 `certify_radius` **共用**同一实现 ⇒ 抽样与全量不可漂移）。"""
     ys, xs = np.nonzero(L)
+    if ys.size == 0:
+        #   合法区域为空 ⇒ 不存在合法 p1 ⇒ 判「无解」（`max_slack=-inf`、`n1=0`），
+        #   不让 `ys.min()` 抛 ValueError。判据来源：本文件 :12 证书语义「全部 p1 的最优余量 < 0
+        #   ⇒ 该半径无解」的退化极值。
+        return float("-inf"), 0
     by0, by1 = int(ys.min()), int(ys.max())
     bx0, bx1 = int(xs.min()), int(xs.max())
     hh, ww = by1 - by0 + 1, bx1 - bx0 + 1
@@ -137,6 +146,12 @@ def certify_radius(cells, n, shape, r, zone_calib, size=SIZE, verbose=False, max
     `mask` 只供**守门**用：用小合成合法掩膜把本机制与暴力穷举对拍。"""
     assert n in (2, 3), n
     L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else np.array(mask, bool)
+    if not L.any():
+        #   合法区域为空 ⇒ 该半径下不存在任何合法 p1 ⇒ **判「无解」**（`feasible=False`）而不是让
+        #   `ys.min()` 抛 ValueError。判据来源：本文件 :12 证书语义「若全部 p1 的最优余量 < 0
+        #   ⇒ 该半径无解（证书）」；:68 合法区域定义。`per_p1=[]` ⇒ `n_p1=0`（零个可枚举 p1）。
+        return dict(feasible=False, max_slack=float("-inf"), best_p1=None,
+                    n_p1=0, per_p1=[])
     ys, xs = np.nonzero(L)
     #   ⚠ **R313 提速②**：**包围盒裁剪**——`S1 ⊆ L` ⇒ 任何可实现的位移都落在合法区域的包围盒内
     #   （分量 ≤ 边长−1）⇒ 自相关只需在裁剪后的尺寸上做（合法区域通常远小于 512²，实测单次证书
@@ -196,6 +211,10 @@ def witness_at(cells, n, shape, r, zone_calib, size=SIZE, mask=None):
 
     ⚠ 只在证书判定**可行**时有意义；用途是「把最优摆位的结构看出来」与作为记录证据。"""
     L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else np.array(mask, bool)
+    if not L.any():
+        #   合法区域为空 ⇒ 无可行摆位 ⇒ 返回 None（本函数语义：pts 或 None），不让 `ys.min()` 抛。
+        #   判据来源：本文件 :197 docstring「返回 pts 或 None」+ :12 证书语义（空合法区域 ⇒ 无解）。
+        return None
     ys, xs = np.nonzero(L)
     by0, by1 = int(ys.min()), int(ys.max())
     bx0, bx1 = int(xs.min()), int(xs.max())

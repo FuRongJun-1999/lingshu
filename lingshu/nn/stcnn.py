@@ -73,10 +73,29 @@ SPATIAL_KERNEL[0] = 1.0 / 9.0
 
 # ============ 三、时空原语提取（运动/方向/速度/周期） ============
 def frame_diff(frames, threshold=0.08):
-    """帧间差分 → 运动区域掩码序列（|f(t+1)-f(t)| > 阈值）"""
+    """帧间差分 → 运动区域掩码序列（|f(t+1)-f(t)| > 阈值）。
+
+    注意（#76）：这是**绝对值**差分，「暗→亮」与「亮→暗」各出一个沿——单个亮灭
+    周期因此产生**双沿**。掩码用于运动区域/质心是正确口径，但**不能**把它当作周期
+    信号喂给 detect_period（双沿 ⇒ 读出的周期是真实周期的一半）；周期信号须用
+    `frame_rise`（每个亮灭周期只保留亮起前沿）。
+    """
     arr = np.asarray(frames, dtype=np.float32)
     diffs = np.abs(np.diff(arr, axis=0))
     return (diffs > threshold).astype(np.float32)
+
+
+def frame_rise(frames, threshold=0.08):
+    """帧间**正向**亮度变化 → 亮起前沿信号（每个亮灭周期恰一个沿）。
+
+    #76：`frame_diff` 取 |Δ|，对「暗→亮」与「亮→暗」各出一个沿 ⇒ 单个亮灭周期双沿，
+    把它交给 detect_period 读出的周期是真实周期的**一半**。周期检测只应看一个方向
+    的沿，这里只保留正向变化（亮起前沿）；`detect_period` 的前沿检测正是按此设计的。
+    """
+    arr = np.asarray(frames, dtype=np.float32)
+    rise = np.clip(np.diff(arr, axis=0), 0.0, None)
+    rise[rise <= threshold] = 0.0
+    return rise
 
 
 def motion_direction(centroids):
@@ -139,8 +158,10 @@ def extract_spatiotemporal_primitives(frames):
             centroids.append((float(xs.mean()), float(ys.mean())))
         elif centroids:
             centroids.append(centroids[-1])
-    # ③ 运动信号（每帧运动量）→ 周期检测
-    motion_signal = [float(region.sum()) for region in diffs]
+    # ③ 运动信号（每帧**亮起前沿**）→ 周期检测
+    #    #76：此处原用 frame_diff 的 |Δ| 掩码，单个亮灭周期有亮/灭两个沿 ⇒ 周期减半。
+    #    周期信号改用 frame_rise（只保留暗→亮的前沿），每个周期恰一个沿。
+    motion_signal = [float(region.sum()) for region in frame_rise(frames)]
     period = detect_period(motion_signal)
     # ④ 原语汇总
     prims = {
@@ -155,6 +176,10 @@ def extract_spatiotemporal_primitives(frames):
 
 
 # ============ 四、时空记忆图写入（看见→记住） ============
+# 时空锚点必备字段（remember 的产物契约；缺失即视为损坏/幻觉事件）
+_EVENT_FIELDS = ("t_start", "t_end", "direction", "speed", "period", "moving", "label")
+
+
 class SpatiotemporalMemory:
     """时空记忆图：事件 → 时空锚点（时间/位置/运动模式）+ 记忆边。
     零 LLM 确定性记忆（对接灵枢语义时空图的感知侧入口）。"""
@@ -192,9 +217,31 @@ class SpatiotemporalMemory:
         return out
 
     def verify_consistency(self):
-        """自校验：回忆 vs 已记事件一致性（记忆无幻觉）"""
+        """自校验：回忆 vs 已记事件一致性（记忆无幻觉）。
+
+        旧实现 `len(self.recall()) == len(self.events)` 恒真——recall() 无查询时
+        就是把 self.events 逐条 append 出来，两侧长度是同一个数的两次读数，
+        任何「记了却回忆不出 / 回忆出没记过的」都发现不了（#302）。
+
+        新判据（按「看见→记住→回忆」白箱闭环的可观测环节逐项核对）：
+          ① 全量回忆与已记事件的**条数与顺序**一致（recall(None) 的召回完整性）；
+          ② 每条已记事件具备时空锚点必备字段（_EVENT_FIELDS）；
+          ③ 每条已记事件都能被 recall 以该事件自身字段查询**命中**（召回可达性）；
+          ④ 每条回忆出的事件确实是 self.events 中的同一对象（无凭空多出的幻觉事件）。
+        任一条不成立即判不一致（返回 False），不再恒真。
+        """
         recalled = self.recall()
-        return len(recalled) == len(self.events)
+        if len(recalled) != len(self.events):
+            return False
+        if any(a is not b for a, b in zip(recalled, self.events)):
+            return False
+        for e in self.events:
+            if not all(k in e for k in _EVENT_FIELDS):
+                return False
+            hits = self.recall(dict(e))
+            if not any(h is e for h in hits):
+                return False
+        return True
 
 
 # ============ 五、合成时空场景（演示数据，无真实视频） ============

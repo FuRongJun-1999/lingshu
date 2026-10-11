@@ -12,7 +12,7 @@
 | ③ | `session_chains.py` | `_audit.jsonl` → `session_chains.json`（会话顺序边） |
 | ④ | `naming_report.py` | 标题集合 → `naming_report.json/.md`（四问测试命名审计） |
 | ⑤ | `synonym_merge.py` | 中文标题 → `synonym_groups.json`（同义归并**只进待复核，不自动归并**） |
-| ⑥ | `build_viewer.py` | `graph.json` + 多个 `--derived` 源 → `viewer_graph.json` + `index.html` + `serve.py` |
+| ⑥ | `build_viewer.py` | `graph.json` + 多个 `--derived` 源 → `viewer_graph.json` + `index.html` + `serve.py`（同义组默认只作候选；加 `--merge-synonyms` 才在视图层归并） |
 | ⑦ | `python serve.py 8788 <mdcg_root>` | 本地服务 → http://127.0.0.1:8788 |
 
 ## 一键：查看自身记忆
@@ -32,7 +32,8 @@ python view_memory.py --root <MDCG_ROOT> --serve    # 构建并直接起本地�
 
 - Python 3.10+；`export_coggraph.py` 需要 **PyYAML**（已在 `pyproject.toml` 的 `dev` extra 里
   声明，`pip install -e ".[dev]"` 即装齐；门禁 workflow 装 `.[full,dev]` ⇒ CI 同面）；其余纯标准库
-  （`cytoscape.min.js` 由 build_viewer 首次运行自动下载）。
+  （`cytoscape.min.js` 由 build_viewer 首次运行自动下载，下载与复用都按 `CYTO_SHA256`
+  固定版本内容指纹校验；离线自备副本须放置同版本产物或经 `LINGSHU_CYTO_SHA256` 声明其指纹）。
 
 ## 纪律（定位）
 

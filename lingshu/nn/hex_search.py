@@ -35,9 +35,18 @@ from .hex_text import SHAPE_CN, COLOR_CN
 
 def evaluate_node(net: HexHierNet, sub: np.ndarray, energy_share: float,
                   share_mult: float = 1.3, th_conf: float = 0.35,
-                  th_margin: float = 0.12, th_reject: float = 0.10) -> Dict:
+                  th_margin: float = 0.12, th_reject: float = 0.10,
+                  allow_accept: bool = True) -> Dict:
     """单区域节点:①全卡并行评估 → ②REJECT 筛选 → ③四态初判。
-    返回 {verdict, obj, conf, margin, alive, share}。"""
+    返回 {verdict, obj, conf, margin, alive, share}。
+
+    allow_accept=False:禁止本节点直接 ACCEPT(降级为 DEFER)——用于**根节点**。
+    根节点覆盖整图大域,其 softmax 置信只是「整图整体最像哪个象限」,不构成
+    「该域已收敛到单一物体」的证据;递归四态搜索的语义是「大域找可能性→条件
+    筛选→**细分后**才谈收敛」(理论稿 §八.3:深度由信息差决定)。若根节点可
+    直接 ACCEPT,则 depth==0 即返回,递归分支永不发生——min_share 死区与
+    「双物体需递归」两条性质同时失效。REJECT(空域粗筛)不受本开关影响。
+    """
     # 粗筛:能量份额不足 → REJECT(空域,不进入语义评估——明显排除)
     if energy_share is not None and energy_share < (1.0 / 9.0) * share_mult * 0.5:
         return {"verdict": "REJECT", "obj": None, "conf": 0.0,
@@ -50,7 +59,7 @@ def evaluate_node(net: HexHierNet, sub: np.ndarray, energy_share: float,
     margin = float(logits[best] - logits[second])
     conf = float(p[best])
     # ②③ 四态:ACCEPT(置信≥0.5 且领先≥0.3,死区) / DEFER(证据弱或并列)
-    if conf >= th_conf and margin >= th_margin:
+    if allow_accept and conf >= th_conf and margin >= th_margin:
         verdict = "ACCEPT"
     elif conf <= th_reject:
         verdict = "REJECT"                      # 全体候选无证据
@@ -137,7 +146,7 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
             note_blindspot(f"d{depth}", depth, "infogap_dead_zone",
                            share_ratio=round(share / max(1e-9, parent_share), 4))
             return
-        node = evaluate_node(net, sub, share, **th)
+        node = evaluate_node(net, sub, share, allow_accept=(depth > 0), **th)
         if node["verdict"] == "REJECT":
             stats["rejected"] += 1
             return

@@ -43,6 +43,8 @@ def main(argv=None):
     ap.add_argument("--out", default="graph_view", help="产物目录（缺省 ./graph_view）")
     ap.add_argument("--serve", action="store_true", help="构建完成后直接起本地查看器")
     ap.add_argument("--port", type=int, default=8788, help="查看器端口（缺省 8788）")
+    ap.add_argument("--merge-synonyms", action="store_true",
+                    help="显式启用视图层同义归并（默认关闭：⑤ 的候选只进待复核，不自动归并）")
     args = ap.parse_args(argv)
 
     root = args.root
@@ -74,6 +76,10 @@ def main(argv=None):
                   "--naming", os.path.join(out, "naming_report.json"),
                   "--synonyms", os.path.join(out, "synonym_groups.json"),
                   "--mdcg-root", root]
+    # #410：⑤ 的同义组只是**待复核候选**（宣称「不自动归并」）⇒ 默认不重映射别名；
+    #   只有显式 --merge-synonyms 才把候选喂给 build_viewer 的归并开关。
+    if args.merge_synonyms:
+        build_args += ["--merge-synonyms"]
     sess = os.path.join(out, "session_chains.json")
     if os.path.isfile(sess):
         build_args += ["--derived", sess]

@@ -40,6 +40,7 @@ v3.4 新增机制：置信度 ≠ 可信度。
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from typing import Dict, List, Optional
@@ -115,7 +116,13 @@ class ChannelCredibilityRegistry:
         return self._update(channel, conf, strong, hit=False)
 
     def _update(self, channel: str, conf: float, strong: bool, hit: bool) -> Dict:
-        conf = max(0.0, min(1.0, float(conf)))
+        # #402：NaN/±inf 不得被钳制表达式放行——实测 Python 的 min(1.0, nan)=1.0
+        #   会把 NaN 置信度抬成 1.0，注入满额伪样本量（n_eff）。非有限值一律
+        #   fail-closed 归零（零伪样本量，后验不动）。
+        conf = float(conf)
+        if not math.isfinite(conf):
+            conf = 0.0
+        conf = max(0.0, min(1.0, conf))
         alpha = ALPHA_STRONG if strong else ALPHA_WEAK
         # 伪样本量：置信度 × 基数 × 锚定权重
         # 强验证（α低=快更新）：证据权重高；弱验证（α高=慢更新）：证据权重低
