@@ -64,15 +64,31 @@ class _MeasuredHexHierNet(HexHierNet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.activity = ActivationCounts()
-        self._activation_calls = 0
+        self._activation_layer = None
+
+    def l2_features(self, lat):
+        # The parent owns all arithmetic. Its activations outside _h1 belong
+        # to L1.5, regardless of fused versus per-kernel execution.
+        previous = self._activation_layer
+        self._activation_layer = "L1.5" if self.stacked else "L1"
+        try:
+            return super().l2_features(lat)
+        finally:
+            self._activation_layer = previous
+
+    def _h1(self, lat):
+        previous = self._activation_layer
+        if previous is not None:  # Only observe the declared l2_features scope.
+            self._activation_layer = "L1"
+        try:
+            return super()._h1(lat)
+        finally:
+            self._activation_layer = previous
 
     def _lrelu(self, values, a=0.05):
         result = super()._lrelu(values, a)
-        # l2_features calls K L1 kernels, then K2 L1.5 kernels (if stacked).
-        phase = self._activation_calls % (self.K + self.K2)
-        layer = "L1" if phase < self.K else "L1.5"
-        self.activity.record(layer, result)
-        self._activation_calls += 1
+        if self._activation_layer is not None:
+            self.activity.record(self._activation_layer, result)
         return result
 
 
