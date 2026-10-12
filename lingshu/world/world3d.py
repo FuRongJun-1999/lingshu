@@ -361,26 +361,38 @@ class World3D:
 
     # ---- 3D → 2D 渲染（时空重建的输出侧） ----
 
-    def render(self, screen_w: int = 800, screen_h: int = 600,
-               camera: Camera3D = None, background: Tuple[int, int, int] = (20, 24, 40),
-               ground_color: Tuple[int, int, int] = (30, 34, 50)) -> "PIL.Image":
-        """画家算法渲染：远→近绘制 3D 物体投影。返回 PIL Image。
+    @staticmethod
+    def _check_screen_dim(screen_w: int, screen_h: int) -> None:
+        """渲染单边尺寸上限（#416）——**位图与矢量两条出口共用同一判据**。
 
         #416：位图分配前先判单边上限 `MAX_SCREEN_DIM`——`Image.new` 按
         w*h*3 字节直接分配，任意大尺寸即内存耗尽（旧实现不设上限、静默分配）。
         超限 fail-closed 抛 `ValueError`（**不**静默钳到上限——静默钳会让调用方
         以为拿到了请求的尺寸）。判据来源：经验标定（本件 #416），追不到更早出处。
-        """
-        from PIL import Image, ImageDraw
 
+        矢量出口自身不做 w*h 分配（只按调用序列录元素），此处仍沿用同一上限，
+        为的是**两条出口同语义**：同一组参数要么都放行、要么都拒绝，调用方不必
+        记两套尺寸规则。
+        """
         if screen_w > MAX_SCREEN_DIM or screen_h > MAX_SCREEN_DIM:
             raise ValueError(
                 "#416 渲染尺寸超上限：screen_w=%r screen_h=%r > MAX_SCREEN_DIM=%d"
                 "（位图按 w*h*3 字节分配，拒绝以防内存耗尽）"
                 % (screen_w, screen_h, MAX_SCREEN_DIM))
-        cam = camera or self.camera
-        img = Image.new("RGB", (screen_w, screen_h), background)
-        draw = ImageDraw.Draw(img)
+
+    def _paint(self, draw, cam: Camera3D, screen_w: int, screen_h: int,
+               ground_color) -> None:
+        """渲染内核：把「地面 + 画家算法远→近的物体」画进**与 `ImageDraw` 同形**的后端。
+
+        两条出口只经过这一处绘制序列 ⇒ 绘制顺序与既有剔除/裁剪逻辑（#311 可见面
+        剔除 / #312 部件深度序 / #313 塔尖投影 / #403 近平面裁剪）对位图与矢量是
+        **同一条代码**，不存在两套实现走偏的可能。本件只搬出口，不改顺序。
+
+        背景底色不走这里：位图由 `Image.new(..., background)` 铺底，矢量由
+        `SVGBackend(..., background=...)` 在文档首部铺底——两者同一语义。
+
+        `draw` 只需具备与 `PIL.ImageDraw` 同形的 `rectangle/polygon/ellipse/line`。
+        """
         # 地面（地平线以下）
         horizon_px = screen_h * 0.45
         draw.rectangle([0, int(horizon_px), screen_w, screen_h], fill=ground_color)
@@ -388,7 +400,48 @@ class World3D:
         # 画家算法：按相机深度降序（远先画）
         for obj in sorted(self.objects, key=lambda o: -o.depth(cam)):
             self._draw_object(draw, obj, cam, screen_w, screen_h, horizon_px)
+
+    def render(self, screen_w: int = 800, screen_h: int = 600,
+               camera: Camera3D = None, background: Tuple[int, int, int] = (20, 24, 40),
+               ground_color: Tuple[int, int, int] = (30, 34, 50)) -> "PIL.Image":
+        """画家算法渲染：远→近绘制 3D 物体投影。返回 PIL Image。
+
+        #416：位图分配前先判单边上限 `MAX_SCREEN_DIM`（见 `_check_screen_dim`）。
+        绘制序列与矢量出口 `render_svg` 共用 `_paint` ⇒ 像素结果不变。
+        """
+        from PIL import Image, ImageDraw
+
+        self._check_screen_dim(screen_w, screen_h)
+        cam = camera or self.camera
+        img = Image.new("RGB", (screen_w, screen_h), background)
+        draw = ImageDraw.Draw(img)
+        self._paint(draw, cam, screen_w, screen_h, ground_color)
         return img
+
+    def render_svg(self, screen_w: int = 800, screen_h: int = 600,
+                   camera: Camera3D = None, background: Tuple[int, int, int] = (20, 24, 40),
+                   ground_color: Tuple[int, int, int] = (30, 34, 50),
+                   stats: Optional[Dict] = None) -> str:
+        """与 `render` 同参同序的**矢量出口**：返回 SVG 文档字符串。
+
+        · 绘制序列复用 `_paint`（与位图出口同一份代码）⇒ 画家序/可见面剔除/近平面
+          裁剪同构；SVG 按文档顺序绘制，"远先画"天然成立，**不另做排序**；
+        · `screen_w/screen_h` 与位图同判 `MAX_SCREEN_DIM`（#416，见 `_check_screen_dim`）；
+        · 传了 `stats`（dict）时**原地写入** `SVGBackend.stats()`：退化输入被跳过时
+          调用方看得见（不静默——跳过的原因与次数都在里面，`skipped` 非空不算失败）。
+        """
+        try:
+            from .svg_backend import SVGBackend
+        except ImportError:
+            from .svg_backend import SVGBackend
+
+        self._check_screen_dim(screen_w, screen_h)
+        cam = camera or self.camera
+        backend = SVGBackend(screen_w, screen_h, background=background)
+        self._paint(backend, cam, screen_w, screen_h, ground_color)
+        if stats is not None:
+            stats.update(backend.stats())
+        return backend.to_svg()
 
     def _draw_object(self, draw, obj: Object3D, cam: Camera3D,
                      screen_w: int, screen_h: int, horizon_px: float) -> None:

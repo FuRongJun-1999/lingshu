@@ -250,7 +250,7 @@
     {
      "file": "world3d.py",
      "src": "aeis.world3d",
-     "sha256": "7b7527deb009dd70",
+     "sha256": "dc45ccb17747afab",
      "rewrites": 16,
      "sanitized": 0,
      "patches": 0,
