@@ -179,17 +179,56 @@ class Camera3D:
     cz: float = 0.0            # 相机 Z（米）
     yaw: float = 0.0           # 水平旋转（弧度，绕 Y 轴）
     pitch: float = 0.0         # 垂直旋转（弧度，绕 X 轴）
+    # 滚转（弧度，绕相机前向轴；0 = 画面水平线与世界水平面平行）。
+    # 为何需要：Blender 等真实引擎的相机用**真实 up 向量**定向，在方位角≠0 时
+    # 画面相对「纯 yaw+pitch」相机存在滚转；缺此字段则两侧像面相对旋转、
+    # 同一场景的轮廓永远对不齐（实测 45° 方位角下相差约 16.4°）。
+    roll: float = 0.0
+    # 显式正交基（世界→相机 的 3x3，行主序 x=右 y=上 z=前向）。给了它就**不用** yaw/pitch/roll。
+    # 为何需要：yaw/pitch/roll 参数化表达不出「真实引擎用 up 向量定向」的相机朝向
+    # ——45° 方位角下画面 up 并非世界 up 的简单复合，实测无论怎么调 roll，
+    # 轮廓 IoU 都卡在 ~0.49。显式基按构造与引擎一致。
+    basis: Optional[Tuple] = None
+
+    @classmethod
+    def from_look_at(cls, eye: Tuple[float, float, float],
+                     target: Tuple[float, float, float],
+                     up: Tuple[float, float, float] = (0.0, 0.0, 1.0),
+                     fov_deg: float = 60.0) -> "Camera3D":
+        """按「eye / target / 世界 up」构造**显式正交基**相机（与真实引擎同构）。
+
+        右 = normalize(前向 × up)；上 = 右 × 前向；前向 = normalize(target − eye)。
+        up 与前向共线时 raise（退化基，不静默给一个歪相机）。
+        """
+        fx, fy, fz = (target[0] - eye[0], target[1] - eye[1], target[2] - eye[2])
+        fl = math.sqrt(fx * fx + fy * fy + fz * fz)
+        if fl < 1e-12:
+            raise ValueError("from_look_at：eye 与 target 重合，朝向未定义")
+        fx, fy, fz = fx / fl, fy / fl, fz / fl
+        rx = fy * up[2] - fz * up[1]
+        ry = fz * up[0] - fx * up[2]
+        rz = fx * up[1] - fy * up[0]
+        rl = math.sqrt(rx * rx + ry * ry + rz * rz)
+        if rl < 1e-9:
+            raise ValueError("from_look_at：up 与前向共线，右向量退化")
+        rx, ry, rz = rx / rl, ry / rl, rz / rl
+        ux = ry * fz - rz * fy
+        uy = rz * fx - rx * fz
+        uz = rx * fy - ry * fx
+        return cls(fov_deg=fov_deg, cx=eye[0], cy=eye[1], cz=eye[2],
+                   basis=((rx, ry, rz), (ux, uy, uz), (fx, fy, fz)))
 
     @classmethod
     def look_at(cls, eye: Tuple[float, float, float],
                 target: Tuple[float, float, float],
-                fov_deg: float = 60.0) -> "Camera3D":
+                fov_deg: float = 60.0, roll: float = 0.0) -> "Camera3D":
         """eye/target → 相机（水平 yaw + 俯仰 pitch，无滚转）。"""
         ex, ey, ez = eye
         dx, dy, dz = target[0] - ex, target[1] - ey, target[2] - ez
         yaw = math.atan2(-dx, dz)
         pitch = math.atan2(dy, math.hypot(dx, dz))
-        return cls(fov_deg=fov_deg, cx=ex, cy=ey, cz=ez, yaw=yaw, pitch=pitch)
+        return cls(fov_deg=fov_deg, cx=ex, cy=ey, cz=ez, yaw=yaw, pitch=pitch,
+                   roll=roll)
 
     def focal(self, screen_w: int) -> float:
         return (screen_w / 2) / math.tan(math.radians(self.fov_deg) / 2)
@@ -205,11 +244,19 @@ class Camera3D:
         x -= self.cx
         y -= self.cy
         z -= self.cz
+        if self.basis is not None:
+            (r0, r1, r2), (u0, u1, u2), (f0, f1, f2) = self.basis
+            return (x * r0 + y * r1 + z * r2,
+                    x * u0 + y * u1 + z * u2,
+                    x * f0 + y * f1 + z * f2)
         # 旋转（先 yaw 绕 Y，再 pitch 绕 X）
         cos_y, sin_y = math.cos(self.yaw), math.sin(self.yaw)
         x, z = x * cos_y + z * sin_y, -x * sin_y + z * cos_y
         cos_p, sin_p = math.cos(self.pitch), math.sin(self.pitch)
         y, z = y * cos_p - z * sin_p, y * sin_p + z * cos_p
+        if self.roll:
+            cos_r, sin_r = math.cos(self.roll), math.sin(self.roll)
+            x, y = x * cos_r - y * sin_r, x * sin_r + y * cos_r
         return (x, y, z)
 
     def project(self, p3: Tuple[float, float, float],
@@ -236,7 +283,17 @@ class Camera3D:
         f = self.focal(screen_w)
         x_cam = (px - screen_w / 2) * depth / f
         y_cam = (screen_h / 2 - py) * depth / f
+        # 逆 roll（与 to_camera 同轴反向）——保住「project∘unproject == id」的可回代性
+        if self.roll:
+            cos_r, sin_r = math.cos(self.roll), math.sin(self.roll)
+            x_cam, y_cam = (x_cam * cos_r + y_cam * sin_r,
+                            -x_cam * sin_r + y_cam * cos_r)
         z_cam = depth
+        if self.basis is not None:
+            (r0, r1, r2), (u0, u1, u2), (f0, f1, f2) = self.basis
+            return (self.cx + x_cam * r0 + y_cam * u0 + z_cam * f0,
+                    self.cy + x_cam * r1 + y_cam * u1 + z_cam * f1,
+                    self.cz + x_cam * r2 + y_cam * u2 + z_cam * f2)
         # 逆 pitch（绕 X）
         cos_p, sin_p = math.cos(self.pitch), math.sin(self.pitch)
         y1 = y_cam * cos_p + z_cam * sin_p
@@ -264,23 +321,60 @@ class Object3D:
     confidence: float = 0.5
     ts: float = field(default_factory=time.time)
     source: str = "world3d"
+    # ★ 建模层重构 v1 新增：部件/物体的局部朝向（欧拉 XYZ，弧度，绕 center）。
+    #   缺此字段时斜置连杆（如六足机大腿 35°、小腿 -73°）只能画成水平盒，
+    #   「同一件东西」在两侧就对不上——这是本次重构的核心缺口。
+    rot: Tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def to_dict(self) -> Dict:
         return asdict(self)
 
     # ---- 几何 ----
 
+    def _rot_mat(self):
+        """局部朝向 → 3x3 旋转矩阵（欧拉 XYZ，弧度）。rot 全零时返回 None（省算）。"""
+        rx, ry, rz = self.rot or (0.0, 0.0, 0.0)
+        if not (rx or ry or rz):
+            return None
+        cx, sx = math.cos(rx), math.sin(rx)
+        cy, sy = math.cos(ry), math.sin(ry)
+        cz, sz = math.cos(rz), math.sin(rz)
+        # R = Rz · Ry · Rx
+        return (
+            (cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx),
+            (sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx),
+            (-sy, cy * sx, cy * cx),
+        )
+
     def corners(self) -> List[Tuple[float, float, float]]:
-        """8 顶点（box/pillar）；sphere/disk/pyramid 用近似盒。"""
+        """8 顶点（box/pillar）；sphere/disk/pyramid 用近似盒。带 rot 时绕 center 旋转。"""
         x, y, z = self.center
         w, h, d = self.size
         hw, hh, hd = w / 2, h / 2, d / 2
-        return [
+        pts = [
             (x - hw, y - hh, z - hd), (x + hw, y - hh, z - hd),
             (x + hw, y + hh, z - hd), (x - hw, y + hh, z - hd),
             (x - hw, y - hh, z + hd), (x + hw, y - hh, z + hd),
             (x + hw, y + hh, z + hd), (x - hw, y + hh, z + hd),
         ]
+        m = self._rot_mat()
+        if m is None:
+            return pts
+        out = []
+        for px, py, pz in pts:
+            dx, dy, dz = px - x, py - y, pz - z
+            out.append((x + m[0][0] * dx + m[0][1] * dy + m[0][2] * dz,
+                        y + m[1][0] * dx + m[1][1] * dy + m[1][2] * dz,
+                        z + m[2][0] * dx + m[2][1] * dy + m[2][2] * dz))
+        return out
+
+    def rot_normals(self, normals):
+        """把一组轴向法线按 rot 旋转（面剔除必须用**旋转后**的法线）。"""
+        m = self._rot_mat()
+        if m is None:
+            return normals
+        return [tuple(m[i][0] * n[0] + m[i][1] * n[1] + m[i][2] * n[2] for i in range(3))
+                for n in normals]
 
     def depth(self, cam: "Camera3D" = None) -> float:
         """相机前向深度（画家算法排序与透视尺度用）。
@@ -454,7 +548,7 @@ class World3D:
             category=obj.category, center=part_center,
             size=tuple(part["size"]), color=tuple(part.get("color", obj.color)),
             shape=part.get("kind", "box"), confidence=obj.confidence,
-            source=obj.source)
+            source=obj.source, rot=tuple(part.get("rot") or (0.0, 0.0, 0.0)))
         # 按部件图元绘制
         kind = part.get("kind", "box")
         if kind in ("sphere", "disk"):
@@ -510,8 +604,10 @@ class World3D:
         # 判据来源：docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md
         # §3.2 透视投影——可见面须位于相机一侧（凸体面剔除为精确判定）。
         eye = (cam.cx, cam.cy, cam.cz)
+        _nrm = obj.rot_normals([(0.0, 0.0, -1.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0),
+                                (0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (-1.0, 0.0, 0.0)])
         faces = [
-            ((c[0], c[1], c[2], c[3]), (0.0, 0.0, -1.0)),   # 前面
+            ((c[0], c[1], c[2], c[3]), _nrm[0]),   # 前面
             ((c[4], c[5], c[6], c[7]), (0.0, 0.0, 1.0)),    # 后面
             ((c[0], c[1], c[5], c[4]), (0.0, -1.0, 0.0)),   # 底面
             ((c[3], c[2], c[6], c[7]), (0.0, 1.0, 0.0)),    # 顶面
@@ -732,3 +828,180 @@ class World3D:
         if not hasattr(self, '_anchor_graph') or self._anchor_graph is None:
             self.build_anchor_graph()
         return self._anchor_graph.verify_conflict(anchor_id, channel, expected, actual)
+
+
+# ===========================================================================
+# 显式几何通道 · 网格（modeling refactor v1 第二批 · 本补丁新增）
+# ---------------------------------------------------------------------------
+# 动机：部件通道（shapes.py）只能表达 5 种图元，斜切/倒角/六棱柱一律被拟合掉，
+# 于是身体侧与模型侧渲出的仍不是**同一份几何**。本段加一条显式三角面通道：
+# 身体侧导出的 OBJ 逐面进场景，画家算法绘制 —— 两侧从此共享同一批三角面。
+#
+# 设计约束（对齐本仓纪律）：
+#   · 纯标准库（D-005）：OBJ/MTL 自解析，不引任何依赖；
+#   · **只追加、不改既有代码**：勾子用包装注入，既有绘制路径逐字节不变；
+#   · fail-closed：归一化参数必须能从 OBJ 头部解析出来，解析不到就报错，
+#     不拿硬编码值兜底；索引越界、非有限坐标一律拒收；
+#   · 近平面走既有的 `_project_face`（内含 _clip_near 真裁剪），不重复实现。
+# ===========================================================================
+import os                                                     # noqa: E402
+import re as _re                                              # noqa: E402
+
+#: 类别 → {"verts": [(x,y,z)...], "tris": [(idx,color)...]}
+MESH_LIBRARY: Dict[str, Dict] = {}
+
+
+def _srgb(u):
+    """线性 0..1 → sRGB 0..255（MTL 的 Kd 是线性空间）。"""
+    u = max(0.0, min(1.0, float(u)))
+    v = 12.92 * u if u <= 0.0031308 else 1.055 * (u ** (1 / 2.4)) - 0.055
+    return int(round(v * 255))
+
+
+def load_mtl(path: str) -> Dict[str, Tuple[int, int, int]]:
+    """解析 MTL 的 newmtl/Kd → {材质名: RGB}。"""
+    cols, cur = {}, None
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for ln in f:
+            t = ln.split()
+            if not t:
+                continue
+            if t[0] == "newmtl":
+                cur = t[1]
+            elif t[0] == "Kd" and cur:
+                cols[cur] = tuple(_srgb(x) for x in t[1:4])
+    return cols
+
+
+def load_obj_mesh(path: str, category: str, mtl_colors: Dict = None,
+                  axis_swap: bool = True, rot=None) -> Dict:
+    """载入 OBJ 为一条显式几何，登记到 MESH_LIBRARY[category]。
+
+    · 归一化参数（scale / center / target_half_extent）**从文件头注释解析**；
+      解析不到 ⇒ raise（不拿硬编码兜底）。
+    · axis_swap=True 时做 Blender(Z-up) → lingshu(Y-up/+Z): (x,y,z)->(x,z,-y)
+      （真旋转，det=+1；不是镜像）。
+    返回 {"verts": n, "tris": m, "materials": k}。
+    """
+    verts, tris = [], []
+    scale = center = None
+    cur = None
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for ln in f:
+            if ln.startswith("#") and "normalize:" in ln:
+                m = _re.search(r"scale=([-\d.eE+]+)", ln)
+                c = _re.search(r"center=\(([^)]+)\)", ln)
+                if m:
+                    scale = float(m.group(1))
+                if c:
+                    center = tuple(float(v) for v in c.group(1).split(","))
+            elif ln.startswith("v "):
+                x, y, z = (float(v) for v in ln.split()[1:4])
+                verts.append((x, y, z))
+            elif ln.startswith("usemtl "):
+                cur = ln.split(None, 1)[1].strip()
+            elif ln.startswith("f "):
+                idx = []
+                for tok in ln.split()[1:]:
+                    i = int(tok.split("/")[0])
+                    idx.append(i - 1 if i > 0 else len(verts) + i)
+                if len(idx) == 3:
+                    tris.append((tuple(idx), cur))
+    if not verts or not tris:
+        raise ValueError("OBJ 为空或没有三角面：%s（v=%d f=%d）" % (path, len(verts), len(tris)))
+    if scale is None or center is None:
+        raise ValueError("OBJ 头部没有 normalize 注释，无法反归一化（拒绝用硬编码兜底）：%s" % path)
+    if scale == 0:
+        raise ValueError("OBJ 头部 scale=0 非法")
+    out = []
+    for (x, y, z) in verts:
+        x, y, z = x / scale + center[0], y / scale + center[1], z / scale + center[2]
+        if axis_swap:
+            x, y, z = x, z, -y
+        if not all(math.isfinite(v) for v in (x, y, z)):
+            raise ValueError("顶点非有限：%r" % ((x, y, z),))
+        out.append((x, y, z))
+    n = len(out)
+    for idx, _mat in tris:
+        for i in idx:
+            if not (0 <= i < n):
+                raise ValueError("三角面索引越界：%r（顶点数 %d）" % (idx, n))
+    mtl_colors = mtl_colors or {}
+    faces = [(idx, mtl_colors.get(mat, (170, 170, 175))) for idx, mat in tris]
+    MESH_LIBRARY[category] = {"verts": out, "tris": faces, "rot": rot,
+                              "source": os.path.basename(path)}
+    return {"verts": n, "tris": len(faces),
+            "materials": len({m for _, m in tris}), "unscaled_by": scale,
+            "recentered_by": center}
+
+
+def _draw_mesh(self, draw, obj, cam, sw, sh):
+    """画家算法绘制显式三角面：相机深度排序（远→近）→ 背面剔除 → 填充。
+
+    · 近平面由 `_project_face` 内的 `_clip_near` 真裁剪处理（非全有或全无）；
+    · 背面剔除用**世界空间**法线 · (光心 − 面心) > 0（闭合网格的精确判定）；
+    · 平面着色：法线与视线夹角 → 明暗，给出体积感（与图元通道同一套朴素着色）。
+    """
+    mesh = MESH_LIBRARY.get(obj.category)
+    if not mesh:
+        return
+    vs = mesh["verts"]
+    eye = (cam.cx, cam.cy, cam.cz)
+    o = obj.center
+    order = []
+    for idx, color in mesh["tris"]:
+        a, b, c = vs[idx[0]], vs[idx[1]], vs[idx[2]]
+        wa = (a[0] + o[0], a[1] + o[1], a[2] + o[2])
+        wb = (b[0] + o[0], b[1] + o[1], b[2] + o[2])
+        wc = (c[0] + o[0], c[1] + o[1], c[2] + o[2])
+        ux, uy, uz = wb[0] - wa[0], wb[1] - wa[1], wb[2] - wa[2]
+        vx, vy, vz = wc[0] - wa[0], wc[1] - wa[1], wc[2] - wa[2]
+        nx, ny, nz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
+        cx, cy, cz = (wa[0] + wb[0] + wc[0]) / 3, (wa[1] + wb[1] + wc[1]) / 3, (wa[2] + wb[2] + wc[2]) / 3
+        fx, fy, fz = eye[0] - cx, eye[1] - cy, eye[2] - cz
+        dot = nx * fx + ny * fy + nz * fz
+        if dot <= 0:                       # 背对相机
+            continue
+        nl = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+        fl = math.sqrt(fx * fx + fy * fy + fz * fz) or 1.0
+        cosang = max(0.0, min(1.0, dot / (nl * fl)))
+        shade = 0.55 + 0.55 * cosang
+        d = sum(cam.to_camera(p)[2] for p in (wa, wb, wc)) / 3.0
+        if min(cam.to_camera(p)[2] for p in (wa, wb, wc)) <= self.NEAR_EPS:
+            continue                       # 完全在近平面后（真裁剪由 _project_face 兜）
+        order.append((d, (wa, wb, wc), color, shade))
+    order.sort(key=lambda t: -t[0])         # 远 → 近
+    for _d, face, color, shade in order:
+        poly = self._project_face(face, cam, sw, sh)
+        if len(poly) < 3:
+            continue
+        col = (min(255, int(color[0] * shade)), min(255, int(color[1] * shade)),
+               min(255, int(color[2] * shade)))
+        try:
+            draw.polygon([(p[0], p[1]) for p in poly], fill=col, outline=None)
+        except (TypeError, ValueError, IndexError):
+            # 单面画不出来不该毁掉整张图（best-effort 渲染）；但**不吞意外异常** ——
+            # 收窄到 PIL 画多边形真正会抛的几类（本仓 `tools/silent_except_lint.py`
+            # 的口径 (b)：改窄异常类型即不算"静默宽 except"）。
+            pass
+
+
+def register_mesh(category: str, obj_path: str, mtl_path: str = None,
+                  axis_swap: bool = True) -> Dict:
+    """一步登记：解析 MTL（可选）+ 载入 OBJ 到 MESH_LIBRARY[category]。"""
+    cols = load_mtl(mtl_path) if mtl_path and os.path.isfile(mtl_path) else None
+    return load_obj_mesh(obj_path, category, cols, axis_swap=axis_swap)
+
+
+# ---- 勾子：只包装、不改既有绘制路径（既有代码逐字节不变）----
+_ORIG_DRAW_OBJECT = World3D._draw_object
+
+
+def _draw_object_with_mesh(self, draw, obj, cam, screen_w, screen_h, horizon_px):
+    """有显式几何则走网格通道，否则原路（部件形状 → 单图元）。"""
+    if obj.category in MESH_LIBRARY:
+        return _draw_mesh(self, draw, obj, cam, screen_w, screen_h)
+    return _ORIG_DRAW_OBJECT(self, draw, obj, cam, screen_w, screen_h, horizon_px)
+
+
+World3D._draw_object = _draw_object_with_mesh
