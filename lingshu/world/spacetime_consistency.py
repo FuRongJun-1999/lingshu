@@ -30,6 +30,16 @@ import math
 from collections import deque
 from typing import Dict, List, Optional, Tuple
 
+from .coord_contract import (apply_move,                     # noqa: E402
+                             NF_REJECT_ROUND_ALL)             # 第 4 轮 #4
+
+#: 每 tick 验证记录（预测历史 `_results`）的环形缓冲长度（#427：此前 `_results`
+#: 每 tick 追加、永不裁剪，`overall_hit_rate`/`per_behavior_rates` 又每次全量
+#: 遍历它 ⇒ 长期运行内存与单次报告耗时都随 tick 线性增长）。
+#: 上限值经验标定（追不到理论章节；与 `scene_simulator.HISTORY_MAXLEN` 同量级）：
+#: 取 5000，使 5 实体场景下常驻记录 ≈ 5000 × 5 × 400 B ≈ 10 MB 以内。
+HISTORY_MAXLEN = 5000
+
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
     from .scene_simulator import SceneSimulator
@@ -55,13 +65,21 @@ class SpacetimeConsistency:
     """
 
     def __init__(self, size: int = 24, ground_level: int = 1,
+                 seed: int = 42,
                  window: int = 20, hit_threshold: float = 0.5,
                  drift_rate: float = 0.7, drift_ticks: int = 5,
                  consistent_rate: float = 0.85,
                  min_consistent_ticks: int = 50,
                  wander_bound_factor: float = 1.5,
-                 wander_bound_pad: float = 0.2):
-        self.scene = SceneSimulator(size=size, ground_level=ground_level)
+                 wander_bound_pad: float = 0.2,
+                 max_results: int = HISTORY_MAXLEN):
+        # #25：seed 轴透传（此前 __init__ 无 seed 参数，构造 SceneSimulator 时
+        # 丢弃种子 ⇒ 场景演化在结构上不可做 seed 维度消融）。缺省 42 = 与
+        # `scene_simulator.py` 的历史硬编码逐位一致，默认行为不变。本类自身
+        # 不产生随机数（随机性全部来自 `self.scene._rng`），故一个 seed 参数
+        # 透传即覆盖整条随机轴；影子预测（`_predict_next`）不消耗 RNG。
+        self.scene = SceneSimulator(size=size, ground_level=ground_level,
+                                    seed=seed)
         self.window = max(1, int(window))
         self.hit_threshold = float(hit_threshold)
         self.drift_rate = float(drift_rate)
@@ -70,9 +88,19 @@ class SpacetimeConsistency:
         self.min_consistent_ticks = max(1, int(min_consistent_ticks))
         self.wander_bound_factor = float(wander_bound_factor)
         self.wander_bound_pad = float(wander_bound_pad)
+        self.max_results = max(1, int(max_results))
         # 验证状态
-        self._results: List[Dict] = []        # 每 tick 验证记录（预测历史）
-        self._rolling: deque = deque(maxlen=self.window)  # 每 tick 命中率窗口
+        self._results: deque = deque(maxlen=self.max_results)  # 每 tick 验证记录（有界）
+        self._rolling: deque = deque(maxlen=self.window)  # 每 tick 命中率窗口（None=无样本）
+        # 终身累积聚合（#427：`_results` 裁剪后仍保持总体/分行为口径不变）
+        self._agg_hits = 0
+        self._agg_outcomes = 0
+        self._agg_behavior: Dict[str, Dict[str, int]] = {}
+        self._agg_mode: Dict[str, Dict[str, int]] = {
+            "exact": {"outcomes": 0, "hits": 0},
+            "stochastic": {"outcomes": 0, "hits": 0}}
+        # 逐实体窗口命中（#9：全体平均看不到「部分实体长期漂移」）
+        self._entity_hits: Dict[str, deque] = {}
         self._drift_events: List[Dict] = []
         self._active_drift: Optional[Dict] = None
         self._low_streak = 0                  # 连续低于漂移阈值的 tick 数
@@ -107,33 +135,50 @@ class SpacetimeConsistency:
     # ---- 预测模型（白箱 · 确定性）----
 
     def _is_deterministic(self, e) -> bool:
-        """行为是否可精确预测（不消耗 RNG 的确定性分支）。"""
+        """行为是否可精确预测（不消耗 RNG 的确定性分支）。
+
+        #398：follow 要求**路径非空**——世界侧 `_decide` 的 `if path:` 对空路径
+        不成立（退化为随机游走），此前这里只判 `goal in paths` ⇒ 一个随机游走
+        实体被当作 exact 判分（deterministic_rate 失真 + 假漂移）。
+        """
         if e.behavior == "seek" and e.goal in self.scene.entities:
             return True
         if e.behavior == "avoid" and e.goal in self.scene.entities:
             return True
-        if e.behavior == "follow" and e.goal in self.scene.paths:
+        if e.behavior == "follow" and self.scene.paths.get(e.goal):
             return True
         return False
 
     def _apply_move_at(self, pos: Tuple[float, float, float], speed: float,
-                       d: Tuple[float, float, float]) -> Tuple[float, float, float]:
-        """按行为方向从指定位置移动（与 SceneSimulator.step 完全同式：clamp+round2）。"""
-        if d == (0.0, 0.0, 0.0):
-            return tuple(round(v, 2) for v in pos)
-        nx = pos[0] + d[0] * speed
-        nz = pos[2] + d[2] * speed
-        nx = max(0.5, min(self.scene.world.size - 0.5, nx))
-        nz = max(0.5, min(self.scene.world.size - 0.5, nz))
-        return (round(nx, 2), pos[1], round(nz, 2))
+                       d: Tuple[float, float, float],
+                       dist: Optional[float] = None) -> Tuple[float, float, float]:
+        """按行为方向从指定位置移动（与 SceneSimulator.step 完全同式：clamp+round2）。
 
-    def _shadow_decide(self, e, shadow: Dict[str, Tuple[float, float, float]]
+        #249：`dist`（到目标的剩余距离）非 None 时步长按 `min(speed, dist)` 封顶
+        ——与世界侧 seek/follow 的到达封顶同式，否则到达邻域预测会系统性地
+        越过目标（影子与物理世界分叉）。
+        #347：非有限坐标拒绝写入（clamp 表达式遇 NaN 会静默抬成边界值）。
+        """
+        # ⚠ 第 4 轮 #4：语义收归 `coord_contract.apply_move`，本站点的**两处差异**
+        #   一律显式命名，不再藏在函数体里：
+        #     · `step_cap=dist`      —— #249 步长按到目标的剩余距离封顶
+        #     · `on_nonfinite=...`   —— #347 非有限坐标必须**拒绝**，不许被 clamp 静默抬成边界值
+        return apply_move(pos, speed, d, self.scene.world.size,
+                          step_cap=dist, on_nonfinite=NF_REJECT_ROUND_ALL)
+
+    def _shadow_decide(self, e, shadow: Dict[str, Tuple[float, float, float]],
+                       follow_target: Optional[Dict[str, int]] = None
                        ) -> Tuple[float, float, float]:
         """影子状态下的行为决策（与 SceneSimulator._decide 同式，读取影子位置）。
 
         世界 step 按实体插入序依次决策/行动——后决策的实体看到的是前序实体
         已移动后的位置。预测必须复刻该顺序语义，否则追逐链会产生 ~speed 的
         系统性偏差（世界比模型多一阶）。不消耗 RNG（仅确定性分支调用）。
+
+        `follow_target`：follow 的"已提交目标路径点"表，由 `_predict_next` 以
+        世界侧 `scene._follow_target` 的当前值初始化，并在影子重放中同样推进。
+        否则影子每 tick 重算"最近点"，推进一格后会弹回原点，与世界实际巡逻
+        轨迹分叉（follow 属确定性行为、走 exact 分支，必须逐 tick 对齐）。
         """
         bx, by, bz = shadow.get(e.id, e.pos)
         if e.behavior == "seek":
@@ -151,14 +196,39 @@ class SpacetimeConsistency:
         elif e.behavior == "follow":
             path = self.scene.paths.get(e.goal)
             if path:
-                best, best_d = None, float("inf")
-                for pt in path:
-                    d = math.hypot(pt[0] - bx, pt[2] - bz)
-                    if d < best_d:
-                        best, best_d = pt, d
-                if best is not None:
-                    return self.scene._normalize(best[0] - bx, 0, best[2] - bz)
+                fi = follow_target if follow_target is not None else {}
+                idx = fi.get(e.id)
+                if idx is None or not (0 <= idx < len(path)):
+                    idx = min(range(len(path)),
+                              key=lambda i: math.hypot(path[i][0] - bx,
+                                                       path[i][2] - bz))
+                tgt = path[idx]
+                if math.hypot(tgt[0] - bx, tgt[2] - bz) <= max(e.speed, 1e-9):
+                    idx = (idx + 1) % len(path)
+                fi[e.id] = idx
+                tgt = path[idx]
+                return self.scene._normalize(tgt[0] - bx, 0, tgt[2] - bz)
         return (0.0, 0.0, 0.0)
+
+    def _shadow_approach_dist(self, e, shadow: Dict[str, Tuple[float, float, float]],
+                              follow_target: Dict[str, int]) -> Optional[float]:
+        """影子状态下的剩余平面距离（#249：与 SceneSimulator._approach_distance 同式）。
+
+        必须在 `_shadow_decide` **之后**调用（follow 的已提交目标点由它推进）。
+        """
+        bx, _, bz = shadow.get(e.id, e.pos)
+        if e.behavior == "seek":
+            t = shadow.get(e.goal)
+            if t is not None:
+                return math.hypot(t[0] - bx, t[2] - bz)
+        elif e.behavior == "follow":
+            path = self.scene.paths.get(e.goal)
+            if path:
+                idx = follow_target.get(e.id)
+                if idx is not None and 0 <= idx < len(path):
+                    tgt = path[idx]
+                    return math.hypot(tgt[0] - bx, tgt[2] - bz)
+        return None
 
     def _predict_next(self) -> Dict[str, Tuple[Tuple[float, float, float], str,
                                                str, str, float]]:
@@ -172,12 +242,17 @@ class SpacetimeConsistency:
         注意：确定性分支不消耗 RNG（与 _decide 的随机分支隔离），不扰动实际演化。
         """
         shadow = {eid: tuple(e.pos) for eid, e in self.scene.entities.items()}
+        # follow 的已提交目标索引以世界侧当前值为种子，影子重放中同步推进
+        # ——否则影子每 tick 重算"最近点"，会与世界的巡逻轨迹分叉。
+        follow_target: Dict[str, int] = dict(
+            getattr(self.scene, "_follow_target", {}) or {})
         pred = {}
         for eid, e in self.scene.entities.items():
             exact, bound = self._exactness(e, pred)
             if exact:
-                d = self._shadow_decide(e, shadow)
-                np_ = self._apply_move_at(shadow[eid], e.speed, d)
+                d = self._shadow_decide(e, shadow, follow_target)
+                dist = self._shadow_approach_dist(e, shadow, follow_target)
+                np_ = self._apply_move_at(shadow[eid], e.speed, d, dist)
                 shadow[eid] = np_              # 已移动 → 后续实体决策可见
                 pred[eid] = (np_, "exact", e.category, e.behavior, 0.0)
             else:
@@ -267,38 +342,79 @@ class SpacetimeConsistency:
                              "distance": round(dist, 4), "hit": hit,
                              "missing": False})
         total = len(outcomes)
-        rate = round(hits / total, 4) if total else 1.0   # 空场景视为一致
+        # #22：分母为 0（本 tick 无任何可比实体）＝无样本，不得回数值满分 1.0
+        rate = round(hits / total, 4) if total else None
         self._rolling.append(rate)
         rolling = self._rolling_rate()
+        # #427：终身累积聚合（_results 有界裁剪后，总体/分行为口径不随裁剪而变）
+        self._agg_hits += hits
+        self._agg_outcomes += total
+        for o in outcomes:
+            b = o["behavior"]
+            s = self._agg_behavior.setdefault(b, {"outcomes": 0, "hits": 0})
+            s["outcomes"] += 1
+            if o["hit"]:
+                s["hits"] += 1
+            m = "exact" if o["mode"] == "exact" else "stochastic"
+            self._agg_mode[m]["outcomes"] += 1
+            if o["hit"]:
+                self._agg_mode[m]["hits"] += 1
+        # #9：逐实体窗口命中（漂移检测改看「最差实体」而非全体平均）
+        for o in outcomes:
+            d = self._entity_hits.setdefault(o["entity"], deque(maxlen=self.window))
+            d.append(1 if o["hit"] else 0)
+        for eid in list(self._entity_hits):      # 已离场实体不再参与最差判定
+            if eid not in pred:
+                del self._entity_hits[eid]
         # 不变量校验（世界保持自身一致）
         inv_ok, inv_issues = self._check_invariants()
         if not inv_ok:
             self._invariant_violations += 1
-        # 一致性漂移检测
-        self._update_drift(rolling)
+        # 一致性漂移检测（#9：以最差实体的窗口命中率为判据）
+        worst = self._worst_entity_rate()
+        self._update_drift(worst)
         record = {"tick": self.tick_count, "hits": hits, "total": total,
-                  "rate": rate, "rolling": round(rolling, 4),
+                  "rate": rate, "rolling": rolling,
+                  "worst_entity_rate": worst,
+                  "scored_rounds": sum(1 for r in self._rolling if r is not None),
+                  "total_rounds": len(self._rolling),
                   "outcomes": outcomes,
                   "invariants_ok": inv_ok, "invariant_issues": inv_issues,
                   "drift_active": self._active_drift is not None}
         self._results.append(record)
         return record
 
-    def _rolling_rate(self) -> float:
-        return round(sum(self._rolling) / len(self._rolling), 4) if self._rolling else 1.0
+    def _rolling_rate(self) -> Optional[float]:
+        """窗口滚动命中率（只聚合已计分 tick；无已计分 tick ⇒ None，非 1.0）。"""
+        scored = [r for r in self._rolling if r is not None]
+        return round(sum(scored) / len(scored), 4) if scored else None
 
-    def _update_drift(self, rolling: float) -> None:
-        if rolling < self.drift_rate:
+    def _worst_entity_rate(self) -> Optional[float]:
+        """窗口内各实体命中率的最小值（#9）。
+
+        判据来源：triage #9（本仓 `world/spacetime_consistency.py`，判定成立）。
+        原判据用「全体实体平均命中率」对比固定 `drift_rate`——N≥4 且有 1 个
+        实体永久预测失败时 rolling=(N-1)/N>drift_rate，**永不报警**；该检测器
+        只能捕捉「全体同时崩塌」。改为逐实体窗口命中率取 min：任一实体在窗口
+        内长期低于阈值即触发。单实体场景下与旧判据逐位等价。
+        """
+        rates = [sum(d) / len(d) for d in self._entity_hits.values() if len(d)]
+        return round(min(rates), 4) if rates else None
+
+    def _update_drift(self, detect_rate: Optional[float]) -> None:
+        if detect_rate is None:
+            return                    # 无样本：不判漂移（#22：不得把「没测到」当高一致）
+        if detect_rate < self.drift_rate:
             self._low_streak += 1
             if self._low_streak >= self.drift_ticks:
                 if self._active_drift is None:
                     self._active_drift = {"start_tick": self.tick_count,
-                                          "min_rate": rolling,
+                                          "min_rate": detect_rate,
                                           "ticks": self._low_streak}
                 else:
                     self._active_drift["ticks"] = self._low_streak
                     self._active_drift["min_rate"] = min(
-                        self._active_drift["min_rate"], rolling)
+                        self._active_drift["min_rate"], detect_rate)
         else:
             if self._active_drift is not None:
                 self._active_drift["end_tick"] = self.tick_count - 1
@@ -332,40 +448,32 @@ class SpacetimeConsistency:
 
     # ---- 统计与报告 ----
 
-    def rolling_hit_rate(self, window: Optional[int] = None) -> float:
-        """滚动命中率（默认当前窗口）。"""
+    def rolling_hit_rate(self, window: Optional[int] = None) -> Optional[float]:
+        """滚动命中率（默认当前窗口；无已计分 tick ⇒ None，非 1.0）。"""
         if window is not None and 0 < window < len(self._rolling):
-            recent = list(self._rolling)[-int(window):]
-            return round(sum(recent) / len(recent), 4)
+            recent = [r for r in list(self._rolling)[-int(window):] if r is not None]
+            return round(sum(recent) / len(recent), 4) if recent else None
         return self._rolling_rate()
 
-    def overall_hit_rate(self) -> float:
-        totals = sum(x["total"] for x in self._results)
-        hits = sum(x["hits"] for x in self._results)
-        return round(hits / totals, 4) if totals else 1.0
+    def overall_hit_rate(self) -> Optional[float]:
+        """终身累积总体命中率（#427：`_results` 有界裁剪后仍覆盖全部 tick）。
+
+        无任何已计分样本 ⇒ None（#22：不得回数值满分 1.0）。
+        """
+        return (round(self._agg_hits / self._agg_outcomes, 4)
+                if self._agg_outcomes else None)
 
     def per_behavior_rates(self) -> Dict:
-        """分行为命中率（累积）：确定性（exact）与随机（bounded）分别统计。"""
-        stats: Dict[str, Dict] = {}
-        det = {"outcomes": 0, "hits": 0}
-        sto = {"outcomes": 0, "hits": 0}
-        for rec in self._results:
-            for o in rec["outcomes"]:
-                b = o["behavior"]
-                s = stats.setdefault(b, {"outcomes": 0, "hits": 0})
-                s["outcomes"] += 1
-                if o["hit"]:
-                    s["hits"] += 1
-                if o["mode"] == "exact":
-                    det["outcomes"] += 1
-                    if o["hit"]:
-                        det["hits"] += 1
-                else:
-                    sto["outcomes"] += 1
-                    if o["hit"]:
-                        sto["hits"] += 1
+        """分行为命中率（终身累积）：确定性（exact）与随机（bounded）分别统计。
+
+        #427：改由终身累积计数器聚合（`_results` 已改为有界环形缓冲，遍历它
+        会随裁剪丢掉早期样本）。无样本桶的 rate 为 None（#22）。
+        """
+        stats = {b: dict(v) for b, v in self._agg_behavior.items()}
+        det = dict(self._agg_mode["exact"])
+        sto = dict(self._agg_mode["stochastic"])
         for s in list(stats.values()) + [det, sto]:
-            s["rate"] = round(s["hits"] / s["outcomes"], 4) if s["outcomes"] else 1.0
+            s["rate"] = round(s["hits"] / s["outcomes"], 4) if s["outcomes"] else None
         return {"per_behavior": stats,
                 "deterministic": det, "stochastic": sto}
 
@@ -377,24 +485,39 @@ class SpacetimeConsistency:
         return self._active_drift is not None
 
     def prediction_history(self, limit: int = 10) -> List[Dict]:
-        """预测验证历史（可审计）：每 tick 预测 vs 实际 + 命中。"""
-        return self._results[-max(1, int(limit)):]
+        """预测验证历史（可审计）：每 tick 预测 vs 实际 + 命中。
+
+        #427：`_results` 为有界环形缓冲（最多 `max_results` 条），故此处返回的
+        是「最近 limit 条」而非「全部历史」——保留历史条数上限见 `HISTORY_MAXLEN`。
+        """
+        return list(self._results)[-max(1, int(limit)):]
 
     def consistency_report(self) -> Dict:
         """自洽度报告：持续运行 + 一致性验证的汇总判定。
 
         verdict:
-          - self_consistent：持续运行足够且预测与实际保持一致性（自洽）
+          - no_observation：无任何已计分观测（#22 前置独立判定——不得落入
+            `self_consistent`；这是「空世界跑满 tick 被判自洽」的判决级假阳性修法）
           - drift_detected：一致性漂移（预测与实际偏离，世界模型不自洽）
+          - invariant_violated：世界状态不变量被破坏（#303——此前
+            `_invariant_violations` 只进报告、不进判定）
           - inconsistent：总体命中率低于自洽阈值
           - running：持续运行时长不足（继续验证中）
+          - self_consistent：持续运行足够且预测与实际保持一致性（自洽）
+
+        判据来源：`docs/plans/待裁清单_v0.1.md` D-65（无样本在数值比较**之前**
+        独立判定）／C-11；triage #303（不变量只作数字输出、不进 verdict）。
         """
         overall = self.overall_hit_rate()
         rolling = self._rolling_rate()
         sustained = self.tick_count >= self.min_consistent_ticks
         active = self._active_drift is not None
-        if active:
+        if overall is None:
+            verdict = "no_observation"
+        elif active:
             verdict = "drift_detected"
+        elif self._invariant_violations > 0:
+            verdict = "invariant_violated"
         elif overall < self.consistent_rate:
             verdict = "inconsistent"
         elif not sustained:
@@ -410,6 +533,8 @@ class SpacetimeConsistency:
             "window": self.window,
             "overall_hit_rate": overall,
             "rolling_hit_rate": rolling,
+            "scored_rounds": sum(1 for r in self._rolling if r is not None),
+            "total_rounds": len(self._rolling),
             "consistent_rate": self.consistent_rate,
             "per_behavior": pbr["per_behavior"],
             "deterministic_rate": pbr["deterministic"]["rate"],

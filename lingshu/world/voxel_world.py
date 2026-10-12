@@ -28,6 +28,8 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
+from .coord_contract import clamp_xz              # 第 4 轮 #4
+
 
 # 方块类型（体素世界的基本构成）
 BLOCK_AIR = 0
@@ -69,10 +71,28 @@ class VoxelWorld:
       - trail(entity_id)：实体时空轨迹（A→B 完整记录）
       - occupancy_at(t)：某时刻的 4D 时空占用（体素快照）
       - simulate(steps)：推进 N 步（实体按速度移动）
+
+    资源上界（lingshu #325 / #368）：
+      build_flatland 按 size² 建 dict、simulate 每步给每实体追加一个轨迹点，
+      三处都无上界 ⇒ 传入大 size / 大 steps / 长时推进可把内存吃穿。现加三条
+      上界（判据来源：**经验标定，追不到理论出处**——本仓理论稿未给体素世界
+      规模口径；取同仓 HISTORY_MAX 一类「常量 + 钳制」的既有手法）：
+
+        MAX_SIZE  —— 区块边长上限，超出即钳到上界（size² 方块数随之有界）。
+        MAX_STEPS —— 单次 simulate 步数上限，超出即钳到上界（防单次调用耗尽 CPU）。
+        MAX_TRAIL —— 每实体时空轨迹保留点数上限，超出丢弃最旧（防长期推进无界增长）。
+
+      削掉的判别力：MAX_TRAIL 生效后，轨迹只保留最近 MAX_TRAIL 个点，
+      `trail()` 不再是「A→B 完整记录」、`occupancy_at(t)` 的按下标取值只对
+      保留窗口内有效（更早的历史被丢弃，无法回取）。未超上界时行为与旧版逐字相同。
     """
 
+    MAX_SIZE = 128      # 区块边长上限：size²×2 层方块，128²×2≈3.3e4，可控
+    MAX_STEPS = 10000   # 单次 simulate 步数上限
+    MAX_TRAIL = 4096    # 每实体时空轨迹保留点数上限（超出丢弃最旧）
+
     def __init__(self, size: int = 16, ground_level: int = 1, seed: int = 0):
-        self.size = size                  # 区块边长
+        self.size = min(int(size), self.MAX_SIZE)  # 区块边长（钳到 MAX_SIZE）
         self.ground_level = ground_level  # 地面高度
         self.blocks: Dict[Tuple[int, int, int], int] = {}  # (x,y,z) -> block
         self.entities: Dict[str, VoxelEntity] = {}
@@ -92,16 +112,20 @@ class VoxelWorld:
                 self.blocks[(x, self.ground_level - 1, z)] = BLOCK_DIRT
                 count += 2
         # 树（确定性随机——同 seed 同布局）
-        for _ in range(trees):
-            tx = self._rng.randint(2, self.size - 3)
-            tz = self._rng.randint(2, self.size - 3)
-            for h in range(1, 4):
-                self.blocks[(tx, self.ground_level + h, tz)] = BLOCK_WOOD
-                count += 1
-            for dx in range(-1, 2):
-                for dz in range(-1, 2):
-                    self.blocks[(tx + dx, self.ground_level + 4, tz + dz)] = BLOCK_LEAF
+        # 退化输入（issue #55）：size < 5 时 [2, size-3] 为空区间，randint 抛
+        # ValueError（empty range）。树体素需 tx∈[2,size-3] 才不越界 ⇒ 太小
+        # 的世界不放树（地面照常生成）。
+        if self.size >= 5:
+            for _ in range(trees):
+                tx = self._rng.randint(2, self.size - 3)
+                tz = self._rng.randint(2, self.size - 3)
+                for h in range(1, 4):
+                    self.blocks[(tx, self.ground_level + h, tz)] = BLOCK_WOOD
                     count += 1
+                for dx in range(-1, 2):
+                    for dz in range(-1, 2):
+                        self.blocks[(tx + dx, self.ground_level + 4, tz + dz)] = BLOCK_LEAF
+                        count += 1
         # 水
         if water and self.size >= 8:
             for dx in range(2):
@@ -135,11 +159,16 @@ class VoxelWorld:
             return None
         e.pos = tuple(float(v) for v in new_pos)
         if record:
-            self._trails[entity_id].append(self._trail_point(e))
+            self._record_trail(entity_id, self._trail_point(e))
         return e
 
     def simulate(self, steps: int = 1) -> int:
-        """推进 N 步：实体按速度移动（时空演化）。返回被推进的实体数。"""
+        """推进 N 步：实体按速度移动（时空演化）。返回被推进的实体数。
+
+        steps 钳到 [0, MAX_STEPS]（lingshu #368：门面 steps 无上限，单次调用
+        可耗尽 CPU/内存）。
+        """
+        steps = max(0, min(int(steps), self.MAX_STEPS))
         moved_entities = set()
         for _ in range(steps):
             self._step += 1
@@ -148,12 +177,20 @@ class VoxelWorld:
                 ny = max(float(self.ground_level + 0.5), e.pos[1] + e.velocity[1])  # 不穿地
                 nz = e.pos[2] + e.velocity[2]
                 # 边界约束
-                nx = max(0.5, min(self.size - 0.5, nx))
-                nz = max(0.5, min(self.size - 0.5, nz))
+                # ⚠ 第 4 轮 #4：**只**收 x/z 边界语义；本站点与本体口径的差异（不量化、
+                #   y 由地面约束管）**保留**并在此写明 —— 统一的是语义，不是行为。
+                nx, nz = clamp_xz(nx, nz, self.size)
                 e.pos = (nx, ny, nz)
-                self._trails[eid].append(self._trail_point(e))
+                self._record_trail(eid, self._trail_point(e))
                 moved_entities.add(eid)
         return len(moved_entities)
+
+    def _record_trail(self, entity_id: str, point: Dict) -> None:
+        """追加一个时空轨迹点，并钳到 MAX_TRAIL（超出丢弃最旧，lingshu #368）。"""
+        trail = self._trails.setdefault(entity_id, [])
+        trail.append(point)
+        if len(trail) > self.MAX_TRAIL:
+            del trail[:len(trail) - self.MAX_TRAIL]
 
     def _trail_point(self, e: VoxelEntity) -> Dict:
         return {"t": self._step, "pos": tuple(round(v, 2) for v in e.pos),
@@ -166,11 +203,28 @@ class VoxelWorld:
         return self._trails.get(entity_id, [])
 
     def occupancy_at(self, t: int) -> List[Dict]:
-        """t 时刻的 4D 时空占用（该时刻所有实体的空间位置）。"""
+        """t 时刻的 4D 时空占用（该时刻所有实体的空间位置）。
+
+        #134：按轨迹点内的 `t` 字段查找，而非**列表下标**。旧实现
+        `trail[t]` 把「第 t 个记录点」当成「t 时刻」——于是晚生成的实体
+        出现在它尚不存在的时刻（`spawn_entity` 在 `_step=3` 时首个点 t=3，
+        旧码却让它出现在 t=0），而在场时刻反而缺席；`move_entity` 追加点
+        却不推进 `_step`（同一 t 多个点），下标口径进一步错位。
+        同一 t 有多个点时取**最后一个**（该时刻的最终状态）。
+        判据来源：triage #134（判定成立）——判据即「返回的每一项
+        `o["t"] == t`，且 t 时刻在场的实体都出现」。
+        削掉的判别力（如实声明）：`MAX_TRAIL` 裁剪后更早时刻的点已丢弃，
+        此时按 t 查不到即返回缺席（旧下标口径会返回一个张冠李戴的错位点，
+        属更坏的行为）。
+        """
         occ = []
         for eid, trail in self._trails.items():
-            if t < len(trail):
-                occ.append({"entity": eid, **trail[t]})
+            point = None
+            for p in trail:              # 同 t 多点 ⇒ 后者覆盖（最终状态）
+                if p.get("t") == t:
+                    point = p
+            if point is not None:
+                occ.append({"entity": eid, **point})
         return occ
 
     def world_state(self) -> Dict:
