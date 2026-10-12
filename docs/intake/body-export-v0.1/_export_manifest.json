@@ -160,7 +160,7 @@
     {
      "file": "silhouette3d.py",
      "src": "aeis.silhouette3d",
-     "sha256": "2aafd8b4bf723f55",
+     "sha256": "6d8f55152f4d5543",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,

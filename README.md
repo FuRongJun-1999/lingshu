@@ -45,7 +45,7 @@
 ## 代码主体
 
 身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 8 件 ·
-world 世界模型 26 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件）：
+world 世界模型 27 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件）：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
