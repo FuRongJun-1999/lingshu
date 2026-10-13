@@ -1660,33 +1660,51 @@ class LayeredStore:
             self.conn.commit()
 
     @_transactional
-    def untag_node(self, node_id: str, tag: str):
+    def untag_node(self, node_id: str, tag: str, override: bool = False) -> bool:
         """移除节点上的某个标签（`tag_node` 的对称操作，幂等）。
 
         此前全仓只有 `tag_node`（追加），没有对应的移除入口，导致
         `forget_advisor` 写下的 `archived` 标签无法用公开 API 清除，节点被
         永久锁在归档态（`forget_advisor` 内 `if "archived" in tags: continue`）。
         见 issue #448。
+
+        **保护闸**（对齐 `delete_node` 的三道闸口径，lingshu #36）：
+        剥 `no_forget` 标签等同解除「不可遗忘」保护 ⇒ 默认拒（返回 False），
+        须显式 `override=True` 才放行——`protections` 行登记那一支不受影响
+        （本原语只动 `tags` 列），但剥掉 `no_forget` 会让 `_is_forget_protected`
+        由 True 翻 False，后续删除路径即可得手。
+        返回是否发生了状态变更（拒 ⇒ False）。
         """
         node = self.get_node(node_id)
-        if node and tag in node.tags:
-            node.tags = [t for t in node.tags if t != tag]
+        if node is None or tag not in (node.tags or []):
+            return False
+        if tag == "no_forget" and not override:
+            return False  # 保护标签不得静默剥离（对齐 delete_node 的 _is_forget_protected 判定）
+        node.tags = [t for t in node.tags if t != tag]
+        with self._lock:
             c = self.conn.cursor()
             c.execute("UPDATE nodes SET tags=? WHERE id=?",
                       (_dumps_tags(node.tags), node_id))
-            self.conn.commit()
+        return True
 
     @_transactional
     def restore_node(self, node_id: str) -> bool:
         """把节点从归档态还原为活跃态：清 `archived` 标签并恢复归档前的 importance。
 
         归档前的 importance 记在 `pre_archive_importance=<值>` 标签里（由
-        `forget_advisor` 写入）。没有该标签（或不可解析为float）时退化为只清标签。
+        `forget_advisor` 写入；值用 `%.6g` 固定格式化，避免 `%r` 对 int/float 的
+        类型漂移）。没有该标签（或不可解析为float）时退化为只清标签。
         返回是否发生了状态变更。
+
+        **保护闸**（对齐 `delete_node`，lingshu #36）：`IMMUTABLE_LAYERS`
+        （ANCHOR/STRUCTURE/SELF）节点拒还原，返回 False 保持 bool 契约——
+        不可变层不因归档状态机而被改写 importance。
         """
         node = self.get_node(node_id)
         if node is None or "archived" not in node.tags:
             return False
+        if node.layer in self.IMMUTABLE_LAYERS:
+            return False  # 不可变层不参与归档状态机的还原（对齐 delete_node 第二道闸）
         new_tags = [t for t in node.tags
                     if t != "archived"
                     and not t.startswith("pre_archive_importance=")]
@@ -6332,7 +6350,7 @@ class SpacetimeMemoryEngine:
                     # 记下归档前的 importance，供 store.restore_node() 还原（issue #448）
                     new_imp = archived_imp
                     new_tags = list(dict.fromkeys(
-                        tags + ["pre_archive_importance=%r" % (imp,), "archived"]))
+                        tags + ["pre_archive_importance=%.6g" % (imp,), "archived"]))
                     c.execute("UPDATE nodes SET importance=?, tags=? WHERE id=?",
                               (new_imp, _dumps_tags(new_tags, ensure_ascii=False), nid))
                     archived += 1
