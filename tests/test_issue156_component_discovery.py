@@ -87,6 +87,14 @@ STDLIB_ALLOWED = frozenset({
     "sqlite3",
     # IO / 文本 / 数值 / 随机
     "io", "re", "math", "random",
+    # 语法树（ast：2026-10-12 外部 PR 引入 world/coord_contract.py——标准库；
+    # 守卫按设计判红「未知裸名」，此处补分类而非放宽判据）
+    "ast",
+    # 临时文件 / 紧凑数组 / XML（本轮引入：tempfile←world/anim.py 的 GIF 落盘（原子替换）、
+    # array←world/mesh3d.py 的深度缓冲（`array("f")`，省内存 8×）、
+    # xml←world/mesh_svg.py 解析/生成 SVG 文档。三者皆标准库；
+    # 守卫按设计判红「未知裸名」，此处**补分类而非放宽判据**。）
+    "tempfile", "array", "xml",
     # 命令行 / 子进程
     "argparse", "subprocess",
 })

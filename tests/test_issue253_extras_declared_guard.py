@@ -189,8 +189,11 @@ def test_scanner_is_alive():
         % (absent, sorted(seen)))
 
     pil_mods = {p.split("/")[-1].split(":")[0] for p in seen["PIL"]}
+    # `anim.py` 走**并集**而不是 `WORLD_PIL_MODULES`：后者在下方被断言"每个都有
+    # `def render(`"（那是 world 的 4 个渲染件），而 anim.py 的面是 `frames/to_gif`。
     assert pil_mods == set(WORLD_PIL_MODULES) | {"hex_gen.py", "hex_train.py",
-                                                 "hexgen_c1_real.py", "hexgen_multi_seed.py"}, (
+                                                 "hexgen_c1_real.py", "hexgen_multi_seed.py",
+                                                 "anim.py"}, (
         "引用 PIL 的模块集合与预期不符（扫描器或代码面已变）：%s" % sorted(pil_mods))
 
     # world 的 4 个 render 件确实各有 render()（Pillow 是它们的**常规路径**依赖）

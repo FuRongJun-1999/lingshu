@@ -149,7 +149,7 @@
     {
      "file": "shapes.py",
      "src": "aeis.shapes",
-     "sha256": "5796dc947f85441b",
+     "sha256": "12a2b72318737b80",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -250,7 +250,7 @@
     {
      "file": "world3d.py",
      "src": "aeis.world3d",
-     "sha256": "7b7527deb009dd70",
+     "sha256": "e61c6fe5fb1d71da",
      "rewrites": 16,
      "sanitized": 0,
      "patches": 0,
@@ -274,7 +274,7 @@
     {
      "file": "world_model.py",
      "src": "aeis.world_model",
-     "sha256": "97a0f817684fa51e",
+     "sha256": "1a6a685b18db8a0b",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,

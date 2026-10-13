@@ -87,6 +87,24 @@ _ACTIVATION_SPEC = ("lingshu/core/activation.py",
                     "d *= cond_match(cur_cs.get(src), cur_cs.get(dst))", 1)
 
 
+#: 2026-10-14 新增：物理阻尼（8 处）与色调映射软肩（1 处）的 R1「形状级」命中。
+#: 与 `_ACTIVATION_SPEC` 同类——R1 的口径是「`exp(` 括号内以负号开头」，属形状级；
+#: 这些公式来自牛顿力学与呈现层光学，不是 time_core 的时间可信度核。已登记 baseline
+#: 并逐条注明性质（见 `tools/time_core_lint_baseline.txt` 的 2026-10-14 段）。
+_PHYSICS_DAMPING_SPECS = (
+    ("lingshu/world/physics.py", "e = [math.exp(-k * x) for x in tau]", 1),
+    ("lingshu/world/physics.py", "e = [math.exp(-k * x) for x in tau]", 2),
+    ("lingshu/world/physics.py", "e = math.exp(-kk * tau)", 1),
+    ("lingshu/world/physics.py", "e = math.exp(-z * w * tt)", 1),
+    ("lingshu/world/physics.py", "return (1.0 + w * tt) * math.exp(-w * tt)", 1),
+    ("lingshu/world/physics.py", "e = math.exp(-z * w * tt)", 2),
+    ("lingshu/world/physics.py", 'out["amplitude_ratio_per_period"] = math.exp(', 1),
+    ("lingshu/world/physics.py", 'out["amplitude_ratio_per_period"] = math.exp(', 2),
+)
+_SHADE_SHOULDER_SPEC = ("lingshu/world/shade_paint.py",
+                        "return SHOULDER + span * (1.0 - math.exp(-(v - SHOULDER) / span))", 1)
+
+
 def _anchor(spec):
     rel, marker, nth = spec
     return (rel, _marker_line(rel, marker, nth))
@@ -564,10 +582,14 @@ def test_real_repo_current_hit_set_is_exactly_stable_lease(empty_baseline):
         **登记 baseline 并注明判据与削掉的判别力**（见 baseline 该行注释）。
     """
     data = payload(run_lint("--baseline", str(empty_baseline), "--json"))
-    assert hit_set(data) == {
-        _anchor(_STABLE_LEASE_SPEC) + ("R1",),
-        _anchor(_ACTIVATION_SPEC) + ("R3",),
-    }
+    assert hit_set(data) == (
+        {
+            _anchor(_STABLE_LEASE_SPEC) + ("R1",),
+            _anchor(_ACTIVATION_SPEC) + ("R3",),
+        }
+        | {_anchor(sp) + ("R1",) for sp in _PHYSICS_DAMPING_SPECS}
+        | {_anchor(_SHADE_SHOULDER_SPEC) + ("R1",)}
+    )
 
 
 # 判定回归的「形态锚」：(文件, 该文件内必须仍出现的源码片段, 第 n 次出现)
