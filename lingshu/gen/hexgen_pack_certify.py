@@ -19,7 +19,7 @@
 `_need_between` 同式（守门逐点比对，见 `tests/test_hexgen_pack_certify_r313.py`）。
 
 用法：
-    PYTHONPATH=. python experiments/hexgen_pack_certify.py --prompt 303 --r 47 --r 48
+    python -X utf8 -m lingshu.gen.hexgen_pack_certify --prompt 303 --r 47 --r 48
 """
 import argparse
 import json

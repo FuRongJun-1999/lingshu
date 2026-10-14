@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""coggraph 守卫 · 节点 id 唯一化（issue #358）与导出顺序/分日与机器无关（issue #360）。
+"""coggraph 守卫 · 节点 id 唯一化（#358）／导出顺序·分日与机器无关（#360）／created 为 ISO 串不崩（#530）。
 
-两件各钉「缺陷不再存在」，不是「代码能跑」：
+每件各钉「缺陷不再存在」，不是「代码能跑」：
 
 A 组（#358 重复 id）
   A1 两个文件写同一 frontmatter `id` ⇒ graph.json 的节点 id 必须两两唯一，
@@ -29,9 +29,17 @@ C 组（#360 本地时区）
      R4 日枢纽与边随机器时区改变）。**夹具不变量**：先断言夹具确实跨了 UTC 日界
      （两个 TZ 的 localtime 日期不同），否则 C1 是恒真。
 
+D 组（#530 created 为 ISO 字符串）
+  export_coggraph.norm_created（#290）把 YAML 日期写成 ISO 字符串（`created_at: 2026-01-01`
+  → `"created": "2026-01-01"`）；derive_edges 旧码 `ts = n.get("created") or 0` 把字符串
+  直接喂 time.gmtime ⇒ TypeError、rc=1、无产物（一条 date 笔记杀死整轮）。
+  D1 钉住：ISO 串（无时区按 UTC）与等值数字时间戳落到**同一个** UTC 日枢纽，rc==0、产物在场、
+  且 stderr 无 TypeError；D2 钉住：非法 ISO 串跳过该节点（点名告警）而非整轮崩溃。
+
 跨批覆盖重叠自查：A4 与 A5 复用 viewer/derive 的口径，但断言落在「本件改名机制产出
 的 id 集合」上，不依赖任何前批守卫的结论；B/C 组断言的是「导出/推导产物」，与前批
-（#45 R4 count、#411 推导边去重、#290 族）各自的断言面不重叠。
+（#45 R4 count、#411 推导边去重、#290 族）各自的断言面不重叠；D 组断言的是「created
+归一后仍得同一边集」，与 C 组（分日随机器时区不变）各测一个自由度。
 
 运行：
   · pytest：python -X utf8 -m pytest tests/test_coggraph_export_id_order_guard.py -q --no-header
@@ -291,6 +299,68 @@ class LocalTimezoneDeterminismTests(_Base):
         want = "day:" + time.strftime("%Y-%m-%d", time.gmtime(self.TS))
         self.assertEqual(hubs, {want},
                          "日枢纽必须按 UTC 日历日命名：%r" % (hubs,))
+
+
+class CreatedIsoStringTests(_Base):
+    """D 组：issue #530 —— created 为 ISO 字符串时 R4 分日不得整轮崩溃。"""
+
+    # 2026-01-01T00:00:00Z 的 epoch 秒（UTC 日 = 2026-01-01）
+    ISO_TS = 1767225600
+
+    def _fixture_graph(self, created_values):
+        out = self.base / "fixture530"
+        out.mkdir(exist_ok=True)
+        nodes = [{"id": "n%d" % i, "title": "节点 %d" % i, "layer": "knowledge",
+                  "bucket": "kb", "tags": [], "importance": 0, "created": cv,
+                  "ref_root": "", "ref_dir": "", "path": "n%d.md" % i}
+                 for i, cv in enumerate(created_values)]
+        g = out / "graph.json"
+        with io.open(str(g), "w", encoding="utf-8", newline="\n") as f:
+            json.dump({"meta": {"source_sha": "iso-created-fixture"},
+                       "nodes": nodes, "edges": []}, f, ensure_ascii=False)
+        return g
+
+    def test_d1_iso_string_created_does_not_crash_and_lands_on_utc_day(self):
+        # 缺陷形态：`ts = n.get("created") or 0` → time.gmtime("2026-01-01")
+        # ⇒ TypeError: 'str' object cannot be interpreted as an integer（rc=1、无产物）。
+        # 修复形态：无时区 ISO 串按 UTC 解析 ⇒ 与等值数字时间戳同日。
+        g = self._fixture_graph(["2026-01-01", "2026-01-01T00:00:00", self.ISO_TS])
+        out = self.base / "dout530"
+        p = _run([str(DERIVE), "--graph", str(g), "--out", str(out), "--write",
+                  "--small-bucket", "0"])
+        self.assertEqual(p.returncode, 0,
+                         "ISO 字符串 created 不得整轮崩溃（旧码 TypeError、rc=1、无产物）\n"
+                         "stderr:\n%s" % p.stderr)
+        self.assertNotIn("TypeError", p.stderr, "不得出现 TypeError：%r" % p.stderr)
+        derived = Path(out) / "derived_edges.json"
+        self.assertTrue(derived.is_file(), "rc==0 时产物必须在场（旧码无产物）")
+        d = json.loads(derived.read_text(encoding="utf-8"))
+        day = time.strftime("%Y-%m-%d", time.gmtime(self.ISO_TS))
+        hubs = {h["id"] for h in d["hubs"] if h["id"].startswith("day:")}
+        self.assertEqual(hubs, {"day:" + day},
+                         "ISO 串（无时区按 UTC）与等值数字时间戳必须落到同一日枢纽：%r" % (hubs,))
+        edges = [e for e in d["edges"] if e["rule"] == "R4_same_day"]
+        self.assertEqual(len(edges), 3, "三个同日孤立节点各得一条 same_day 边：%r" % (edges,))
+        # 自证：若把 ISO 串原样当数字喂 gmtime 会炸 —— 缺陷形态下本件必红（上面 rc/产物断言）。
+        with self.assertRaises(TypeError):
+            time.gmtime("2026-01-01")
+
+    def test_d2_invalid_created_is_skipped_with_warning_not_crash(self):
+        g = self._fixture_graph(["not-a-date", "2026-01-01"])
+        out = self.base / "dout530b"
+        p = _run([str(DERIVE), "--graph", str(g), "--out", str(out), "--write",
+                  "--small-bucket", "0"])
+        self.assertEqual(p.returncode, 0,
+                         "非法 created 必须跳过该节点而非整轮崩溃\nstderr:\n%s" % p.stderr)
+        self.assertNotIn("TypeError", p.stderr, "不得出现 TypeError：%r" % p.stderr)
+        self.assertIn("n0", p.stderr, "非法值须点名告警（stderr）：%r" % p.stderr)
+        d = json.loads((Path(out) / "derived_edges.json").read_text(encoding="utf-8"))
+        day = time.strftime("%Y-%m-%d", time.gmtime(self.ISO_TS))
+        hubs = {h["id"] for h in d["hubs"] if h["id"].startswith("day:")}
+        self.assertEqual(hubs, {"day:" + day},
+                         "非法 created 的节点不得进任何日枢纽：%r" % (hubs,))
+        edges = [e for e in d["edges"] if e["rule"] == "R4_same_day"]
+        self.assertEqual(len(edges), 1, "只有合法 ISO 串的那个节点成 same_day 边：%r" % (edges,))
 
 
 if __name__ == "__main__":

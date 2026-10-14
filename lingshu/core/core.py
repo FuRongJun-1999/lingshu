@@ -1414,10 +1414,27 @@ class LayeredStore:
         """
         c.execute("SELECT id, relation_type, source_id, target_id FROM edges"
                   " WHERE source_id=? OR target_id=?", (node_id, node_id))
-        for eid, rel, sid, tid in c.fetchall():
+        _rows_e = c.fetchall()
+        # ★优化（本笔 · 零行为变更）：旧实现逐边 `self.get_node(other)` —— 即
+        # `SELECT * FROM nodes WHERE id=?`（读**整行** + 建 `STNode`），而本处只用
+        # **对端 layer** 一个字段。改为先收集全部对端 id、按 `_SQL_IN_CHUNK`（#417
+        # 的 IN 绑定上限单点）分批取 `id, layer`，循环内查表。
+        # 转换用 `MemoryLayer(...)`，与 `STNode.from_row` 的 `MemoryLayer(row[8])`
+        # **同款裸露转换** ⇒ 行内 layer 非法时的失败语义与旧路径逐位一致。
+        _others = list({(tid if sid == node_id else sid)
+                        for _eid, _rel, sid, tid in _rows_e})
+        _layer_of: Dict[str, MemoryLayer] = {}
+        for _i in range(0, len(_others), _SQL_IN_CHUNK):
+            _chunk = _others[_i:_i + _SQL_IN_CHUNK]
+            _ph = ",".join("?" * len(_chunk))
+            for _oid, _lay in c.execute(
+                    f"SELECT id, layer FROM nodes WHERE id IN ({_ph})",
+                    _chunk).fetchall():
+                _layer_of[_oid] = MemoryLayer(_lay)
+        for eid, rel, sid, tid in _rows_e:
             other = tid if sid == node_id else sid
-            peer = self.get_node(other)
-            if peer is None or peer.layer not in self.IMMUTABLE_LAYERS:
+            _lay = _layer_of.get(other)
+            if _lay is None or _lay not in self.IMMUTABLE_LAYERS:
                 continue
             c.execute("INSERT INTO action_logs (ts, action_type, summary, node_ids,"
                       " outcome, context) VALUES (?,?,?,?,?,?)",
@@ -1478,9 +1495,16 @@ class LayeredStore:
                           (EdgeType.OPPOSITE.value, peer, peer))
                 if c.fetchone()[0]:
                     continue  # 对端仍与其它节点冲突 ⇒ 标签保留
-                pnode = self.get_node(peer)
-                if pnode and "conflict" in (pnode.tags or []):
-                    tags = [t for t in pnode.tags if t != "conflict"]
+                # ★优化（本笔 · 零行为变更）：本处只用对端的 **tags** 一个字段，
+                # 旧实现 `self.get_node(peer)` 是 `SELECT *`（读整行 + 建 `STNode`）。
+                # 改为只取 `tags`。`json.loads` 与 `STNode.from_row` 同款裸调
+                # （该列由 `_dumps_tags` 写、`from_row` 亦裸解析）⇒ 坏行失败语义一致；
+                # `fetchone()` 为 None 时与旧 `pnode` 为 None 同分支（都不进 if）。
+                c.execute("SELECT tags FROM nodes WHERE id=?", (peer,))
+                _prow = c.fetchone()
+                _ptags = (json.loads(_prow[0]) if _prow and _prow[0] else []) if _prow else None
+                if _ptags is not None and "conflict" in _ptags:
+                    tags = [t for t in _ptags if t != "conflict"]
                     c.execute("UPDATE nodes SET tags=? WHERE id=?", (_dumps_tags(tags), peer))
                     c.execute("INSERT INTO action_logs (ts, action_type, summary, node_ids,"
                               " outcome, context) VALUES (?,?,?,?,?,?)",
@@ -1513,16 +1537,42 @@ class LayeredStore:
             self.conn.commit()
 
     def increment_access(self, node_id: str):
-        """访问计数+1（尽力而为：外部写锁持有时立即放弃，不阻塞检索主流程）"""
+        """访问计数+1（尽力而为：外部写锁持有时立即放弃，不阻塞检索主流程）
+
+        ★本笔：实现收进 `increment_access_many` 单点（同一连接/提交语义），
+        本函数保留为单节点入口，行为与旧实现逐位一致。
+        """
+        self.increment_access_many([node_id])
+
+    def increment_access_many(self, node_ids) -> None:
+        """**批量**访问计数+1（尽力而为；逐条语义与 `increment_access` 相同）。
+
+        ★优化（本笔 · 零行为变更）：`increment_access` 每次调用都**新开一个 sqlite
+        连接**（`sqlite3.connect(self.db_path, timeout=0)` + commit + close）。而
+        `semantic_search` 按命中数**逐节点**调它 ⇒ N 次 connect/commit/close
+        （每次连接都要重设连接级 `PRAGMA foreign_keys=ON`）。本方法把同一批收进
+        **一条连接、一次提交**。
+
+        为什么用 `executemany` 逐条语句、而**不**写 `WHERE id IN (...)`：后者会把
+        **重复 id 只计一次**，而旧路径对重复 id 各计一次（`semantic_search` 的
+        provider 返回的 id 列表可含重复）。逐条语句保住了这一口径。
+
+        失败容忍与旧实现一致：`sqlite3.OperationalError`（写锁持有 ⇒ 立即放弃）
+        整个批次一起吞掉——访问计数是统计性质，不阻断检索主流程。
+        """
+        ids = [i for i in (node_ids or []) if i]
+        if not ids:
+            return
         try:
             obs = sqlite3.connect(self.db_path, timeout=0)
             try:
                 # #93：本连接独立于 `_connect`（访问计数为尽力而为的旁路写），
                 # 连接级外键开关必须逐连接重设，否则该连接上外键不生效。
                 obs.execute("PRAGMA foreign_keys=ON")
-                obs.execute(
+                obs.executemany(
                     'UPDATE nodes SET access_count = access_count + 1,'
-                    ' last_access = ? WHERE id=?', (time.time(), node_id))
+                    ' last_access = ? WHERE id=?',
+                    [(time.time(), nid) for nid in ids])
                 obs.commit()
             finally:
                 obs.close()
@@ -1548,12 +1598,22 @@ class LayeredStore:
         对 SELF 端点的边不做角色限制（与 #191 一致）。
         """
         if self.role != Role.PRIMARY:
+            # ★优化（本笔 · 零行为变更）：本闸只看端点的 **layer** 一个字段，而旧实现
+            # 逐端点 `self.get_node(nid)`（`SELECT *`，读整行 + 建 `STNode`）。
+            # 改为只取 `layer`（两个 id、最多两条轻查询）。`MemoryLayer(...)` 与
+            # `STNode.from_row` 同款裸露转换 ⇒ 非法 layer 的失败语义一致；
+            # 不存在该 id 时 `fetchone()` 为 None，与旧 `n is None` 同分支。
+            _c = self.conn.cursor()
             for nid in (edge.source_id, edge.target_id):
-                n = self.get_node(nid)
-                if n is not None and n.layer in self.SHARED_LAYERS:
+                _c.execute("SELECT layer FROM nodes WHERE id=?", (nid,))
+                _row = _c.fetchone()
+                if _row is None:
+                    continue
+                _lay = MemoryLayer(_row[0])
+                if _lay in self.SHARED_LAYERS:
                     raise PermissionError(
                         f"role={self.role.value} 无权写共享层端点（{nid} 为 "
-                        f"{n.layer.value}）的边，共享层边由父节点主控（#234）")
+                        f"{_lay.value}）的边，共享层边由父节点主控（#234）")
 
     @_transactional
     def add_edge(self, edge: STEdge) -> str:
@@ -1623,6 +1683,40 @@ class LayeredStore:
                     WHERE id=?
                 ''', (now, edge_id))
             self.conn.commit()
+
+    @_transactional
+    def unverify_edge(self, edge_id: str) -> bool:
+        """撤销边的已验证标记（D-43：`verified` 需可逆）。
+
+        `verify_edge` 只能把 `verified` 写 1，而 `decay_cycle` 的边衰减段是
+        `WHERE e.verified = 0` ⇒ verified=1 的边**永久免衰减**；修前全仓没有
+        任何路径能把 `verified` 置回 0（`unverify` / `SET verified=0` 均 0 命中），
+        误标（含 #117 那种「一次命中把非参与边一并标 verified」）就此固化、
+        无纠错入口。判据来源：`docs/plans/待裁清单_v0.1.md` **D-43**
+        「**需要**（全仓现无 `unverify` ⇒ 一旦误标无法回退）」。
+
+        与 `verify_edge` 对称：同样过共享层角色闸（#234）、同样挂
+        `@_transactional`、返回 bool（拒/不存在 ⇒ False，与 `delete_node` /
+        `restore_node` 契约一致），并落一条 `action_logs`——撤销是治理动作，
+        应可审计（对齐 #117 的 fail-closed 留痕取向）。
+        """
+        if self.role != Role.PRIMARY:
+            edge = self.get_edge(edge_id)
+            if edge is not None:
+                self._assert_edge_role(edge)
+        with self._lock:
+            c = self.conn.cursor()
+            c.execute("SELECT verified FROM edges WHERE id=?", (edge_id,))
+            row = c.fetchone()
+            if row is None or not row[0]:
+                return False          # 不存在或本就未验证 ⇒ 无变更
+            c.execute("UPDATE edges SET verified=0, last_verified=NULL WHERE id=?",
+                      (edge_id,))
+        self.log_action(
+            "edge_unverified",
+            f"撤销边 {edge_id} 的已验证标记（重新进入衰减面）",
+            outcome={"edge_id": edge_id})
+        return True
 
     # ---------- 查询 ----------
 
@@ -1756,21 +1850,46 @@ class LayeredStore:
             if not frontier or len(visited) > max_nodes:
                 break
             nxt = []
-            for nid in frontier:
+            # ★优化（本笔）：旧实现**逐 frontier 节点**发查询（扇出大时每层
+            # 1–2×|frontier| 条 SQL）。现把整层 frontier 按 `_SQL_IN_CHUNK`
+            # （#417 的 IN 绑定上限单点）分批一次查回，再**按 frontier 原顺序**
+            # 分组消费 ⇒ 每层 1–2×ceil(|frontier|/chunk) 条。
+            #
+            # 行为等价性（如实标注）：
+            #   · `visited` 的更新时机与顺序**逐位不变**（仍按 frontier 顺序、
+            #     逐行判定）⇒ `result` 的**元素集合与顺序**与旧实现一致；
+            #   · 每条 SQL 的**列集与 WHERE 语义**未变（`source_id IN (…)` 是
+            #     `source_id=?` 的并集），`rel_clause`/`params` 原样沿用；
+            #   · **未加 `ORDER BY`**（旧实现也没有）⇒ 同一源的多条候选边，其
+            #     行序仍由 SQLite 的访问路径决定。若某目标节点可经**同一源**的
+            #     多条边到达，旧/新选中哪条 `edge_id` 取决于该行序——本件不主张
+            #     这一序在两种写法下逐位相同（见 PR 的「未验」节）。
+            _by_src: Dict[str, list] = {}
+            _by_dst: Dict[str, list] = {}
+            for _i in range(0, len(frontier), _SQL_IN_CHUNK):
+                _chunk = frontier[_i:_i + _SQL_IN_CHUNK]
+                _ph = ",".join("?" * len(_chunk))
                 if direction in ("out", "both"):
                     for row in c.execute(
-                            f"SELECT e.target_id AS tid, e.id AS eid FROM edges e "
-                            f"WHERE e.source_id=?{rel_clause}",
-                            [nid] + params).fetchall():
+                            f"SELECT e.source_id AS s, e.target_id AS tid, e.id AS eid "
+                            f"FROM edges e WHERE e.source_id IN ({_ph}){rel_clause}",
+                            _chunk + params).fetchall():
+                        _by_src.setdefault(row["s"], []).append(row)
+                if direction in ("in", "both"):
+                    for row in c.execute(
+                            f"SELECT e.target_id AS t, e.source_id AS sid, e.id AS eid "
+                            f"FROM edges e WHERE e.target_id IN ({_ph}){rel_clause}",
+                            _chunk + params).fetchall():
+                        _by_dst.setdefault(row["t"], []).append(row)
+            for nid in frontier:
+                if direction in ("out", "both"):
+                    for row in _by_src.get(nid, ()):
                         if row["tid"] not in visited:
                             visited.add(row["tid"]); nxt.append(row["tid"])
                             result.append({"node_id": row["tid"], "depth": depth,
                                            "edge_id": row["eid"], "direction": "out"})
                 if direction in ("in", "both"):
-                    for row in c.execute(
-                            f"SELECT e.source_id AS sid, e.id AS eid FROM edges e "
-                            f"WHERE e.target_id=?{rel_clause}",
-                            [nid] + params).fetchall():
+                    for row in _by_dst.get(nid, ()):
                         if row["sid"] not in visited:
                             visited.add(row["sid"]); nxt.append(row["sid"])
                             result.append({"node_id": row["sid"], "depth": depth,
@@ -2332,9 +2451,17 @@ class LayeredStore:
             # 边界（削掉的判别力）：阈值本体**未改**（仍是 `min_confidence`）；
             # 受保护件仍经 `_is_forget_protected` 跳过（#36 不变）。判别力变化只在
             # 「≤ 阈值的低价值情境节点现在会进入遗忘面」——这正是本件要修的死区。
-            c.execute("SELECT id, importance FROM nodes WHERE layer='context'")
-            for nid, imp in c.fetchall():
-                if self._is_forget_protected(self.get_node(nid), protected_set):
+            c.execute("SELECT id, importance, tags FROM nodes WHERE layer='context'")
+            for nid, imp, _tags in c.fetchall():
+                # ★优化（本笔）：旧实现传 `self.get_node(nid)` —— 那是
+                # `SELECT * FROM nodes WHERE id=?`（读**整行** + 建 `STNode`），
+                # 每节点一次；而本谓词只用 `tags` 与 `id` 两字段。现由本查询带出
+                # `tags` 并走 `_is_forget_protected` 的直传入口（同一段判定体）。
+                # `json.loads` 与 `STNode.from_row` 同款裸调（该列由 `_dumps_tags`
+                # 写、`from_row` 亦裸解析）⇒ 坏行的失败语义与旧路径**逐位一致**。
+                if self._is_forget_protected(None, protected_set,
+                                             node_id=nid,
+                                             tags=json.loads(_tags) if _tags else []):
                     continue  # 不可遗忘（3.2 节）：受保护件不因衰减路径消失
                 # #185：存量坏行兜底——`importance` 为 NULL/非有限时
                 # `cred_step(None, factor)` 抛 TypeError 会**整轮衰减中断**
@@ -2363,11 +2490,15 @@ class LayeredStore:
             # ③ 置信度已达上限（1.0）者视为已确证，不衰减；④ 只降 confidence，
             # **不删节点**（知识层不适用情境层的自然遗忘删除）。
             c.execute('''
-                SELECT id, confidence FROM nodes
+                SELECT id, confidence, tags FROM nodes
                 WHERE layer='knowledge' AND confidence > ? AND confidence < 1.0
             ''', (min_confidence,))
-            for nid, conf in c.fetchall():
-                if self._is_forget_protected(self.get_node(nid), protected_set):
+            for nid, conf, _tags in c.fetchall():
+                # ★优化（本笔）：与上一段同款——`tags` 由本查询带出，不再逐节点
+                # `get_node`（读整行 + 建 STNode）。谓词本体与失败语义未变。
+                if self._is_forget_protected(None, protected_set,
+                                             node_id=nid,
+                                             tags=json.loads(_tags) if _tags else []):
                     continue
                 c.execute("UPDATE nodes SET confidence=? WHERE id=?",
                           (self._decay_value(conf, factor, dt), nid))
@@ -2569,8 +2700,11 @@ class LayeredStore:
         # 判据来源：经验标定（#29 修复轮；理论章节追不到）。
         scored.sort(key=lambda x: (-x[1], -x[0].importance, -x[0].confidence))
         results = scored[:limit]
-        for node, _ in results:
-            self.increment_access(node.id)
+        # ★优化（本笔）：旧实现 `for node, _ in results: self.increment_access(node.id)`
+        # —— 每个命中节点**新开一个 sqlite 连接**。改为一次交给批量单点（一条连接、
+        # 一次提交）。计数口径不变：只对最终返回的 `results` 计数；重复 id 经
+        # `executemany` 逐条语句各计一次（与旧逐调用一致）。
+        self.increment_access_many([node.id for node, _ in results])
         return results
 
     @staticmethod
@@ -2585,11 +2719,17 @@ class LayeredStore:
         提供者契约：provider.encode(text)->List[float]；provider.search(query, limit)->List[str]（节点ID）"""
         ids = provider.search(query, limit)
         nodes = []
+        _hit_ids = []
         for nid in ids:
             node = self.get_node(nid)
             if node:
                 nodes.append(node)
-                self.increment_access(nid)
+                _hit_ids.append(nid)
+        # ★优化（本笔）：旧实现此处逐命中调 `self.increment_access(nid)` ——
+        # 每次都**新开一个 sqlite 连接**（N 次 connect/commit/close）。改为把
+        # 命中 id 一次交给批量单点（一条连接、一次提交）。计数口径不变：
+        # 只对**实际取到节点**的 id 计数；`executemany` 逐条语句保住重复 id 各计一次。
+        self.increment_access_many(_hit_ids)
         return nodes
 
     @_transactional
@@ -2932,14 +3072,24 @@ class LayeredStore:
             raise PermissionError(
                 "D-007 设计者认证失败：密钥无效或未配置 AEIS_DESIGNER_KEY（fail-closed）")
         c = self.conn.cursor()
-        c.execute("SELECT node_id, status, content_hash FROM promotion_proposals WHERE id=?",
-                  (proposal_id,))
+        c.execute("SELECT node_id, status, content_hash, requester, verified_by "
+                  "FROM promotion_proposals WHERE id=?", (proposal_id,))
         row = c.fetchone()
         if not row:
             return None
         node_id, status, bound_hash = row[0], row[1], (row[2] or "")
+        requester, verified_by = (row[3] or ""), (row[4] or "")
         if status != "verified":
             return None
+        # #565：身份互斥——终裁人不得等于提议人或复核人（C-4 / D-02「三者两两互斥」）。
+        # #118 的修复建议第1条把「终裁人是否允许与前序角色重合」显式标为**由维护者
+        # 定口径**的悬置项；同仓 A-2 流水线（`adjudicate_verifier_standard`）已按
+        # C-4/D-02 落实为 `adjudicator not in (proposer, independent_reviewer,
+        # cs_reviewer)`，本件按同一口径对齐，避免两条流水线行为不一致。
+        # 例外：库里若 `verified_by` 为空（老提案未经复核人字段），不据空值拒——
+        # 只在 `adjudicated_by` 与非空的 `requester`/`verified_by` 相撞时拒。
+        if adjudicated_by and adjudicated_by in (x for x in (requester, verified_by) if x):
+            return None  # 身份互斥：终裁人与提议/复核人两两互斥（C-4 / D-02）
         # #140：内容绑定比对（未绑定哈希的老提案（bound_hash 空）不做比对，保持向后兼容）
         node = self.get_node(node_id)
         # #167：节点存续门（fail-closed）——见 docstring。先于哈希比对：老提案
@@ -3017,7 +3167,8 @@ class LayeredStore:
         c.execute("SELECT node_id FROM protections")
         return [r[0] for r in c.fetchall()]
 
-    def _is_forget_protected(self, node, protected: Set[str] = None) -> bool:
+    def _is_forget_protected(self, node, protected: Set[str] = None,
+                             *, node_id: str = None, tags: List[str] = None) -> bool:
         """遗忘保护谓词（唯一真源，lingshu #36）：`protections` 行登记 ∪ `no_forget` 标签。
 
         供 `delete_node` / `decay_cycle`（情境层删除段）共用——修前两处判据不一致
@@ -3027,14 +3178,23 @@ class LayeredStore:
         ＋ 待裁清单 D-15/D-17（应用层单一谓词）。
         边界（削掉的判别力）：`protections.created_at` 仍不被读——保护**永久**生效，
         无 TTL（待裁清单 D-11 裁定「永久＋显式解除」，本件不引入时效语义）。
+
+        ★优化（本笔 · 零行为变更）：本谓词实际只读 `node.tags` 与 `node.id` 两个字段，
+        而批量调用方（`decay_cycle` 的两段循环）此前传的是 `self.get_node(nid)`
+        —— 那是 `SELECT * FROM nodes WHERE id=?`（读**整行** + 建 `STNode`），每节点一次。
+        现新增 `node_id` / `tags` **直传入口**：批量调用方已由主查询带出这两列，无需回查。
+        **判据本体未动**（仍 `no_forget` ∈ tags ∪ `node.id` ∈ protected），且
+        「传 node / 传 node_id+tags」两条入口走**同一段**判定 ⇒ 不可能分叉。
         """
-        if node is None:
-            return False
-        if "no_forget" in (node.tags or []):
+        if node_id is None:                      # 旧入口：由 node 取两字段
+            if node is None:
+                return False
+            node_id, tags = node.id, node.tags
+        if "no_forget" in (tags or []):
             return True
         if protected is None:
             protected = set(self.get_protected_nodes())
-        return node.id in protected
+        return node_id in protected
 
     # ==================== 冲突标记（M5） ====================
 
@@ -3047,14 +3207,28 @@ class LayeredStore:
         结构层节点打 `conflict` 标签并建 OPPOSITE 边）。判据来源：公开 issue #234
         「期望行为」＋「建议修复 4」。（`add_edge` 的角色闸另会拦共享层端点边。）
         """
+        # ★优化（本笔 · 零行为变更）：本方法此前对两端点合计调 **4 次**
+        # `self.get_node(...)`（`SELECT *`，读整行 + 建 `STNode`）：
+        #   ① 角色闸逐端点取整节点（其实只用 `layer`）；
+        #   ② 存在性检查 `if not self.get_node(a_id) or not self.get_node(b_id)`。
+        # 现先各取一次 `layer`（两行、轻查询）同时供两用：
+        #   `_lay[nid] is None` ⇔ 该 id 不存在（与旧 `get_node(...) is None` 同义）。
+        # `MemoryLayer(...)` 与 `STNode.from_row` 同款裸露转换 ⇒ 非法 layer 的
+        # 失败语义一致。
+        _c0 = self.conn.cursor()
+        _lay: Dict[str, Optional[MemoryLayer]] = {}
+        for _nid0 in (a_id, b_id):
+            _c0.execute("SELECT layer FROM nodes WHERE id=?", (_nid0,))
+            _r0 = _c0.fetchone()
+            _lay[_nid0] = None if _r0 is None else MemoryLayer(_r0[0])
         if self.role != Role.PRIMARY:
             for nid in (a_id, b_id):
-                n = self.get_node(nid)
-                if n is not None and n.layer in self.SHARED_LAYERS:
+                _l0 = _lay[nid]
+                if _l0 is not None and _l0 in self.SHARED_LAYERS:
                     raise PermissionError(
                         f"role={self.role.value} 无权登记共享层节点（{nid} 为 "
-                        f"{n.layer.value}）的冲突，共享层由父节点主控（#234）")
-        if not self.get_node(a_id) or not self.get_node(b_id):
+                        f"{_l0.value}）的冲突，共享层由父节点主控（#234）")
+        if _lay[a_id] is None or _lay[b_id] is None:
             return None
         edge = STEdge(
             id=f"edge_{uuid.uuid4().hex[:8]}_{int(time.time()*1000)}",
@@ -3065,11 +3239,18 @@ class LayeredStore:
             confidence=0.3, verified=False)
         self.add_edge(edge)
         for nid in (a_id, b_id):
-            node = self.get_node(nid)
-            if node and "conflict" not in node.tags:
-                node.tags.append("conflict")
-                c = self.conn.cursor()
-                c.execute("UPDATE nodes SET tags=? WHERE id=?", (_dumps_tags(node.tags), nid))
+            # ★优化（本笔）：本段只用 **tags**；旧 `self.get_node(nid)` 读整行 + 建
+            # `STNode`。改为直取 `tags`。`json.loads` 与 `from_row` 同款裸调 ⇒
+            # 坏行失败语义一致；`fetchone()` 为 None 与旧 `node` 为 None 同分支。
+            c = self.conn.cursor()
+            c.execute("SELECT tags FROM nodes WHERE id=?", (nid,))
+            _tr = c.fetchone()
+            if _tr is None:
+                continue
+            _tlist = json.loads(_tr[0]) if _tr[0] else []
+            if "conflict" not in _tlist:
+                _tlist.append("conflict")
+                c.execute("UPDATE nodes SET tags=? WHERE id=?", (_dumps_tags(_tlist), nid))
                 self.conn.commit()
         return edge
 
@@ -3287,9 +3468,15 @@ class LayeredStore:
                 causal_adj.setdefault(s, []).append(t)
                 causal_conf[(s, t)] = cf if cf is not None else 0.5
         max_deg = max(deg.values()) if deg else 1
-        c_.execute("SELECT id, importance FROM nodes")
+        # ★优化（本笔 · 零行为变更）：把 `state_attributes` **并入这趟主查询**。
+        # 旧实现在下方循环里逐节点调 `_read_state_attr(nid, "structural_boost", 0.0)`
+        # ⇒ N 次 `SELECT state_attributes FROM nodes WHERE id=?`（N+1）。该列与
+        # `id, importance` 同表同行 ⇒ 一并取出、按 `_state_attr_of` 单点解析一次。
+        c_.execute("SELECT id, importance, state_attributes FROM nodes")
         rows = c_.fetchall()
-        imp_map = {nid: (imp if imp is not None else 0.5) for nid, imp in rows}
+        imp_map = {nid: (imp if imp is not None else 0.5) for nid, imp, _sa in rows}
+        _sb_map = {nid: self._state_attr_of(_sa, "structural_boost", 0.0)
+                   for nid, _imp, _sa in rows}
 
         # 因果上游度传播（BFS · 深度上限 · 节点去重 · 路径置信度加权）
         influence: Dict[str, float] = {}
@@ -3315,7 +3502,7 @@ class LayeredStore:
         movers = []
         protected = []
         applied = 0
-        for nid, imp in rows:
+        for nid, imp, _sa in rows:
             infl = influence.get(nid, 0)
             # 上游度写入 state_attributes（可检索/可查）
             if infl > 0 and not dry_run:
@@ -3343,7 +3530,10 @@ class LayeredStore:
             # min(1.0, base + boost)`，`delta = new_imp - imp`；结构不变时
             # delta=0（不动），结构增强时只补差额，总提升 ≤ boost_cap。
             # 判据来源：公开 issue #299「修复建议（最小补丁）」。
-            sb = self._read_state_attr(nid, "structural_boost", 0.0)
+            # ★优化（本笔）：`sb` 取自上方主查询一并取回并解析好的 `_sb_map`
+            # （旧实现此处调 `_read_state_attr` ⇒ 每节点一次 SELECT，N+1）。
+            # 取值口径逐位不变：同一个 `_state_attr_of` 单点、同一个默认 0.0。
+            sb = _sb_map.get(nid, 0.0)
             sb = sb if isinstance(sb, (int, float)) else 0.0
             base = imp - sb
             new_imp = min(1.0, base + boost)
@@ -3396,19 +3586,19 @@ class LayeredStore:
                   (json.dumps(sa, ensure_ascii=False), node_id))
         self.conn.commit()
 
-    def _read_state_attr(self, node_id: str, key: str, default=None):
-        """读单个 state_attributes 键（缺键/非法 JSON/非 dict ⇒ 返回 default）。
+    @staticmethod
+    def _state_attr_of(sa_raw, key: str, default=None):
+        """从 `state_attributes` 原始文本里取一个键（缺值/非法 JSON/非 dict ⇒ default）。
 
-        #299：`recalc_structural_importance` 需要读回上次已施加的
-        `structural_boost` 作为地板，故加此小 helper。
+        ★本笔把它从 `_read_state_attr` 里**提出来成单点**：`recalc_structural_importance`
+        原先在循环里逐节点调 `_read_state_attr` ⇒ **N 次 SELECT**。而该列与它上方那趟
+        `SELECT id, importance FROM nodes` **同表同行** —— 列一并取出后在此**解析一次**即可。
+        两条路径（单点查询 / 批量取出）共用本函数 ⇒ 容错口径不可能分叉。
         """
-        c = self.conn.cursor()
-        c.execute("SELECT state_attributes FROM nodes WHERE id=?", (node_id,))
-        row = c.fetchone()
-        if not row or not row[0]:
+        if not sa_raw:
             return default
         try:
-            sa = json.loads(row[0])
+            sa = json.loads(sa_raw)
         except (ValueError, TypeError):
             # 窄口径（#170 建议 b）：`json.loads` 只抛这两类——`JSONDecodeError`
             # 是 `ValueError` 子类，入参非 str/bytes 抛 `TypeError`。本处「坏档当
@@ -3419,6 +3609,23 @@ class LayeredStore:
         if not isinstance(sa, dict):
             return default
         return sa.get(key, default)
+
+    def _read_state_attr(self, node_id: str, key: str, default=None):
+        """读单个 state_attributes 键（缺键/非法 JSON/非 dict ⇒ 返回 default）。
+
+        #299：`recalc_structural_importance` 需要读回上次已施加的
+        `structural_boost` 作为地板，故加此小 helper。
+
+        ★本笔：解析体已抽到 `_state_attr_of` 单点；本函数保留为「已知 node_id 时」
+        的便捷入口（一次 SELECT）。**批量场景请勿逐节点调本函数**——见
+        `recalc_structural_importance` 里「列随主查询一并取出」的用法。
+        """
+        c = self.conn.cursor()
+        c.execute("SELECT state_attributes FROM nodes WHERE id=?", (node_id,))
+        row = c.fetchone()
+        if not row:
+            return default
+        return self._state_attr_of(row[0], key, default)
 
     def _protect_upstream(self, node_id: str, infl: float, floor: float):
         """越上游越要记录：保护登记 + no_forget + importance 保底。"""
@@ -3524,6 +3731,14 @@ class LayeredStore:
         node = self.get_node(insight_id)
         if node is None or "insight_event" not in node.tags:
             return {"error": f"非洞见事件节点: {insight_id}"}
+        # #519：共享层角色闸——洞见经 D-003 终裁晋升到结构层/锚点层后，节点
+        # 仍带 insight_event 标签；旧实现只认标签不认层与角色 ⇒ SUB 可把已终裁
+        # 的结构层节点 verified→refuted、追加伪造证据、抬 importance 到 0.9。
+        # 与 #234 给 tag_node/protect_node/register_conflict/add_edge 加的闸同款。
+        if node.layer in self.SHARED_LAYERS and self.role != Role.PRIMARY:
+            raise PermissionError(
+                f"role={self.role.value} 无权改写共享层（{node.layer.value}）的洞见"
+                f"（id={insight_id}）——已终裁晋升的洞见归 PRIMARY 主控（#519）")
         now = time.time()
         sa = node.state_attributes or {}
         ins = sa.get("insight", {}) if isinstance(sa, dict) else {}
@@ -3698,8 +3913,18 @@ class LayeredStore:
                 for r in c.fetchall()]
 
     @_transactional
-    def mark_rejected_path_consumed(self, rejected_id: str):
-        """标记否决路径已消费（同类问题复用该否决答案后）。"""
+    def mark_rejected_path_consumed(self, rejected_id: str,
+                                      designer_key: str = None):
+        """标记否决路径已消费（同类问题复用该否决答案后）。
+
+        #522：消费否决行＝解除 #216 负记忆闸——旧实现无密钥无角色检查，
+        任何人调一下就把 status='open' 翻成 'consumed'，重提闸即被绕过。
+        现须过设计者密钥（fail-closed，与 resolve_blindspot 同款）。
+        """
+        if not verify_designer(designer_key):
+            raise PermissionError(
+                "#522 消费否决路径须过设计者密钥闸（fail-closed）——"
+                "消费＝解除 #216 负记忆闸，不得无密钥调用")
         c = self.conn.cursor()
         c.execute("UPDATE rejected_paths SET status='consumed', consumed_at=? WHERE id=?",
                   (time.time(), rejected_id))
@@ -3861,16 +4086,32 @@ class LayeredStore:
     # ---------- 统计 ----------
 
     def get_stats(self) -> Dict:
-        """全库统计快照（各层节点数等聚合指标）。"""
+        """全库统计快照（各层节点数等聚合指标）。
+
+        ★优化（本笔 · 零行为变更）：旧实现按 `MemoryLayer` **逐层**发一条
+        `SELECT COUNT(*) FROM nodes WHERE layer=?`（N 次），再各发一条 COUNT 查边
+        （2 次）⇒ 共 **N+2** 次往返。改为：
+          · 节点侧一趟 `GROUP BY layer` 聚合（1 次）；
+          · 边侧一趟条件聚合（1 次，同时取 total 与 verified）。
+        ⇒ **N+2 → 2** 次查询。
+
+        **返回形状与取值必须逐位不变**：零节点的层在旧实现里由循环显式赋 0，
+        而 `GROUP BY` 不会为它出行 —— 故先按 `MemoryLayer` 预置 0、再用聚合结果覆盖。
+        历史/未知层名（不在 `MemoryLayer` 内的 `layer` 值）旧实现本就不计，新实现同样跳过。
+        """
         c = self.conn.cursor()
-        stats = {}
-        for layer in MemoryLayer:
-            c.execute("SELECT COUNT(*) FROM nodes WHERE layer=?", (layer.value,))
-            stats[f"{layer.value}_nodes"] = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM edges")
-        stats["total_edges"] = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM edges WHERE verified=1")
-        stats["verified_edges"] = c.fetchone()[0]
+        stats = {f"{layer.value}_nodes": 0 for layer in MemoryLayer}
+        c.execute("SELECT layer, COUNT(*) FROM nodes GROUP BY layer")
+        for _lv, _n in c.fetchall():
+            _k = f"{_lv}_nodes"
+            if _k in stats:                     # 只认 MemoryLayer 内的层名（旧口径）
+                stats[_k] = _n
+        # 边侧一趟取两个读数：`SUM(verified=1)` 与旧 `WHERE verified=1` 同口径
+        # （NULL 不满足 `=1` ⇒ 两边都不计）；空表时 SUM 为 NULL ⇒ COALESCE 回落 0。
+        c.execute("SELECT COUNT(*), COALESCE(SUM(verified=1), 0) FROM edges")
+        _te, _ve = c.fetchone()
+        stats["total_edges"] = _te
+        stats["verified_edges"] = int(_ve)
         return stats
 
     def close(self):
@@ -4505,12 +4746,19 @@ class SpacetimeMemoryEngine:
         tags = [tag] + list(extra_tags or [])
         try:
             if self.role == Role.PRIMARY:
+                # #571：`add_structure_node` 无 `tags` 形参（节点标签硬编码
+                # `["structure"]`），故 PRIMARY 分支**接不住** `extra_tags` ⇒
+                # `migrate_v17_coordinates` 传的 `["v1.7"]` 在主控角色下被静默
+                # 丢弃（SUB 分支正常落库）。修法：把算出的 `tags` 逐个补上
+                # （沿用既有的事后补写机制；`tag_node` 幂等，重复无害），
+                # 不动 `add_structure_node` 的公共签名。
                 n = self.add_structure_node(record, importance=0.9)
             else:
                 n = self.add_perception(record, importance=0.9,
                                         tags=tags + [self.SUB_PENDING_SYNC_TAG])
             if n:
-                self.store.tag_node(n.id, tag)
+                for t in tags:              # tags = [tag] + extra_tags（#571）
+                    self.store.tag_node(n.id, t)
             return n
         except Exception:
             return None
@@ -6554,7 +6802,7 @@ class SpacetimeMemoryEngine:
                         "max_depth": max_depth, "protocol": "3.12+1.6.7"}
 
         # ---- 0. 元反思（1.6.7）：结构性后退，审视反思标准 ----
-        report["meta_reflection"] = self._meta_reflection(claim)
+        report["meta_reflection"] = self._meta_reflection()
 
         # VPRIM-REV1：claim 含视觉锚点（cat@(x1,y1,x2,y2)）时注入视觉上下文
         vctx = self._vprim_context_for_claim(claim)
@@ -6632,8 +6880,15 @@ class SpacetimeMemoryEngine:
                 "anchor_limit": self.MAX_VPRIM_ANCHORS,
                 "note": "确定性空间原语（VPRIM-REV1）：坐标精确性替代语言近似"}
 
-    def _meta_reflection(self, claim: str) -> dict:
-        """1.6.7 元反思：结构性后退——审视反思标准本身（非更深的递归）。"""
+    def _meta_reflection(self) -> dict:
+        """1.6.7 元反思：结构性后退——审视反思标准本身（非更深的递归）。
+
+        #510：本阶段**不读 claim**——元反思审视的是反思过程的结构性前提
+        （反思者自述状态 + 递归边界声明），与具体 claim 无关（改前实测：
+        任意两条不同 claim 的输出逐位相同）。签名原声明 claim 却零引用，
+        且与 report['claim'] 同报输出、误导读者以为元反思针对该 claim——
+        按「接线或删签名」口径删签名并在此写明。
+        """
         result = {"standards": []}
         # 元认知校准状态（P0-4）：反思者自身的可靠性
         try:
@@ -6644,7 +6899,7 @@ class SpacetimeMemoryEngine:
                     if k in rel}
         except Exception:
             pass
-        # 反思标准声明：当前 claim 的观察位置/工具（条件空间锚定）
+        # 反思标准声明：反思者的观察位置/工具自述（结构性，与具体 claim 无关）
         result["standards"].append({
             "standard": "观察位置与工具",
             "condition": getattr(self.self_model, "state_description", "运行中")[:120],
@@ -7345,15 +7600,22 @@ class SpacetimeMemoryEngine:
                 rejected.append({"id": nid, "layer": layer.value,
                                  "reason": "本地层不入共享层（章程：实例独立）"})
                 continue
-            existing = self.store.get_node(nid)
-            if existing is not None:
-                same = (existing.layer == node.layer
-                        and existing.content == node.content)
+            # ★优化（本笔 · 零行为变更）：本段只用接收侧既有节点的 **layer** 与
+            # **content** 两列做冲突判定，旧实现 `self.store.get_node(nid)` 是
+            # `SELECT *`（读整行 + 建 `STNode`），每进来一条就发一次。改为直取两列。
+            # `fetchone()` 为 None ⇔ 该 id 不存在（与旧 `existing is None` 同义）；
+            # `MemoryLayer(...)` 与 `STNode.from_row` 同款裸露转换 ⇒ 失败语义一致。
+            _cx = self.store.conn.cursor()
+            _cx.execute("SELECT layer, content FROM nodes WHERE id=?", (nid,))
+            _xr = _cx.fetchone()
+            if _xr is not None:
+                _xl = MemoryLayer(_xr[0])
+                same = (_xl == node.layer and _xr[1] == node.content)
                 if same:
                     identical.append(nid)
                     continue
                 conflicts.append({"id": nid, "incoming_layer": layer.value,
-                                  "existing_layer": existing.layer.value})
+                                  "existing_layer": _xl.value})
                 if not overwrite:
                     continue
             try:
@@ -7860,8 +8122,8 @@ class SpacetimeMemoryEngine:
         return {"new_root_id": new_root_id, "new_nodes": counter["n"],
                 "removed_nodes": deleted}
 
-    def mark_rejected_path_consumed(self, rejected_id: str):
-        self.store.mark_rejected_path_consumed(rejected_id)
+    def mark_rejected_path_consumed(self, rejected_id: str, designer_key: str = None):
+        self.store.mark_rejected_path_consumed(rejected_id, designer_key=designer_key)
 
     # ---- A-2 验证器可演进（四步制衡路径） ----
 
@@ -8495,6 +8757,15 @@ class SpacetimeMemoryEngine:
         nodes = self.store.query_nodes(limit=-1)
         protected = set(self.store.get_protected_nodes())
         stats = {"rehearsed": 0, "boosted": 0, "degraded": 0, "compressible": 0}
+        # ★优化（本笔 · 零行为变更）：旧实现每命中一个演练节点就调一次
+        # `self.store.increment_access(n.id)` —— 每次**新开一个 sqlite 连接**。
+        # 改为**先筛出参与演练的节点集合**（过滤条件只写一遍），把它们的 id
+        # 一次批量提交；再对该集合跑逐节点判定。
+        # 「零行为变更」的依据：`new_count` 由 `n.access_count`（**本轮快照**）推出，
+        # 不依赖 `increment_access` 的返回值 ⇒ 计数与判定的先后顺序不影响任何判定；
+        # 各 `update_node_importance` 仍是各自 `@_transactional`（提交粒度不变）。
+        # 过滤条件（不可变层 / 保护 / `pending_verification` / 阈值）**逐字未动**。
+        _rehearsed = []
         for n in nodes:
             if n.layer in (MemoryLayer.ANCHOR, MemoryLayer.STRUCTURE):
                 continue
@@ -8503,14 +8774,27 @@ class SpacetimeMemoryEngine:
             if "pending_verification" in n.tags:
                 continue  # #263：未复核节点不参与演练（不被自抬到 1.0）
             if n.importance >= rehearsal_threshold:
-                self.store.increment_access(n.id)
-                new_count = (n.access_count or 0) + 1      # 判据用本次增量后的计数，勿用快照旧值
-                n.access_count = new_count                 # 同步副本，供同轮后续逻辑使用
-                if new_count % 10 == 0:
-                    self.store.update_node_importance(n.id, gain)
-                    stats["boosted"] += 1
-                stats["rehearsed"] += 1
-            elif n.importance < degrade_threshold:
+                _rehearsed.append(n)
+        self.store.increment_access_many([n.id for n in _rehearsed])
+        for n in _rehearsed:
+            new_count = (n.access_count or 0) + 1      # 判据用本次增量后的计数，勿用快照旧值
+            n.access_count = new_count                 # 同步副本，供同轮后续逻辑使用
+            if new_count % 10 == 0:
+                self.store.update_node_importance(n.id, gain)
+                stats["boosted"] += 1
+            stats["rehearsed"] += 1
+        # 降权/可压缩面：与演练面**互斥**（`importance >= rehearsal_threshold` 已在上支）
+        # ⇒ 旧实现在同一循环的 `elif` 里跑，现按同一条件在**原顺序**上跑。
+        for n in nodes:
+            if n.layer in (MemoryLayer.ANCHOR, MemoryLayer.STRUCTURE):
+                continue
+            if n.id in protected or "no_forget" in n.tags:
+                continue
+            if "pending_verification" in n.tags:
+                continue
+            if n.importance >= rehearsal_threshold:
+                continue  # 演练面已处理
+            if n.importance < degrade_threshold:
                 if n.access_count <= 2:
                     self.store.update_node_importance(n.id, -gain)
                     stats["degraded"] += 1
@@ -8588,22 +8872,27 @@ class SpacetimeMemoryEngine:
         kept = 0
         with self.store._lock:
             c = self.store.conn.cursor()
-            c.execute("SELECT id, content, importance, last_access, tags FROM nodes "
+            # ★优化（本笔 · 零行为变更）三处：
+            #   ① 旧首查 `SELECT id, content, importance, last_access, tags` 里的
+            #      `content` **在循环体里从未被读取** ⇒ 每个 context 节点白读一遍
+            #      大文本列。本笔去掉它。
+            #   ② `access_count` 与首查同表同过滤面，旧实现却在循环内逐节点
+            #      `SELECT access_count FROM nodes WHERE id=?`（N 次往返）⇒ 并入首查。
+            #   ③ 旧 `stale = (...) and self.store.get_node(nid) is not None` 这个局部量
+            #      **从未被读取**（#210 已删过它上方的 `access_stale` 死代码，同处漏了这条），
+            #      却对每个 context 节点各发一次 `get_node`（读**整行**节点）⇒ 一并删除。
+            #   ⇒ 每轮从「首查 + N×get_node + N×SELECT access_count + ≤N×UPDATE」
+            #     收成「首查 + ≤N×UPDATE」。判定口径（signal 的两个来源、归档只降不升、
+            #     `no_forget`/`archived` 跳过）**逐字未动**。
+            c.execute("SELECT id, importance, last_access, tags, access_count FROM nodes "
                       "WHERE layer='context'")
-            for nid, content, imp, last_acc, tags in c.fetchall():
+            for nid, imp, last_acc, tags, acc in c.fetchall():
                 tags = json.loads(tags) if isinstance(tags, str) and tags else []
                 if "no_forget" in tags or "archived" in tags:
                     continue  # 不可遗忘 / 已归档
-                stale = (last_acc is None or (now - (last_acc or 0)) > stale_days * 86400) \
-                    and self.store.get_node(nid) is not None
                 # 访问信号：从未被访问且久远
-                # #210：此处原有 `access_stale = (...) if False else None` 死代码
-                # （真值恒 None、后续只查下方 `SELECT access_count`），已删除。
-                # 直接查 access_count
-                c2 = self.store.conn.cursor()
-                c2.execute("SELECT access_count FROM nodes WHERE id=?", (nid,))
-                row = c2.fetchone()
-                acc = row[0] if row else 0
+                # #210：此处原有 `access_stale = (...) if False else None` 死代码，已删除。
+                # `acc` 已由首查带出（见上方 ②），不再逐节点回查。
                 signal = 0
                 if acc == 0 and (now - (last_acc or now)) > stale_days * 86400:
                     signal += 1  # 访问信号

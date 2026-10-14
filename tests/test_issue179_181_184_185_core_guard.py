@@ -183,20 +183,25 @@ def test_c2_self_check_exposes_last_decay_error():
     """C2[#184]：`self_check()` 必须暴露最近一次周期异常（旧实现无此字段/恒
     None ⇒ 无法观测「在跑」与「已停摆」的差别）。
 
-    夹具设计：探针**连续**前 5 个周期抛异常（而非只抛一次）——只抛一次时
-    「读到 last_error 非 None」与「下一周期成功清空」的窗口仅一个 interval，
-    在满载（全量套件并发）下主线程可能错过该窗口而误报（本件首版即因此
-    在整包跑中偶发红）。连续 5 个周期把观测窗拉长到 5×interval，且「清空」
-    判据在探针停止抛异常之后才成立 ⇒ 两侧都无时序竞争。
+    夹具设计（v2 · 事件驱动，消除一切窗口竞争）：探针抛异常**直到主线程确认
+    观测到 last_error 为止**（`threading.Event`）。一版「只抛 1 次」、二版「连续
+    前 5 个周期」都把观测窗定成固定时长（1×/5×interval）——满载
+    （`pytest -n auto` 全量并发）下主线程可被饿过整个窗口而假红（一版曾因此在
+    整包跑中偶发红；二版在本机 24 逻辑核满载下仍 2/2 复现假红）。v2 里观测窗
+    由主线程自己关：探针在 Event 置位前**永远抛**，置位后**永远成功**——
+    「读到异常」与「成功后清空」两侧都不再依赖任何时序窗口；清空侧改为
+    deadline 轮询（成功周期把 `calls["ok"] += 1` 与清 `last_error` 分两步，
+    满载下两步间可被切走，即时断言同样会假红）。
     """
     e = SpacetimeMemoryEngine(":memory:")
     try:
         real = e.decay_cycle
         calls = {"n": 0, "ok": 0}
+        observed = threading.Event()
 
         def flaky():
             calls["n"] += 1
-            if calls["n"] <= 5:
+            if not observed.is_set():
                 raise ValueError("探针：坏值周期")
             calls["ok"] += 1
             return real()
@@ -208,18 +213,24 @@ def test_c2_self_check_exposes_last_decay_error():
         while time.time() < deadline:
             seen = e.self_check()["auto_decay"]["last_error"]
             if seen:
+                observed.set()       # ← 主线程确认观测后，探针才转为成功
                 break
             time.sleep(0.01)
         assert seen and "探针：坏值周期" in seen, (
             "#184：self_check()['auto_decay']['last_error'] 未记下周期异常（实测 %r）"
             % (seen,))
-        # 后续周期成功 ⇒ 旧读数被清（只记最近一次）
+        # 后续周期成功 ⇒ 旧读数被清（只记最近一次；deadline 轮询，防两步间被切走）
         deadline = time.time() + 10.0
         while time.time() < deadline and calls["ok"] < 1:
             time.sleep(0.01)
         assert calls["ok"] >= 1, "#184：探针停止抛异常后未再跑成功周期"
-        assert e.self_check()["auto_decay"]["last_error"] is None, \
-            "#184：后续周期成功后 last_error 未清（应只记最近一次）"
+        deadline = time.time() + 10.0
+        cleared = e.self_check()["auto_decay"]["last_error"]
+        while cleared is not None and time.time() < deadline:
+            time.sleep(0.01)
+            cleared = e.self_check()["auto_decay"]["last_error"]
+        assert cleared is None, \
+            "#184：后续周期成功后 last_error 未清（应只记最近一次；实测 %r）" % (cleared,)
     finally:
         e.stop_auto_decay()
         if e._decay_thread is not None:

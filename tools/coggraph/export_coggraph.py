@@ -196,15 +196,25 @@ def main(argv=None):
                 buckets[bucket] += 1
 
             eds = fm.get("edges") or []
-            df = fm.get("derived_from")
+            # mapping 形态 {src: dst} → 转成边（issue #534）。之前直接 for 循环
+            # 迭代 dict 只拿到 key（字符串），被 isinstance 检查静默丢弃，
+            # 且 n_edges 按 len(eds) 计造成自相矛盾。
+            _eds_is_mapping = isinstance(eds, dict)
+            if _eds_is_mapping:
+                eds = [{"s": str(k), "t": str(v), "type": "untyped"}
+                       for k, v in eds.items() if v is not None]
+            _edge_base = len(edges)
             for e in eds:
                 if not isinstance(e, dict):
                     continue
                 et = str(e.get("type") or "untyped")
                 edge_types[et] += 1
-                tgt = e.get("target") or e.get("to") or e.get("id")
+                # mapping 形态已自带 "s"；list 形态用当前节点 nid 作源
+                src = str(e.get("s") or nid)
+                tgt = e.get("target") or e.get("to") or e.get("id") or e.get("t")
                 if tgt:
-                    edges.append({"s": nid, "t": str(tgt), "type": et, "derived": False})
+                    edges.append({"s": src, "t": str(tgt), "type": et, "derived": False})
+            df = fm.get("derived_from")
             # derived_from 可能是标量串（"a, b"）或 YAML 列表（[a, b]）。列表若直接
             # str() 会拼成 "['a', 'b']" 的伪目标、随后因悬空被剔除 ⇒ 静默丢边（issue #298）。
             if isinstance(df, (list, tuple)):
@@ -236,7 +246,7 @@ def main(argv=None):
                 "sha": sha,
                 "ref_root": neutral_root_id(ref),
                 "ref_dir": neutral_path(os.path.dirname(str((dr or cr).get("path", "")).replace("\\", "/")).replace("\\", "/")),
-                "n_edges": len(eds),
+                "n_edges": len(edges) - _edge_base,
                 "path": os.path.relpath(p, root).replace("\\", "/"),
             })
 

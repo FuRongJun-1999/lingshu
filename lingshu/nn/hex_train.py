@@ -255,8 +255,9 @@ class HexNet:
             correct += int((logits.argmax(axis=1) == y[i:i + batch]).sum())
         return correct / len(x)
 
-    def grow_kernel(self, seed: int = 7):
-        """误差驱动生长：+1 核（手写核族初始化，mix 对应列零——初始不影响输出）。"""
+    def grow_kernel(self):
+        """误差驱动生长：+1 核（手写核族按 K 轮转——覆盖多样性且确定性可复现，
+        mix 对应列零——初始不影响输出）。"""
         names = list(DEFAULT_KERNELS)
         new_k = DEFAULT_KERNELS[names[self.K % len(names)]]
         self.conv = np.vstack([self.conv, new_k[None, :]])
@@ -335,7 +336,7 @@ def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
         if stall >= stall_patience and growths + reverts < max_growth:
             d_before = net.loss(xb, yb)
             conv_snap, mix_snap, K_before = net.conv.copy(), net.mix.copy(), net.K
-            net.grow_kernel(seed=seed + step)
+            net.grow_kernel()
             growths += 1
             stall = 0
             for _ in range(verify_steps):           # 验证基底：新分支能否稳定解释误差
@@ -459,8 +460,7 @@ def _softmax(z: np.ndarray) -> np.ndarray:
     return e / e.sum(axis=-1, keepdims=True)
 
 
-def four_state_classify(net: HexNet, logits: np.ndarray,
-                        cards: List[Dict]) -> List[Dict]:
+def four_state_classify(logits: np.ndarray, cards: List[Dict]) -> List[Dict]:
     """类别条件卡并行评估 → 四态判定（教程§5+§11 三层分工）。
 
     概率层（softmax）只产生候选与不确定度，判定权在条件层：
@@ -499,7 +499,7 @@ def four_state_accuracy(net: HexNet, x: np.ndarray, y: np.ndarray,
     stats = {"ACCEPT": 0, "DEFER": 0, "BLINDSPOT": 0, "ACCEPT_correct": 0}
     for i in range(0, len(x), batch):
         logits, _ = net.forward(x[i:i + batch])
-        for j, r in enumerate(four_state_classify(net, logits, cards)):
+        for j, r in enumerate(four_state_classify(logits, cards)):
             stats[r["verdict"]] += 1
             if r["verdict"] == "ACCEPT":
                 stats["ACCEPT_correct"] += int(r["class"] == y[i + j])

@@ -92,7 +92,7 @@ class SevenLayerLoop:
     # ---- 七层一步 ----
 
     def _verify(self, predictions: Dict) -> Dict:
-        """L5 锚定验证：外部观察者全实体对比（有世界访问权）。"""
+        """L5 锚定验证：外部观察者全实体对比；无可比项时 hit_rate=None。"""
         hits, total = 0, 0
         point_hits = 0
         distances, bounds = [], []
@@ -210,6 +210,8 @@ class SevenLayerLoop:
                              "entity_count": len(self.explorer.nodes)},
             "L4_prediction": {"entity_count": len(self.explorer._last_prediction)},
             "L5_verification": {"overall_hit_rate": self._overall_hit_rate(),
+                                "verified_ticks": len(self.hit_history),
+                                "unverified_ticks": self.tick - len(self.hit_history),
                                 "recent": recent},
             "L6_physics": {"world_tick": self.world.tick_count,
                            "entities": len(self.world.entities)},

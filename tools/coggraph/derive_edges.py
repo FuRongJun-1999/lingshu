@@ -20,6 +20,7 @@ import random
 import re
 import sys
 import time
+from datetime import datetime, timezone
 
 
 FMHEAD = re.compile(r"^---\n.*?\n---", re.S)
@@ -58,6 +59,45 @@ def neutral_root_id(p):
 
 def norm_tag(t):
     return str(t).strip().lower()
+
+
+def created_to_ts(v, nid="?"):
+    """`created` 归一为 epoch 秒（issue #530）。
+
+    export_coggraph.py:89 的 norm_created（issue #290）把 YAML 日期转成 ISO 字符串
+    写入 graph.json（`created_at: 2026-01-01` → `"created": "2026-01-01"`），而本
+    文件旧口径假定 `created` 恒为数字时间戳 ⇒ 字符串直接喂给 time.gmtime 抛
+    TypeError，一条 date 笔记杀死整轮（exit 1、无产物）。
+
+    口径：
+    · 数字（int/float，bool 除外）→ 原样当 epoch 秒（旧行为逐字不变）；
+    · 字符串 → 按 ISO 8601 解析；无时区信息视为 UTC（与 R4 用 gmtime 取 UTC
+      日历日的口径一致，issue #360，保证任何机器上分日结果相同）；解析失败 →
+      stderr 告警并返回 None（跳过该节点，不再整轮崩溃）；
+    · 空值/其余类型 → 视为无时间（旧 `or 0` 语义的延续）。
+    """
+    if v is None or v is False or v == 0 or v == "":
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return None
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            print("[warn] 节点 %s 的 created=%r 不是合法 ISO 日期，已跳过 R4 分日"
+                  % (nid, v), file=sys.stderr)
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    print("[warn] 节点 %s 的 created 类型为 %s，已跳过 R4 分日"
+          % (nid, type(v).__name__), file=sys.stderr)
+    return None
 
 
 # 结构性/泛化标签：不承载"内容上有关联"的信号，只描述形态，参与共现必然产生噪音。
@@ -238,7 +278,9 @@ def main(argv=None):
     # ---- R4 时间同日（仅孤立节点，连到"日枢纽"）
     day_hub = collections.defaultdict(list)
     for n in nodes:
-        ts = n.get("created") or 0
+        # issue #530：created 可能是 ISO 字符串（export 的 norm_created 把 YAML 日期
+        # 转成字符串），先归一为 epoch 秒；非法值跳过该节点，不再整轮崩溃。
+        ts = created_to_ts(n.get("created"), n.get("id", "?"))
         if ts:
             # 判据来源：issue #360（同一真源/同一 graph.json 在不同 TZ 的机器上跑出不同
             # R4 日枢纽与边）——分日必须用**与机器时区无关**的 UTC 日历日，故 localtime
@@ -303,7 +345,9 @@ def main(argv=None):
                 if not os.path.isfile(fp):
                     continue
                 try:
-                    with io.open(fp, encoding="utf-8", errors="replace") as f:
+                    # utf-8-sig 剥 BOM：带 BOM 的正文会让 FMHEAD（^---\n）匹配失败，
+                    # R5 把整段前言（含 front matter）当正文参与互引匹配（issue #412 同族）。
+                    with io.open(fp, encoding="utf-8-sig", errors="replace") as f:
                         raw = f.read()
                 except Exception:
                     continue

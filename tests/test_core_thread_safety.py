@@ -52,7 +52,8 @@ _WRITE_GUARD_WHITELIST = {
     ("LayeredStore", "_tx"):
         "装饰器实现本体：@_transactional 的 wrapper 调用的就是它——若给它再套装饰器即"
         "无限递归。其自身即事务边界（正常 commit / 异常 rollback 后原样抛）。",
-    ("LayeredStore", "increment_access"):
+    ("LayeredStore", "increment_access_many"):
+        "**旁路写**形态（`increment_access` 的批量入口，PR #513 把两处实现收成这一个单点）："
         "另开独立连接 `sqlite3.connect(self.db_path, timeout=0)` 并自带 try/finally: "
         "obs.close()，**不共用** self.conn；PR #202 明确列为「另一议题」（访问计数为统计"
         "性质，拿不到锁即放弃，不阻断检索主流程）。其写不落在 self.conn 的事务面上，"

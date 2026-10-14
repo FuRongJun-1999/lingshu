@@ -27,9 +27,9 @@
 红线：白箱（零 LLM、纯 stdlib+numpy+PIL）；读图/量测**只读复用** `hexgen_c1_real` 的确定性实现；
       生成侧只用**本地 Qwen-Image-2.1 管线**（即被研究的黑箱本体，与既有语料同源同参数）。
 命令行：
-    python experiments/hexgen_multi_seed.py --gen            # 只生成
-    python experiments/hexgen_multi_seed.py --measure         # 只量测（需已有语料）
-    python experiments/hexgen_multi_seed.py                  # 两步都做
+    python -X utf8 -m lingshu.gen.hexgen_multi_seed --gen      # 只生成
+    python -X utf8 -m lingshu.gen.hexgen_multi_seed --measure   # 只量测（需已有语料）
+    python -X utf8 -m lingshu.gen.hexgen_multi_seed             # 两步都做
     --prompts 8 --seeds 5     # 子集大小与每 prompt 张数
 """
 import argparse

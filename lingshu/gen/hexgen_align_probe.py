@@ -21,7 +21,7 @@ R296 把「对齐外部语义」拆成三类：**已对齐**（circle 8/8）、*
 
 红线：白箱（零 LLM、纯 stdlib+numpy）；只读复用 `hexgen_c1_real`（读者/度量）与
 `hexgen_self_source`（自家 v2 渲染）；不改它们。
-命令行：python experiments/hexgen_align_probe.py
+命令行：python -X utf8 -m lingshu.gen.hexgen_align_probe（仓根执行；参数见 --help）
 """
 import argparse
 import io

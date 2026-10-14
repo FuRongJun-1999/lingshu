@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 from lingshu.nn.hex_cnn import hex_conv
+from lingshu.nn.hex_hier import HexHierNet
+from lingshu.nn.hex_unit import UnitHeadNet
 from lingshu.nn.hex_train import (HexNet, calibrate_class_cards, four_state_accuracy,
                             four_state_classify, hex_conv_batch,
                             normalize_lattices, pretrain_selfsup, train_infogap)
@@ -65,6 +67,59 @@ def test_set_vec_does_not_alias_caller_buffer():
     v2 = np.arange(net.n_params(), dtype=np.float64)
     net.set_vec(v2)
     assert np.array_equal(net.get_vec(), v2)
+
+
+def test_set_vec_does_not_alias_caller_buffer_hier():
+    """守卫(#556,同族 #340):HexHierNet.set_vec 不得把模型参数别名到调用方缓冲。
+
+    判据来源:本 PR #556/#557 取证——clean main 实测 `np.shares_memory` 对
+    `conv`/`conv2`/`head` 三段均为 True,且调用方 `vec += 1e3` 后 `get_vec()`
+    读数随之变(静默改参,绕过 set_vec 的显式载入);PR head 全为 False 且不变。
+    根因:连续 ndarray 上的切片是视图,`.reshape` 仍是视图——须 `.copy()`。
+    覆盖 `stacked=True`(conv/conv2/head)与 `stacked=False`(conv/head)两条构造路径。
+
+    断言三件事:① 各段参数均不与调用方缓冲共享内存;② 调用方原地改自己的
+    vec 后,模型参数读数逐位不变;③ 载入语义本身仍正确(copy 不改变取值)。
+    """
+    for stacked in (True, False):
+        net = HexHierNet(stacked=stacked)
+        names = ("conv", "conv2", "head") if stacked else ("conv", "head")
+        vec = net.get_vec()
+        net.set_vec(vec)
+        for name in names:
+            assert not np.shares_memory(getattr(net, name), vec), \
+                f"HexHierNet(stacked={stacked}).{name} 别名到调用方缓冲"
+        snap = net.get_vec().copy()
+        vec += 1e3                               # 调用方原地改自己的缓冲
+        assert np.array_equal(net.get_vec(), snap), \
+            f"HexHierNet(stacked={stacked}) 调用方写入穿透到模型参数"
+        # 载入语义仍正确:喂一条已知向量,读回逐位相等
+        v2 = np.arange(net.n_params(), dtype=np.float64)
+        net.set_vec(v2)
+        assert np.array_equal(net.get_vec(), v2), \
+            f"HexHierNet(stacked={stacked}) 载入语义不正确"
+
+
+def test_set_vec_does_not_alias_caller_buffer_unit():
+    """守卫(#557,同族 #340):UnitHeadNet.set_vec 不得把 theta 别名到调用方缓冲。
+
+    判据来源:本 PR #557 取证——clean main 实测 `np.shares_memory(net.theta, v)`
+    为 True,且调用方 `v += 1e3` 后 `get_vec()` 的 theta 段随之变(静默改参);
+    PR head 为 False 且不变。
+    ★ 本件**不**断言「载入逐位相等」:实测两侧都 False——`gain` 经
+    `np.clip(v[:k], -GAIN_BOUND, GAIN_BOUND)` 截断,`get_vec()` 回读的是截断后
+    的值,属既有行为(非本 PR 引入),故不列入本守卫判据。
+
+    断言两件事:① theta 不与调用方缓冲共享内存;② 调用方原地改自己的
+    vec 后,模型参数读数逐位不变。
+    """
+    net = UnitHeadNet(HexHierNet())
+    vec = net.get_vec()
+    net.set_vec(vec)
+    assert not np.shares_memory(net.theta, vec), "UnitHeadNet.theta 别名到调用方缓冲"
+    snap = net.get_vec().copy()
+    vec += 1e3                                   # 调用方原地改自己的缓冲
+    assert np.array_equal(net.get_vec(), snap), "调用方写入穿透到模型参数"
 
 
 def test_branch_deadzone_freezes():
@@ -187,7 +242,7 @@ def test_four_state_verdicts():
     assert rep["accept_precision"] >= 0.8, f"ACCEPT 精确率不足: {rep}"
     # 全零输入 → 响应趋零 → BLINDSPOT(诚实声明不知道)
     _, pooled0 = net.forward(np.zeros_like(lat[:1]))
-    r0 = four_state_classify(net, pooled0, cards)[0]
+    r0 = four_state_classify(pooled0, cards)[0]
     assert r0["verdict"] in ("BLINDSPOT", "DEFER"), f"零输入应诚实降级: {r0}"
 
 

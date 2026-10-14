@@ -480,10 +480,13 @@ def split_subjects(img, tol=C.TOL, d=6, min_px=C.MIN_PX, seam_min=None,
             if len(pts) == 1:
                 diag["n_no_split"] += 1
         diag["n_proposed"] += len(pts)
-        #   切分（欧氏最近）
-        yy, xx = np.mgrid[0:SIZE, 0:SIZE]
-        best = np.full((SIZE, SIZE), np.inf, np.float32)
-        labm = np.full((SIZE, SIZE), -1, np.int32)
+        #   切分（欧氏最近）。#523：网格与标签数组按**输入形状**建（H, W = sil.shape），
+        #   旧写法用模块常量 SIZE=512 建数组 ⇒ 非 512×512 输入广播失败
+        #   （300×300/800×800 实测 ValueError，512×512 恰好掩盖）。
+        hh, ww = sil.shape
+        yy, xx = np.mgrid[0:hh, 0:ww]
+        best = np.full((hh, ww), np.inf, np.float32)
+        labm = np.full((hh, ww), -1, np.int32)
         for i, (py, px, _v) in enumerate(pts):
             dd = (yy - py) ** 2 + (xx - px) ** 2
             upd = sil & (dd < best)
@@ -519,7 +522,9 @@ def split_subjects(img, tol=C.TOL, d=6, min_px=C.MIN_PX, seam_min=None,
     diag["merge_crit"] = crit
     if crit != "none" and len(out) > 1:
         band = SEAM_BAND if crit == "seam" else max(1, int(math.ceil(max(0.0, merge_gap) / 2.0)))
-        lab_all = np.full((SIZE, SIZE), -1, np.int32)
+        #   #523：全局合并标签面同按输入形状建（旧写法 SIZE=512 同病）。
+        hh, ww = img.shape[0], img.shape[1]
+        lab_all = np.full((hh, ww), -1, np.int32)
         for k, (m, _i) in enumerate(out):
             lab_all[m] = k
         parent = list(range(len(out)))

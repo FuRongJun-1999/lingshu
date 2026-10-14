@@ -259,7 +259,8 @@ class SimulationLoop:
             self._wal("episode", {                    # ⑥ 留痕（全量快照）
                 "nodes": self._snapshot_nodes(),
                 "edges": self._snapshot_edges(),
-                "hit_rate": v["hit_rate"]})
+                "hit_rate": v["hit_rate"], "hits": v["hits"],
+                "total": v["total"], "pending": v["pending"]})
         return self.state()
 
     def run(self, n: int = 10) -> Dict:
@@ -270,6 +271,8 @@ class SimulationLoop:
             "rolling_hit_rate": round(sum(self._rolling_rates)
                                       / len(self._rolling_rates), 4)
             if self._rolling_rates else None,
+            "verified_ticks": len(self._rolling_rates),
+            "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
             "growth_summary": {
                 "born": sum(1 for g in self._growth_log
                             if g["event"] in ("growth", "re-grow")),
@@ -648,7 +651,13 @@ class SimulationLoop:
                          f"pos=({n['pos'][0]}, {n['pos'][1]}, {n['pos'][2]}) "
                          f"confidence={round(n['confidence'], 3)}")
         rate = round(self._rolling_rates[-1], 4) if self._rolling_rates else None
-        lines += ["", f"命中率: {rate} | 节点 {g['node_count']} | "
+        # 双契约并存：无读数时数值槽位保持 main 的 `None` 写法（tests/
+        # test_world_observation_contracts.py 断言 "命中率: None"），「暂无验证读数」
+        # 只作括号说明（tests/test_world_feedback.py 断言该标记存在）。
+        reading = f"{rate}（暂无验证读数）" if rate is None else rate
+        lines += ["", f"最近已验证轮次命中率: {reading} | "
+                  f"已验证轮次 {len(self._rolling_rates)}/{self.ticks_stepped} | "
+                  f"节点 {g['node_count']} | "
                   f"边 {g['edge_count']} | WAL {self._seq} 条",
                   f"growth: born={sum(1 for x in self._growth_log if x['event'] in ('growth', 're-grow'))} "
                   f"confirmed={sum(1 for x in self._growth_log if x['event'] == 'confirm')} "
@@ -703,6 +712,8 @@ class SimulationLoop:
                 "rolling_hit_rate": round(sum(self._rolling_rates)
                                           / len(self._rolling_rates), 4)
                 if self._rolling_rates else None,
+                "verified_ticks": len(self._rolling_rates),
+                "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
                 "hypotheses_active": len(self._hypotheses),
                 "growth_events": len(self._growth_log),
                 "wal_records": len(self.wal),

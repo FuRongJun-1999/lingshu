@@ -90,7 +90,8 @@ def _child_ids(rows, hashseed):
                PYTHONUTF8="1")
     out = subprocess.run([sys.executable, "-X", "utf8", "-c", _CHILD,
                           json.dumps(rows)],
-                         cwd=REPO, env=env, capture_output=True, text=True)
+                         cwd=REPO, env=env, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")  # #455
     assert out.returncode == 0, f"子进程失败：{out.stderr}"
     return json.loads(out.stdout.strip().splitlines()[-1])
 

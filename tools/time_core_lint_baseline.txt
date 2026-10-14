@@ -35,3 +35,26 @@ lingshu/core/activation.py:224:R3    # 形状级命中（**非**时间衰减）�
 # lingshu/gen/hexgen_self_source.py:236/240/411/413:R2|R3  # alpha 合成 `obj*(1-pc)+dark*pc` → EX4
 # 以上每一条都有对应的豁免回归测试（tests/test_time_core_lint.py::test_judgement_regressions_not_reported
 # 带「形态锚」EXPECTED_MARKERS：按源码片段在文件内定位，片段被删除/改写会当场报错而不是恒真）。
+
+# ── 2026-10-14 新增登记：物理仿真与色调映射的 R1「形状级」命中 ────────────────
+# 性质：以下 9 条**都不是** time_core 的时间可信度衰减核——
+#   ① `lingshu/world/physics.py`：**物理阻尼**。阻尼振子的闭式响应
+#      `e = exp(-ζω t)`、欠阻尼频率项、阻尼比的对数衰减率 `exp(-2πζ/√(1-ζ²))`、
+#      以及 `fit_damped` 的基函数 `exp(-k·t)` —— 全部来自牛顿力学/线性阻尼振子，
+#      与「记忆/可信度随时间衰减」在语义上无关。
+#   ② `lingshu/world/shade_paint.py:215`：**软肩色调映射**（`1 - exp(-(v-S)/S)`），
+#      呈现层的光学变换，不是时间演化。
+# 判据与先例 `lingshu/core/activation.py:224:R3` 完全同类（「形状级命中、非时间衰减」）：
+#   R1 的口径是「`exp(` 括号内以负号开头」，属**形状级**规则；该文件头部已自陈
+#   「宁可漏判、不误判」的取向。本批为**新能力**（物理运动预测 / 零依赖着色）引入，
+#   已逐条人工复核性质后登记，而非放宽判据。
+# 若日后这些公式改为走 time_core 的统一核，请删除本段条目。
+lingshu/world/physics.py:339:R1      # 物理阻尼：`fit_damped` 的基函数 exp(-k·t)（线性阻尼振子闭式解），非时间可信度核
+lingshu/world/physics.py:367:R1      # 物理阻尼：同上（该文件的第二处基函数，形态同 339）
+lingshu/world/physics.py:475:R1      # 物理阻尼：`damped_truth` 的 exp(-k·t) 解析真值，非时间核
+lingshu/world/physics.py:787:R1      # 物理阻尼：欠阻尼振子响应中的 exp(-ζωt)，非时间核
+lingshu/world/physics.py:790:R1      # 物理阻尼：临界阻尼响应 (1+ωt)·exp(-ωt)，非时间核
+lingshu/world/physics.py:792:R1      # 物理阻尼：同 787 的第二处响应项
+lingshu/world/physics.py:808:R1      # 物理量：阻尼比的对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
+lingshu/world/physics.py:907:R1      # 物理量：同 808（该文件第二处对数衰减率）
+lingshu/world/shade_paint.py:215:R1  # 色调映射：软肩曲线 1-exp(-(v-S)/S)（呈现层光学变换），非时间演化

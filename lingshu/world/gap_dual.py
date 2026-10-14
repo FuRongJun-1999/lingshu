@@ -71,6 +71,27 @@ class GapDual:
                     "usable_paths": 0, "blindspot": True,
                     "note": "全部路径不可达 → BLINDSPOT"}
 
+        # #518：dist **缺失 / NaN / None** 的可用路径不参与选路——其距离无定义，
+        # 混进 `min` 会引出三种病（改前实测）：① cond_gap=0 的无 dist 路径按
+        # 字典序压过有限距离路径 ⇒ 明明存在有限 D_task 却报 BLINDSPOT；
+        # ② NaN 参与比较恒 False ⇒ 结果随 dict 插入顺序漂移；③ None 直接
+        # TypeError。选路面＝可用且 dist 为有限数的路径；该面为空 ⇒ 按 :16/:44
+        # 判 BLINDSPOT（与 #124「唯一可用路径缺 dist ⇒ ∞ ⇒ BLINDSPOT」同一口径，
+        # 从单路径推广到多路径）。
+        def _finite_dist(p: Dict):
+            try:
+                d = float(p.get("dist"))
+            except (TypeError, ValueError):
+                return None
+            return d if math.isfinite(d) else None
+
+        valid = [(pid, p) for pid, p in usable if _finite_dist(p) is not None]
+        if not valid:
+            return {"d_task": float("inf"), "path_count": len(graph_paths),
+                    "usable_paths": len(usable), "blindspot": True,
+                    "cond_gap": None, "best_path": "",
+                    "note": "可用路径的 dist 全部缺失/非有限 → D_task=∞ → BLINDSPOT（#518）"}
+
         # #124：D_task = min_{p 可用} dist(C_task, CondSet(p))（模块头 :12-13 的
         # v1.2 图上定义）——「条件缺口」是这条距离的一部分：缺任务的条件的路径
         # 更远。选路先比缺口（小者优先），缺口相同再比 dist。旧实现只按 dist
@@ -85,8 +106,8 @@ class GapDual:
             return 0
 
         best_id, best = min(
-            usable, key=lambda kv: (_cond_gap(kv[1]),
-                                    kv[1].get("dist", float("inf"))))
+            valid, key=lambda kv: (_cond_gap(kv[1]),
+                                   kv[1].get("dist", float("inf"))))
         d_task = float(best.get("dist", float("inf")))
         cond_gap = _cond_gap(best)
         # #124：可用路径缺 dist ⇒ d_task=∞，按 :16/:44 规定即为 BLINDSPOT

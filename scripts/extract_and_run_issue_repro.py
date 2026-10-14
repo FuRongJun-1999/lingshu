@@ -128,7 +128,63 @@ def _force_utf8_stdio():
 _FENCE_OPEN = re.compile(r"^\s*(`{3,}|~{3,})")
 
 #: info string 首词命中这些即视为「python 块」（大小写不敏感，取小写后比对）。
-_PY_LANGS = {"python", "py", "py3"}
+#: `python3` 同认（#409）：GFM 高亮语法里 ```python3 是合法 info string，
+#: 旧集合漏收 ⇒ 合法复现被判「正文无 python 围栏块」不执行。
+_PY_LANGS = {"python", "python3", "py", "py3"}
+
+# ---------------------------------------------------------------- HTML 块（#520）
+#: CommonMark 4.6 HTML 块七型（与 cmark/GitHub 渲染同口径）：HTML 块内的围栏
+#: **不是代码围栏**——网页上它们被吞进标签/属性值（<div title="```python…```">）
+#: 或 script/pre 正文，维护者看不见，抽取器不得把它们当可执行块。
+#: 七型中 ③（<!-- 注释）由既有 `_advance_comment_state` 承担；这里补
+#: ①（script/pre/style/textarea，闭标签收）、②（<? … ?>）、④（<! 声明，> 收）、
+#: ⑤（<![CDATA[ … ]]>）、⑥（已知块标签，空行收；起点只需 `<tag` + 空白/>/EOL，
+#: **属性可跨行未闭**——#520 的攻击形态正落在这）、⑦（行首完整孤立标签，
+#: 空行收）。⑥⑦不得打断段落（CommonMark）⇒ 仅在前行空白时生效。
+_HTML1_TAGS = ("script", "pre", "style", "textarea")
+_RE_HTML1_START = re.compile(
+    r"^ {0,3}<(%s)(?:\s|>|/>|$)" % "|".join(_HTML1_TAGS), re.IGNORECASE)
+#: ⑥ 的已知块标签表（CommonMark 列表）。
+_HTML6_TAGS = ("address", "article", "aside", "base", "basefont", "blockquote",
+               "body", "caption", "center", "col", "colgroup", "dd", "details",
+               "dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption",
+               "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3",
+               "h4", "h5", "h6", "head", "header", "hr", "html", "iframe",
+               "legend", "li", "link", "main", "menu", "menuitem", "nav",
+               "noframes", "ol", "optgroup", "option", "p", "param", "search",
+               "section", "summary", "table", "tbody", "td", "tfoot", "th",
+               "thead", "title", "tr", "track", "ul")
+_RE_HTML6_START = re.compile(
+    r"^ {0,3}</?(?:%s)(?:\s|>|/>|$)" % "|".join(_HTML6_TAGS), re.IGNORECASE)
+#: ⑦ 完整开/闭标签独占一行（属性须闭合——⑦与⑥的关键差：⑥ 起点允许属性跨行未闭）。
+_RE_HTML7_START = re.compile(
+    r"^ {0,3}(?:<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_:.-]*"
+    r"(?:\s*=\s*(?:[^\s\"'=<>`]+|'[^']*'|\"[^\"]*\"))?"
+    r")*\s*/?>|</[A-Za-z][A-Za-z0-9-]*\s*>)\s*$")
+
+
+def _html_block_start(line, prev_blank):
+    """判定一行是否开启 HTML 块（CommonMark ①②④⑤⑥⑦；③注释走既有状态机）。
+
+    返回 HTML 块状态：("tag", 标签名)（①：同标签 `</tag>` 收）、("marker", 终串)
+    （②④⑤：`?>` / `>` / `]]>` 收）、("blank",)（⑥⑦：空行收）；非块行返回 None。
+    ⑥⑦ 不打断段落（CommonMark）⇒ 前行非空白文本时不启动。
+    """
+    m1 = _RE_HTML1_START.match(line)
+    if m1:
+        return ("tag", m1.group(1).lower())
+    if re.match(r"^ {0,3}<\?", line):
+        return ("marker", "?>")
+    if re.match(r"^ {0,3}<![A-Za-z]", line):          # ④（<!DOCTYPE 等；<!-- 是③）
+        return ("marker", ">")
+    if re.match(r"^ {0,3}<!\[CDATA\[", line):
+        return ("marker", "]]>")
+    if prev_blank:
+        if _RE_HTML6_START.match(line):
+            return ("blank",)
+        if _RE_HTML7_START.match(line):
+            return ("blank",)
+    return None
 
 #: 被测子进程环境的剔除面（前缀 / 词）——令牌与 CI 注入面。
 _ENV_DROP_PREFIXES = ("GITHUB_", "GH_", "ACTIONS_", "RUNNER_", "INPUT_")
@@ -198,6 +254,24 @@ def _dedent(line, n):
         k += 1
     return line[k:]
 
+#: 列表项标记（CommonMark）：`- ` / `* ` / `+ ` / `N. `（N≥1 数字）。
+_RE_LIST_MARKER = re.compile(r"^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s+|$)")
+
+
+def _container_strip(line):
+    """剥掉行首的容器前缀（块引用 `> ` ＋ 列表项 `- ` / `* ` / `+ ` / `N. `）。
+
+    #555 残留绕过（维护者复核指出）：`> <div title="` 与 `- <div title="` 的
+    HTML 块起点被容器前缀挡住（抽取器的围栏判定剥了 `_bq_strip`，HTML 块
+    判定却在**原始行**上跑）⇒ 隐藏块在引用块/列表项内仍被抽取执行。
+    修法：起点判定与块内结束条件均在剥容器后的内容上跑——与围栏判定
+    同口径。GitHub 的渲染验证见 PR #555 复核（`POST /markdown` gfm 实测，
+    blockquote / li 内的 `<div title=…` 均输出 raw HTML ⇒ 浏览器隐藏）。
+    """
+    s, _ = _bq_strip(line)
+    s = _RE_LIST_MARKER.sub("", s, count=1)
+    return s
+
 
 def _extract_fenced_blocks(text):
     """按 CommonMark 围栏口径抽取全部围栏块。
@@ -223,18 +297,65 @@ def _extract_fenced_blocks(text):
     blocks = []
     i, n = 0, len(lines)
     in_comment = False
+    html_state = None          # #520：HTML 块状态（None=不在块内）
+    prev_blank = True          # 行 0 视同「前行空白」——⑥⑦ 打断段落判据用
     while i < n:
+        if html_state is not None:
+            # HTML 块内：围栏不算块、注释不算注释——只找本型的结束条件。
+            # #555 残留：容器（引用块/列表项）内的 HTML 块，其结束条件也在
+            # 剥容器后的内容上判定（`> ` 后的空行也是空行）。
+            content = _container_strip(lines[i])
+            kind = html_state[0]
+            if kind == "blank":                       # ⑥⑦：空行收（空行不属块）
+                if not content.strip():
+                    html_state = None
+                    prev_blank = True
+                else:
+                    prev_blank = False
+            elif kind == "tag":                       # ①：同行出现 </tag> 即收（含本行）
+                if re.search(r"</%s\s*>" % re.escape(html_state[1]),
+                             content, re.IGNORECASE):
+                    html_state = None
+                prev_blank = not content.strip()
+            else:                                     # ②④⑤：出现终串即收（含本行）
+                if html_state[1] in content:
+                    html_state = None
+                prev_blank = not content.strip()
+            i += 1
+            continue
         if in_comment:
             # 行首已在注释内 ⇒ 本行不可能开启围栏；只推进注释状态。
             in_comment = _advance_comment_state(lines[i], True)
+            prev_blank = not lines[i].strip()
             i += 1
             continue
         head, bq_depth = _bq_strip(lines[i])
         m = _FENCE_OPEN.match(head)
         if not m:
+            # #520：HTML 块起点判定先于注释推进（①②④⑤⑥⑦；③注释走下方既有
+            # 状态机）——`<div title="` 这类起点行里出现 `<!--` 时，块归属按
+            # CommonMark 起点次序：行首是什么就开什么型。
+            # #555 残留：起点判定在**剥容器后**的内容上跑（与围栏判定同口径）。
+            content = _container_strip(lines[i])
+            st = _html_block_start(content, prev_blank)
+            if st is not None:
+                html_state = st
+                # 同行即含结束条件（如 `<?xml?>`、`<div></div>` 单行）⇒ 立即收。
+                if st[0] == "marker" and st[1] in content:
+                    html_state = None
+                elif st[0] == "tag" and re.search(
+                        r"</%s\s*>" % re.escape(st[1]), content, re.IGNORECASE):
+                    html_state = None
+                prev_blank = not content.strip()
+                i += 1
+                continue
             in_comment = _advance_comment_state(lines[i], False)
+            prev_blank = not lines[i].strip()
             i += 1
             continue
+        # 围栏开启行本身不改变段落空白判据（块级构造之后的行都是「块后」行——
+        # 保守按非空白处理；⑥⑦ 打断段落的判据只在文本段落场景起作用）。
+        prev_blank = False
         delim = m.group(1)
         indent = len(head) - len(head.lstrip(" "))
         info = head[m.end():].strip()

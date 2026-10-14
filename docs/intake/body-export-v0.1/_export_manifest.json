@@ -32,7 +32,7 @@
     {
      "file": "channel_credibility.py",
      "src": "aeis.channel_credibility",
-     "sha256": "2d2f8f37723f42c7",
+     "sha256": "aaf9be5e8b3163cb",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -54,7 +54,7 @@
     {
      "file": "curiosity_explorer.py",
      "src": "aeis.curiosity_explorer",
-     "sha256": "1b40a1b911a876fd",
+     "sha256": "e3ca453c8bc3a5b0",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -67,7 +67,7 @@
     {
      "file": "gap_dual.py",
      "src": "aeis.gap_dual",
-     "sha256": "ce6091f573cb682d",
+     "sha256": "9779227f3c618dd2",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -89,7 +89,7 @@
     {
      "file": "prediction.py",
      "src": "aeis.prediction",
-     "sha256": "df05e60efb48b046",
+     "sha256": "94372fa58b56b710",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -103,7 +103,7 @@
     {
      "file": "scene_model.py",
      "src": "aeis.scene_model",
-     "sha256": "06a6086ae7e87497",
+     "sha256": "5b17c3d892f05617",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -114,7 +114,7 @@
     {
      "file": "scene_simulator.py",
      "src": "aeis.scene_simulator",
-     "sha256": "8128017c055a8f6d",
+     "sha256": "9e8c51b7eb8c9259",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -136,7 +136,7 @@
     {
      "file": "seven_layer_loop.py",
      "src": "aeis.seven_layer_loop",
-     "sha256": "5fbc5033eb3f2d42",
+     "sha256": "4558c7d332963c9a",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -149,7 +149,7 @@
     {
      "file": "shapes.py",
      "src": "aeis.shapes",
-     "sha256": "5796dc947f85441b",
+     "sha256": "12a2b72318737b80",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -182,7 +182,7 @@
     {
      "file": "spacetime_consistency.py",
      "src": "aeis.spacetime_consistency",
-     "sha256": "7a2d7dc2b935c5c5",
+     "sha256": "2d908c35a1d391a9",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -215,7 +215,7 @@
     {
      "file": "voxel_world.py",
      "src": "aeis.voxel_world",
-     "sha256": "60cca3b8c4922bfa",
+     "sha256": "beaf595dc12bfb9d",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -237,7 +237,7 @@
     {
      "file": "wm_simloop.py",
      "src": "aeis.wm_simloop",
-     "sha256": "aa84dde49ad8c837",
+     "sha256": "b654e8de1fafcd55",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -250,7 +250,7 @@
     {
      "file": "world3d.py",
      "src": "aeis.world3d",
-     "sha256": "7b7527deb009dd70",
+     "sha256": "eb550d83168c4a11",
      "rewrites": 16,
      "sanitized": 0,
      "patches": 0,
@@ -261,7 +261,7 @@
     {
      "file": "world_learner.py",
      "src": "aeis.world_learner",
-     "sha256": "9066b4cf784d0a56",
+     "sha256": "80943255192950d9",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -274,7 +274,7 @@
     {
      "file": "world_model.py",
      "src": "aeis.world_model",
-     "sha256": "97a0f817684fa51e",
+     "sha256": "10982a1dcbd8708a",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -314,7 +314,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "f8c30b183d430416",
+     "sha256": "9855940fbb84f82c",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,
@@ -427,7 +427,7 @@
     {
      "file": "hex_hier.py",
      "src": "aeis.hex_hier",
-     "sha256": "a887aaca4b76afa1",
+     "sha256": "5279ad131b405487",
      "rewrites": 3,
      "sanitized": 0,
      "patches": 0,
@@ -482,7 +482,7 @@
     {
      "file": "hex_search.py",
      "src": "aeis.hex_search",
-     "sha256": "ae6cd031237c791b",
+     "sha256": "9c91642f84056016",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,
@@ -493,7 +493,7 @@
     {
      "file": "hex_text.py",
      "src": "aeis.hex_text",
-     "sha256": "f1f77de5776c8a3f",
+     "sha256": "ed0ac6776d0283e0",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -504,7 +504,7 @@
     {
      "file": "hex_train.py",
      "src": "aeis.hex_train",
-     "sha256": "37d7e117f5d5ff4d",
+     "sha256": "296adb92d02a76e0",
      "rewrites": 2,
      "sanitized": 1,
      "patches": 0,
@@ -515,7 +515,7 @@
     {
      "file": "hex_unit.py",
      "src": "aeis.hex_unit",
-     "sha256": "ccfe6c0b420db579",
+     "sha256": "69d773a48b561334",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -564,7 +564,7 @@
     {
      "file": "hexgen_align_probe.py",
      "src": "experiments.hexgen_align_probe",
-     "sha256": "54b1ace96586277f",
+     "sha256": "4dced4c36731b7bb",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,
@@ -575,7 +575,7 @@
     {
      "file": "hexgen_c1_real.py",
      "src": "experiments.hexgen_c1_real",
-     "sha256": "5026a61e33165d88",
+     "sha256": "6ee446078ee08449",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -586,7 +586,7 @@
     {
      "file": "hexgen_multi_seed.py",
      "src": "experiments.hexgen_multi_seed",
-     "sha256": "f0139d11fd55ad1e",
+     "sha256": "c24a0951a6a86f1f",
      "rewrites": 1,
      "sanitized": 1,
      "patches": 0,
@@ -599,7 +599,7 @@
     {
      "file": "hexgen_pack_certify.py",
      "src": "experiments.hexgen_pack_certify",
-     "sha256": "92e194debbf1b79f",
+     "sha256": "f754aa0287a9975c",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,
@@ -610,7 +610,7 @@
     {
      "file": "hexgen_self_source.py",
      "src": "experiments.hexgen_self_source",
-     "sha256": "768b6750191c484b",
+     "sha256": "118c2021550c1dbb",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -621,7 +621,7 @@
     {
      "file": "hexgen_subject_split.py",
      "src": "experiments.hexgen_subject_split",
-     "sha256": "a30e8c90056cd680",
+     "sha256": "83c6cf6d836194b3",
      "rewrites": 3,
      "sanitized": 0,
      "patches": 0,
@@ -651,6 +651,25 @@
   },
   "integration_base": "777e18f62dfe6918ad271437b887c78d020f0ea4",
   "benchmark_base": "c22385cb2d75f36bc12fd1de4449edbf92be8698",
-  "metrics_migration": "docs/world_model_metrics_migration.md"
+  "metrics_migration": "docs/world_model_metrics_migration.md",
+  "inference_window_update": {
+   "date": "2026-10-12",
+   "base_commit": "cb3a6ea2dbd9771d685b2bf5c1fe398abe69e419",
+   "report": "docs/world_inference_iteration.md",
+   "previous_sha256": {
+    "world_learner.py": "9066b4cf784d0a56",
+    "world_model.py": "97a0f817684fa51e"
+   },
+   "note": "Shared observation statistics and relation evidence semantics; not a new upstream export.",
+   "review_fix": {
+    "date": "2026-10-12",
+    "review": "https://github.com/FuRongJun-1999/dsh-bounty/issues/34",
+    "previous_head": "6921932b15db31d4be2c150e90f8924f7fab132b",
+    "previous_sha256": {
+     "world_model.py": "435a7cf54030b9c5"
+    },
+    "note": "Retain Unified relations with insufficient mixed evidence; align measured-stop evidence with learner."
+   }
+  }
  }
 }

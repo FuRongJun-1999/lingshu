@@ -33,6 +33,7 @@ import uuid
 import warnings
 from collections import deque
 from dataclasses import dataclass, field, asdict
+from .coord_contract import clamp_xz              # 第 4 轮 #4
 from typing import Deque, Dict, List, Optional, Tuple
 
 try:
@@ -289,8 +290,8 @@ class SceneSimulator:
                         "⇒ 拒绝写入" % (eid, nx, nz), RuntimeWarning, stacklevel=2)
                     e.velocity = (0.0, 0.0, 0.0)
                     continue
-                nx = max(0.5, min(self.world.size - 0.5, nx))
-                nz = max(0.5, min(self.world.size - 0.5, nz))
+                # ⚠ 第 4 轮 #4：边界语义收归 `coord_contract.clamp_xz`（算式逐字一致）
+                nx, nz = clamp_xz(nx, nz, self.world.size)
                 old = e.pos
                 e.pos = (round(nx, 2), old[1], round(nz, 2))
                 # #193-B：velocity 此前只有声明、从无写入点（对外恒为 (0,0,0)）。

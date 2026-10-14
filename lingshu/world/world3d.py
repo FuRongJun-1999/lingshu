@@ -179,17 +179,99 @@ class Camera3D:
     cz: float = 0.0            # 相机 Z（米）
     yaw: float = 0.0           # 水平旋转（弧度，绕 Y 轴）
     pitch: float = 0.0         # 垂直旋转（弧度，绕 X 轴）
+    # 滚转（弧度，绕相机前向轴；0 = 画面水平线与世界水平面平行）。
+    # 为何需要：Blender 等真实引擎的相机用**真实 up 向量**定向，在方位角≠0 时
+    # 画面相对「纯 yaw+pitch」相机存在滚转；缺此字段则两侧像面相对旋转、
+    # 同一场景的轮廓永远对不齐（实测 45° 方位角下相差约 16.4°）。
+    roll: float = 0.0
+    # 显式正交基（世界→相机 的 3x3，行主序 x=右 y=上 z=前向）。给了它就**不用** yaw/pitch/roll。
+    # 为何需要：yaw/pitch/roll 参数化表达不出「真实引擎用 up 向量定向」的相机朝向
+    # ——45° 方位角下画面 up 并非世界 up 的简单复合，实测无论怎么调 roll，
+    # 轮廓 IoU 都卡在 ~0.49。显式基按构造与引擎一致。
+    basis: Optional[Tuple] = None
+
+    @classmethod
+    def from_look_at(cls, eye: Tuple[float, float, float],
+                     target: Tuple[float, float, float],
+                     up: Tuple[float, float, float] = (0.0, 0.0, 1.0),
+                     fov_deg: float = 60.0) -> "Camera3D":
+        """按「eye / target / 世界 up」构造**显式正交基**相机（与真实引擎同构）。
+
+        右 = normalize(前向 × up)；上 = 右 × 前向；前向 = normalize(target − eye)。
+        up 与前向共线时 raise（退化基，不静默给一个歪相机）。
+        """
+        fx, fy, fz = (target[0] - eye[0], target[1] - eye[1], target[2] - eye[2])
+        fl = math.sqrt(fx * fx + fy * fy + fz * fz)
+        if fl < 1e-12:
+            raise ValueError("from_look_at：eye 与 target 重合，朝向未定义")
+        fx, fy, fz = fx / fl, fy / fl, fz / fl
+        rx = fy * up[2] - fz * up[1]
+        ry = fz * up[0] - fx * up[2]
+        rz = fx * up[1] - fy * up[0]
+        rl = math.sqrt(rx * rx + ry * ry + rz * rz)
+        if rl < 1e-9:
+            raise ValueError("from_look_at：up 与前向共线，右向量退化")
+        rx, ry, rz = rx / rl, ry / rl, rz / rl
+        ux = ry * fz - rz * fy
+        uy = rz * fx - rx * fz
+        uz = rx * fy - ry * fx
+        return cls(fov_deg=fov_deg, cx=eye[0], cy=eye[1], cz=eye[2],
+                   basis=((rx, ry, rz), (ux, uy, uz), (fx, fy, fz)))
 
     @classmethod
     def look_at(cls, eye: Tuple[float, float, float],
                 target: Tuple[float, float, float],
-                fov_deg: float = 60.0) -> "Camera3D":
+                fov_deg: float = 60.0, roll: float = 0.0) -> "Camera3D":
         """eye/target → 相机（水平 yaw + 俯仰 pitch，无滚转）。"""
         ex, ey, ez = eye
         dx, dy, dz = target[0] - ex, target[1] - ey, target[2] - ez
         yaw = math.atan2(-dx, dz)
         pitch = math.atan2(dy, math.hypot(dx, dz))
-        return cls(fov_deg=fov_deg, cx=ex, cy=ey, cz=ez, yaw=yaw, pitch=pitch)
+        return cls(fov_deg=fov_deg, cx=ex, cy=ey, cz=ez, yaw=yaw, pitch=pitch,
+                   roll=roll)
+
+    @classmethod
+    def frame_object(cls, center: Tuple[float, float, float], radius: float,
+                     fov_deg: float = 45.0, azimuth_deg: float = 35.0,
+                     elevation_deg: float = 25.0, margin: float = 1.35,
+                     screen: Optional[Tuple[int, int]] = None) -> "Camera3D":
+        """按「物体包围球」自动摆机位（**世界 +y 向上**，与本模块其余部分同一约定）。
+
+        为什么需要（本件实测缺陷）：`from_look_at` 的默认 `up` 是 `(0, 0, 1)`（Z-up，
+        为与 Blender 侧 Z-up 世界做标定对比而设），而本模块的物体/相机约定是
+        **y 向上**（`Object3D.center` 的 y 是高度、`Camera3D.cy` 是「相机高度」）。
+        调用方直接 `from_look_at(..., up 缺省)` 会得到一个「world up = +z」的相机：
+        画面相对模型转了 90°，且很容易把机位摆到模型下方 ⇒ 看到的是背光底面，
+        渲出来近乎全黑。这里把 y-up 摆机位这件事一次做对，并且**显式**传 `up`。
+
+        `elevation_deg > 0` ⇒ 相机在物体**上方**；`azimuth_deg` 绕 y 轴。
+        距离按视场半角与包围球半径精确算 ⇒ 主体充满画面且四边不裁切。
+        `screen=(w, h)` 给了就按**画布宽高比**取较小的那个半角 ⇒ 宽屏上也绝不裁边
+        （不给则按正方形保守估）。
+
+        ⚠ 坐标系坑（Lead 亲测踩到，记在这里）：本模块世界是 **y 向上**，而
+        `from_look_at` 的**默认 `up=(0, 0, 1)` 是 Blender Z-up 口径**（为与
+        `silhouette3d` / `scene_model` 的 Blender 标定对比而设）。直接用缺省 `up`
+        会渲出"横躺的树"，机位也很容易落到物体下方 ⇒ 背光底面几乎全黑。
+        本方法**显式**传 `up=(0, 1, 0)`；外部调用 `from_look_at` 时请自己传。
+        判据来源：针孔相机模型（`focal` / `project` 同一口径），非新几何。
+        """
+        r = max(float(radius), 1e-6)
+        # fov 贴在**宽**上（与 `focal(screen_w)` 同口径）⇒ 非正方形画布上垂直半角更小，
+        # 取两者较小值才算得到「四边都不裁切」。不给 screen 就按正方形保守估。
+        half = math.radians(fov_deg) / 2.0
+        if screen:
+            sw_, sh_ = float(screen[0]), float(screen[1])
+            if sw_ > 0 and sh_ > 0:
+                f_ = (sw_ / 2.0) / math.tan(half)
+                half = min(half, math.atan((sh_ / 2.0) / f_))
+        dist = float(margin) * r / math.sin(half)
+        az = math.radians(azimuth_deg)
+        el = math.radians(elevation_deg)
+        eye = (center[0] + dist * math.cos(el) * math.sin(az),
+               center[1] + dist * math.sin(el),
+               center[2] + dist * math.cos(el) * math.cos(az))
+        return cls.from_look_at(eye, center, up=(0.0, 1.0, 0.0), fov_deg=fov_deg)
 
     def focal(self, screen_w: int) -> float:
         return (screen_w / 2) / math.tan(math.radians(self.fov_deg) / 2)
@@ -205,11 +287,19 @@ class Camera3D:
         x -= self.cx
         y -= self.cy
         z -= self.cz
+        if self.basis is not None:
+            (r0, r1, r2), (u0, u1, u2), (f0, f1, f2) = self.basis
+            return (x * r0 + y * r1 + z * r2,
+                    x * u0 + y * u1 + z * u2,
+                    x * f0 + y * f1 + z * f2)
         # 旋转（先 yaw 绕 Y，再 pitch 绕 X）
         cos_y, sin_y = math.cos(self.yaw), math.sin(self.yaw)
         x, z = x * cos_y + z * sin_y, -x * sin_y + z * cos_y
         cos_p, sin_p = math.cos(self.pitch), math.sin(self.pitch)
         y, z = y * cos_p - z * sin_p, y * sin_p + z * cos_p
+        if self.roll:
+            cos_r, sin_r = math.cos(self.roll), math.sin(self.roll)
+            x, y = x * cos_r - y * sin_r, x * sin_r + y * cos_r
         return (x, y, z)
 
     def project(self, p3: Tuple[float, float, float],
@@ -236,7 +326,17 @@ class Camera3D:
         f = self.focal(screen_w)
         x_cam = (px - screen_w / 2) * depth / f
         y_cam = (screen_h / 2 - py) * depth / f
+        # 逆 roll（与 to_camera 同轴反向）——保住「project∘unproject == id」的可回代性
+        if self.roll:
+            cos_r, sin_r = math.cos(self.roll), math.sin(self.roll)
+            x_cam, y_cam = (x_cam * cos_r + y_cam * sin_r,
+                            -x_cam * sin_r + y_cam * cos_r)
         z_cam = depth
+        if self.basis is not None:
+            (r0, r1, r2), (u0, u1, u2), (f0, f1, f2) = self.basis
+            return (self.cx + x_cam * r0 + y_cam * u0 + z_cam * f0,
+                    self.cy + x_cam * r1 + y_cam * u1 + z_cam * f1,
+                    self.cz + x_cam * r2 + y_cam * u2 + z_cam * f2)
         # 逆 pitch（绕 X）
         cos_p, sin_p = math.cos(self.pitch), math.sin(self.pitch)
         y1 = y_cam * cos_p + z_cam * sin_p
@@ -264,23 +364,60 @@ class Object3D:
     confidence: float = 0.5
     ts: float = field(default_factory=time.time)
     source: str = "world3d"
+    # ★ 建模层重构 v1 新增：部件/物体的局部朝向（欧拉 XYZ，弧度，绕 center）。
+    #   缺此字段时斜置连杆（如六足机大腿 35°、小腿 -73°）只能画成水平盒，
+    #   「同一件东西」在两侧就对不上——这是本次重构的核心缺口。
+    rot: Tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def to_dict(self) -> Dict:
         return asdict(self)
 
     # ---- 几何 ----
 
+    def _rot_mat(self):
+        """局部朝向 → 3x3 旋转矩阵（欧拉 XYZ，弧度）。rot 全零时返回 None（省算）。"""
+        rx, ry, rz = self.rot or (0.0, 0.0, 0.0)
+        if not (rx or ry or rz):
+            return None
+        cx, sx = math.cos(rx), math.sin(rx)
+        cy, sy = math.cos(ry), math.sin(ry)
+        cz, sz = math.cos(rz), math.sin(rz)
+        # R = Rz · Ry · Rx
+        return (
+            (cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx),
+            (sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx),
+            (-sy, cy * sx, cy * cx),
+        )
+
     def corners(self) -> List[Tuple[float, float, float]]:
-        """8 顶点（box/pillar）；sphere/disk/pyramid 用近似盒。"""
+        """8 顶点（box/pillar）；sphere/disk/pyramid 用近似盒。带 rot 时绕 center 旋转。"""
         x, y, z = self.center
         w, h, d = self.size
         hw, hh, hd = w / 2, h / 2, d / 2
-        return [
+        pts = [
             (x - hw, y - hh, z - hd), (x + hw, y - hh, z - hd),
             (x + hw, y + hh, z - hd), (x - hw, y + hh, z - hd),
             (x - hw, y - hh, z + hd), (x + hw, y - hh, z + hd),
             (x + hw, y + hh, z + hd), (x - hw, y + hh, z + hd),
         ]
+        m = self._rot_mat()
+        if m is None:
+            return pts
+        out = []
+        for px, py, pz in pts:
+            dx, dy, dz = px - x, py - y, pz - z
+            out.append((x + m[0][0] * dx + m[0][1] * dy + m[0][2] * dz,
+                        y + m[1][0] * dx + m[1][1] * dy + m[1][2] * dz,
+                        z + m[2][0] * dx + m[2][1] * dy + m[2][2] * dz))
+        return out
+
+    def rot_normals(self, normals):
+        """把一组轴向法线按 rot 旋转（面剔除必须用**旋转后**的法线）。"""
+        m = self._rot_mat()
+        if m is None:
+            return normals
+        return [tuple(m[i][0] * n[0] + m[i][1] * n[1] + m[i][2] * n[2] for i in range(3))
+                for n in normals]
 
     def depth(self, cam: "Camera3D" = None) -> float:
         """相机前向深度（画家算法排序与透视尺度用）。
@@ -331,7 +468,7 @@ class World3D:
         X, Y, Zw = cam.unproject(cx_px, cy_px, Z, screen_w, screen_h)
         # 深度启发式：贴地/天空约束
         if spec.ground:
-            Y = spec.size[1] / 2          # 底部贴地（世界 y）
+            Y = self._ground_y(vprim.category, spec.size)   # 底部贴地（世界 y）
         else:
             # 天空物体：不低于地平线——取同深度地平线像素的世界高度作下界
             # （旧式 (screen_h-horizon_px)*Z/f*0.5 的 0.5 为经验标定，追不到出处；
@@ -361,38 +498,159 @@ class World3D:
 
     # ---- 3D → 2D 渲染（时空重建的输出侧） ----
 
-    def render(self, screen_w: int = 800, screen_h: int = 600,
-               camera: Camera3D = None, background: Tuple[int, int, int] = (20, 24, 40),
-               ground_color: Tuple[int, int, int] = (30, 34, 50)) -> "PIL.Image":
-        """画家算法渲染：远→近绘制 3D 物体投影。返回 PIL Image。
+    @staticmethod
+    def _check_screen_dim(screen_w: int, screen_h: int) -> None:
+        """渲染单边尺寸上限（#416）——**位图与矢量两条出口共用同一判据**。
 
         #416：位图分配前先判单边上限 `MAX_SCREEN_DIM`——`Image.new` 按
         w*h*3 字节直接分配，任意大尺寸即内存耗尽（旧实现不设上限、静默分配）。
         超限 fail-closed 抛 `ValueError`（**不**静默钳到上限——静默钳会让调用方
         以为拿到了请求的尺寸）。判据来源：经验标定（本件 #416），追不到更早出处。
-        """
-        from PIL import Image, ImageDraw
 
+        矢量出口自身不做 w*h 分配（只按调用序列录元素），此处仍沿用同一上限，
+        为的是**两条出口同语义**：同一组参数要么都放行、要么都拒绝，调用方不必
+        记两套尺寸规则。
+        """
         if screen_w > MAX_SCREEN_DIM or screen_h > MAX_SCREEN_DIM:
             raise ValueError(
                 "#416 渲染尺寸超上限：screen_w=%r screen_h=%r > MAX_SCREEN_DIM=%d"
                 "（位图按 w*h*3 字节分配，拒绝以防内存耗尽）"
                 % (screen_w, screen_h, MAX_SCREEN_DIM))
-        cam = camera or self.camera
-        img = Image.new("RGB", (screen_w, screen_h), background)
-        draw = ImageDraw.Draw(img)
-        # 地面（地平线以下）
+
+    def _paint(self, draw, cam: Camera3D, screen_w: int, screen_h: int,
+               ground_color) -> None:
+        """渲染内核：把「地面 + 画家算法远→近的物体」画进**与 `ImageDraw` 同形**的后端。
+
+        两条出口只经过这一处绘制序列 ⇒ 绘制顺序与既有剔除/裁剪逻辑（#311 可见面
+        剔除 / #312 部件深度序 / #313 塔尖投影 / #403 近平面裁剪）对位图与矢量是
+        **同一条代码**，不存在两套实现走偏的可能。本件只搬出口，不改顺序。
+
+        背景底色不走这里：位图由 `Image.new(..., background)` 铺底（或 z-buffer
+        路径由 `ZBuffer(..., background)` 预填），矢量由 `SVGBackend(..., background=...)`
+        在文档首部铺底——三者同一语义。
+
+        `draw` 只需具备与 `PIL.ImageDraw` 同形的 `rectangle/polygon/ellipse/line`。
+        若后端另有 `set_depth`（`mesh3d.ZBuffer`），绘制每个物体/部件前先告知其
+        **常数深度**，让真图元与网格三角面在同一个 z-buffer 里正确互相遮挡；
+        `PIL.ImageDraw` / `SVGBackend` 没有该方法 ⇒ 逐字节不变。
+        """
+        # 地面（地平线以下）——深度 0.0（最远，任何几何都盖得住它）
         horizon_px = screen_h * 0.45
+        self._set_backend_depth(draw, 0.0)
         draw.rectangle([0, int(horizon_px), screen_w, screen_h], fill=ground_color)
 
         # 画家算法：按相机深度降序（远先画）
         for obj in sorted(self.objects, key=lambda o: -o.depth(cam)):
-            self._draw_object(draw, obj, cam, screen_w, screen_h, horizon_px)
+            self._set_backend_depth(draw, self._inv_z_of(cam, obj.center))
+            self._draw_object(draw, obj, cam, screen_w, screen_h)
+
+    def render(self, screen_w: int = 800, screen_h: int = 600,
+               camera: Camera3D = None, background: Tuple[int, int, int] = (20, 24, 40),
+               ground_color: Tuple[int, int, int] = (30, 34, 50),
+               ssaa: int = 1) -> "PIL.Image":
+        """渲染：远→近绘制 3D 物体投影。返回 PIL Image。
+
+        两条**位图**路径（按场景是否含显式网格分流）：
+
+        · **全图元场景（无 mesh）**：原路径原样——`Image.new` 铺底 +
+          `PIL.ImageDraw` + `_paint`。B1 硬约束：这条路径的输出与重构前
+          **逐字节相同**（sha256 见 tests/test_mesh3d_zbuffer_guard.py）。
+        · **含网格场景**：`mesh3d.ZBuffer` **真 z-buffer** 逐像素深度测试
+          （替代 v1 网格通道的「画家算法 + 平均深度排序」）⇒ 多面数不穿模。
+          图元（盒/球/塔）以常数深度参与同一个深度缓冲，故混合场景也能正确
+          排序；`ZBuffer` 与 `ImageDraw` 同形 ⇒ 绘制序列仍是 `_paint` 那一份。
+
+        `ssaa>1` 时在 `ssaa` 倍分辨率上光栅化再 LANCZOS 降采样（超采样抗锯齿）；
+        只作用于网格路径（图元路径必须逐字节不变，不能改）。
+
+        #416：位图分配前先判单边上限 `MAX_SCREEN_DIM`（见 `_check_screen_dim`），
+        缩放后的实际分配尺寸同样判一次。
+        """
+        from PIL import Image, ImageDraw
+
+        self._check_screen_dim(screen_w, screen_h)
+        cam = camera or self.camera
+        if not self._has_mesh():
+            img = Image.new("RGB", (screen_w, screen_h), background)
+            draw = ImageDraw.Draw(img)
+            self._paint(draw, cam, screen_w, screen_h, ground_color)
+            return img
+        ss = int(ssaa) if ssaa and int(ssaa) > 1 else 1
+        w, h = screen_w * ss, screen_h * ss
+        self._check_screen_dim(w, h)
+        zbuf = ZBuffer(w, h, background)
+        self._paint(zbuf, cam, w, h, ground_color)
+        img = Image.frombytes("RGB", (w, h), zbuf.to_bytes())
+        if ss > 1:
+            img = img.resize((screen_w, screen_h), Image.LANCZOS)
         return img
 
+    #: 渲染档位（三档**共享同一份投影与光栅化内核**，只改分辨率与超采样倍数）。
+    #: 纯 Python 逐像素 z-buffer 的实际耗时随「分辨率 × 面数」走，故按用途分档：
+    #: preview = 交互预览；standard = 标准出图；high = 离线高质量（1280×720 + 2×SSAA，
+    #: 实际光栅化在 2560×1440 上做，再 LANCZOS 降采样出抗锯齿边缘）。
+    #: 判据来源：本件性能标定（见 _evidence/world3d-refactor/perf_attribution.json）。
+    QUALITY_TIERS: Dict[str, Dict[str, int]] = {
+        "preview": {"screen_w": 320, "screen_h": 240, "ssaa": 1},
+        "standard": {"screen_w": 800, "screen_h": 600, "ssaa": 1},
+        "high": {"screen_w": 1280, "screen_h": 720, "ssaa": 2},
+    }
+
+    def render_quality(self, quality: str = "standard", camera: Camera3D = None,
+                       background: Tuple[int, int, int] = (20, 24, 40),
+                       ground_color: Tuple[int, int, int] = (30, 34, 50)) -> "PIL.Image":
+        """按档位渲染（`preview` / `standard` / `high`）——同一内核，只改分辨率与 SSAA。
+
+        档位名不认识时 fail-closed 抛 `ValueError`（**不**静默退回默认档：静默退回
+        会让调用方以为拿到了请求的档位）。"""
+        tier = self.QUALITY_TIERS.get(quality)
+        if tier is None:
+            raise ValueError(
+                "未知渲染档位 %r；可选：%s"
+                % (quality, ", ".join(sorted(self.QUALITY_TIERS))))
+        return self.render(tier["screen_w"], tier["screen_h"], camera=camera,
+                           background=background, ground_color=ground_color,
+                           ssaa=tier["ssaa"])
+
+    def _ground_y(self, category: str, size) -> float:
+        """地面物体的**枢轴高度**（世界 y），使部件组合的**真实底部**落在 y=0。
+
+        缺陷（上游 issue #231 在本链上只修了一半，独立复核者实测）：
+          `shapes.load_shapes` **尊重**了产物声明 `pos_origin: "anchor"`
+          （部件坐标相对**关节枢轴**、不归零），但渲染层照旧用
+          `Y = size[1] / 2` 贴地——那个式子只在部件**已归零到包围盒中心**时成立。
+          枢轴口径下部件包围盒中心 y ≠ 0（实测 5 个真实产物
+          0.29 / 0.53 / 0.58 / 0.26 / 0.40），于是整台机构被抬高同一数值
+          （「浮空」），与 `scene_model.load_world_from_memory` 那条路径的
+          位置对不上（后者实测质心差仅 1.0 / −2.4 px）。
+
+        修法：口径为 `"anchor"` 时按**部件局部包围盒底**算 `Y = -lo_y`；
+        其余（`"bbox_center"` / 无形状库）**逐字节沿用** `size[1] / 2`
+        ——既有图元/内置形状路径的像素不受影响（#221 守卫保持绿）。
+
+        判据来源：上游 issue #231「部件相对坐标零点与 world3d 底部贴地冲突」；
+        口径声明见 `shapes.load_shapes` 的 `pos_origin` 与 `shapes.shape_origin`。
+        """
+        try:
+            from .shapes import shape_origin, shape_local_bounds
+        except ImportError:
+            from .shapes import shape_origin, shape_local_bounds
+        if shape_origin(category) == "anchor":
+            b = shape_local_bounds(category)
+            if b is not None:
+                return -b[0][1]
+        return size[1] / 2.0
+
     def _draw_object(self, draw, obj: Object3D, cam: Camera3D,
-                     screen_w: int, screen_h: int, horizon_px: float) -> None:
-        """绘制单个物体——有形状库则按部件组合绘制（里程碑1.3），否则回退单图元。"""
+                     screen_w: int, screen_h: int) -> None:
+        """绘制单个物体——**网格（一等公民）** → 形状库部件 → 单图元。
+
+        v2 起网格分派**在主干里**（不再有文件末尾的 `_ORIG_*` 猴补丁包装）：
+        类别命中 `MESH_LIBRARY` 就整件走显式三角面通道；否则原路不变。
+        """
+        # 一等公民：显式几何通道（top-level，不再靠包装注入）
+        if obj.category in MESH_LIBRARY:
+            return self._draw_mesh(draw, obj, cam, screen_w, screen_h)
         # 里程碑1.3：语义-几何绑定（物品到语义的还原——部件组合形状）
         try:
             from .shapes import get_shape
@@ -454,8 +712,9 @@ class World3D:
             category=obj.category, center=part_center,
             size=tuple(part["size"]), color=tuple(part.get("color", obj.color)),
             shape=part.get("kind", "box"), confidence=obj.confidence,
-            source=obj.source)
+            source=obj.source, rot=tuple(part.get("rot") or (0.0, 0.0, 0.0)))
         # 按部件图元绘制
+        self._set_backend_depth(draw, self._inv_z_of(cam, part_center))
         kind = part.get("kind", "box")
         if kind in ("sphere", "disk"):
             self._draw_sphere(draw, temp, cam, screen_w, screen_h)
@@ -510,8 +769,10 @@ class World3D:
         # 判据来源：docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md
         # §3.2 透视投影——可见面须位于相机一侧（凸体面剔除为精确判定）。
         eye = (cam.cx, cam.cy, cam.cz)
+        _nrm = obj.rot_normals([(0.0, 0.0, -1.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0),
+                                (0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (-1.0, 0.0, 0.0)])
         faces = [
-            ((c[0], c[1], c[2], c[3]), (0.0, 0.0, -1.0)),   # 前面
+            ((c[0], c[1], c[2], c[3]), _nrm[0]),   # 前面
             ((c[4], c[5], c[6], c[7]), (0.0, 0.0, 1.0)),    # 后面
             ((c[0], c[1], c[5], c[4]), (0.0, -1.0, 0.0)),   # 底面
             ((c[3], c[2], c[6], c[7]), (0.0, 1.0, 0.0)),    # 顶面
@@ -595,6 +856,83 @@ class World3D:
                 draw.polygon([(p[0], p[1]) for p in poly], fill=obj.color,
                              outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
             except Exception:
+                pass
+
+    # ---- 显式几何通道（网格一等公民 · v2） ----
+
+    #: 网格着色模式（闭集 `mesh3d.SHADE_MODES`）：
+    #:   "studio"（**v3 起默认**）= 半球环境（天光 + **非零**地面反弹）+ 主光
+    #:        （裸/半 Lambert 混合）+ 对侧补光 + 视线补光 + Fresnel 边缘光，
+    #:        再过曝光 + 指数软肩的 look 曲线；颜色在线性空间相乘；
+    #:        并按 `face.mat → role` 走 `shade_paint.ROLE_PALETTE` 分层。
+    #:   "toon" / "toon_studio" = 同 studio，按 `mesh3d.TOON_BANDS` 做色阶量化（NPR）。
+    #:   "lambert" = **冻结**的 v2 口径（朝下面环境项归零 ⇒ 真实模型侧面死黑，
+    #:        实测 mean_luma 48.6/255；保留是为了逐位回退与对照）。
+    #:   "naive" = 旧网格通道同款的 `0.55 + 0.55·cos`（像素口径回退用）。
+    #: 判据来源：Blender 侧 VISUAL-ITERATIONS.md 的 8 条手法 + shade_paint 头部实测记录。
+    mesh_shade: str = "studio"
+    #: 网格是否做背面剔除（闭合网格的精确判定）。
+    mesh_cull: bool = True
+    #: 网格是否用 OBJ 顶点法线做 Gouraud 平滑（无 `vn` 的模型自动退回平面着色）。
+    mesh_smooth: bool = False
+
+    def _has_mesh(self) -> bool:
+        """场景里是否有物体走显式网格通道（决定位图出口走不走 z-buffer）。"""
+        for obj in self.objects:
+            if obj.category in MESH_LIBRARY:
+                return True
+        return False
+
+    @staticmethod
+    def _set_backend_depth(draw, inv_z: float) -> None:
+        """把当前图元的**常数深度**（`1/z_cam`）告诉支持深度测试的后端。
+
+        `PIL.ImageDraw` 与 `SVGBackend` 都没有 `set_depth` ⇒ 这里什么都不做，
+        既有像素/矢量输出**逐字节不变**（#B1，见
+        tests/test_mesh3d_zbuffer_guard.py 的 sha256 断言）。
+        """
+        fn = getattr(draw, "set_depth", None)
+        if fn is not None:
+            fn(inv_z)
+
+    @staticmethod
+    def _inv_z_of(cam: Camera3D, point) -> float:
+        d = cam.depth_of(point)
+        return (1.0 / d) if d > 1e-9 else 0.0
+
+    def _draw_mesh(self, draw, obj, cam, sw, sh):
+        """显式三角面 → 两条出口（**共用同一份投影内核** `prepare_triangles`）。
+
+        · **位图出口**（`draw` 是 `mesh3d.ZBuffer`）：逐像素 z-buffer 深度测试
+          ⇒ 多面数不再穿模。深度存 `1/z_cam`（大者近），`1/z` 在屏幕空间仿射
+          ⇒ 深度插值天然透视校正；顶点属性按 `p_i = λ_i·w_i` 插值亦透视校正。
+        · **矢量出口**（`SVGBackend`，无 z-buffer）：同一批屏幕三角形按平均
+          `1/z` 远→近发射 ⇒ 画家算法近似；顺序即文档顺序，SVG 天然支持。
+        · 近平面**真裁剪**与背面剔除都在 `prepare_triangles` 里做一次，两条出口
+          不会走偏。
+        """
+        mesh = MESH_LIBRARY.get(obj.category)
+        if mesh is None:
+            return
+        if obj.rot:
+            mesh = mesh.rotated(obj.rot)
+        tris, _st = prepare_triangles(
+            mesh, obj.center, cam, sw, sh,
+            shade=self.mesh_shade, cull=self.mesh_cull, smooth=self.mesh_smooth)
+        if not tris:
+            return
+        if isinstance(draw, ZBuffer):
+            rasterize_triangles(draw.depth, draw.color, sw, sh, tris,
+                                stats=draw.stats)
+            return
+        for t in painter_sorted(tris):
+            col = shade_rgb((t[12], t[13], t[14]), (t[3] + t[7] + t[11]) / 3.0)
+            try:
+                draw.polygon([(t[0], t[1]), (t[4], t[5]), (t[8], t[9])],
+                             fill=col, outline=None)
+            except (TypeError, ValueError, IndexError):
+                # 单面发射不出来不该毁掉整份矢量文档（best-effort）；异常类型收窄到
+                # 后端真正会抛的几类（本仓 tools/silent_except_lint.py 口径 (b)）。
                 pass
 
     # ---- 序列化 ----
@@ -732,3 +1070,32 @@ class World3D:
         if not hasattr(self, '_anchor_graph') or self._anchor_graph is None:
             self.build_anchor_graph()
         return self._anchor_graph.verify_conflict(anchor_id, channel, expected, actual)
+
+
+# ===========================================================================
+# 显式几何通道 · 网格（World3D 重构 v2 · 网格一等公民）
+# ---------------------------------------------------------------------------
+# v1（PR #471）把网格写成**文件末尾的猴补丁**：
+#     _ORIG_DRAW_OBJECT = World3D._draw_object
+#     World3D._draw_object = _draw_object_with_mesh
+# 它没进主干，是「外挂」而非一等公民——这正是「只能呈现方块」的结构性原因。
+#
+# v2 的三处结构性改动（本段 + mesh3d.py）：
+#   ① 几何与光栅化内核搬到 `mesh3d.py`（MeshGeometry / 三角化 / z-buffer /
+#      透视校正 / 光照），本文件只留**分派**与**两条出口**；
+#   ② 猴补丁删除：网格分派**并入主干 `_draw_object`**（见上文 `if obj.category
+#      in MESH_LIBRARY`），没有包装、没有 `_ORIG_*`；
+#   ③ 位图出口走**真 z-buffer**（`mesh3d.ZBuffer` + 逐像素深度测试），
+#      矢量出口仍走「同一份投影内核 + 按 1/z 远→近发射多边形」的近似路径。
+#
+# 判据来源：docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md §3.2
+#   投影-关联（遮挡按相机坐标 z；近平面做多边形裁剪，同 #228/#311/#403 口径）；
+#   z-buffer 逐像素算法本身属本件经验标定，判据在
+#   tests/test_mesh3d_zbuffer_guard.py（与暴力参考实现逐像素一致 + 旧画家序可见穿模）。
+# ===========================================================================
+from .mesh3d import (                                        # noqa: E402
+    MESH_LIBRARY, MeshGeometry, ZBuffer, load_mtl, load_obj_mesh,
+    painter_sorted, prepare_triangles, rasterize_triangles, register_mesh,
+    shade_rgb,
+)
+

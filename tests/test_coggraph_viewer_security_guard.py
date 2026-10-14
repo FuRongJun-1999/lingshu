@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""coggraph viewer 安全守卫 —— 三件缺陷的「缺陷不再存在」断言（#245 / #251 / #410）。
+"""coggraph viewer 安全守卫 —— 四件缺陷的「缺陷不再存在」断言（#245 / #251 / #410 / #532）。
 
 本件是 pytest 式（含 test_* 方法），由 `pytest tests/` 自动收集；无需列入
 gate.yml 的 SCRIPT_TESTS（见 tests/test_gate_coverage.py 的覆盖判据）。
@@ -21,15 +21,21 @@ C 组（#410 自动归并）——一键链路把 synonym_groups 直接喂给 bu
   build_viewer **默认不归并**（synonym 组只作待复核候选）；只有显式
   `--merge-synonyms` 才在视图层重映射别名。端到端断言两种模式的可观测差别。
 
+D 组（#532 枢纽 degree 取声明 count）——build_viewer 旧码 `"degree": h["count"]` 把
+  derive_edges 登记的「该组节点数」当成连接度 ⇒ degree 与实际边数自相矛盾。断言钉住：
+  degree == 实际连到该枢纽的边数，声明值另存 node_count。
+
 运行：python -X utf8 -m pytest tests/test_coggraph_viewer_security_guard.py -q
 """
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -267,6 +273,136 @@ class SynonymNoAutoMergeTests(unittest.TestCase):
         m = re.search(r"if args\.merge_synonyms:\s*\n\s*build_args \+= \[\"--merge-synonyms\"\]", src)
         self.assertIsNotNone(
             m, "view_memory 未把 --merge-synonyms 置于 args.merge_synonyms 条件之下")
+
+
+# ============================================ D 组 · #532 枢纽 degree 按实际边数
+
+class HubDegreeFromActualEdgesTests(unittest.TestCase):
+    """#532：枢纽节点的 degree 必须等于**实际连接边数**，不是 derive_edges 声明的 count。
+
+    缺陷形态（build_viewer 旧码 `"degree": h["count"]`）——count 是 derive_edges 登记的
+    「该组节点数」（R4 日枢纽语义），不是连接度；直接套用会让「50 条孤立笔记的日枢纽」
+    被画成 degree=50 的超级节点（degree 与 viewer_graph 里实际边数自相矛盾）。
+    修复形态——degree 按 all_edges 里真正连着该枢纽的边数算，声明值另存 node_count。
+    """
+
+    DECLARED = 3          # 声明的成员数
+    ACTUAL = 1            # 实际连到枢纽的边数（≠ 声明值，这正是判别力所在）
+
+    def _run(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = tmp.name
+        out = os.path.join(base, "out")
+        graph = os.path.join(base, "graph.json")
+        _graph_fixture(graph, [_node("n1", "甲"), _node("n2", "乙"), _node("n3", "丙")])
+        dv = os.path.join(base, "derived.json")
+        with io.open(dv, "w", encoding="utf-8", newline="\n") as f:
+            json.dump({
+                "hubs": [{"id": "bucket:kb", "kind": "bucket", "label": "桶 kb",
+                          "count": self.DECLARED}],
+                "edges": [{"s": "bucket:kb", "t": "n1", "type": "in_bucket",
+                           "derived": True, "rule": "R1_same_bucket"}],
+            }, f, ensure_ascii=False)
+        stub = "// offline stub\n" + "x" * 100001
+        sha = _stub_cyto(out, stub)
+        p = _run_viewer(out, graph, extra=["--derived", dv],
+                        env_extra={"LINGSHU_CYTO_SHA256": sha})
+        self.assertEqual(p.returncode, 0, (p.stdout[-300:], p.stderr[-300:]))
+        with io.open(os.path.join(out, "viewer_graph.json"), encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_hub_degree_equals_actual_edge_count(self):
+        vg = self._run()
+        vn = {n["id"]: n for n in vg["nodes"]}
+        self.assertIn("bucket:kb", vn, sorted(vn))
+        # 夹具不变量：声明的 count 必须 ≠ 实际边数，否则本断言恒真、无判别力
+        actual_edges = [e for e in vg["edges"] if e["s"] == "bucket:kb" or e["t"] == "bucket:kb"]
+        self.assertEqual(len(actual_edges), self.ACTUAL,
+                         "夹具不变量：枢纽实际边数应为 %d，实得 %r" % (self.ACTUAL, actual_edges))
+        self.assertNotEqual(self.DECLARED, self.ACTUAL,
+                            "夹具不变量：声明 count 必须 ≠ 实际边数")
+        self.assertEqual(vn["bucket:kb"].get("degree"), self.ACTUAL,
+                         "枢纽 degree 必须按实际边数算（旧码取声明的 count=%d ⇒ 缺陷形态）"
+                         % self.DECLARED)
+        # 声明值不得丢失：另存 node_count
+        self.assertEqual(vn["bucket:kb"].get("node_count"), self.DECLARED,
+                         "声明的成员数必须另存 node_count，不得顶替 degree")
+        # 自证：旧口径（degree := count）与修复后读数确实不同
+        self.assertNotEqual(vn["bucket:kb"].get("degree"), vn["bucket:kb"].get("node_count"),
+                            "自证：若 degree 仍等于声明 count，本组无判别力")
+
+    def test_hub_degree_matches_index_html_width_source(self):
+        """index.html 的节点宽度 mapData 取 data(degree) ⇒ 送进视图的 degree 也必须是实际边数。"""
+        vg = self._run()
+        vn = {n["id"]: n for n in vg["nodes"]}
+        self.assertEqual(vn["bucket:kb"]["degree"], self.ACTUAL,
+                         "送进 cytoscape 的 degree 不得是声明 count（否则宽度被画成超级节点）")
+
+
+# ============================================================ E 组 · #412 BOM
+
+class ServeTemplateBomReadTests(unittest.TestCase):
+    """#412（viewer_serve.tmpl 读点）：带 UTF-8 BOM 的记忆正文必须剥 BOM 后再判前言。
+
+    缺陷形态：`viewer_serve.tmpl::node_detail` 用纯 utf-8 读节点正文，BOM（U+FEFF）
+    让 `raw.startswith("---")` 判否 ⇒ front matter（含 id/tags/edges）被**整段当正文**
+    展示给用户。
+    修复：读取改 `utf-8-sig`（剥 BOM），`startswith("---")` 成立、前言被正确切除。
+    """
+
+    BODY = "# 功能名：A\n真正的正文\n"
+
+    def _node_detail(self, bom):
+        """把 tmpl 落到临时目录当 serve.py 跑（它从自身目录读 viewer_graph.json）。"""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        shutil.copy(os.path.join(COG, "viewer_serve.tmpl"), os.path.join(tmp, "serve.py"))
+        graph = {"meta": {"counts": {"nodes": 1, "edges": 0}, "source_sha": "test"},
+                 "nodes": [_node("a", "节点A")], "edges": []}
+        with io.open(os.path.join(tmp, "viewer_graph.json"), "w",
+                     encoding="utf-8", newline="\n") as f:
+            json.dump(graph, f, ensure_ascii=False)
+        fm = "---\nid: a\ntitle: A\n---\n"
+        data = (fm + self.BODY).encode("utf-8")
+        if bom:
+            data = b"\xef\xbb\xbf" + data
+        with open(os.path.join(tmp, "a.md"), "wb") as f:
+            f.write(data)
+        old = os.environ.get("MDCG_ROOT")
+        os.environ["MDCG_ROOT"] = tmp
+        self.addCleanup(lambda: os.environ.__setitem__("MDCG_ROOT", old) if old is not None
+                        else os.environ.pop("MDCG_ROOT", None))
+        mod_name = "serve_probe_%d" % id(self)
+        spec = importlib.util.spec_from_file_location(mod_name, os.path.join(tmp, "serve.py"))
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[mod_name] = mod
+        self.addCleanup(lambda: sys.modules.pop(mod_name, None))
+        # serve.py 顶部 `if len(sys.argv) > 2: MDCG = sys.argv[2]` —— pytest 的 argv 恒 >2，
+        # 不隔离会把 MDCG 顶成本进程的测试参数。执行期临时换成单元素 argv。
+        old_argv = sys.argv
+        sys.argv = ["serve.py"]
+        try:
+            spec.loader.exec_module(mod)
+        finally:
+            sys.argv = old_argv
+        return mod.node_detail("a").get("content") or ""
+
+    def test_bom_frontmatter_is_not_shown_as_content(self):
+        content = self._node_detail(bom=True)
+        self.assertNotIn("id: a", content,
+                         "BOM 使 startswith('---') 判否 ⇒ front matter 被整段当正文展示（#412 缺陷形态）")
+        self.assertIn("真正的正文", content)
+
+    def test_no_bom_behavior_unchanged(self):
+        """回归：无 BOM 路径读数与修复前逐字相同（正文原样、前言同样被切掉）。"""
+        content = self._node_detail(bom=False)
+        self.assertNotIn("id: a", content)
+        self.assertIn("真正的正文", content)
+
+    def test_bom_and_no_bom_readings_match(self):
+        self.assertEqual(self._node_detail(bom=True), self._node_detail(bom=False),
+                         "BOM 与非 BOM 的正文读数必须一致（否则即 #412 缺陷形态）")
 
 
 if __name__ == "__main__":

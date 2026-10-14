@@ -34,6 +34,20 @@ WF = os.path.join(REPO, ".github", "workflows", "pr-lint.yml")
 FLAG_TITLES = ("--help", "-h", "--list-types", "--selftest")
 VALID_TITLE = "fix(world): 某处修正——示例"
 
+#: 残余绕过行（#361 补记 2026-10-12 · cb3a6ea 实测 rc=0； hawkongz R28/R29 复核
+#: 证实 df6e629 的守卫对它们无判别力）。零宽 U+200B 是 Cf 格式符——不被
+#: str.strip() / 正则 \s 认作空白，「视觉为空」的摘要/scope 照样过闸；
+#: BiDi 覆写 U+202E 同为 Cf（视觉伪装）；超长 Revert 借特例躲过 MAX_LEN_FAIL。
+_ZW = "\u200b"                       # ZERO WIDTH SPACE（Cf）
+INVISIBLE_TITLES = (
+    "fix: " + _ZW,                   # 零宽摘要——视觉为空
+    "fix(" + _ZW + "world): x",      # 零宽 scope
+    "fix(" + _ZW + "): " + _ZW,      # 两者都零宽
+    "fix: \u202ex",                  # BiDi RLO 覆写伪装
+)
+OVERLONG_REVERT = 'Revert "' + "x" * 334 + '"'   # > MAX_LEN_FAIL(300)
+NORMAL_REVERT = 'Revert "' + "y" * 24 + '"'      # 合法长度特例——必须仍放行
+
 
 def _run_commands():
     """从 pr-lint.yml 抽出所有 `run:` 里的 check_pr_title 调用（保序）。"""
@@ -128,6 +142,44 @@ def test_selftest_entry_still_works():
     assert r.returncode == 0, (
         "自检入口被 #361 修复连带打断：rc=%d stdout=%r"
         % (r.returncode, r.stdout.strip()[:200]))
+
+
+# ------------------------------------------- G4/G5 · #361 残余（零宽 / 超长 Revert）
+def test_invisible_char_titles_are_rejected_by_the_real_gate_command():
+    """G4（残余①）：不可见字符标题（零宽摘要/scope、BiDi 覆写）⇒ 必须非 0。
+
+    ★判别力声明：本组断言在**未修残余**的树上必红（cb3a6ea 实测 4 行全 rc=0），
+    修复后必绿——「残余行全坏」与「全好」两种状态在本守卫下不再同形
+    （R28/R29 对 df6e629 守卫的批评正是无此判别力）。
+    """
+    cmd = _title_step_command()
+    bad = []
+    for t in INVISIBLE_TITLES:
+        r = _run(_as_argv(cmd, t), t)
+        if r.returncode == 0:
+            bad.append("%r(U+%04X 等) → rc=0（视觉为空/伪装的标题被放行）"
+                       % (t, ord(_ZW)))
+    assert not bad, (
+        "PR 标题门仍可被不可见字符绕过（#361 残余①）：\n"
+        + "\n".join("  · %s" % b for b in bad)
+        + "\n\n修法：check() 对 Cf/Cc/Cs 类字符（零宽 U+200B、BiDi U+202A-E/U+2066-9、"
+          "BOM、控制符、孤立代理）判负——它们不被 strip()/\\s 认作空白。")
+
+
+def test_overlong_revert_is_rejected_but_normal_revert_passes():
+    """G5（残余②）：超长 Revert 判负；正常长度 Revert 仍放行（防过修）。
+
+    旧形态：长度检查在 Revert 特例**之后**，特例先短路 ⇒ 任意长 Revert 借道过闸。
+    """
+    cmd = _title_step_command()
+    r_bad = _run(_as_argv(cmd, OVERLONG_REVERT), OVERLONG_REVERT)
+    assert r_bad.returncode != 0, (
+        "超长 Revert（%d 字符 > %d）仍被特例放行（#361 残余②）：stdout=%r"
+        % (len(OVERLONG_REVERT), 300, r_bad.stdout.strip()[:120]))
+    r_ok = _run(_as_argv(cmd, NORMAL_REVERT), NORMAL_REVERT)
+    assert r_ok.returncode == 0, (
+        "正常长度 Revert 被误判负（修过头）：rc=%d stdout=%r"
+        % (r_ok.returncode, r_ok.stdout.strip()[:120]))
 
 
 if __name__ == "__main__":

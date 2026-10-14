@@ -17,7 +17,7 @@
 
 红线：白箱（零 LLM、纯 stdlib+numpy）；**只读复用** `aeis.hex_composite._paint`（既有确定性画笔）
 与 `hexgen_c1_real` 的读出链、`hexgen_multi_seed` 的 summarize；不修改它们。
-命令行：python experiments/hexgen_self_source.py
+命令行：python -X utf8 -m lingshu.gen.hexgen_self_source（仓根执行；参数见 --help）
 """
 import argparse
 import io
@@ -204,8 +204,8 @@ DOT_SP_FRAC = 1.0 / 4.0
 DOT_R_FRAC = 1.0 / 10.0
 
 
-def pattern_mask(shape, size, cx, cy, rad, pattern, ss=SS):
-    """花纹掩膜（**周期与 rad 挂钩**；去摩尔纹）：striped=竖条（条宽 rad/6）、
+def pattern_mask(size, cx, cy, rad, pattern, ss=SS):
+    """花纹掩膜（**周期与 rad 挂钩**；去摩尔纹；与形状无关）：striped=竖条（条宽 rad/6）、
     dotted=方点阵（点距 rad/4、点径 rad/10）；solid 返回全 0（无调制）。"""
     if pattern == "solid":
         return np.zeros((size, size), np.float32)
@@ -236,7 +236,7 @@ def paint_object_v2(img, shape, cx, cy, rad, rgb, pattern):
     base = np.asarray(rgb, np.float32)
     obj = np.broadcast_to(base, (sz, sz, 3)).astype(np.float32).copy()
     if pattern != "solid":
-        pc = pattern_mask(shape, size=sz, cx=cx, cy=cy, rad=rad, pattern=pattern) * cov
+        pc = pattern_mask(size=sz, cx=cx, cy=cy, rad=rad, pattern=pattern) * cov
         dark = base * 0.55
         obj = obj * (1.0 - pc[..., None]) + dark[None, None, :] * pc[..., None]
     #   **必须按覆盖率合成到既有画布**（R296 首跑 bug：直接整幅赋值 `img[...] = ...` 会把先前
@@ -413,8 +413,8 @@ def paint_object_v3(img, shape, cx, cy, rad, rgb, pattern):
         if PATTERN_MODE == "symmetric":
             obj = _modulate_symmetric(obj, cov, shape, cx, cy, rad, base, pattern)
         else:                                       # R296–R299 口径：单侧变暗（保留并列）
-            pc = pattern_mask(shape if shape in ("circle", "triangle", "stripe") else "stripe",
-                              size=sz, cx=cx, cy=cy, rad=rad, pattern=pattern) * cov
+            pc = pattern_mask(size=sz, cx=cx, cy=cy, rad=rad,
+                              pattern=pattern) * cov
             dark = base * 0.55
             obj = obj * (1.0 - pc[..., None]) + dark[None, None, :] * pc[..., None]
     cur = img.astype(np.float32)
@@ -551,8 +551,8 @@ def _modulate_symmetric(obj, cov, shape, cx, cy, rad, base, pattern, delta=None,
     if delta is None:
         delta = PATTERN_DELTA_BY.get(pattern, PATTERN_DELTA)
     sz = obj.shape[0]
-    pm = pattern_mask(shape if shape in ("circle", "triangle", "stripe") else "stripe",
-                      size=sz, cx=cx, cy=cy, rad=rad, pattern=pattern) * cov
+    pm = pattern_mask(size=sz, cx=cx, cy=cy, rad=rad,
+                      pattern=pattern) * cov
     ck = _checker(cx, cy, sz)
     axis = np.asarray(bg, np.float32) - np.asarray(base, np.float32)      # 朝背景的向量
     step = (delta * pm)[..., None] * axis[None, None, :] * (2.0 * ck - 1.0)[..., None]

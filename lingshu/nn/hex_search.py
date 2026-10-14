@@ -195,9 +195,11 @@ def search_report(net: HexHierNet, lat: np.ndarray, metas: List[Dict],
     total_nodes = total_rej = 0
     n = len(lat)
     for i in range(n):
-        found, stats = recursive_search(net, lat[i:i + 1], metas[i]["labels"],
-                                        ) if False else recursive_search(
-            net, lat[i:i + 1], max_depth=max_depth)
+        # #453：原写法是 `recursive_search(net, lat[i:i+1], metas[i]["labels"],)
+        # if False else recursive_search(net, lat[i:i+1], max_depth=max_depth)`——
+        # 恒假 IfExp：死分支永不求值（其第三位置实参 list 还落在签名
+        # `max_depth: int` 的位置上），属调用口径变更后的残骸，移除。
+        found, stats = recursive_search(net, lat[i:i + 1], max_depth=max_depth)
         truth_pos = {lb["pos"] for lb in metas[i]["labels"]}
         det_pos = {f["pos"] for f in found}
         pos_hit += len(truth_pos & det_pos)

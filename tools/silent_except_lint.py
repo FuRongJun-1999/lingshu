@@ -65,7 +65,10 @@ L2 宽 except 的"改窄到具体类型"建议**不**由本工具判定——工
 L3 按**文件**聚合（非行号锚）：基线存"每文件静默数"，同一文件内增删行不会顶漂；
    但同一文件内"消一处、增一处"会相互抵消——故守卫同时校验**总计数**（见守卫）。
 L4 解析失败（语法 / 编码）的文件：如实记为 `unparsable` 并在报告中列出，**不计入**
-   宽/静默计数（不为了跑通去改被扫文件——见批次 F 铁律 2）。
+   宽/静默计数（不为了跑通去改被扫文件——见批次 F 铁律 2）。★v2 起 unparsable
+   非空 ⇒ **退出 1**（fail-closed）＋ `--update-baseline` 拒写（退出 2）——v1 的
+   「不计入 ⇒ 照常退出 0」使「语法错 ＋ N 处静默宽 except」的新文件可整文件逃出
+   审计而守卫恒绿，属 #408 同构 fail-open，已收口（见头部「退出码」）。
 
 用法
 ----
@@ -81,12 +84,18 @@ baseline 格式
     每行 `<仓内相对路径>\t<静默数>`；`#` 起为注释；空行忽略。
     缺失的文件按 0 计（即"该文件不得新增静默宽 except"）。
 
-退出码（冻结）
---------------
-0  无新增（每文件静默数 ≤ 基线，且总静默数 ≤ 基线总和）
-1  存在超基线（某文件静默数 > 基线，或出现基线外的新文件）
+退出码（v2 修订——unparsable 由静默放行改为 fail-closed）
+--------------------------------------------------------
+0  无新增（每文件静默数 ≤ 基线，且总静默数 ≤ 基线总和，且无 unparsable 文件）
+1  存在超基线（某文件静默数 > 基线，或出现基线外的新文件），**或存在 unparsable
+   文件**——审计面不完整 ⇒ 计数不可信，不得以退出 0 放行（fail-closed；与
+   `verify_manifest` 修 #408 的「扫描面被清空不得静默变绿」刻意语义同构）。
+   v1 曾对 unparsable 静默退出 0：新文件「语法错 ＋ N 处静默宽 except」可整文件
+   逃出审计而守卫恒绿（实测复现：2 处静默＋语法错 ⇒ exit 0 / 计数 0；只修语法错
+   ⇒ exit 1）——本版收口。
 2  用法 / 路径错误（路径不存在、baseline 格式错、显式 baseline 缺失、
-   `--update-baseline` 与 `--json` 同用；argparse 自身错误同样返回 2）
+   `--update-baseline` 与 `--json` 同用、**`--update-baseline` 遇 unparsable 文件**
+   （拒绝写基线——防该文件既有计数无痕丢失）；argparse 自身错误同样返回 2）
 """
 from __future__ import annotations
 
@@ -98,7 +107,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-LINT_VERSION = 1
+LINT_VERSION = 2
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCAN_DIR = "lingshu"
@@ -356,7 +365,9 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
     # 基线里登记了但本次扫描不到的路径：不算违规，仅提示（可能是文件被删/改名）
     missing = sorted(p for p in baseline_counts if p not in files)
 
-    exit_code = 1 if over else 0
+    # v2 fail-closed（见头部「退出码」）：unparsable ⇒ 审计面不完整，不得以 0 放行。
+    unparsable = report["unparsable"]
+    exit_code = 1 if (over or unparsable) else 0
     payload = {
         "actual_total": actual_total,
         "baseline_file": normalize_report_path(baseline_path, root),
@@ -374,13 +385,19 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
             "silent_total": actual_total,
             "wide_total": sum(v["wide"] for v in files.values()),
         },
-        "unparsable": report["unparsable"],
+        "unparsable": unparsable,
         "version": LINT_VERSION,
     }
 
     if args.update_baseline:
         if args.json:
             return 2, "--update-baseline 不能与 --json 同用\n", {"exit_code": 2}
+        if unparsable:
+            # 拒写（v2）：unparsable 文件数不进 counts，写盘会把它的既有基线计数
+            # 无痕丢掉——先修复解析失败（语法错/解释器版本差异），再重取基线。
+            return 2, ("存在 unparsable 文件，拒绝写基线（防计数无痕丢失）：\n  "
+                       + "\n  ".join(unparsable)
+                       + "\n"), {"exit_code": 2}
         counts = {rel: files[rel]["silent"] for rel in sorted(files)}
         prev = (baseline_path.read_text(encoding="utf-8-sig", errors="replace")
                 if baseline_path.exists() else None)
@@ -409,14 +426,16 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
     for rec in over:
         lines.append("[新] %s：静默 %d > 基线 %d（超 %d）"
                      % (rec["file"], rec["silent"], rec["baseline"], rec["excess"]))
-    if report["unparsable"] and not args.quiet:
-        lines.append("解析失败（未计入，见头部 L4）：")
-        lines.extend("  " + u for u in report["unparsable"])
+    if unparsable:
+        lines.append("[不可判] 解析失败 %d 个（退出 1 的原因——审计面不完整，v2 fail-closed）："
+                     % len(unparsable))
+        lines.extend("  " + u for u in unparsable)
     if not args.quiet:
         lines.append("")
         lines.append("扫描 %d 个文件；静默宽 except 合计 %d（基线 %d）；超基线文件 %d"
                      % (report["files_scanned"], actual_total, baseline_total, len(over)))
-        lines.append("退出码 %d（%s）" % (exit_code, "存在超基线" if over else "无新增"))
+        why = "存在超基线" if over else ("存在 unparsable 文件" if unparsable else "无新增")
+        lines.append("退出码 %d（%s）" % (exit_code, why))
     return exit_code, "\n".join(lines) + ("\n" if lines else ""), payload
 
 

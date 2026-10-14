@@ -232,12 +232,18 @@ class HexHierNet:
         return np.concatenate(parts)
 
     def set_vec(self, vec: np.ndarray):
+        """从平铺参数向量载入参数。
+
+        #556（同族 #340）：三段都必须 `.copy()`。`vec[a:b]` 是**视图**，
+        `.reshape` 不改变这一事实——直接持有会把模型参数别名到调用方缓冲上：
+        调用方事后原地改自己的 `vec` 会静默改写模型参数，绕过 set_vec 的显式载入。
+        """
         i, k7 = 0, self.K * 7
-        self.conv = vec[i:i + k7].reshape(self.K, 7); i += k7
+        self.conv = vec[i:i + k7].reshape(self.K, 7).copy(); i += k7
         if self.stacked:
             k2s = self.K2 * self.K * 7
-            self.conv2 = vec[i:i + k2s].reshape(self.K2, self.K, 7); i += k2s
-        self.head = vec[i:].reshape(self.head.shape)
+            self.conv2 = vec[i:i + k2s].reshape(self.K2, self.K, 7).copy(); i += k2s
+        self.head = vec[i:].reshape(self.head.shape).copy()
 
     def n_params(self) -> int:
         n = self.K * 7 + self.head.size

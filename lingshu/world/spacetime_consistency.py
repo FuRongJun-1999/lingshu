@@ -30,6 +30,9 @@ import math
 from collections import deque
 from typing import Dict, List, Optional, Tuple
 
+from .coord_contract import (apply_move,                     # noqa: E402
+                             NF_REJECT_ROUND_ALL)             # 第 4 轮 #4
+
 #: 每 tick 验证记录（预测历史 `_results`）的环形缓冲长度（#427：此前 `_results`
 #: 每 tick 追加、永不裁剪，`overall_hit_rate`/`per_behavior_rates` 又每次全量
 #: 遍历它 ⇒ 长期运行内存与单次报告耗时都随 tick 线性增长）。
@@ -156,16 +159,12 @@ class SpacetimeConsistency:
         越过目标（影子与物理世界分叉）。
         #347：非有限坐标拒绝写入（clamp 表达式遇 NaN 会静默抬成边界值）。
         """
-        if d == (0.0, 0.0, 0.0):
-            return tuple(round(v, 2) for v in pos)
-        step_len = speed if dist is None else min(speed, dist)
-        nx = pos[0] + d[0] * step_len
-        nz = pos[2] + d[2] * step_len
-        if not (math.isfinite(nx) and math.isfinite(nz)):
-            return tuple(round(v, 2) for v in pos)
-        nx = max(0.5, min(self.scene.world.size - 0.5, nx))
-        nz = max(0.5, min(self.scene.world.size - 0.5, nz))
-        return (round(nx, 2), pos[1], round(nz, 2))
+        # ⚠ 第 4 轮 #4：语义收归 `coord_contract.apply_move`，本站点的**两处差异**
+        #   一律显式命名，不再藏在函数体里：
+        #     · `step_cap=dist`      —— #249 步长按到目标的剩余距离封顶
+        #     · `on_nonfinite=...`   —— #347 非有限坐标必须**拒绝**，不许被 clamp 静默抬成边界值
+        return apply_move(pos, speed, d, self.scene.world.size,
+                          step_cap=dist, on_nonfinite=NF_REJECT_ROUND_ALL)
 
     def _shadow_decide(self, e, shadow: Dict[str, Tuple[float, float, float]],
                        follow_target: Optional[Dict[str, int]] = None

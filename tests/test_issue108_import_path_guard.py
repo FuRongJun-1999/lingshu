@@ -69,7 +69,8 @@ def _run(modname, symbol):
     env = dict(os.environ)
     env["PYTHONPATH"] = REPO          # 绝对路径，与被测的相对条目无关
     p = subprocess.run([sys.executable, "-X", "utf8", "-c", code],
-                       capture_output=True, text=True, cwd=REPO, env=env)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       cwd=REPO, env=env)  # #455
     assert p.returncode == 0, f"子进程 import 失败（{modname}）：\n{p.stderr[-2000:]}"
     return json.loads(p.stdout.strip().splitlines()[-1])
 

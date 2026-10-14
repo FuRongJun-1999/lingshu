@@ -29,7 +29,10 @@
 断言组（把修复改回 `find_cycles(max_depth=8)` 无 limit ⇒ Q1/Q2/Q3 红）：
   Q1 枚举有界：11 节点完全有向图 `self_check()["cycles_found"]` 必须 ≤ 5
      （旧形态：3355693 条）。
-  Q2 耗时与内存有界：同一图 `self_check()` < 1s（issue 建议 3；旧形态 13.69s）。
+  Q2 耗时与内存有界：同一图 `self_check()` **CPU 时间 < 1s**，**仅串行环境判**
+     （issue 建议 3；旧形态 13.69s。v2：墙钟与 CPU 时间在 `pytest -n auto` 满载下
+     实测都会被争抢抬高——0.02–0.03s 串行实测 vs 11.85s 满载墙钟 ⇒ 非受控测量
+     不可判，xdist 下 skipif；CI 串行跑，Q2 在 CI 全效力）。
   Q3 截断可观测：`cycles_capped is True`（达到上限）且 `cycle_details` 恰 5 条；
      真无环图 `cycles_capped is False`。
   Q4 非回归：`find_cycles()` 默认（不传 limit）语义不变——A⇄B + 自环仍 ≥2 个环；
@@ -43,6 +46,8 @@ import os
 import sys
 import time
 import warnings
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 warnings.filterwarnings("ignore")
@@ -74,14 +79,26 @@ def test_q1_enumeration_is_bounded():
     assert rep["cycles_found"] >= 1, "前置：完全有向图必有环"
 
 
+@pytest.mark.skipif(
+    os.environ.get("PYTEST_XDIST_WORKER") is not None,
+    reason="时间量具只在受控（串行）环境有效：`-n auto` 满载下本进程 CPU 时间也会被"
+           "缓存/内存带宽争抢抬高（实测串行 0.02–0.03s、满载 >1s）——非受控测量不可判。"
+           "CI（gate.yml）串行跑，Q2 在 CI 全效力；本地并行下 Q1/Q3/Q4 仍守语义。")
 def test_q2_time_bounded():
-    """Q2：同一图 self_check < 1s（issue 建议 3；旧形态 13.69s）。"""
+    """Q2：同一图 self_check 计算量有界（issue 建议 3；旧形态 13.69s）。
+
+    量具口径（v2）：串行环境下 `time.process_time()`（本进程 CPU），容差 1.0s——
+    对当前形态（串行实测 0.02–0.03s）≥30 倍余量，对旧形态（约 13.7s）>10 倍
+    判别力。墙钟在 `-n auto` 满载下实测从 0.02s 膨胀到 11.85s（24 逻辑核），
+    任何墙钟容差不可判；CPU 时间在同样满载下也被片上停顿抬高过 1s——故并行
+    环境整体跳过（见 skipif 理由），只在串行/CI 判定。
+    """
     e = _complete_digraph(11)
-    t = time.time()
+    c0 = time.process_time()
     rep = e.self_check()
-    dt = time.time() - t
+    dt = time.process_time() - c0
     assert dt < 1.0, (
-        "#252：稠密 SCC 上 self_check 仍指数耗时——%.2fs（旧形态 13.69s），"
+        "#252：稠密 SCC 上 self_check 仍指数耗时——CPU %.2fs（旧形态 13.69s），"
         "cycles_found=%r" % (dt, rep["cycles_found"]))
 
 

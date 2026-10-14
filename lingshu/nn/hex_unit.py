@@ -57,7 +57,7 @@ class UnitHeadNet:
     def set_vec(self, v: np.ndarray):
         k = int(self.mask.sum())
         self.gain[self.mask > 0] = np.clip(v[:k], -self.GAIN_BOUND, self.GAIN_BOUND)
-        self.theta = v[k:]
+        self.theta = v[k:].copy()  # #557: 必须复制，不能持有调用方数组视图
 
     def n_params(self) -> int:
         return int(self.mask.sum()) + self.n_card

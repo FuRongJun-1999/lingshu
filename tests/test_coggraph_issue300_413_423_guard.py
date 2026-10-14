@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""coggraph 三件 P2 缺陷的「缺陷不再存在」守卫（#300 / #413 / #423）。
+"""coggraph 四件缺陷的「缺陷不再存在」守卫（#300 / #413 / #423 / #531）。
 
 运行：python -X utf8 -m pytest tests/test_coggraph_issue300_413_423_guard.py -q
 
@@ -10,6 +10,13 @@ A 组（#300 · session_chains 伪会话 "unknown"）——
   先后活动」。断言钉住：产物里不存在 `session:unknown` 枢纽、不存在 session=="unknown"
   的链、不存在两个无归属节点之间的 sequential 边。
   判据来源：经验标定，追不到（缺陷 #300，本件无对应理论章节）。
+
+D 组（#531 · session_chains 遇非数字 t 整轮崩溃）——
+  `_audit.jsonl` 的生产方在仓外、t 无类型契约；旧码 `node_ts[nid] = d.get("t") or 0`
+  把字符串 t 原样存入，`items.sort()` 比较 (t, nid) 元组时 int 与 str 混排 ⇒
+  TypeError: '<' not supported between instances of 'int' and 'str'、rc=1、无产物。
+  断言钉住：非法 t 只跳过该记录并点名告警（rc==0、产物在场、无 TypeError），合法 ISO 串
+  t 按 UTC 解析后仍进链。
 
 B 组（#413 · 侧栏「全库 … 边」恒 NaN）——
   `viewer_graph.json` 的 derived 计数写在**顶层**（`vgraph["derived"]`），meta 原样取自
@@ -139,6 +146,77 @@ def test_a300_fixture_distinguishes_old_behavior():
         assert len(unknown) >= 3, "旧语义下 4 >= min_chain(3) ⇒ 确会产出伪枢纽 session:unknown"
         # 旧语义下这 4 个节点按时间排序会串成 3 条 sequential 边
         assert len(unknown) - 1 == 3
+
+
+# ============================================================ D 组 · #531
+
+def _d_fixture(tmp):
+    """同一会话 s1 内混入一条非法 t（字符串）与一条合法 ISO 串 t。
+
+    缺陷形态：旧码把 "not-a-number" 原样当 t 存入 ⇒ items.sort() 里 int/str 混排 TypeError。
+    修复形态：非法记录跳过（点名告警），合法 ISO 串按 UTC 解析后仍进链。
+    """
+    audit = os.path.join(tmp, "audit.jsonl")
+    lines = [
+        json.dumps({"op": "add", "id": "d1", "t": 1700000000, "session": "s1"}),
+        json.dumps({"op": "add", "id": "d2", "t": "not-a-number", "session": "s1"}),
+        json.dumps({"op": "add", "id": "d3", "t": "2026-01-01T00:00:00", "session": "s1"}),
+        json.dumps({"op": "add", "id": "d4", "t": 1700000600, "session": "s1"}),
+    ]
+    _write(audit, "\n".join(lines) + "\n")
+    graph = os.path.join(tmp, "graph.json")
+    _write_json(graph, {"meta": {"counts": {"nodes": 4, "edges": 0}},
+                        "nodes": [{"id": x, "title": x} for x in ("d1", "d2", "d3", "d4")],
+                        "edges": []})
+    out = os.path.join(tmp, "out")
+    return audit, graph, out
+
+
+def test_d531_non_numeric_t_does_not_crash_and_is_skipped_with_warning():
+    with tempfile.TemporaryDirectory() as tmp:
+        audit, graph, out = _d_fixture(tmp)
+        p = _run([SESSIONS, "--audit", audit, "--graph", graph, "--out", out, "--write"])
+        assert p.returncode == 0, \
+            "#531 缺陷形态：非数字 t 让 items.sort() 抛 TypeError、rc=1、无产物\nstderr:\n%s" % p.stderr
+        assert "TypeError" not in p.stderr, "不得出现 TypeError：%r" % p.stderr
+        assert "not-a-number" in p.stderr or "d2" in p.stderr, \
+            "#531 修复形态：非法 t 必须点名告警（stderr）：%r" % p.stderr
+        prod = os.path.join(out, "session_chains.json")
+        assert os.path.isfile(prod), "rc==0 时产物必须在场（旧码无产物）"
+        doc = _read_json(prod)
+
+        # 合法 ISO 串按 UTC 解析后仍进链 ⇒ 链内应为 d1/d4（数字）与 d3（ISO 串）三条
+        chains = {c["session"]: c for c in doc["chains"]}
+        assert "s1" in chains, "合法记录仍须成链，实得 %r" % doc["chains"]
+        assert chains["s1"]["nodes"] == 3, \
+            "非法 t 的记录被跳过、合法 ISO 串仍入链 ⇒ 该会话 3 节点，实得 %r" % chains["s1"]
+        seq = [e for e in doc["edges"] if e["type"] == "sequential"]
+        assert len(seq) == 2, "3 节点会话应有 2 条顺序边，实得 %r" % seq
+        # 时间序：d1(1700000000) < d4(1700000600) < d3(2026-01-01 UTC = 1767225600)
+        assert [(e["s"], e["t"]) for e in seq] == [("d1", "d4"), ("d4", "d3")], \
+            "顺序边须按归一后的 epoch 秒排序，实得 %r" % seq
+        hub_ids = [h["id"] for h in doc["hubs"]]
+        assert hub_ids == ["session:s1"], "只应有会话 s1 的枢纽，实得 %r" % hub_ids
+
+
+def test_d531_fixture_distinguishes_old_behavior():
+    """自证：按旧语义（t 原样存入）重放，夹具**确实**会因 int/str 混排而炸。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        audit, graph, out = _d_fixture(tmp)
+        node_ts = {}
+        with io.open(audit, encoding="utf-8") as f:
+            for line in f:
+                d = json.loads(line)
+                if d.get("op") == "add" and d.get("session"):
+                    node_ts[d["id"]] = d.get("t") or 0
+        assert node_ts["d2"] == "not-a-number", "夹具应含一条字符串 t，实得 %r" % node_ts
+        items = [(node_ts[n], n) for n in ("d1", "d2", "d3", "d4")]
+        try:
+            items.sort()
+        except TypeError as e:
+            assert "'<'" in str(e), "旧语义应抛 '<' 相关 TypeError，实得 %r" % e
+        else:
+            raise AssertionError("旧语义下 (int, str) 混排必须抛 TypeError，否则本组恒真：%r" % items)
 
 
 # ============================================================ B 组 · #413

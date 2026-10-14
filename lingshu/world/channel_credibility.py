@@ -94,6 +94,25 @@ class ChannelCredibilityRegistry:
                     self._state[ch].update({k: float(st.get(k, self._state[ch][k])) for k in ("a", "b", "hits", "misses")})
         except Exception:
             pass
+        self._sanitize()
+
+    def _sanitize(self) -> None:
+        """把持久化带入的毒状态挡在查询面之外。
+
+        `_update` 只做加法、`reset` 复位到先验，所以 `a+b<=0` / 非有限**只可能
+        来自被篡改或损坏的持久化文件**。修前这些值一路带到
+        `credibility()`/`channel_state()`/`registry()` 才炸（`ZeroDivisionError`，
+        或 NaN 可信度配 `status="ok"`）——炸点离写入点很远，且 `_load` 期的
+        `except Exception: pass` 只兜 JSON 解析、不兜语义。
+        此处 fail-closed：单个通道有毒就**只丢该通道**（回落先验），不牵连其他通道，
+        也不静默修改调用方传入的文件。
+        """
+        for ch, st in self._state.items():
+            a, b = st.get("a"), st.get("b")
+            if not (isinstance(a, (int, float)) and isinstance(b, (int, float))) \
+                    or not math.isfinite(a) or not math.isfinite(b) or (a + b) <= 0:
+                st["a"], st["b"] = PRIOR_A, PRIOR_B
+                st["hits"], st["misses"] = 0.0, 0.0
 
     def save(self) -> None:
         if not self.persist_path:
@@ -145,12 +164,29 @@ class ChannelCredibilityRegistry:
     # ---- 查询 ----
 
     def credibility(self, channel: str) -> float:
+        """该通道的可信度（后验均值 a/(a+b)）。
+
+        分母为零或非有限时回落到先验 0.5——`a+b<=0` / `NaN` 只可能来自被篡改或
+        损坏的持久化文件（`_update` 只做加法、`reset` 复位到先验，正常运行到不了
+        这个状态）。修前此处直接除，`credibility()`/`channel_state()`/`registry()`
+        会抛 `ZeroDivisionError`，而毒值在 `_load` 期已静默入库、炸点离写入点很远。
+        """
         st = self._state.get(channel, {"a": PRIOR_A, "b": PRIOR_B})
-        return st["a"] / (st["a"] + st["b"])
+        denom = st["a"] + st["b"]
+        if not math.isfinite(denom) or denom <= 0:
+            return PRIOR_A / (PRIOR_A + PRIOR_B)
+        return st["a"] / denom
 
     def channel_state(self, channel: str) -> Dict:
-        st = self._state.get(channel, {"a": PRIOR_A, "b": PRIOR_B, "hits": 0.0, "misses": 0.0})
-        cred = st["a"] / (st["a"] + st["b"])
+        raw = self._state.get(channel, {"a": PRIOR_A, "b": PRIOR_B, "hits": 0.0, "misses": 0.0})
+        denom = raw["a"] + raw["b"]
+        if not math.isfinite(denom) or denom <= 0:
+            # 分母不可用：回落先验，且**快照里的 a/b 一并报先验**——否则 NaN 会从
+            # 本字典漏给调用方（调用方自己再除一次仍得 NaN）。
+            a, b = PRIOR_A, PRIOR_B
+        else:
+            a, b = raw["a"], raw["b"]
+        cred = a / (a + b)
         status = "ok"
         if cred < MAINTENANCE_THRESHOLD:
             status = "maintenance"
@@ -158,8 +194,11 @@ class ChannelCredibilityRegistry:
             status = "downweighted"
         return {
             "channel": channel, "credibility": round(cred, 4),
-            "a": round(st["a"], 2), "b": round(st["b"], 2),
-            "hits": int(st["hits"]), "misses": int(st["misses"]),
+            "a": round(a, 2), "b": round(b, 2),
+            "hits": int(raw["hits"]), "misses": int(raw["misses"]),
+            # `known`：该通道是否真的在注册表里。未知通道名（拼错/大小写/空串）
+            # 修前与「健康中性态」逐位不可区分——credibility 恒 0.5、status 恒 ok。
+            "known": channel in self._state,
             "status": status,
         }
 

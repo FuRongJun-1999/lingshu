@@ -194,7 +194,8 @@ def _run_locator(env_extra):
     env.pop("AEIS_HEX_NN_DIR", None)
     env.update(env_extra)
     p = subprocess.run([sys.executable, "-X", "utf8", "-c", _SNIPPET],
-                       capture_output=True, text=True, cwd=REPO, env=env)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       cwd=REPO, env=env)  # #455
     assert p.returncode == 0, "子进程 import rust_bridge 失败：\n%s" % p.stderr[-2000:]
     return json.loads(p.stdout.strip().splitlines()[-1])["hex_exe"]
 

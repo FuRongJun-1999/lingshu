@@ -31,8 +31,11 @@ python -m pytest tests/ -v -rs   # 全量（≈20min，含两个重件）
 | 重件 | `test_hex_search` | ≈361.6s |
 | 重件 | `test_hex_hier` | ≈657.5s |
 
-CI（`.github/workflows/ci.yml`）按此分两档：快档随 push/PR 跑；慢档每周一定时 +
-手动触发（workflow_dispatch）。
+CI（`.github/workflows/gate.yml`）按此跑 pytest 腿：py3.12（阻断）＋ py3.13 与
+「依赖下界」两档 advisory，串行全量收集（排除下方脚本式件由 gate 自身排除表管理）；
+PR 另有 `pr-lint.yml` 标题门与 `repro-bot.yml` 复跑机器人。本地全量可用
+`python -m pytest tests/ -n auto`（dev extra 的 pytest-xdist，实测 483s → 228s；
+时序敏感件在满载下的口径见各件 docstring）。
 
 ## 曾登记的「已知红」——已转绿（2026-10-11 更新）
 
@@ -52,5 +55,10 @@ CI（`.github/workflows/ci.yml`）按此分两档：快档随 push/PR 跑；慢�
   脚本模式退出码语义不变；本地读数 `13 passed, 0 failed`（改造前后逐位一致）。
 - `test_brain_store` / `test_wm_verify_unobserved` 原有 `main()` 但 pytest 收不到
   用例；各加一个薄包装 `test_*()`（`assert main() == 0`），断言零改动。
-- `test_hex_text` 两项已知红加 xfail 标注（断言与数值判据零改动）。
-- 新增根 `conftest.py`（sys.path 注入）与 `.github/workflows/ci.yml`（快/慢双档）。
+- `test_hex_text` 两项已知红曾提议 xfail 标注——PR #87 部分采纳时**明确未取**
+  （xfail 从未落仓，根因由 `9bc4985`/`54cb5cb` 真修取代，见上节）；
+  全仓测试件至今**零 xfail 标注**（守卫 `tests/test_issue446_readme_reality.py`
+  钉「文档声称转绿 ⇔ 代码确无 xfail」两侧一致）。
+- 新增根 `conftest.py`（sys.path 注入）已进 main；同 PR 自带的 ci.yml 工作流
+  **未被采纳**（与 main 的 gate.yml 重复且更窄，该文件从未落仓）——CI 真源为
+  `gate.yml`。

@@ -42,7 +42,10 @@ def parse_description(text: str) -> List[Dict]:
     """中文描述 → 子句清单 [(shape, color, pos)]。
     子句按逗号/顿号/分号切分;每句独立提取形状/颜色/位置词。"""
     clauses = []
-    for seg in re.split(r"[,，、;;。]+", text):
+    # 分号收全角「；」(#236)：字符类原只有两个半角 `;`——中文句间习惯的全角分号
+    # 不切分，「左上有红圆形；右下有蓝条纹」被合成一个子句、第二个物体静默丢失
+    # （改前实测：全角=1 子句 / 半角=2 子句）。
+    for seg in re.split(r"[,，、;;；。]+", text):
         seg = seg.strip()
         if not seg:
             continue

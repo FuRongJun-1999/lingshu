@@ -197,7 +197,8 @@ def run(seeds):
         summary[name] = {key: statistics.mean(r[key] for r in rows)
                          for key in rows[0] if key not in ("seed", "trace_sha256")}
     files = ["world_model.py", "world_learner.py", "curiosity_explorer.py", "anchor_verify.py"]
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+                            text=True, encoding="utf-8", errors="replace")  # #455
     return {"schema": 1, "python": platform.python_version(),
             "head": commit.stdout.strip(), "seeds": list(range(seeds)),
             "fixed_threshold": THRESHOLD, "train_ticks": 12, "learner_eval_ticks": 40,

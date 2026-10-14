@@ -241,12 +241,22 @@ class CuriosityExplorer(WorldLearner):
 
     def explore(self, ticks: int = 40, budget: int = 2,
                 policy: str = "curiosity") -> Dict:
-        """探索阶段：ticks 个好奇探索 tick。"""
-        for _ in range(max(1, int(ticks))):
+        """探索阶段：ticks 个好奇探索 tick。
+
+        返回诚实（#497）：ticks=0 ⇒ 一步不推进、返回 ticks=0；负数钳 0 同理。
+        旧形态 `range(max(1, int(ticks)))` 把 0 偷跑成 1 tick 却仍报
+        「ticks: 0」——返回值与实际行为矛盾（改前实测：tick 0→1、curve 长 1、
+        返回 ticks=0）。final_uncertainty 在零 tick（curve 仍空）时回落到
+        现场 `uncertainty()`，不再借偷跑的那一步撑出读数。
+        """
+        n = max(0, int(ticks))
+        for _ in range(n):
             self.explore_tick(budget=budget, policy=policy)
-        return {"status": "ok", "ticks": int(ticks), "tick": self.tick,
+        return {"status": "ok", "ticks": n, "tick": self.tick,
                 "policy": policy, "budget": int(budget),
-                "final_uncertainty": self.uncertainty_curve[-1],
+                "final_uncertainty": (self.uncertainty_curve[-1]
+                                      if self.uncertainty_curve
+                                      else self.uncertainty()),
                 "obs_distribution": dict(self.obs_counts)}
 
     # ================= 不确定度与评估 =================

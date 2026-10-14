@@ -1,0 +1,598 @@
+{
+  "date": "2026-10-12",
+  "review": "https://github.com/FuRongJun-1999/dsh-bounty/issues/34",
+  "baseline": "cb3a6ea2dbd9771d685b2bf5c1fe398abe69e419",
+  "previous_head": "6921932b15db31d4be2c150e90f8924f7fab132b",
+  "tested_source_lf_sha256": {
+    "motion.py": "b4678bff7f961e1bb801b8c3001b90d595cf99662670ae844bc16105f89c010d",
+    "world_learner.py": "3e042f49e6e963e7da0d1b9612318f7369041039f4aa956c83e812f340818279",
+    "world_model.py": "f3f91c383819d94033d7df10c5fc9edffab4e79b9d6baca5a1642866e58bdf5d"
+  },
+  "python": "3.13.13",
+  "test_results": {
+    "baseline": {
+      "tests": "4",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    "before": {
+      "tests": "4",
+      "failures": "2",
+      "errors": "0",
+      "skipped": "0"
+    },
+    "after": {
+      "tests": "18",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    "full": {
+      "tests": "1363",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    }
+  },
+  "full_pytest_summary": "1290 passed, 3285 warnings, 73 subtests passed in 356.40s",
+  "full_pytest_protocol": "Original gate SCRIPT_TESTS run separately; pytest-xdist -n 4 --dist loadfile; no test deselection.",
+  "script_results": [
+    {
+      "test": "tests/test_brain_store.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_wm_verify_unobserved.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_hex_cnn.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_hex_composite.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_hex_gen.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_core_export_all.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_scene_follow_patrol.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_issue145_causal_depth_cycles.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_coggraph_r4_and_viewer.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_coggraph_generic_tag.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_hexgen_multi_seed_metric.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_longterm_gate_novelty.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_state_write_observable.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_coggraph_naming_report.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_skeleton_fk_order_guard.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_expression_render_guard.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_hex_grid_extent.py",
+      "exit_code": 0
+    },
+    {
+      "test": "tests/test_hex_text_contracts.py",
+      "exit_code": 0
+    }
+  ],
+  "brain_version": "98d6b899533a82fb1047f952987229c62a9929fb",
+  "brain_summary": "23/23 PASS",
+  "statistics": {
+    "seeds": 200,
+    "widths": [
+      1,
+      2,
+      6,
+      8,
+      100
+    ],
+    "checks": 112000,
+    "mismatches": 0,
+    "baseline_lf_sha256": {
+      "motion.py": "a461d6505d79890de2e0b56c993bda1c978a377095a3ac01d968694e0c83cef0",
+      "world_learner.py": "9066b4cf784d0a561c6b26caad37156ed66de46a30035cf82713dbfba556e5f7",
+      "world_model.py": "97a0f817684fa51ee143302bd09f983bff9d5c308efcb7ff0c17764fb1ccccb8"
+    },
+    "candidate_motion_lf_sha256": "b4678bff7f961e1bb801b8c3001b90d595cf99662670ae844bc16105f89c010d"
+  },
+  "mutations": [
+    {
+      "mutation": "M1_dt",
+      "nodeid": "tests/test_world_inference_window.py::test_observation_window_keeps_real_dt_and_joint_context[False]",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "assert (1.0, 10.0, 1....0, 0.0, 0.0)) == (1, 1, 1, (1, 0, 0))\n  \n  At index 1 diff: 10.0 != 1\n  Use -v to get more diff"
+    },
+    {
+      "mutation": "M2_empty_joint",
+      "nodeid": "tests/test_world_inference_window.py::test_window_with_no_joint_observation_does_not_read_old_frames",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "Failed: No joint observation in the window means no relation sample; old frames must not be read"
+    },
+    {
+      "mutation": "M3_reverse_direction",
+      "nodeid": "tests/test_world_inference_window.py::test_two_trajectories_have_independent_direction_scores",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "assert (0.949, 1, 1) == (-0.949, 1, 1)\n  \n  At index 0 diff: 0.949 != -0.949\n  Use -v to get more diff"
+    },
+    {
+      "mutation": "M4_context",
+      "nodeid": "tests/test_world_inference_window.py::test_observation_window_keeps_real_dt_and_joint_context[False]",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "assert (0.0, 0, 0) == (1, 1, 1)\n  \n  At index 0 diff: 0.0 != 1\n  Use -v to get more diff"
+    },
+    {
+      "mutation": "M5_stop_interval",
+      "nodeid": "tests/test_world_inference_window.py::test_reverse_pairs_share_context_scan_and_count_stationary_observations",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "assert (1.0, 1, 1) == (1, 1, 2)\n  \n  At index 2 diff: 1 != 2\n  Use -v to get more diff"
+    },
+    {
+      "mutation": "M6_min_samples",
+      "nodeid": "tests/test_world_inference_window.py::test_new_relation_requires_three_measured_displacements[UnifiedWorldModel]",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "AssertionError: Two displacements do not establish a relation\nassert not [{'source': 'a', 'relation': 'seek', 'target': 'b', 'confidence': 1.0, ...}]\n +  where [{'source': 'a', 'relation': 'seek', 'target': 'b', 'confidence': 1.0, ...}] = relations(<lingshu.world.world_model.UnifiedWorldModel object at 0x00000269DF1C6F90>)"
+    },
+    {
+      "mutation": "M7_stop_evidence",
+      "nodeid": "tests/test_world_inference_window.py::test_measured_stop_removes_relation_instead_of_preserving_it_as_stale[CuriosityExplorer]",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "assert not True\n +  where True = any(<generator object test_measured_stop_removes_relation_instead_of_preserving_it_as_stale.<locals>.<genexpr> at 0x0000020814E92B20>)"
+    },
+    {
+      "mutation": "M8_mixed_evidence",
+      "nodeid": "tests/test_world_inference_window.py::test_mixed_sparse_evidence_does_not_erase_a_supported_learner_relation",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "AssertionError: Insufficient evidence must retain the existing relation\nassert 0 == 1\n +  where 0 = len([])"
+    },
+    {
+      "mutation": "M9_joint_mask",
+      "nodeid": "tests/test_world_inference_window.py::test_window_with_no_joint_observation_does_not_read_old_frames",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "KeyError: 'b'"
+    },
+    {
+      "mutation": "M10_coincident",
+      "nodeid": "tests/test_world_inference_window.py::test_coincident_moving_entities_are_not_misclassified_as_a_measured_stop[CuriosityExplorer]",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "AssertionError: Insufficient evidence must retain the existing relation\nassert 0 == 1\n +  where 0 = len([])"
+    },
+    {
+      "mutation": "M11_unified_mixed_evidence",
+      "nodeid": "tests/test_pr460_review_relation_retention.py::test_unified_retains_candidate_until_supported_or_contradicted[one-direction]",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "AssertionError: Insufficient directional support is not evidence against an existing relation\nassert 0 == 1\n +  where 0 = len([])"
+    },
+    {
+      "mutation": "M12_unified_coincident",
+      "nodeid": "tests/test_world_inference_window.py::test_coincident_moving_entities_are_not_misclassified_as_a_measured_stop[UnifiedWorldModel]",
+      "killed": true,
+      "exit_code": 1,
+      "failure_message": "AssertionError: Insufficient evidence must retain the existing relation\nassert 0 == 1\n +  where 0 = len([])"
+    }
+  ],
+  "prediction_comparison": {
+    "cases": 540,
+    "all_cases_equal": true,
+    "summary_equal": true,
+    "contracts_equal": true,
+    "original_source_sha256": {
+      "world_model.py": "2c01cf83456fe104780dbeea096693f4f50a94484854844ac36e53c061eb7592",
+      "world_learner.py": "16ce1df4c629e96ba8ad4d7ce15c0d8066db1caf25b686274600e097cab9fb90",
+      "curiosity_explorer.py": "b0f0f22499f316507159e45c7192d4e26257603ab4c2fbf8d9e96a0657afdd07",
+      "anchor_verify.py": "878445282f803afcd0d6012c2e0d161b1955265b4efaa30964d698f2630c3c73"
+    },
+    "fixed_source_sha256": {
+      "world_model.py": "633639c683920ea00bb5923f00d70898159e47a1a995546c32cd3a650815ecd8",
+      "world_learner.py": "16ce1df4c629e96ba8ad4d7ce15c0d8066db1caf25b686274600e097cab9fb90",
+      "curiosity_explorer.py": "b0f0f22499f316507159e45c7192d4e26257603ab4c2fbf8d9e96a0657afdd07",
+      "anchor_verify.py": "878445282f803afcd0d6012c2e0d161b1955265b4efaa30964d698f2630c3c73"
+    }
+  },
+  "inference_benchmark": {
+    "repeats": 5,
+    "benchmark_sha256": "6262a2bf2310505e94ad91e6cbb3da26439f6ca905d24b3708877115e3305903",
+    "same_output_groups": 13,
+    "groups": 14,
+    "measurement_note": "Rerun after full pytest completed; these final samples replace the preliminary concurrent measurements.",
+    "cases": [
+      {
+        "model": "learner",
+        "entities": 16,
+        "ticks": 512,
+        "policy": "dense",
+        "input_sha256": "b22888484198ad8e222faf43b1022219025ee9ba7c605a6f56fa40877c4f942e",
+        "before_seconds": [
+          0.0012072000245098025,
+          0.0010728999914135784,
+          0.0010231999913230538,
+          0.0010599000088404864,
+          0.0010683000145945698
+        ],
+        "after_seconds": [
+          0.0010882999922614545,
+          0.0007737000123597682,
+          0.0007944999961182475,
+          0.0007805000059306622,
+          0.0007525999972131103
+        ],
+        "before_result_sha256": "7f6d8e881819696a663d1bf2c9ea23e2c0d63ce592b60a88774672c80d6e3ba1",
+        "after_result_sha256": "7f6d8e881819696a663d1bf2c9ea23e2c0d63ce592b60a88774672c80d6e3ba1",
+        "before_relations": 16,
+        "after_relations": 16
+      },
+      {
+        "model": "unified",
+        "entities": 16,
+        "ticks": 512,
+        "policy": "dense",
+        "input_sha256": "b22888484198ad8e222faf43b1022219025ee9ba7c605a6f56fa40877c4f942e",
+        "before_seconds": [
+          0.0014955000078771263,
+          0.0012883999734185636,
+          0.0012259000213816762,
+          0.0012220999924466014,
+          0.0015275999903678894
+        ],
+        "after_seconds": [
+          0.0015691999869886786,
+          0.0010356999991927296,
+          0.0015974999987520278,
+          0.0010580999951343983,
+          0.0012795999937225133
+        ],
+        "before_result_sha256": "5402730b0e4dfbb094df6db4c7526d4521a0eb730d6e2c7f6a848816ab928719",
+        "after_result_sha256": "5402730b0e4dfbb094df6db4c7526d4521a0eb730d6e2c7f6a848816ab928719",
+        "before_relations": 16,
+        "after_relations": 16
+      },
+      {
+        "model": "learner",
+        "entities": 64,
+        "ticks": 512,
+        "policy": "dense",
+        "input_sha256": "7dfd30b43ca609a76e080365c2e8f6fea302f0d499e1501c4dd2597218c07a0e",
+        "before_seconds": [
+          0.016175099997781217,
+          0.017721899988828227,
+          0.017370900022797287,
+          0.016483899991726503,
+          0.016806100000394508
+        ],
+        "after_seconds": [
+          0.01298929998301901,
+          0.012761500023771077,
+          0.013153899984899908,
+          0.012960199994267896,
+          0.012509100022725761
+        ],
+        "before_result_sha256": "dce3e497466dc34d4c741ce29b0d689602e5e26be69baf0ffeb61f3a91f6051a",
+        "after_result_sha256": "dce3e497466dc34d4c741ce29b0d689602e5e26be69baf0ffeb61f3a91f6051a",
+        "before_relations": 64,
+        "after_relations": 64
+      },
+      {
+        "model": "unified",
+        "entities": 64,
+        "ticks": 512,
+        "policy": "dense",
+        "input_sha256": "7dfd30b43ca609a76e080365c2e8f6fea302f0d499e1501c4dd2597218c07a0e",
+        "before_seconds": [
+          0.02109520000522025,
+          0.02032469998812303,
+          0.01957659999607131,
+          0.020441200002096593,
+          0.019447400001809
+        ],
+        "after_seconds": [
+          0.016468400019221008,
+          0.01647119998233393,
+          0.016578499984461814,
+          0.016556599992327392,
+          0.016708499984815717
+        ],
+        "before_result_sha256": "d9312fbb0d04ed9eae729efd38f9fac68e7c998df486e64df4f177bb461c4c27",
+        "after_result_sha256": "d9312fbb0d04ed9eae729efd38f9fac68e7c998df486e64df4f177bb461c4c27",
+        "before_relations": 64,
+        "after_relations": 64
+      },
+      {
+        "model": "learner",
+        "entities": 128,
+        "ticks": 512,
+        "policy": "dense",
+        "input_sha256": "ad4db401390f5c3cd884ad90a3054b87a7ea74aea0d190baac6f3c59e10aa549",
+        "before_seconds": [
+          0.06734960002359003,
+          0.06827230000635609,
+          0.06596700000227429,
+          0.06935380000504665,
+          0.06750289999763481
+        ],
+        "after_seconds": [
+          0.05033319999347441,
+          0.05062019999604672,
+          0.05081039998913184,
+          0.05000410001957789,
+          0.05046240001684055
+        ],
+        "before_result_sha256": "b642a132bf3c6f74658477ab5e2a772b92f74d9c825c81ca92bde01ceac289e5",
+        "after_result_sha256": "b642a132bf3c6f74658477ab5e2a772b92f74d9c825c81ca92bde01ceac289e5",
+        "before_relations": 128,
+        "after_relations": 128
+      },
+      {
+        "model": "unified",
+        "entities": 128,
+        "ticks": 512,
+        "policy": "dense",
+        "input_sha256": "ad4db401390f5c3cd884ad90a3054b87a7ea74aea0d190baac6f3c59e10aa549",
+        "before_seconds": [
+          0.07926769999903627,
+          0.0811556999979075,
+          0.07746159998350777,
+          0.07994669998879544,
+          0.08340660002431832
+        ],
+        "after_seconds": [
+          0.06608819999382831,
+          0.06578169998829253,
+          0.06568549998337403,
+          0.06624450001982041,
+          0.06621780002024025
+        ],
+        "before_result_sha256": "7ae44d52e0326c71f84a3b5650aac8e55e2ed11fdd1f8abd51d2542ed09dec40",
+        "after_result_sha256": "7ae44d52e0326c71f84a3b5650aac8e55e2ed11fdd1f8abd51d2542ed09dec40",
+        "before_relations": 128,
+        "after_relations": 128
+      },
+      {
+        "model": "learner",
+        "entities": 64,
+        "ticks": 2000,
+        "policy": "single",
+        "input_sha256": "03b0203ccfc6f6d235576e739c98909c34b8a36c8bd988e1ca9ad1cc4363c64e",
+        "before_seconds": [
+          0.3206517999933567,
+          0.32374789999448694,
+          0.32543100000475533,
+          0.324406400002772,
+          0.3320567999908235
+        ],
+        "after_seconds": [
+          0.0008041999826673418,
+          0.0007705999887548387,
+          0.0007535999757237732,
+          0.000763299991376698,
+          0.0007670999912079424
+        ],
+        "before_result_sha256": "01fa0b75e5047fe09f04e54fee190144d0e2f50bfbe994cf14dd3ed799223860",
+        "after_result_sha256": "01fa0b75e5047fe09f04e54fee190144d0e2f50bfbe994cf14dd3ed799223860",
+        "before_relations": 0,
+        "after_relations": 0
+      },
+      {
+        "model": "unified",
+        "entities": 64,
+        "ticks": 2000,
+        "policy": "single",
+        "input_sha256": "03b0203ccfc6f6d235576e739c98909c34b8a36c8bd988e1ca9ad1cc4363c64e",
+        "before_seconds": [
+          0.32284269999945536,
+          0.3260180999932345,
+          0.32506450000801124,
+          0.3265624000050593,
+          0.3276530000148341
+        ],
+        "after_seconds": [
+          0.0010720999853219837,
+          0.0009619999909773469,
+          0.0012243000091984868,
+          0.0009406000026501715,
+          0.0009522000036668032
+        ],
+        "before_result_sha256": "52928394ddd03ecdda6d6ddf7fc9af8399863e679ee70ab85715ee3c899c8d30",
+        "after_result_sha256": "52928394ddd03ecdda6d6ddf7fc9af8399863e679ee70ab85715ee3c899c8d30",
+        "before_relations": 0,
+        "after_relations": 0
+      },
+      {
+        "model": "learner",
+        "entities": 64,
+        "ticks": 8000,
+        "policy": "single",
+        "input_sha256": "fe2eeb1a42ae7724f25cb3c5b7025a636b12cbb25cf5190c559fbfdd000df684",
+        "before_seconds": [
+          1.3444413999968674,
+          1.3428528999793343,
+          1.35268179999548,
+          1.3865384999953676,
+          1.3386769999924581
+        ],
+        "after_seconds": [
+          0.0008040000102482736,
+          0.0007925999816507101,
+          0.0007871999987401068,
+          0.0008647000067867339,
+          0.0007859999896027148
+        ],
+        "before_result_sha256": "6548ec22d6481ba97e3ad9d14e9d6f52c0291a272ecc2c388108cf9980987cfa",
+        "after_result_sha256": "6548ec22d6481ba97e3ad9d14e9d6f52c0291a272ecc2c388108cf9980987cfa",
+        "before_relations": 0,
+        "after_relations": 0
+      },
+      {
+        "model": "unified",
+        "entities": 64,
+        "ticks": 8000,
+        "policy": "single",
+        "input_sha256": "fe2eeb1a42ae7724f25cb3c5b7025a636b12cbb25cf5190c559fbfdd000df684",
+        "before_seconds": [
+          1.3490100000053644,
+          1.3763980999938212,
+          1.3195112000103109,
+          1.3280506000155583,
+          1.321978299994953
+        ],
+        "after_seconds": [
+          0.0009543999913148582,
+          0.0011024999839719385,
+          0.0009399999980814755,
+          0.0009584999934304506,
+          0.0011922999983653426
+        ],
+        "before_result_sha256": "31627eef6e148f57bc191d182bd652536e2af722884c712485f57feee12e37a5",
+        "after_result_sha256": "31627eef6e148f57bc191d182bd652536e2af722884c712485f57feee12e37a5",
+        "before_relations": 0,
+        "after_relations": 0
+      },
+      {
+        "model": "learner",
+        "entities": 64,
+        "ticks": 2000,
+        "policy": "random_four",
+        "input_sha256": "e8e2a60d43bf82d2f2bca5478278a6bd4cb8f002493ae1a2ac4b8fea2746339b",
+        "before_seconds": [
+          0.07940320001216605,
+          0.0792700000165496,
+          0.07882540000719018,
+          0.07956370001193136,
+          0.08004510001046583
+        ],
+        "after_seconds": [
+          0.0019894999859388918,
+          0.00157639998360537,
+          0.0015934999973978847,
+          0.0020049000158905983,
+          0.0016374999831896275
+        ],
+        "before_result_sha256": "d7cf47dce841e8ac65ef776e20d2ff0f6dd8cdb4411c17488ea960b7b424477a",
+        "after_result_sha256": "d7cf47dce841e8ac65ef776e20d2ff0f6dd8cdb4411c17488ea960b7b424477a",
+        "before_relations": 0,
+        "after_relations": 0
+      },
+      {
+        "model": "unified",
+        "entities": 64,
+        "ticks": 2000,
+        "policy": "random_four",
+        "input_sha256": "e8e2a60d43bf82d2f2bca5478278a6bd4cb8f002493ae1a2ac4b8fea2746339b",
+        "before_seconds": [
+          0.07937399999354966,
+          0.08056850000866689,
+          0.0798499999800697,
+          0.07932869999785908,
+          0.07866130000911653
+        ],
+        "after_seconds": [
+          0.002359800011618063,
+          0.00234979999368079,
+          0.002194400003645569,
+          0.00197639997350052,
+          0.0019955000025220215
+        ],
+        "before_result_sha256": "7bf6a73e259ec9ba48386b53ffb481718079f0e9c4d3ab9d8f5c3820f5f3ab61",
+        "after_result_sha256": "7b7804f08b6ef59c8c2c9d6a588e3de6202c38d0185b4b961b2862442b0784c8",
+        "before_relations": 26,
+        "after_relations": 0
+      },
+      {
+        "model": "learner",
+        "entities": 64,
+        "ticks": 2000,
+        "policy": "empty_tail",
+        "input_sha256": "293eccf9387e12b64dddf41da0f5f25104585c5e46417651b058bc998140029d",
+        "before_seconds": [
+          0.007313599984627217,
+          0.007022100005997345,
+          0.006959799997275695,
+          0.006915900012245402,
+          0.006834300002083182
+        ],
+        "after_seconds": [
+          0.0006921000021975487,
+          0.0007207000162452459,
+          0.0010251000057905912,
+          0.0007160000095609576,
+          0.000822000001790002
+        ],
+        "before_result_sha256": "810f7ede238047ea6c26babe39193b1302d47429846c3ddd434388db44e5345f",
+        "after_result_sha256": "810f7ede238047ea6c26babe39193b1302d47429846c3ddd434388db44e5345f",
+        "before_relations": 0,
+        "after_relations": 0
+      },
+      {
+        "model": "unified",
+        "entities": 64,
+        "ticks": 2000,
+        "policy": "empty_tail",
+        "input_sha256": "293eccf9387e12b64dddf41da0f5f25104585c5e46417651b058bc998140029d",
+        "before_seconds": [
+          0.00780810002470389,
+          0.007450100005371496,
+          0.007291199988685548,
+          0.007291900023119524,
+          0.007681000017328188
+        ],
+        "after_seconds": [
+          0.0009931999957188964,
+          0.0008350000134669244,
+          0.0011601000151131302,
+          0.0008203000179491937,
+          0.0013029999972786754
+        ],
+        "before_result_sha256": "370adab316a7e0057d5f9dec7f32104aa49001f7e167b25c05a26ffef7d97ec4",
+        "after_result_sha256": "370adab316a7e0057d5f9dec7f32104aa49001f7e167b25c05a26ffef7d97ec4",
+        "before_relations": 0,
+        "after_relations": 0
+      }
+    ]
+  },
+  "scope_note": "Tests and benchmarks used this fixed source tree before committing docs; source hashes identify tested code. Remote final-head CI is reported separately in issue #34."
+}

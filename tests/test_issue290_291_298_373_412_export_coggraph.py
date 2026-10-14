@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""守卫 · export_coggraph.py 的 frontmatter 畸形输入族（issue #290 / #291 / #298 / #373 / #412）。
+"""守卫 · export_coggraph.py 的 frontmatter 畸形输入族（issue #290 / #291 / #298 / #373 / #412 / #534）。
 
 每件各钉一条「缺陷不再存在」的断言（不是「能跑」）：
   · #290a 数字 YAML `id` 不得让 `sorted((id, sha))` 崩（int/str 混排 TypeError）；
@@ -9,7 +9,9 @@
   · #291 标量 `doc_ref`/`code_ref` 不得 AttributeError（旧码假定 dict 调 .get）；
   · #298 `derived_from` 写成 YAML 列表时目标必须是元素本身（旧码 `str(list)` 拼出伪目标、静默丢边）；
   · #373 YAML 锚点/别名炸弹必须被拒（旧码一条笔记可产出 MB~TB graph.json）；
-  · #412 带 UTF-8 BOM 的记忆 .md 必须被解析（旧码整篇静默跳过）。
+  · #412 带 UTF-8 BOM 的记忆 .md 必须被解析（旧码整篇静默跳过）；
+  · #534 `edges` 写成 mapping 形态 `{src: dst}` 时必须归一为边（旧码迭代 dict 只拿 key 字符串、
+    被 `isinstance(e, dict)` 静默丢弃 ⇒ 边集为空却 n_edges=1，零边与计数并存）。
 
 运行：
   · pytest：python -X utf8 -m pytest tests/test_issue290_291_298_373_412_export_coggraph.py -q --no-header
@@ -140,6 +142,32 @@ class ExportCoggraphFrontmatterTests(unittest.TestCase):
         self.assertEqual(sorted(n["id"] for n in g["nodes"]), ["bom"],
                          "带 UTF-8 BOM 的 frontmatter 必须被解析（旧码按 utf-8 读，`^---\\n` 不匹配 → 整篇跳过）")
         self.assertEqual(g["meta"]["counts"]["skipped_md"], 0)
+
+    # ---- #534：edges 写成 mapping 形态被静默丢弃 ---------------------------
+    def test_mapping_edges_form_is_normalized_not_silently_dropped(self):
+        # 缺陷形态：`for e in eds` 迭代 dict 只拿 key（字符串），`isinstance(e, dict)` 为假
+        # ⇒ 该边被静默丢弃（edge 集为空），而 n_edges 仍按 len(eds)=1 计 ⇒ 零边与计数并存。
+        self.write_doc("docs/a.md", _doc("a", "edges:\n  b: c\n"))
+        self.write_doc("docs/b.md", _doc("b"))
+        self.write_doc("docs/c.md", _doc("c"))
+        g = self.export_ok()
+        a = {n["id"]: n for n in g["nodes"]}["a"]
+        # 边必须在场（mapping 形态归一为一条 b→c 的 untyped 边）
+        pairs = [(e["s"], e["t"]) for e in g["edges"]]
+        self.assertIn(("b", "c"), pairs,
+                      "#534 缺陷形态：mapping 形态 edges 被静默丢弃，实得边集 %r" % pairs)
+        edge = [e for e in g["edges"] if (e["s"], e["t"]) == ("b", "c")][0]
+        self.assertEqual(edge["type"], "untyped", "mapping 形态未声明 type ⇒ 归一为 untyped")
+        self.assertFalse(edge["derived"], "显式边不得标 derived")
+        # 计数与边集自洽：声明的 1 条边必须真的在场
+        self.assertEqual(a["n_edges"], 1, "a 声明 1 条边，n_edges 应为 1")
+        self.assertEqual(len(g["edges"]), 1,
+                         "#534 缺陷形态：n_edges=1 却零边（零边与计数并存），实得 %r" % g["edges"])
+        self.assertEqual(g["meta"]["counts"]["edges"], 1,
+                         "counts.edges 必须与实际边数一致（旧码边集为空）")
+        # 自证：缺陷形态下 n_edges 会与边数不等 —— 本夹具的 mapping 长度为 1，
+        # 旧码边集恒为空 ⇒ 上面的「边在场 + counts.edges==1」在缺陷形态必红。
+        self.assertNotEqual(len(g["edges"]), 0, "自证：缺陷形态边集为空")
 
 
 if __name__ == "__main__":

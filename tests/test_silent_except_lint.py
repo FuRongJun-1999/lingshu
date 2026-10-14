@@ -16,6 +16,8 @@ B 真实仓库（出货基线）⇒ 退出码 0、无超基线项、合计 = 基
 C 定点变异（把基线数字改小一格 ⇒ 守卫必红）：用**临时副本基线**模拟，
    不改出货基线文件；断言「静默数 > 基线」时退出 1 且点名该文件。
 D 基线外新文件带静默宽 except ⇒ 退出 1。
+E unparsable fail-closed（v2 · #408 同构收口）：语法错文件 ⇒ 退出 1；
+   --update-baseline 遇 unparsable ⇒ 退出 2 且不写盘（防计数无痕丢失）。
 
 判据来源：公开 issue #170「建议 1/2」＋ 本仓 tools/time_core_lint.py 先例
 （同款 `--baseline` / `--update-baseline` / 退出码语义）。
@@ -122,6 +124,8 @@ def test_real_repo_shipped_baseline_exit_zero():
     assert data["new_over_baseline"] == []
     assert data["actual_total"] == data["baseline_total"], data
     assert data["summary"]["new"] == 0
+    # v2 fail-closed 的在仓面：出货树必须零 unparsable（否则审计面不完整仍会绿）
+    assert data["unparsable"] == [], data
     # 基线里确实登记了真实命中（否则规则可能失效）
     assert data["baseline_total"] >= 1, "基线里没有任何真实命中，规则可能失效"
 
@@ -272,3 +276,56 @@ def test_registration_surface_has_no_force():
     counts, errors = S.parse_baseline(text)
     assert errors == []
     assert counts == {}, "登记面注释不应被 parse_baseline 当作计数条目"
+
+
+# ------------------------------------- E unparsable fail-closed（v2 · #408 同构收口）
+def test_unparsable_file_fails_closed(tmp_path):
+    """★v2：unparsable 文件 ⇒ 退出 1——「语法错 ＋ N 处静默宽 except」不得整文件逃出审计。
+
+    v1 形态实测：同样输入退出 0（绿）、计数 0——fail-open（verify_manifest #408
+    的同构残留）。本断言即定点变异：把 v2 的 fail-closed 撤掉 ⇒ 本条必红。
+    """
+    root = tmp_path / "repo"
+    write_module(root / "lingshu" / "pkg", "newmod.py",
+                 "def f():\n"
+                 "    try:\n"
+                 "        g()\n"
+                 "    except Exception:\n"
+                 "        pass\n"
+                 "\n"
+                 "def broken(:\n"          # ← 语法错：ast.parse 失败 ⇒ 整文件 unparsable
+                 "    pass\n")
+    baseline = root / "tools" / "silent_except_lint_baseline.txt"
+    baseline.parent.mkdir(parents=True, exist_ok=True)
+    baseline.write_text("", encoding="utf-8")
+    res = run_lint(str(root / "lingshu"), "--repo-root", str(root), "--json")
+    data = payload(res)
+    assert res.returncode == 1, ("unparsable 文件必须 fail-closed（退出 1）", data)
+    assert data["unparsable"] and "newmod.py" in data["unparsable"][0], data
+    assert data["summary"]["silent_total"] == 0, data   # 计数不含该文件（口径不变）
+    # 文本模式必须把「不可判」点名为退出 1 的原因（可读性）
+    res_text = run_lint(str(root / "lingshu"), "--repo-root", str(root), "--quiet")
+    assert "不可判" in res_text.stdout.decode("utf-8"), res_text.stdout
+
+
+def test_unparsable_update_baseline_refuses_to_write(tmp_path):
+    """★v2：--update-baseline 遇 unparsable ⇒ 退出 2 且**不写盘**（防计数无痕丢失）。
+
+    v1 形态实测：静默把 unparsable 文件从基线里丢掉、退出 0。本断言即定点变异。
+    """
+    root = tmp_path / "repo"
+    write_module(root / "lingshu" / "pkg", "good.py",
+                 "def f():\n"
+                 "    try:\n"
+                 "        g()\n"
+                 "    except Exception:\n"
+                 "        pass\n")
+    write_module(root / "lingshu" / "pkg", "bad.py", "def broken(:\n    pass\n")
+    baseline = root / "tools" / "silent_except_lint_baseline.txt"
+    baseline.parent.mkdir(parents=True, exist_ok=True)
+    baseline.write_text("lingshu/pkg/good.py\t1\n", encoding="utf-8")   # 既有基线
+    res = run_lint(str(root / "lingshu"), "--repo-root", str(root), "--update-baseline")
+    assert res.returncode == 2, res.stdout + res.stderr
+    # 基线原样未动（good.py 的计数 1 仍在，未被静默重写/清空）
+    assert baseline.read_text(encoding="utf-8") == "lingshu/pkg/good.py\t1\n", \
+        baseline.read_text(encoding="utf-8")

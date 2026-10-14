@@ -286,8 +286,12 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
     baseline_total = {d: sum(v for k, v in baseline_entries.items() if k.startswith(d + ":"))
                       for d in DIRECTIONS}
     actual_total = {d: total(d) for d in DIRECTIONS}
-    missing = sorted(k for k in baseline_entries
-                     if k.split(":", 1)[0] not in DIRECTIONS)
+    # stale = 基线里登记、本次扫描已数不到的 (方向,文件)——文件被删/改名或计数清零。
+    # （v1 误写成「方向前缀 ∉ DIRECTIONS」——该条件被 parse_baseline 的方向校验
+    #   提前挡死，恒为空；姊妹件 silent_except / coverage_map 均为「按实测键反查」
+    #   的正确形态，此处对齐。）
+    actual_keys = {"%s:%s" % (rec["direction"], rec["file"]) for rec in per_key}
+    missing = sorted(k for k in baseline_entries if k not in actual_keys)
 
     exit_code = 1 if over else 0
     payload = {
@@ -340,6 +344,8 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
         lines.append("[新] %s %s：%d > 基线 %d（超 %d）"
                      % (rec["direction"], rec["file"], rec["count"],
                         rec["baseline"], rec["excess"]))
+    if missing and not args.quiet:
+        lines.append("基线中已失效条目 %d 个（可清理）：%s" % (len(missing), ", ".join(missing)))
     if not args.quiet:
         lines.append("")
         lines.append("core→world 惰性导入 %d 行（基线 %d）；旧名 stmc_refs %d 行（基线 %d）；超基线项 %d"

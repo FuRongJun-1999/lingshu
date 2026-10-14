@@ -29,7 +29,8 @@ import random
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
-from .motion import estimate_motion, observed_positions, recent_direction
+from .motion import ObservationWindow, observed_positions, recent_direction
+from .coord_contract import apply_move          # 第 4 轮 #4：坐标口径唯一真源
 
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
@@ -116,10 +117,12 @@ class WorldLearner:
 
     # ================= 自监督特征（从观测序列估计） =================
 
-    def _motion_stats(self, eid: str, window: Optional[int] = None
-                      ) -> Tuple[float, float]:
+    def _motion_stats(self, eid: str, window: Optional[int] = None,
+                      observations=None) -> Tuple[float, float]:
         """真实位移/dt；窗口无样本时保留已学参数，不把缺失当静止。"""
-        stats = estimate_motion(self.history, eid, window or self.window, nested=True)
+        if observations is None:
+            observations = ObservationWindow(self.history, window or self.window, nested=True)
+        stats = observations.motion(eid)
         if stats is not None:
             if stats[3] is not None:
                 self._motion_directions[eid] = stats[3]
@@ -132,35 +135,8 @@ class WorldLearner:
     def _pair_tendency(self, a: str, b: str, window: Optional[int] = None
                        ) -> Tuple[float, int]:
         """a 对 b 的趋向均值 + 样本数：cos(位移_a, 方向_a→b)。"""
-        w = window or self.window
-        scores = []
-        prev = None
-        start = max(0, len(self.history) - w)
-        # One co-observation before the window supplies displacement context.
-        context = []
-        if any(a not in rec["entities"] or b not in rec["entities"]
-               for rec in self.history[start:]):
-            for index in range(start - 1, -1, -1):
-                rec = self.history[index]
-                if a in rec["entities"] and b in rec["entities"]:
-                    context = [rec]
-                    break
-        for rec in context + self.history[start:]:
-            ea = rec["entities"].get(a)
-            eb = rec["entities"].get(b)
-            if ea is None or eb is None:
-                continue
-            if prev is not None:
-                dx, dz = ea["pos"][0] - prev[0], ea["pos"][2] - prev[2]
-                dl = math.hypot(dx, dz)
-                if dl > 1e-6:
-                    tx, tz = eb["pos"][0] - ea["pos"][0], eb["pos"][2] - ea["pos"][2]
-                    tl = math.hypot(tx, tz)
-                    if tl > 1e-6:
-                        scores.append((dx * tx + dz * tz) / (dl * tl))
-            prev = ea["pos"]
-        return (round(sum(scores) / len(scores), 3) if scores else 0.0,
-                len(scores))
+        observations = ObservationWindow(self.history, window or self.window, nested=True)
+        return observations.pair(a, b)[:2]
 
     def _recent_dir(self, eid: str, window: Optional[int] = None) -> Optional[Tuple[float, float, float]]:
         """最近位移方向（单位化）。"""
@@ -177,11 +153,12 @@ class WorldLearner:
           - stochastic_targets: 追逐随机目标的实体（可达域传播 D1）
         """
         w = window or self.window
+        observations = ObservationWindow(self.history, w, nested=True)
         model = {"per_entity": {}, "relations": [], "stochastic_targets": []}
         eids = list(self.nodes.keys())
         for eid in eids:
-            pers, speed = self._motion_stats(eid, w)
-            samples = estimate_motion(self.history, eid, w, nested=True)
+            pers, speed = self._motion_stats(eid, w, observations)
+            samples = observations.motion(eid)
             model["per_entity"][eid] = {
                 "speed_est": speed, "persistence": pers,
                 "samples": samples[2] if samples else 0,
@@ -191,11 +168,15 @@ class WorldLearner:
         for a in eids:
             best_t, best_c, best_n = None, 0.0, 0
             sufficient = False
+            motion = observations.motion(a)
             for b in eids:
                 if a == b:
                     continue
-                c, n = self._pair_tendency(a, b, w)
-                sufficient = sufficient or n >= 3
+                c, n, measured = observations.pair(a, b)
+                # Sparse directional evidence stays a candidate. A window of
+                # measured zero motion is contrary evidence, not missing data.
+                sufficient = (sufficient or n >= 3
+                              or (measured >= 3 and n == 0 and motion[3] is None))
                 if n >= 3 and abs(c) > abs(best_c):   # 样本不足不采信（防虚假关系）
                     best_c, best_t, best_n = c, b, n
             if best_t is not None and abs(best_c) >= 0.5:
@@ -224,11 +205,9 @@ class WorldLearner:
 
     def _apply_move(self, pos: Tuple[float, float, float], speed: float,
                     d: Tuple[float, float, float]) -> Tuple[float, float, float]:
-        if d == (0.0, 0.0, 0.0):
-            return tuple(round(v, 2) for v in pos)
-        nx = max(0.5, min(self.size - 0.5, pos[0] + d[0] * speed))
-        nz = max(0.5, min(self.size - 0.5, pos[2] + d[2] * speed))
-        return (round(nx, 2), pos[1], round(nz, 2))
+        # ⚠ 第 4 轮 #4：**不再自带一份 clamp**，语义收归 `coord_contract.apply_move`。
+        #   默认参数 = 本体口径 ⇒ 算式与原先逐字等价（域内 trace_sha256 90/90 由它保证）。
+        return apply_move(pos, speed, d, self.size)
 
     def predict(self, horizon: int = 1) -> Dict:
         """用学得模型预测 horizon 步后的状态（观测面）。

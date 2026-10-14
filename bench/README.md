@@ -1,5 +1,21 @@
 # World-model benchmark
 
+`bench_world_inference.py` complements the prediction benchmark below with
+fixed dense/sparse observation histories and inference timings. Run it unchanged
+in a baseline checkout and the candidate checkout, then compare their JSON:
+
+```powershell
+python -X utf8 -B bench/bench_world_inference.py --output artifacts/inference_after.json
+python -X utf8 -B bench/bench_world_inference.py --compare artifacts/inference_before.json artifacts/inference_after.json
+```
+
+It records individual timings, the median of five repeats, history fingerprints,
+result fingerprints, and source fingerprints. Timings exclude history/model
+construction and are measurements, not CI pass thresholds or total loop speed.
+The comparison identifies changed inference results explicitly. Protocol,
+relation qualification changes, and measured limits are documented in
+[the inference iteration report](../docs/world_inference_iteration.md).
+
 `bench_world.py` uses the existing simulator and observation-based models. It
 requires only the Python standard library. Run from the repository root:
 

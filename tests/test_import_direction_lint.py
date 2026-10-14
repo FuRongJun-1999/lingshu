@@ -19,6 +19,8 @@ A 量具自证（lint 必须真在数）：
 B 真实仓库（出货基线）⇒ 退出码 0、无超基线项、合计 = 基线合计。
 C 定点变异（把基线数字改小一格 ⇒ 守卫必红）：临时副本基线，不动出货基线。
 D 基线外新增（core 里多一行 `from ..world`）⇒ 退出 1 并点名。
+E stale 可观测（v2 · 修死条件恒空）：基线登记的 (方向,文件) 消失（删文件/清引用）
+   ⇒ stale_baseline_entries 必须点名；B 组补「实测合计 == 基线合计」防下降漂移静默。
 
 判据来源：公开 issue #178「core↔world 双向依赖」＋ 本仓 tools/time_core_lint.py 先例。
 
@@ -106,6 +108,12 @@ def test_real_repo_shipped_baseline_exit_zero():
     # 基线里确实登记了真实计数（否则规则可能失效）
     assert data["core_to_world_total"] >= 1, "core_to_world 基线为 0，规则可能失效"
     assert data["stmc_refs_total"] >= 1, "stmc_refs 基线为 0，规则可能失效"
+    # 合计与基线合计一致（与姊妹守卫 test_silent_except_lint 同口径）——计数
+    # **下降**方向（外观方法迁出 core ⇒ 终局目标推进）的基线漂移不得静默。
+    assert data["core_to_world_total"] == data["baseline_total"]["core_to_world"], data
+    assert data["stmc_refs_total"] == data["baseline_total"]["stmc_refs"], data
+    # 出货树上没有失效基线条目（文件被删/改名 ⇒ stale 必须可观测，见 E 组）
+    assert data["stale_baseline_entries"] == [], data
 
 
 def test_shipped_baseline_file_has_provenance_and_terminal_goal_note():
@@ -248,3 +256,40 @@ def test_registration_surface_has_no_force():
     entries, errors = I.parse_baseline(text)
     assert errors == []
     assert entries == {}, "登记面注释不应被 parse_baseline 当作计数条目"
+
+
+# ------------------------------------- E stale 可观测（v2 · 修死条件恒空）
+def test_stale_baseline_entries_list_deleted_file(tmp_path):
+    """★v2：基线登记的 (方向,文件) 从仓库消失 ⇒ stale_baseline_entries 必须点名。
+
+    v1 形态实测：该字段恒为 []（生成器条件「方向前缀 ∉ DIRECTIONS」被
+    parse_baseline 的方向校验提前挡死，永假）——文件删除/改名后基线残留行
+    不可观测。本断言即定点变异：把 v2 的「按实测键反查」撤掉 ⇒ 本条必红。
+    """
+    root = tmp_path / "repo"
+    write_module(root / "lingshu" / "core", "engine.py",
+                 "def m(self):\n    from ..world.a import X\n    return X\n")
+    res = run_lint("--repo-root", str(root), "--update-baseline")
+    assert res.returncode == 0, res.stdout + res.stderr
+    base = root / "tools" / "import_direction_lint_baseline.txt"
+    assert "core_to_world\tlingshu/core/engine.py\t1" in base.read_text(encoding="utf-8")
+
+    (root / "lingshu" / "core" / "engine.py").unlink()      # ← 变异：删掉基线登记的文件
+    res2 = run_lint("--repo-root", str(root), "--json")
+    data = payload(res2)
+    assert data["stale_baseline_entries"] == ["core_to_world:lingshu/core/engine.py"], data
+    # 失效不等于违规（退出仍 0——清理基线是维护动作，不是守卫红线）
+    assert res2.returncode == 0, data
+
+
+def test_stale_baseline_entries_list_zeroed_count(tmp_path):
+    """★v2：计数清零（文件还在、引用行删光）同样进 stale——两种漂移形态都点名。"""
+    root = tmp_path / "repo"
+    engine = write_module(root / "lingshu" / "core", "engine.py",
+                          "def m(self):\n    from ..world.a import X\n    return X\n")
+    res = run_lint("--repo-root", str(root), "--update-baseline")
+    assert res.returncode == 0
+    engine.write_text("def m(self):\n    return 1\n", encoding="utf-8")   # 引用行删光
+    res2 = run_lint("--repo-root", str(root), "--json")
+    data = payload(res2)
+    assert data["stale_baseline_entries"] == ["core_to_world:lingshu/core/engine.py"], data

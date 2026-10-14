@@ -28,6 +28,8 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
+from .coord_contract import clamp_xz              # 第 4 轮 #4
+
 
 # 方块类型（体素世界的基本构成）
 BLOCK_AIR = 0
@@ -175,8 +177,9 @@ class VoxelWorld:
                 ny = max(float(self.ground_level + 0.5), e.pos[1] + e.velocity[1])  # 不穿地
                 nz = e.pos[2] + e.velocity[2]
                 # 边界约束
-                nx = max(0.5, min(self.size - 0.5, nx))
-                nz = max(0.5, min(self.size - 0.5, nz))
+                # ⚠ 第 4 轮 #4：**只**收 x/z 边界语义；本站点与本体口径的差异（不量化、
+                #   y 由地面约束管）**保留**并在此写明 —— 统一的是语义，不是行为。
+                nx, nz = clamp_xz(nx, nz, self.size)
                 e.pos = (nx, ny, nz)
                 self._record_trail(eid, self._trail_point(e))
                 moved_entities.add(eid)

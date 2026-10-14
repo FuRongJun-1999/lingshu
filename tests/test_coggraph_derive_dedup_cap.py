@@ -127,3 +127,42 @@ def test_c_explicit_edge_still_blocks_all_derived_rules():
         on_pair = [e for e in doc["edges"] if _pair(e["s"], e["t"]) == pair]
         assert on_pair == [], "显式边被推导规则重复：%s" % on_pair
         assert doc["meta"]["rules"]["R5_body_crossref"] == 0
+
+
+def test_d_bom_frontmatter_is_not_scanned_as_body():
+    """#412（R5 读点）：带 UTF-8 BOM 的记忆 .md，frontmatter 不得被当成正文参与互引。
+
+    缺陷形态：R5 用纯 utf-8 读正文，BOM（U+FEFF）让 FMHEAD 正则（^--- 换行 ... 换行 ---）
+    失配 ⇒ mm is None ⇒ body = raw（**整份文件**，含 frontmatter）参与标题匹配
+    ⇒ frontmatter 里提到的标题被当成「正文互引」，凭空产出一条伪 R5 边。
+    修复：读取改 utf-8-sig（剥 BOM），FMHEAD 正常匹配、只扫真正文。
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        bodies = os.path.join(tmp, "bodies")
+        os.makedirs(bodies)
+        nodes = [{"id": "a1", "title": T1, "layer": "knowledge", "bucket": "",
+                  "tags": ["zzz1"], "created": 0, "path": "a1.md"},
+                 {"id": "a2", "title": T2, "layer": "knowledge", "bucket": "",
+                  "tags": ["zzz2"], "created": 0, "path": "a2.md"}]
+        g, out = os.path.join(tmp, "g.json"), os.path.join(tmp, "o")
+        _write(g, {"nodes": nodes, "edges": []})
+        # a1 带 BOM：frontmatter 里提到 T2，**正文里不提**。
+        fm = "".join([
+            "---\n",
+            "id: a1\n",
+            "layer: knowledge\n",
+            "refs: %s\n" % T2,
+            "---\n",
+            "# a1\n",
+            "\n",
+            "正文无引用。\n",
+        ])
+        with open(os.path.join(bodies, "a1.md"), "wb") as f:
+            f.write(b"\xef\xbb\xbf" + fm.encode("utf-8"))
+        with open(os.path.join(bodies, "a2.md"), "w", encoding="utf-8") as f:
+            f.write("# a2\n\n无引用。\n")
+        p = _run(g, out, ("--bodies-root", bodies, "--small-bucket", "0"))
+        assert p.returncode == 0, p.stderr[-500:]
+        doc = _load(out)
+        assert doc["meta"]["rules"]["R5_body_crossref"] == 0, \
+            "BOM 使 frontmatter 混进正文、产出伪 R5 边：%s" % doc["edges"]

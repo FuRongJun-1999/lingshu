@@ -572,7 +572,7 @@ def _feat_vec(f):
 
 
 # ==================== 4. 纹理特征（花纹：平涂 vs 有花纹） ====================
-def texture_features(img, sil, core, bg=None):
+def texture_features(img, core, bg=None):
     """物体内部的**纹理**读数（尺度无关）：
       · `tex_rel` = 核心区亮度标准差 / 物体色到背景的距离 —— **平涂 vs 有花纹**的判别量。
         为何不用 R273 的「占空比」：本语料的花纹是**颜色调制**而不是挖洞，实测三类花纹的
@@ -635,7 +635,7 @@ def measure_item(it, tol=TOL, d=6, erode_r=ERODE_R):
         if not px.any():
             px = core if core.any() else sil
         med_rgb = np.median(it["img"][px], axis=0)
-        tex = texture_features(it["img"], sil, core, bg=bg)
+        tex = texture_features(it["img"], core, bg=bg)
         core_hp = erode(sil, HP_RADIUS + 1)
         if core_hp.sum() < 40:
             core_hp = core
@@ -855,8 +855,12 @@ def fit(measured, ids):
                 #   后者会被「类内极差小的维」骗：R283 实测 (triangle,diamond) 上 `harm5` 的相对
                 #   间隔 1.845 盖过 `peak_prom` 的 1.722，可 harm5 的绝对间隔只有 0.133（噪声级），
                 #   于是门生成在错误的维上、混淆一点没动。d′ 直接把「信噪比」当选择键。
-                sd = float(np.sqrt((np.var(va, ddof=1) if len(va) > 1 else 0.0)
-                                   + (np.var(vb, ddof=1) if len(vb) > 1 else 0.0)) / 2.0) ** 0.5
+                #   #232（A2）：合并标准差＝sqrt((σa²+σb²)/2)。原写法
+                #   `(sqrt(σa²+σb²)/2)**0.5` 实为 (σa²+σb²)^{1/4}/√2——方差和 <1 时
+                #   sd 被抬高 ⇒ d′ 被压低（真门漏生成）；>1 时反向（假门）。实测：
+                #   均值差 5σ、σa²+σb²=4 时旧式 d′=5.0，真值 3.5355。
+                sd = float(np.sqrt(((np.var(va, ddof=1) if len(va) > 1 else 0.0)
+                                    + (np.var(vb, ddof=1) if len(vb) > 1 else 0.0)) / 2.0))
                 dp = (abs(float(np.mean(va)) - float(np.mean(vb))) / sd) if sd > 1e-9 else 0.0
                 if g > 0 and dp >= 2.0:
                     if best is None or dp > best[0]:
@@ -1020,29 +1024,38 @@ def adjudicate(measured, ratio=ADJ_RATIO):
     不轻易改写真值）。单件组（n=1）**不可裁定**，如实计入 `unadjudicable`。
 
     返回 {ratio, n_groups, adjudicable_groups, covered, n_obj, flagged, unadjudicable}。"""
+    # #232（A3）：组＝**seed（件）**而非物体——docstring 宣称「同一个三元组有多个
+    # seed（组）…单件组（n=1）不可裁定」，旧口径 `len(v)` 却按物体计数：1 件 3 物体
+    # 即被判「可裁定」，组内 hp 悬殊即产出「疑似未兑现」假阳（实测 ratio 5.0/3.6
+    # 两条）。裁定判据仍在**物体级**（每件物体的 hp 对照组内最高），可裁定性在
+    # **seed 级**（同三元组 ≥2 件才可比）。
     grp = {}
     for it in measured["items"]:
         t = it["truth"]
         if not t:
             continue
         key = (t["shape"], t["color"], t["pattern"])
-        for o in measured["by_id"].get(it["id"], []):
-            grp.setdefault(key, []).append((it["id"], t["shape"], t["color"], t["pattern"],
-                                            float(o["hp_rel"])))
+        hps = [float(o["hp_rel"]) for o in measured["by_id"].get(it["id"], [])]
+        grp.setdefault(key, []).append(
+            (it["id"], t["shape"], t["color"], t["pattern"], hps))
     flagged, unadj, adj_groups, covered = [], 0, 0, 0
-    for key, v in sorted(grp.items()):
-        if len(v) < 2:
-            unadj += len(v)
+    n_obj_total = 0
+    for key, items in sorted(grp.items()):
+        n_obj = sum(len(x[4]) for x in items)
+        n_obj_total += n_obj
+        if len(items) < 2:                    # 单 seed（件）组：物体再多也不可比
+            unadj += n_obj
             continue
         adj_groups += 1
-        covered += len(v)
-        top = max(x[4] for x in v)
-        for iid, sh, co, pat, hp in v:
-            if hp < top / ratio:
-                flagged.append({"id": iid, "group": f"{sh}/{co}/{pat}", "hp": round(hp, 5),
-                                "group_max": round(top, 5), "ratio": round(top / max(hp, 1e-9), 2)})
+        covered += n_obj
+        top = max(h for x in items for h in x[4])
+        for iid, sh, co, pat, hps in items:
+            for hp in hps:
+                if hp < top / ratio:
+                    flagged.append({"id": iid, "group": f"{sh}/{co}/{pat}", "hp": round(hp, 5),
+                                    "group_max": round(top, 5), "ratio": round(top / max(hp, 1e-9), 2)})
     return {"ratio": ratio, "n_groups": len(grp), "adjudicable_groups": adj_groups,
-            "covered": covered, "n_obj": sum(len(v) for v in grp.values()),
+            "covered": covered, "n_obj": n_obj_total,
             "flagged": flagged, "unadjudicable": unadj}
 
 
