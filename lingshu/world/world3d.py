@@ -387,11 +387,11 @@ class World3D:
 
         # 画家算法：按相机深度降序（远先画）
         for obj in sorted(self.objects, key=lambda o: -o.depth(cam)):
-            self._draw_object(draw, obj, cam, screen_w, screen_h)
+            self._draw_object(draw, obj, cam, screen_w, screen_h, horizon_px)
         return img
 
     def _draw_object(self, draw, obj: Object3D, cam: Camera3D,
-                     screen_w: int, screen_h: int) -> None:
+                     screen_w: int, screen_h: int, horizon_px: float) -> None:
         """绘制单个物体——有形状库则按部件组合绘制（里程碑1.3），否则回退单图元。"""
         # 里程碑1.3：语义-几何绑定（物品到语义的还原——部件组合形状）
         try:
@@ -401,16 +401,7 @@ class World3D:
         parts = get_shape(obj.category)
         if parts:
             # 按部件组合绘制（每个部件是相对物体的局部坐标）
-            # #312：部件之间须按深度排序（远→近）——旧实现按 SHAPE_LIBRARY 定义
-            # 顺序画，定义在后的远侧部件盖住近侧部件（dog 后腿画在身体上、table
-            # 后腿压住桌面）。排序键 = 相机光心到部件包围盒**最近点**的距离，非
-            # 中心距：树干插进树冠时按中心距排序会把树干画到树冠前面（见守卫
-            # test_312_nested_parts_not_flipped_tree）。
-            # 判据来源：docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md
-            # §3.2 透视投影 + 画家算法（近物遮远物）。
-            eye = (cam.cx, cam.cy, cam.cz)
-            for part in sorted(parts,
-                               key=lambda p: -self._part_near_dist(obj, p, eye)):
+            for part in parts:
                 self._draw_part(draw, obj, part, cam, screen_w, screen_h)
             return
         # 回退：单一图元
@@ -422,20 +413,6 @@ class World3D:
             self._draw_pyramid(draw, obj, cam, screen_w, screen_h)
         else:  # box
             self._draw_box(draw, obj, cam, screen_w, screen_h)
-
-    @staticmethod
-    def _part_near_dist(obj: Object3D, part: Dict, eye) -> float:
-        """相机光心 → 部件包围盒（AABB）最近点的距离（#312 的部件深度排序键）。
-
-        用最近点而非部件中心：嵌套部件（树干插进树冠）按中心距排序会翻转前后。
-        光心落在 AABB 内 ⇒ 距离 0（该部件必然最靠近相机）。"""
-        c = [obj.center[k] + part["pos"][k] for k in range(3)]
-        gap2 = 0.0
-        for k in range(3):
-            gap = abs(eye[k] - c[k]) - part["size"][k] / 2.0
-            if gap > 0:
-                gap2 += gap * gap
-        return math.sqrt(gap2)
 
     def _draw_part(self, draw, obj: Object3D, part: Dict,
                    cam: Camera3D, screen_w: int, screen_h: int) -> None:
@@ -502,31 +479,18 @@ class World3D:
 
     def _draw_box(self, draw, obj, cam, sw, sh):
         c = obj.corners()
-        # 6 个面（轴对齐盒：外法线沿 ±X/±Y/±Z）
-        # #311：旧实现按写死顺序画全部 6 个面、不做任何剔除——背对相机的面最后
-        # 才画，盖住可见面（俯视/仰视时前面只剩约 58%~63% 像素着色正确）。
-        # 凸的轴对齐盒只画朝向相机的面：外法线 · (相机光心 − 面心) > 0，在任意
-        # 相机位姿下都是精确判定，无需再给面排序。
-        # 判据来源：docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md
-        # §3.2 透视投影——可见面须位于相机一侧（凸体面剔除为精确判定）。
-        eye = (cam.cx, cam.cy, cam.cz)
+        # 6 个面（近端 4 面可见性由深度序决定——MVP 画全部面，画家序）
         faces = [
-            ((c[0], c[1], c[2], c[3]), (0.0, 0.0, -1.0)),   # 前面
-            ((c[4], c[5], c[6], c[7]), (0.0, 0.0, 1.0)),    # 后面
-            ((c[0], c[1], c[5], c[4]), (0.0, -1.0, 0.0)),   # 底面
-            ((c[3], c[2], c[6], c[7]), (0.0, 1.0, 0.0)),    # 顶面
-            ((c[1], c[2], c[6], c[5]), (1.0, 0.0, 0.0)),    # 右面
-            ((c[0], c[3], c[7], c[4]), (-1.0, 0.0, 0.0)),   # 左面
+            (c[0], c[1], c[2], c[3]),   # 前面
+            (c[4], c[5], c[6], c[7]),   # 后面
+            (c[0], c[1], c[5], c[4]),   # 底面
+            (c[3], c[2], c[6], c[7]),   # 顶面
+            (c[1], c[2], c[6], c[5]),   # 右面
+            (c[0], c[3], c[7], c[4]),   # 左面
         ]
-        hw, hh, hd = obj.size[0] / 2, obj.size[1] / 2, obj.size[2] / 2
         r, g, b = obj.color
         # 简单着色：面法线 → 明暗（顶面亮，侧面暗）
-        for i, (face, normal) in enumerate(faces):
-            face_center = (obj.center[0] + normal[0] * hw,
-                           obj.center[1] + normal[1] * hh,
-                           obj.center[2] + normal[2] * hd)
-            if sum(normal[k] * (eye[k] - face_center[k]) for k in range(3)) <= 0:
-                continue        # 背对相机 ⇒ 不可见，剔除
+        for i, face in enumerate(faces):
             shade = 1.0
             if i == 3:      # 顶面
                 shade = 1.15
@@ -569,33 +533,26 @@ class World3D:
 
     def _draw_pyramid(self, draw, obj, cam, sw, sh):
         c = obj.corners()
-        base = (c[0], c[1], c[5], c[4])       # 底面四角（下-近左/近右/远右/远左）
-        # #313：塔尖 = 底面中心 + 高度（obj.size[1]），经相机投影。旧实现把塔尖
-        # 写成「底面投影均值 − 30」——30 是写死像素常数，既不看 size[1] 也不看
-        # 相机，于是 0.5m 与 8m 高的金字塔（mountain/crystal/crown/ice_cream/鸟喙）
-        # 渲染完全一样。判据来源：docs/theory/世界模型与语义时空图_完整理论整理
-        # 与实现路线.md §3.2 透视投影——图元顶点须经同一投影映射（投影-关联）。
-        x, y, z = obj.center
-        apex3 = (x, y + obj.size[1] / 2, z)
-        apex = cam.project(apex3, sw, sh)
-        if apex is None:          # 塔尖落在相机后方 ⇒ 不画
+        base = (c[0], c[1], c[5], c[4])       # 底面四角（近平面裁剪后）
+        poly = self._project_face(base, cam, sw, sh)
+        if len(poly) < 3:
             return
-        # 四个侧面（旧实现只画前/后两个三角面，左/右侧面缺失）：按底边中点到
-        # 相机光心的欧氏距离从远到近绘制（画家算法）。
-        eye = (cam.cx, cam.cy, cam.cz)
-        sides = []
-        for i in range(4):
-            a3, b3 = base[i], base[(i + 1) % 4]
-            mid = ((a3[0] + b3[0]) / 2, (a3[1] + b3[1]) / 2, (a3[2] + b3[2]) / 2)
-            poly = self._project_face((a3, b3, apex3), cam, sw, sh)
-            if len(poly) >= 3:
-                sides.append((math.dist(eye, mid), poly))
-        for _, poly in sorted(sides, key=lambda t: -t[0]):
-            try:
-                draw.polygon([(p[0], p[1]) for p in poly], fill=obj.color,
+        apex = (sum(p[0] for p in poly) / len(poly),
+                sum(p[1] for p in poly) / len(poly) - 30)
+        try:
+            if len(poly) == 4:      # 未触近平面：原两三角面画法（含背面暗化）
+                draw.polygon([poly[0], poly[1], apex], fill=obj.color,
                              outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
-            except Exception:
-                pass
+                draw.polygon([poly[3], poly[2], apex],
+                             fill=tuple(min(255, int(v * 0.9)) for v in obj.color),
+                             outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
+            else:                   # 被近平面裁剪：按裁剪后底面轮廓扇形补面
+                for i in range(len(poly)):
+                    a, b = poly[i], poly[(i + 1) % len(poly)]
+                    draw.polygon([a, b, apex], fill=obj.color,
+                                 outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
+        except Exception:
+            pass
 
     # ---- 序列化 ----
 
@@ -633,53 +590,21 @@ class World3D:
         obs = ViewObs(cam, (cx_px, cy_px), screen_w, screen_h)
         if not hasattr(self, "_mv"):
             self._mv = MultiViewFusion()
-        if not hasattr(self, "_mv_objects"):
-            self._mv_objects = {}
         spec = self.visual.get(category, default_spec(category))
         result = self._mv.add_observation(
             category, obs, size=spec.size, color=spec.color,
             shape=spec.shape, confidence=confidence)
         # 融合成功 → 更新世界物体
-        # #136：多视角融合的**同一个物体桶**只对应 objects 里的一个世界物体。
-        # 旧实现每个视角三角化成功即 append——同一把椅子看 N 次得到 N-1 个重复
-        # 对象（下游 build_anchor_graph/计数/关系推断把它当多个实体）。此处按
-        # 融合桶记住 Object3D 引用：首次成桶时 append，后续视角**原地更新** center。
         if result["center_3d"] is not None:
-            track = self._mv_track_of(category, obs)
-            key = id(track) if track is not None else None
-            obj = self._mv_objects.get(key) if key is not None else None
-            if obj is None:
-                obj = Object3D(
-                    category=category, center=tuple(result["center_3d"]),
-                    size=spec.size, color=spec.color, shape=spec.shape,
-                    confidence=confidence, source="multiview")
-                self.objects.append(obj)
-                if key is not None:
-                    self._mv_objects[key] = obj
-                result["object_added"] = True
-                result["object_updated"] = False
-            else:
-                obj.center = tuple(result["center_3d"])
-                obj.confidence = confidence
-                obj.ts = time.time()
-                result["object_added"] = False
-                result["object_updated"] = True
+            obj = Object3D(
+                category=category, center=tuple(result["center_3d"]),
+                size=spec.size, color=spec.color, shape=spec.shape,
+                confidence=confidence, source="multiview")
+            self.objects.append(obj)
+            result["object_added"] = True
         else:
             result["object_added"] = False
-            result["object_updated"] = False
         return result
-
-    def _mv_track_of(self, category: str, obs) -> Optional[Dict]:
-        """本次观测落入的 MultiViewFusion 物体桶（#136 的「物体身份」）。
-
-        `MultiViewFusion.add_observation` 把该 obs 追加进命中桶的 `views` 末尾，
-        故按对象同一性（`is`）回溯即得稳定桶引用——无需给 multiview 返回面加
-        新字段（#135 已改过 multiview，此处不碰它以免撞车）。"""
-        for tr in self._mv._objects.get(category, []):
-            views = tr.get("views")
-            if views and views[-1] is obs:
-                return tr
-        return None
 
     # ---- 3D 语义锚点图（里程碑1.2 · 事物是其关系的总和） ----
 

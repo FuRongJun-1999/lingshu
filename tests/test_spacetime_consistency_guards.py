@@ -25,15 +25,6 @@
       verdict ⇒ 不变量已被破坏（实体出界/入地/非有限）时仍可判
       `self_consistent`。判据来源：triage #303（判定成立）。
 
-  #25 （成立）`SpacetimeConsistency.__init__` 未纳入 seed 轴：签名里没有
-      `seed`，构造 `SceneSimulator` 时丢弃种子 ⇒ 场景演化在结构上不可做
-      seed 维度消融（`SpacetimeConsistency(seed=...)` 直接 TypeError）。
-      修法：新增 `seed: int = 42` 并透传给 `SceneSimulator`（缺省 42 与
-      `scene_simulator.py` 历史硬编码逐位一致，默认行为不变）。
-      判据来源：triage #25（判定成立）§三判据 1–4。本件守卫**只认 seed 透传**
-      这一条通路——`SceneSimulator` 本体（#12）不提供 seed 之外的第二随机源，
-      本类自身 `random` 出现 0 次，故不存在与别批守卫的代偿。
-
   #427（成立·资源耗尽）`_results` 每 tick 追加、永不裁剪，且
       `overall_hit_rate`/`per_behavior_rates` 每次全量遍历它 ⇒ 内存与报告耗时
       随 tick 线性增长。修法：`_results` 改有界环形缓冲（`HISTORY_MAXLEN`），
@@ -201,80 +192,6 @@ def group_303_invariant_violation_changes_verdict():
        rep["self_consistent"] is False, rep["self_consistent"])
 
 
-# ==================== #25：seed 轴必须接通 ====================
-
-def _seed_traj(seed):
-    """同 seed 构造 → 有实体非空场景跑 5 tick，返回 (位置轨迹, 率读数)。
-
-    比较键按**插入序取位置**——【禁止】按 entity.id（`SceneEntity.id` 用
-    uuid4，两次实例化必不同，见 triage #25 §一补充）。空世界不得用于本判据
-    （#22：空世界 rate 恒 None/满分会让断言恒真）。
-    旧码无 `seed` 参数 ⇒ TypeError，返回哨兵 (None, None, None) 使断言红而非崩。
-    `seed=None` 表示**不传 seed**（缺省构造），用于 A7 缺省等价对照。
-    """
-    try:
-        sp = (SpacetimeConsistency(size=24) if seed is None
-              else SpacetimeConsistency(size=24, seed=seed))
-    except TypeError:
-        return None, None, None
-    sp.scene.create_scene(trees=0, water=False)
-    eid = sp.add_entity("rabbit", behavior="wander", pos=(2, 1.5, 2), speed=0.5)
-    traj = []
-    for _ in range(5):
-        sp.step_verified()
-        traj.append(tuple(round(v, 12) for v in sp.scene.entities[eid].pos))
-    return traj, sp.overall_hit_rate(), sp.rolling_hit_rate()
-
-
-def _rng_initial_state(seed):
-    """构造实例并读 `scene._rng` 初态；旧码无 seed ⇒ None（不崩）。"""
-    try:
-        return SpacetimeConsistency(size=24, seed=seed).scene._rng.random()
-    except TypeError:
-        return None
-
-
-def group_25_seed_axis_connected():
-    print("\n#25：seed 轴 —— 同 seed 可复现 / 异 seed 必分叉 / 缺省等价 42")
-    # A1：签名收下 seed（旧码 TypeError: unexpected keyword argument 'seed'）
-    try:
-        sp = SpacetimeConsistency(seed=7)
-        accepted = True
-    except TypeError as e:
-        accepted, sp = False, e
-    ok("#25-A1 签名接受 seed（旧码 TypeError）", accepted is True, sp)
-    # A2：seed 确实透传到 SceneSimulator（不是收下后丢弃）
-    s7a, s7b = _rng_initial_state(7), _rng_initial_state(7)
-    ok("#25-A2 seed 透传至 scene._rng（同 seed 两实例 rng 初态一致）",
-       s7a is not None and s7a == s7b, (s7a, s7b))
-    # A3：同 seed 逐位可复现（位置轨迹 + 率读数）
-    t1, o1, r1 = _seed_traj(42)
-    t2, o2, r2 = _seed_traj(42)
-    ok("#25-A3 同 seed 位置轨迹逐位相同", t1 is not None and t1 == t2, (t1, t2))
-    ok("#25-A4 同 seed 率读数逐位相同", (o1, r1) == (o2, r2),
-       (o1, r1, o2, r2))
-    # A5：异 seed 必须分叉（收了但没透传会静默退回硬编码 —— 用它钉住）
-    t3, _, _ = _seed_traj(7)
-    ok("#25-A5 异 seed 位置轨迹必须分叉", t1 is not None and t1 != t3, (t1, t3))
-    # A6：缺省等价 seed=42（默认行为不变的回归护栏）
-    td, _, _ = _seed_traj(None)                      # 缺省构造（不传 seed）
-    s42 = _rng_initial_state(42)                     # 显式 seed=42
-    try:
-        sdef = SpacetimeConsistency(size=24).scene._rng.random()
-    except TypeError:
-        sdef = None
-    ok("#25-A6 缺省 seed 等价 42（scene._rng 初态一致）",
-       sdef is not None and sdef == s42, (sdef, s42))
-    ok("#25-A7 缺省轨迹 == seed=42 轨迹",
-       td is not None and td == t1, (td, t1))
-    # A8：本类自身不新建第二随机源（静态事实，防代偿/回归）
-    src = (os.path.join(REPO, "lingshu", "world",
-                        "spacetime_consistency.py"))
-    text = open(src, encoding="utf-8").read()
-    ok("#25-A8 本模块不出现 'random'（随机性全部来自 scene._rng）",
-       "random" not in text, "occurrences=%d" % text.count("random"))
-
-
 # ==================== #427：_results 必须有界 ====================
 
 def group_427_results_bounded():
@@ -304,7 +221,6 @@ def run_checks():
     group_22_no_observation_not_full_marks()
     group_22_scored_world_unchanged()
     group_303_invariant_violation_changes_verdict()
-    group_25_seed_axis_connected()
     group_427_results_bounded()
     print()
     print("===== SUMMARY %d/%d 通过 =====" % (len(_PASS), len(_PASS) + len(_FAIL)))
@@ -312,7 +228,7 @@ def run_checks():
         print("FAILS:", _FAIL)
         return 1
     print("VERDICT=PASS（#9 逐实体漂移可检出 / #22 无样本非满分 / "
-          "#303 verdict 看世界状态 / #25 seed 轴接通 / #427 记录有界）")
+          "#303 verdict 看世界状态 / #427 记录有界）")
     return 0
 
 

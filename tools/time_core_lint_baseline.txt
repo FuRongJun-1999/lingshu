@@ -12,19 +12,11 @@
 # 实跑记录（pr-work @ 上游 b5f480c，2026-10-08）：
 #   python tools/time_core_lint.py               → 1 条命中，全部已在下方登记 → 退出码 0
 #   python tools/time_core_lint.py --baseline <空文件>
-#                                               → 退出码 1，命中 stable_lease.py:88:R1
+#                                               → 退出码 1，命中 stable_lease.py:67:R1
 #                                                 （证明规则确实在命中，baseline 不是摆设）
 
 # ── 已登记的既有违规 ──────────────────────────────────────────────────────
-lingshu/world/stable_lease.py:88:R1    # 既有：手写同核 exp(-γ·t)（与 time_core.cred_factor 同一指数核），未转交统一时间核。本模块头部「耦合声明（DEV-005）」已自认 TTL 与 confidence 衰减共享该核，实现却留在本地——即钉死批条款 3 要禁的形态，另见 issue #19。修法（改用 cred_factor/cred）需改源码，超出本 PR（仅新增工具+测试）范围，留待维护者裁决。
-lingshu/core/activation.py:224:R3    # 形状级命中（**非**时间衰减）：issue #53 的节点对级条件衰减修正
-#   `d *= cond_match(两端条件空间)`。R3(b) 的口径是「增量乘性赋值 `x *= …`」——**任何** `*=` 都命中，
-#   规则本身不区分因子语义（lint 头部 L4b 已自陈「宁可漏判、不误判」的取向）。
-#   判为「不按时间衰减核违规处理」的判据：`cond_match` 返回的是**条件空间重合率**（4 维逐维比对，
-#   见 lingshu/core/activation.py 的 `cond_match` docstring），与 time_core 的 cred_factor/cred_step
-#   的**时间**衰减不是同一量；且 `d` 是装载期局部标量（边衰减系数），无状态自指、无逐 tick 演化。
-#   ★削掉的判别力（如实）：本条登记后，该行若将来**真的**改成时间衰减核也不会被本工具点名。
-#   替代防线＝issue #53 的守卫 tests/test_issue7_161_293_314_53_activation_contract.py 钉住该式语义。
+lingshu/world/stable_lease.py:67:R1    # 既有：手写同核 exp(-γ·t)（与 time_core.cred_factor 同一指数核），未转交统一时间核。本模块头部「耦合声明（DEV-005）」已自认 TTL 与 confidence 衰减共享该核，实现却留在本地——即钉死批条款 3 要禁的形态，另见 issue #19。修法（改用 cred_factor/cred）需改源码，超出本 PR（仅新增工具+测试）范围，留待维护者裁决。
 
 # ── 曾评估但判定为「不按违规处理」的候选（故未登记；判据见 tools/time_core_lint.py 头部 L9）──
 # lingshu/world/gap_dual.py:103:R2         # `retain=1.0 - self.decay` 落在 cred_blend 实参括号内 → EX5（位置级）：参数派生留在调用方是核 docstring 认可的形态（`retain = 1-λ`），乘法本体在核内

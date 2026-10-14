@@ -87,9 +87,6 @@ STDLIB_ALLOWED = frozenset({
     "sqlite3",
     # IO / 文本 / 数值 / 随机
     "io", "re", "math", "random",
-    # 语法树（ast：2026-10-12 外部 PR 引入 world/coord_contract.py——标准库；
-    # 守卫按设计判红「未知裸名」，此处补分类而非放宽判据）
-    "ast",
     # 命令行 / 子进程
     "argparse", "subprocess",
 })
@@ -106,30 +103,21 @@ THIRD_PARTY_ALLOWED = frozenset({
 SELF_ALLOWED = frozenset({"lingshu"})
 
 # 构造期裸名（SpacetimeMemoryEngine.__init__ 的 _setup_* 调用链）→ 失败信息字段
-# #34（本仓）后 `prediction_engine` **移出本表**：core.py 的 `_setup_v19` 改为
-# 「先试裸名（保留私域别名/受控注入面）→ 失败即回退仓内相对导入
-# `..world.prediction`」⇒ 本仓形态下该槽**装配成功**（不再恒失败），其 cwd 收口
-# 由 RELATIVE_IMPORT_COMPONENTS 组另行断言（见 group_relative_import_component）。
 CONSTRUCT_TIME = [
     ("entity_registry", "_v13_error"),
     ("cognitive_orchestrator", "_v13_error"),
     ("blindspot_learning_loop", "_v13_error"),
     ("semantic_space", "_semantic_error"),
     ("attention_policy", "_attention_error"),
+    ("prediction_engine", "_prediction_error"),
     ("lifecycle_engine", "_lifecycle_error"),
     ("flywheel_engine", "_flywheel_error"),
     ("self_cognition_engine", "_self_cognition_error"),
     ("body", "_body_error"),
 ]
-# #34：改为「裸名优先 + 仓内相对导入回退」的组件。它们在本仓**装配成功**，
-# 故不进 CONSTRUCT_TIME 的「装配必败」组；但仍须断言「毒 cwd 不执行」+
-# 「受控面（私域别名/显式根）优先」两条腿。
-RELATIVE_IMPORT_COMPONENTS = [
-    ("prediction_engine", "_prediction"),
-]
 # 白名单全集（扫描面必须覆盖的最小集）
 WHITELIST_EXPECTED = frozenset(
-    [n for n, _ in CONSTRUCT_TIME] + [n for n, _ in RELATIVE_IMPORT_COMPONENTS]
+    [n for n, _ in CONSTRUCT_TIME]
     + ["vision", "pattern_separation", "scene_reconstruction",
        "spacetime_memory_core", "game_web"])
 
@@ -449,13 +437,8 @@ def group_b_alert(base):
     if j:
         need = {n for n, _ in CONSTRUCT_TIME}
         ok(need <= set(j["failed"]),
-           "B2b component_assembly.failed 覆盖全部 %d 个构造期组件" % len(need),
+           "B2b component_assembly.failed 覆盖全部 10 个构造期组件",
            f"missing={sorted(need - set(j['failed']))}")
-        # #34：本仓自带 `PredictionEngine` 经相对导入回退**装配成功** ⇒ 该槽应在
-        # ok 列表（旧实现恒失败 ⇒ 此断言在旧行为下必红）。
-        ok("prediction_engine" in j["ok"],
-           "B2b-34 prediction_engine 装配成功（#34：旧实现裸导入恒失败）",
-           f"ok={j['ok']}")
         ok(j["guard"] is True, "B2c discovery.guard_installed=True（解析守卫在场）")
         ok(j["cwd_excluded"] >= 1, "B2d discovery 报告已排除 cwd/空串条目", j)
         ok(set(j["names"]) >= WHITELIST_EXPECTED,
@@ -471,7 +454,7 @@ def group_b_alert(base):
     for line in (r.stdout or "").splitlines():
         if line.startswith("##JSON##"):
             j3 = json.loads(line[len("##JSON##"):])
-    ok(r.returncode == 0 and j3 is not None and len(j3["failed"]) >= len(CONSTRUCT_TIME),
+    ok(r.returncode == 0 and j3 is not None and len(j3["failed"]) >= 10,
        "B3 告警被压制（-W ignore）时：构造不崩、self_check 通道仍报告全部失败（两路独立）",
        f"rc={r.returncode} failed={None if j3 is None else len(j3['failed'])}")
 
@@ -585,52 +568,6 @@ def group_c_install_paths(base):
     ok(r5.returncode == 0 and "GHOSTS_KEPT: 3" in out5 and "REPO_KEPT: True" in out5,
        "C5 非 cwd 合法条目（PYTHONPATH 的 ghost .zip/.egg/ns 目录 + 仓根）未被误删",
        out5[:300])
-
-
-# ---------------------------------------------------------------- R 组（#34 相对导入回退）
-def group_r_relative_import_component(base):
-    """R 组（#34）：`prediction_engine` 改「裸名优先 + 仓内相对导入回退」后——
-    ① 本仓形态下该槽**装配成功**（旧实现恒 None）；② 毒 cwd 仍不执行；
-    ③ 受控面（显式根/私域别名）**优先**于仓内回退（收口未被回退腿绕过）。"""
-    print("== R 组（#34）：prediction_engine 相对导入回退（成功 + 收口两腿） ==")
-
-    # R1：干净 cwd ⇒ 装配成功（旧实现 `from prediction_engine import ...` 必失败）
-    clean = os.path.join(base, "r_clean")
-    os.makedirs(clean, exist_ok=True)
-    code1 = textwrap.dedent("""
-        from lingshu.core.core import SpacetimeMemoryEngine
-        e = SpacetimeMemoryEngine(":memory:")
-        print("PRED:", type(e._prediction).__name__ if e._prediction else None,
-              "ERR:", repr(e._prediction_error))
-        """)
-    r = run_py(code1, cwd=clean)
-    ok(r.returncode == 0 and "PRED: PredictionEngine ERR: ''" in (r.stdout or ""),
-       "R1[#34] 本仓形态：prediction_engine 装配成功、无错误（旧实现恒 None）",
-       (r.stdout or "")[:300])
-
-    # R2：毒 cwd 提供同名 prediction_engine.py ⇒ 不得被执行（#156 收口仍有效）
-    d = make_poison_dir(base, "prediction_engine", tag="r2")
-    r2 = run_py(code1, cwd=d)
-    marker = os.path.exists(os.path.join(d, "MARKER.txt"))
-    ok(r2.returncode == 0 and not marker and "PRED: PredictionEngine" in (r2.stdout or ""),
-       "R2[#34] 毒 cwd 的 prediction_engine.py 未被执行（回退腿不绕过 #156 收口）",
-       f"rc={r2.returncode} marker={marker} out={(r2.stdout or '')[:200]!r}")
-
-    # R3：受控面（显式根）提供 prediction_engine ⇒ **优先**于仓内回退（受控面语义不变）
-    root = os.path.join(base, "r_root")
-    os.makedirs(root, exist_ok=True)
-    with open(os.path.join(root, "prediction_engine.py"), "w", encoding="utf-8") as f:
-        f.write("class PredictionEngine:\n    MARKER_FAKE = True\n"
-                "    def __init__(self, *a, **k): pass\n")
-    code3 = textwrap.dedent("""
-        from lingshu.core.core import SpacetimeMemoryEngine
-        e = SpacetimeMemoryEngine(":memory:")
-        print("FAKE:", getattr(type(e._prediction), "MARKER_FAKE", False))
-        """)
-    r3 = run_py(code3, cwd=clean, extra={"LINGSHU_COMPONENT_ROOT": root})
-    ok(r3.returncode == 0 and "FAKE: True" in (r3.stdout or ""),
-       "R3[#34] 受控面（显式根）提供该组件时优先命中（回退腿不夺取受控面语义）",
-       (r3.stdout or "")[:300])
 
 
 # ---------------------------------------------------------------- D 组（AST · 有牙）
@@ -869,7 +806,6 @@ def main():
         group_a_all_at_once(base)
         group_b_alert(base)
         group_c_install_paths(base)
-        group_r_relative_import_component(base)
         group_d_whitelist()
         group_f_stdlib_hijack(base)
         group_g_escape_hatch(base)

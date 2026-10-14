@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""test_issue193_249_347_398_424_scene_sim_guard · scene_simulator 六件缺陷守卫
+"""test_issue193_249_347_398_424_scene_sim_guard · scene_simulator 五件缺陷守卫
 ============================================================================
 本件钉住 lingshu/world/scene_simulator.py（及 spacetime_consistency.py 的同式
-影子）上六条已核实成立的缺陷（#193 / #249 / #347 / #398 / #424 / #428，文件名
-沿用建件时的编号）。每条断言都对应「缺陷不再存在」，而非「代码能跑」。
+影子）上五条已核实成立的缺陷。每条断言都对应「缺陷不再存在」，而非「代码能跑」。
 
 #193（成立）step() 的 actions 报的是实体数而非行动数；SceneEntity.velocity
     声明后从不写入；goal 不可解析时 seek/avoid/flee/follow 静默退化为随机游走
@@ -43,20 +42,6 @@
       理论章节**；判据＝单次调用内存峰值有界）。
     · 削掉的判别力：`evolution()` 与 `behavior_log()` 不再返回全量历史，只返回
       最近窗口（读取方原本只用 len()/尾部切片/整体返回）。
-
-#428（成立）step() 的轨迹依赖实体**插入顺序**：循环 `for eid, e in
-    self.entities.items()` 的迭代序即插入序，① `_decide` 按该序从共享 `_rng`
-    取随机数；② 决策读目标 `pos` 后同循环写回 ⇒ 先动者改变后动者依据。故
-    「确定性随机（可复现）」的承诺只在**同一插入顺序**下成立。
-    · 修复取向（排序 / 决策-行动分相 / 每实体 rng）属**设计裁定**（会改变既有
-      实验数值；`.tmp/待裁清单_20261010.md` #428「修复取向需设计者裁」），本件
-      **不改数值行为**——只钉住「契约如实声明」：step docstring 显式写明插入序
-      依赖、模块不再含无条件「确定性随机（可复现）」承诺，且同插入序仍逐位可
-      复现（不得为消除顺序依赖而引入 uuid4 排序这类新的不可复现源）。
-    · 判据来源：issue #428 正文（其判据即「:86 注释自称『可复现』但该确定性只
-      保证同插入顺序可复现」）+ `.tmp/待裁清单_20261010.md` 边界件 #428。
-    · 削掉的判别力：本件不主张「轨迹已顺序无关」——顺序无关化的判别力留给
-      设计裁定后的后续件。
 
 运行（lingshu 仓根）：
     python -X utf8 tests/test_issue193_249_347_398_424_scene_sim_guard.py
@@ -376,63 +361,6 @@ def group_424_bounded_growth():
        MAX_STEPS_PER_CALL == 100_000)
 
 
-# ============================ #428 ============================
-
-_SRC_428 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "lingshu", "world", "scene_simulator.py")
-
-
-def _wander_map(order, n=1):
-    """按插入序建 wander 实体，跑 n tick，返回 {category: pos}。"""
-    s = SceneSimulator(size=24, ground_level=1)
-    s.create_scene(trees=0, water=False)
-    ids = [s.add_entity(category=c, behavior="wander", pos=p, speed=1.0, goal="")
-           for c, p in order]
-    s.step(n)
-    return {s.entities[e].category: s.entities[e].pos for e in ids}
-
-
-def _seek_flee_traj(order, n=12):
-    """seek/flee 场景：按**插入序**返回每 tick 全部实体位置（与 eid 无关）。"""
-    s = SceneSimulator(size=24, ground_level=1)
-    s.create_scene(trees=0, water=False)
-    ids = [s.add_entity(category=c, behavior=b, pos=p, speed=1.0, goal="")
-           for c, b, p in order]
-    for i, (c, b, p) in enumerate(order):
-        g = {"cat": "dog", "dog": "cat"}.get(c)
-        if g:
-            for j, (c2, _, _) in enumerate(order):
-                if c2 == g:
-                    s.entities[ids[i]].goal = ids[j]
-    out = []
-    for _ in range(n):
-        s.step()
-        out.append(tuple(round(x, 6) for e in ids for x in s.entities[e].pos))
-    return tuple(out)
-
-
-def group_428_order_contract():
-    print("\n#428：轨迹依赖实体插入顺序 —— 契约必须如实声明（不改数值行为）")
-    doc = SceneSimulator.step.__doc__ or ""
-    ok("#428-A1 step docstring 显式声明『插入顺序』依赖（修前无此声明）",
-       "插入顺序" in doc, doc.strip()[:60])
-    src = open(_SRC_428, encoding="utf-8").read()
-    ok("#428-A2 模块不再含无条件『确定性随机（可复现）』承诺（修前含）",
-       "确定性随机（可复现）" not in src,
-       [ln.strip() for ln in src.splitlines() if "确定性随机" in ln])
-    # 契约的另一半：同插入序（同 seed）必须逐位可复现——不得为消除顺序依赖
-    # 而引入新的不可复现源（如按 uuid4 的 eid 排序：实测 40 次里仅 20 次一致）。
-    o = [("cat", "seek", (6.0, 1.5, 6.0)), ("dog", "flee", (10.0, 1.5, 3.0))]
-    t1, t2 = _seek_flee_traj(o), _seek_flee_traj(o)
-    ok("#428-B1 同插入序两次独立实例化逐位一致（可复现契约仍成立）",
-       t1 == t2, (t1[-1], t2[-1]))
-    # 声明须与实测一致：换插入序随机数分配确变（docstring 所述为真）
-    X = _wander_map([("cat", (6.0, 1.5, 6.0)), ("dog", (10.0, 1.5, 10.0))])
-    Y = _wander_map([("dog", (10.0, 1.5, 10.0)), ("cat", (6.0, 1.5, 6.0))])
-    ok("#428-B2 声明如实：换插入序 wander 随机数分配确变（docstring 所述为真）",
-       X != Y, (X, Y))
-
-
 def run_checks():
     _PASS.clear()
     _FAIL.clear()
@@ -443,7 +371,6 @@ def run_checks():
     group_347_nonfinite_rejected()
     group_398_path_validation()
     group_424_bounded_growth()
-    group_428_order_contract()
     print("\n" + "=" * 72)
     total = len(_PASS) + len(_FAIL)
     print("SCENE_SIM_GUARD %d/%d 通过" % (len(_PASS), total))

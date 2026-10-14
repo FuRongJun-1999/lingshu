@@ -44,8 +44,8 @@
 
 ## 代码主体
 
-身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 8 件 ·
-world 世界模型 27 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件）：
+身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 7 件 ·
+world 世界模型 24 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件）：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
@@ -55,11 +55,9 @@ pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规�
 **已测版本矩阵**（2026-10-08 实测，供选版参考）：Python 3.12.x · numpy 2.3.5 / 2.4.2 / 2.5.3 ·
 Pillow 12.2.0 / 12.3.0——`pyproject.toml` 中 extras 的版本区间由此收敛，**区间外未测不承诺**。
 
-> 曾登记为「已知红」的 `tests/test_hex_text.py` 两处断言（`test_spatial_detect_finds_single_object`
-> 6/16、`test_multimodal_check_clean_vs_corrupt` 7/12）**已随根因修复转绿**：`9bc4985`
-> （`image_to_grid` 晶格横向越出画幅 √3 倍，采纳自 PR #116）＋ `54cb5cb`（`hex_hier` 形状辅助
-> 损失按 OBJ 布局连续分组）。两条现随 `tests/` 自动收集真跑（`pytest tests/test_hex_text.py`
-> = 6 passed），门禁 `gate.yml` 的 `--deselect` 已摘除。原读数与讨论见
+> 已知红（如实标注）：`tests/test_hex_text.py` 两处断言（`test_spatial_detect_finds_single_object`
+> = 6/16、`test_multimodal_check_clean_vs_corrupt` = 7/12，均低于阈值）在上述**全部版本组合**下
+> 读数**逐位一致**——**与 numpy / Pillow 版本无关**，上游同跑读数相同。详见
 > [issue #4](https://github.com/FuRongJun-1999/lingshu/issues/4)。
 
 依赖分层、环境自适应降级点与精修记录见

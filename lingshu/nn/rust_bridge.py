@@ -18,24 +18,13 @@ import numpy as np
 
 def _locate_hex_exe() -> Path:
     """hex_nn.exe 探测链(不硬编码本机路径纪律):
-    环境变量 AEIS_HEX_NN → 部署方声明目录 AEIS_HEX_NN_DIR 下的 hex_nn.exe
-    → 缺省相对路径 hex_nn/target/release/hex_nn.exe。
-    (2026-09-24 故障迁移:旧机 2_ai 工作区已格式化;protocol-compiler
-     远端=github.com/FuRongJun-1999/ChineseProgramming)
-
-    #10 修：导出脱敏把两个**本机字面量候选路径**改写成了中性占位符
-    （`<local-path>`），而它们是**路径操作数**（进 `Path(c).is_file()` 探测链）
-    ⇒ 脱敏后两候选恒 `is_file() == False`，探测链静默失效（候选里还留着
-    一个永远不成立的假路径）。判据来源：同目录 `docs/intake/body-export-v0.1/
-    README.md` §三.③ 的导出精修先例「本机字面量 → 环境变量（缺省 …）」
-    （`activation.py` 的 `LINGSHU_DATA_ROOT`）。故本处同样改为环境变量驱动，
-    缺省取**仓内相对**路径（不再是任何机器绝对路径 / 占位符）。
-    """
+    环境变量 AEIS_HEX_NN → GitHub 恢复克隆位置 → 旧机位置。
+    (2026-09-24 故障迁移:<local-path> Files\\2_ai 已格式化;protocol-compiler
+     远端=github.com/FuRongJun-1999/ChineseProgramming,克隆于 <local-path>)"""
     candidates = [
         os.environ.get("AEIS_HEX_NN"),
-        (os.path.join(os.environ["AEIS_HEX_NN_DIR"], "hex_nn.exe")
-         if os.environ.get("AEIS_HEX_NN_DIR") else None),
-        os.path.join("hex_nn", "target", "release", "hex_nn.exe"),
+        r"<local-path>",
+        r"<local-path> Files\2_ai\protocol-compiler\hex_nn\target\release\hex_nn.exe",
     ]
     for c in candidates:
         if c and Path(c).is_file():

@@ -9,9 +9,6 @@ R296 把「对齐外部语义」拆成三类：**已对齐**（circle 8/8）、*
   ① **黑箱读者的形状原型长什么样**：`triangle` / `diamond` 两个原型的逐维值（`n_peaks`/`kdom`/
      `solidity`/`extent`/`peak_prom`/谐波）——用来判断「它的 triangle 是不是真三角」。
   ② **我们的三角到两个原型的距离与逐维贡献**：谁在把判决推向 `diamond`（Top-5 维 + 贡献占比）。
-     **#431 修**：排序与「谁在推」必须用**读者的判决量** `dist + pen`（罚 ∈ {0,1,2}，判据来源
-     `hexgen_c1_real.py:930-949`），而不是裸加权 L1——裸 L1 给的是「几何更近的原型」，
-     读者实际选中的是「判决量最小者」，罚生效时两者可相反（本件守卫夹具即此形态）。
   ③ **交叉对照**：黑箱语料里**它自己**的真三角件到 `triangle` 原型是什么距离分布——若我们的件
      落在同一分布内，则说明「我们的三角与它的三角同类，是判决而非几何有问题」；若显著更远，
      则说明两源几何确实不同。
@@ -21,22 +18,18 @@ R296 把「对齐外部语义」拆成三类：**已对齐**（circle 8/8）、*
 
 红线：白箱（零 LLM、纯 stdlib+numpy）；只读复用 `hexgen_c1_real`（读者/度量）与
 `hexgen_self_source`（自家 v2 渲染）；不改它们。
-命令行：python -X utf8 -m lingshu.gen.hexgen_align_probe（仓根执行；参数见 --help）
+命令行：python experiments/hexgen_align_probe.py
 """
 import argparse
 import io
 import json
 import os
 import sys
-from functools import lru_cache
 
 import numpy as np
 
-#   #108 修：删去原先的 `sys.path.insert(0, ".")` / `sys.path.insert(0, "experiments")`——
-#   import 期把**相对路径**写进 `sys.path`，其解析目标由判定时的 cwd 决定（判据同
-#   `lingshu/_pathguard.py::_is_relative_entry`：相对条目非受控面；issue #288·D-2）。
-#   本模块只用包内相对 import（`from . import ...`），不需要这两个条目；`experiments/`
-#   目录在本仓不存在（`git ls-files experiments` 为空）。
+sys.path.insert(0, ".")
+sys.path.insert(0, "experiments")
 from . import hexgen_c1_real as C
 from . import hexgen_self_source as S
 
@@ -46,17 +39,8 @@ OUT = "data/hexgen_align_probe.json"
 NAME_MAP_SELF2REAL = {"circle": "circle", "triangle": "triangle", "stripe": "square"}
 
 
-@lru_cache(maxsize=1)
 def blackbox_reader():
-    """黑箱标定的读者（C 线口径：标定集来自黑箱语料）。返回 (fit, measured)。
-
-    **#432 修**：本函数读全语料（`C.load_items` ＋ 逐件 `C.measure_item` ＋ `C.fit`），
-    而 `main()` 的调用链（`cross_source_hits`×2 ＋ `head_to_head`×13 ＋ 本函数自己）会请求
-    同一读者 **16 次**，原实现每次完整重算 ⇒ 16× 冗余。改法＝**进程内记忆化**（`lru_cache`）：
-    入参为空、语料与口径为常量，读数确定性 ⇒ 缓存不改变任何判据，只把 16 次重算降到 1 次。
-    缓存对象只被各调用方**只读**使用（`predict`/`evaluate` 均不改 `fit_`）；需要强制重算时
-    调 `blackbox_reader.cache_clear()`（测试用）。
-    """
+    """黑箱标定的读者（C 线口径：标定集来自黑箱语料）。返回 (fit, measured)。"""
     base = [it for it in C.load_items(C.CORPUS) if it["truth"]]
     cal, _ = C.split_ids(base)
     m = {"items": base, "by_id": {it["id"]: C.measure_item(it, tol=C.TOL, d=4)[0]
@@ -87,47 +71,8 @@ def distance_contrib(q, p, w, sc):
     return tot, [(k, round(float(v), 4)) for k, v in pairs]
 
 
-def reader_penalty(o, p, fit):
-    """读者的**罚项** `pen`（逐原型；#431 修的判据来源＝`hexgen_c1_real.py:930-949`）：
-    ① **主阶不匹配罚** +1.0（`o["kdom"] != proto_kdom` 且**两边**主阶强度都 > `GATE_STRENGTH`，
-       `hexgen_c1_real.py:936-939`）；
-    ② **峰显著度门罚** +1.0（观测与原型落在 `fit["cut_prom"]` 切点的**不同侧**，
-       `hexgen_c1_real.py:944-947`）。
-    返回 `(pen, [生效的门名, ...])`。此处与 `predict` 同口径；守卫以「本件判决排序 ≡
-    `C.predict` 判决」交叉钉住，防两处漂移。"""
-    pen, terms = 0.0, []
-    pk = C._proto_kdom(p)
-    if (o["kdom"] != pk and o["feat"][f"harm{o['kdom']}"] > C.GATE_STRENGTH
-            and p[C.FEATS.index(f"harm{pk}")] > C.GATE_STRENGTH):
-        pen += 1.0
-        terms.append("kdom_gate")
-    cp = fit.get("cut_prom")
-    if cp is not None and ((o["feat"]["peak_prom"] < cp) != (p[C.FEATS.index("peak_prom")] < cp)):
-        pen += 1.0
-        terms.append("peak_prom_gate")
-    return pen, terms
-
-
-def reader_class_scores(o, fit):
-    """**读者判决量**的逐原型分解：`score = 加权 L1 距离 + pen`（`hexgen_c1_real.py:930-949`）。
-    返回 `{类: {"dist", "pen", "score", "pen_terms"}}`；② 的排序与「谁在推」必须用 `score`。"""
-    q = C._feat_vec(o["feat"])
-    w = np.asarray(fit["feat_weight"], float)
-    sc = np.asarray(fit["feat_scale"], float)
-    out = {}
-    for cls, p in fit["shape_protos"].items():
-        tot, _ = distance_contrib(q, p, w, sc)
-        pen, terms = reader_penalty(o, p, fit)
-        out[cls] = {"dist": round(tot, 4), "pen": pen, "score": round(tot + pen, 4),
-                    "pen_terms": terms}
-    return out
-
-
 def probe_self_shape(shape="triangle", pattern="solid", fit=None, measured=None):
-    """② 自家 v2 件（单物体在 r4）到各原型的**判决量**分解与逐维贡献。
-
-    `ranked` 按**判决量** `dist + pen` 排序（与 `C.predict` 的判决同口径），不是按裸距离；
-    每个原型并列报出 `dist`（裸加权 L1）/ `pen`（罚）/ `score`（判决量）与 `top5` 逐维贡献。"""
+    """② 自家 v2 件（单物体在 r4）到各原型的距离与逐维贡献。"""
     img = S.render_self((1, shape, "red", pattern, ("r4",)))
     objs = C.measure_item({"img": img.astype(np.float64)}, tol=C.TOL, d=4)[0]
     assert objs, f"自家 {shape} 件抠不出物体"
@@ -140,14 +85,10 @@ def probe_self_shape(shape="triangle", pattern="solid", fit=None, measured=None)
         ("n_peaks", "solidity", "extent", "peak_prom", "compactness")},
         "kdom": int(o["kdom"]), "hp_rel": round(float(o["hp_rel"]), 5), "dist": {},
         "verdict": C.predict(o, fit)["shape"]}
-    scores = reader_class_scores(o, fit)
     for cls, p in fit["shape_protos"].items():
         tot, top = distance_contrib(q, p, w, sc)
-        out["dist"][cls] = {"total": round(tot, 4), "top5": top[:5],
-                            "pen": scores[cls]["pen"], "score": scores[cls]["score"],
-                            "pen_terms": scores[cls]["pen_terms"]}
-    #   判决量排序（并列取类名字典序，与 `predict` 的 `rows.sort(key=(score, name))` 一致）
-    out["ranked"] = sorted(out["dist"], key=lambda k: (out["dist"][k]["score"], k))[:3]
+        out["dist"][cls] = {"total": round(tot, 4), "top5": top[:5]}
+    out["ranked"] = sorted(out["dist"], key=lambda k: out["dist"][k]["total"])[:3]
     return out
 
 
@@ -246,10 +187,7 @@ def main():
               f"solidity={pr['own_metrics']['solidity']:.3f} extent={pr['own_metrics']['extent']:.3f}"
               f" ⇒ 读出 `{pr['verdict']}`；最近三原型 {pr['ranked']}")
         for cls in pr["ranked"]:
-            _pen = f"+罚 {d[cls]['pen']:.0f}" + (f"({','.join(d[cls]['pen_terms'])})"
-                                                 if d[cls]["pen_terms"] else "")
-            print(f"        {cls:9s} 判决量 {d[cls]['score']:8.3f}（距离 {d[cls]['total']:8.3f} "
-                  f"{_pen}） | Top5 {d[cls]['top5']}")
+            print(f"        {cls:9s} 距离 {d[cls]['total']:8.3f} | Top5 {d[cls]['top5']}")
     rep["blackbox_triangle_own_distance"] = blackbox_own_distribution(fit, measured)
     bt = rep["blackbox_triangle_own_distance"]
     if bt:

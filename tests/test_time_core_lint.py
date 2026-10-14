@@ -64,34 +64,6 @@ def hit_set(data):
     return {(h["file"], h["line"], h["rule"]) for h in data["new_violations"]}
 
 
-def _marker_line(rel: str, marker: str, nth: int = 1) -> int:
-    """按片段文本在文件内定位第 nth 处出现，返回 1-based 行号。
-
-    **形态锚**（不钉死绝对行号）——与下方 EXPECTED_MARKERS 同一口径：行号锚会被
-    后续无关增删顶漂（P2 在 stable_lease.py 上方插行，使该命中 67→88，直接让本文件
-    的 4 条断言全红）。片段若被删除/改写则当场失败，判别力不降、断言不恒真。
-    """
-    lines = (REPO_ROOT / rel).read_text(encoding="utf-8").splitlines()
-    hits = [i + 1 for i, text in enumerate(lines) if marker in text]
-    assert len(hits) >= nth, \
-        "形态锚未命中：%s 里找不到第 %d 处 %r" % (rel, nth, marker)
-    return hits[nth - 1]
-
-
-# 真实仓库当前的两条命中，各以**形态锚**定位（见 _marker_line 说明）：
-#   · stable_lease —— 手写同核 exp(-γ·t)（R1，既有，已登记 baseline）
-#   · activation   —— #53 节点对级条件衰减 `d *= cond_match(...)`（R3b 形状级命中，已登记 baseline）
-_STABLE_LEASE_SPEC = ("lingshu/world/stable_lease.py",
-                      'decayed_conf = lease["confidence"] * math.exp(-self.gamma * age)', 1)
-_ACTIVATION_SPEC = ("lingshu/core/activation.py",
-                    "d *= cond_match(cur_cs.get(src), cur_cs.get(dst))", 1)
-
-
-def _anchor(spec):
-    rel, marker, nth = spec
-    return (rel, _marker_line(rel, marker, nth))
-
-
 def write_module(directory: Path, name: str, body: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / name
@@ -507,7 +479,7 @@ def test_real_repo_default_baseline_exit_zero():
     assert data["summary"]["new"] == 0
     assert data["summary"]["total"] >= 1, "baseline 里没有任何真实命中，规则可能失效"
     registered = {(h["file"], h["line"], h["rule"]) for h in data["registered_violations"]}
-    assert _anchor(_STABLE_LEASE_SPEC) + ("R1",) in registered
+    assert ("lingshu/world/stable_lease.py", 67, "R1") in registered
     assert data["stale_baseline_entries"] == []
 
 
@@ -517,7 +489,7 @@ def test_real_repo_empty_baseline_exit_one_hits_stable_lease(empty_baseline):
     assert res.returncode == 1
     assert data["summary"]["new"] >= 1
     hits = hit_set(data)
-    assert _anchor(_STABLE_LEASE_SPEC) + ("R1",) in hits
+    assert ("lingshu/world/stable_lease.py", 67, "R1") in hits
     assert data["summary"]["new"] == len(data["new_violations"])
 
 
@@ -525,8 +497,7 @@ def test_real_repo_empty_baseline_text_mode_shows_hit(empty_baseline):
     res = run_lint("--baseline", str(empty_baseline))
     out = res.stdout.decode("utf-8")
     assert res.returncode == 1
-    rel, line = _anchor(_STABLE_LEASE_SPEC)
-    assert "%s:%d:R1" % (rel, line) in out
+    assert "lingshu/world/stable_lease.py:67:R1" in out
     assert "[新]" in out
 
 
@@ -549,25 +520,15 @@ def test_text_mode_runs_from_other_cwd(tmp_path):
     assert "退出码 0" in res.stdout.decode("utf-8")
 
 
-# ------------------------------------------- 判定回归：真实仓库当前命中集
+# ------------------------------------------- 判定回归：真实仓库当前唯一违规
 def test_real_repo_current_hit_set_is_exactly_stable_lease(empty_baseline):
-    """真实仓库（空 baseline）当前命中集**恰好**是下面两条（各以形态锚定位）。
+    """真实仓库（空 baseline）当前**有且只有** stable_lease.py:67:R1 一条。
 
     这是判定回归：若新增了其它命中，须先按 lint 头部豁免表复核，
     再决定登记 baseline 还是加豁免——不要直接改这条断言。
-
-    命中集在本批由 1 条变 2 条，已按上述程序复核过第二条：
-      · `activation.py` 的 `d *= cond_match(...)`（#53 节点对级条件衰减修正）
-        ——R3(b) 的口径是「**任何** `*= …` 都命中」（形状级），而 `cond_match`
-        返回的是条件空间重合率、与 time_core 的时间衰减核不是同一量，且 `d` 是
-        装载期局部标量（无状态自指、无逐 tick 演化）⇒ 判「不按时间衰减核违规」，
-        **登记 baseline 并注明判据与削掉的判别力**（见 baseline 该行注释）。
     """
     data = payload(run_lint("--baseline", str(empty_baseline), "--json"))
-    assert hit_set(data) == {
-        _anchor(_STABLE_LEASE_SPEC) + ("R1",),
-        _anchor(_ACTIVATION_SPEC) + ("R3",),
-    }
+    assert hit_set(data) == {("lingshu/world/stable_lease.py", 67, "R1")}
 
 
 # 判定回归的「形态锚」：(文件, 该文件内必须仍出现的源码片段, 第 n 次出现)
@@ -605,21 +566,11 @@ def test_judgement_regressions_not_reported(empty_baseline, rel, marker, nth):
 
 # ------------------------------------------------------------- baseline 机制
 def test_shipped_baseline_registers_stable_lease():
-    """出货 baseline 必须登记真实仓库当前的两条命中（各以形态锚定位行号）。
-
-    ★本断言此前钉死 `stable_lease.py:67:R1` —— 那是**手写行号锚**（本仓明文禁止），
-    被 P2 在该文件上方插行顶漂（67→88）后整批红。改用形态锚：行号由源码片段现算，
-    片段被删除/改写则当场失败，判别力不降。
-    """
     text = BASELINE.read_text(encoding="utf-8")
-    rel, line = _anchor(_STABLE_LEASE_SPEC)
-    assert "%s:%d:R1" % (rel, line) in text
-    rel2, line2 = _anchor(_ACTIVATION_SPEC)
-    assert "%s:%d:R3" % (rel2, line2) in text
+    assert "lingshu/world/stable_lease.py:67:R1" in text
     entries, errors = T.parse_baseline(text)
     assert errors == []
-    assert (rel, line, "R1") in entries
-    assert (rel2, line2, "R3") in entries
+    assert ("lingshu/world/stable_lease.py", 67, "R1") in entries
     # 每条登记都要有性质注释（机械可核：登记行后必须有 `#`）
     for raw in text.split("\n"):
         if "lingshu/" in raw and raw.lstrip().startswith("lingshu/"):

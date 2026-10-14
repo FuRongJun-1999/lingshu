@@ -101,35 +101,20 @@ def validate_edges(domains: Dict[str, str]) -> Dict:
     """R10：校验边（声明域×求值域的一致性裁决，卡 v0.2 §〇.A 反驳机制）。
 
     实作两条范式边（卡 §四：实作样例先行、其余增量补）：
-      E1 声明↔求值：input_modality=线稿（**声明域**，卡 §二·输入模态声明）但
-         求值域 line_edge=无线稿（**求值域**，卡 §二 域13 线条/边缘，像素判定）
-         → 声明被求值域反驳 → 校验失败 → DEFER 复核
-         （卡原文例：声明=线稿但检测到色块填充——"色块填充"在实现里即
-          求值域读数 line_edge=无线稿）；
+      E1 声明↔求值：input_modality=线稿（声明）但 color 求值为色块档
+         → 校验失败 → DEFER 复核（卡原文例：声明=线稿但检测到色块填充）；
       E2 求值↔求值：pose 为运动态（行走/奔跑/回眸）却 symmetry=对称
          → 求值内部矛盾 → DEFER 复核。
     UNASSERTED 域不参与（未声明无可校验——P2-001 语义）。
-
-    #133 修复（口径变更，如实登记）：
-      旧 E1 的求值侧取 `color`，但 `DOMAIN_SOURCE["color"] == "asserted"`
-      （卡 §二 域14：色彩 = asserted(枚举档)/evaluated(连续值)，枚举档为声明）
-      ——E1 两端皆声明域，**「声明域可被求值域反驳」在实现里根本不成立**
-      （声明×声明不构成反驳，且可在零像素证据下触发）。
-      现求值侧改为**求值域** `line_edge`（`DOMAIN_SOURCE == "evaluated"`），
-      使 E1 成为真正的「声明域 ← 求值域」反驳边。
-      **削掉的判别力**：旧 E1 会在「声明=线稿 ∧ 声明色彩∈{柔和,丰富,多彩,霓虹}」
-      时判 DEFER；该组合现仅两条弱声明并存，不再触发（两条声明互不构成反驳）。
-      **换得的判别力**：只有当真有一条**求值域读数**与声明冲突时才 DEFER——
-      不再把「两个声明不一致」误记为「求值反驳声明」。
     """
     c = canonical_condition(domains)
     violations = []
-    im, le, pose, sym = (c["input_modality"], c["line_edge"],
-                         c["pose"], c["symmetry"])
-    if (im == "线稿" and le == "无线稿"):
+    im, color, pose, sym = (c["input_modality"], c["color"],
+                            c["pose"], c["symmetry"])
+    if (im == "线稿" and color in ("柔和", "丰富", "多彩", "霓虹")):
         violations.append({"edge": "E1",
-                           "note": "声明=线稿 但 求值线条=无线稿（色块填充）",
-                           "domains": {"input_modality": im, "line_edge": le}})
+                           "note": "声明=线稿 但 求值色彩=色块档",
+                           "domains": {"input_modality": im, "color": color}})
     if (pose in ("行走", "奔跑", "回眸") and sym == "对称"):
         violations.append({"edge": "E2",
                            "note": "运动姿态与对称求值矛盾",

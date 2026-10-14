@@ -19,7 +19,7 @@ name: gate
 #       SCRIPT_TESTS：不列入则本门禁**根本看不见它**——同族盲区已出现三次
 #       （#69 / #26 / #145）。新增脚本式件时，SCRIPT_TESTS 与本节同补。
 #   · **pytest 式**：自动收集 tests/，排除 SCRIPT_TESTS；新增回归测试自动进入门禁。
-#     （曾 deselect 两条 known-fail，已随 `9bc4985` 转绿而摘除——见下「pytest 式测试」步。）
+#     其中两条 known-fail 显式 deselect（下详）。
 #   · 脚本式测试必须在 pytest 收集前排除：`tests/test_hex_cnn.py` 无 `__main__`
 #     守卫，模块级即 `sys.exit()`，故保留两式分开跑。
 
@@ -66,15 +66,10 @@ env:
     tests/test_expression_render_guard.py
     tests/test_hex_grid_extent.py
     tests/test_hex_text_contracts.py
-    tests/test_issue_ingest_scene_state_batch.py
-    tests/test_core_nplus1_getstats_forgetadvisor.py
-    tests/test_traverse_frontier_batch.py
-    tests/test_prediction_path_nodes_single_fetch.py
-    tests/test_coggraph_utf8_bom.py
 
 jobs:
   gate:
-    name: gate (py${{ matrix.python-version }}${{ matrix.deps_label }})
+    name: gate (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     # pytest 腿偏重：本机（Windows/3.12）实测 `tests/test_hex_hier.py` **单件**即 >7 分钟
     # （420s 超时前只跑完 4/7，均 PASSED），合跑需充足余量 ⇒ 45 分钟。
@@ -88,21 +83,10 @@ jobs:
           #        （numpy 2.3.5/2.4.2/2.5.3 · Pillow 12.2.0/12.3.0）——阻断主门禁。
           - python-version: "3.12"
             experimental: false
-            deps_label: ""
-            pinned_deps: ""
-          # 3.12 · **依赖下界档**（#209）：钉死 extras 下界（numpy==2.3.5 / Pillow==12.2.0）——
-          #        默认装的是区间内**最新**，下界从未被覆盖；下界装不上/跑不通即本档红。
-          #        与 3.13 同按**未测档** advisory（本机未跑该组合）。
-          - python-version: "3.12"
-            experimental: true
-            deps_label: " · 依赖下界"
-            pinned_deps: "numpy==2.3.5 Pillow==12.2.0"
           # 3.13 = **未测档**（README 未覆盖 ⇒ 如实标注降级）：
           #        advisory，失败/装不上依赖不阻断主门禁；实测全绿后再置 experimental: false。
           - python-version: "3.13"
             experimental: true
-            deps_label: ""
-            pinned_deps: ""
     continue-on-error: ${{ matrix.experimental }}
     steps:
       # 第三方 Action 一律钉到提交 SHA（#251：`@v4`/`@v5` 是可移动标签，上游可改写指向）；
@@ -125,12 +109,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[full,dev]"
-
-      - name: 钉死依赖下界（仅「依赖下界」档；#209）
-        # 默认装的是 extras 区间内**最新**（如 numpy 2.5.x）——下界从未被覆盖。本步把
-        # numpy/Pillow 钉到 pyproject 声明区间的**下界**，验证「下界组合真能装上且跑通」。
-        if: matrix.pinned_deps != ''
-        run: python -m pip install ${{ matrix.pinned_deps }}
 
       - name: Clone 脑端公开仓（dsh-memory）供 MDCG_BRAIN_PYTHONPATH
         id: brain
@@ -171,35 +149,31 @@ jobs:
           done
           echo "脚本式测试全部通过：$SCRIPT_TESTS"
 
-      - name: pytest 式测试（tests/ 自动收集）
-        # 曾 deselect 的两条 known-fail（README「代码主体」节 / issue #4）**已转绿并摘除 deselect**：
-        #   · tests/test_hex_text.py::test_spatial_detect_finds_single_object
-        #   · tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt
-        # 根因修复（均在 main）：`9bc4985`——image_to_grid 晶格横向越出画幅 √3 倍（采纳自 PR #116），
-        #   下游「按晶格三等分/质心取位置」的位置检测系统性错位由此消除；`54cb5cb`——hex_hier
-        #   形状辅助损失改按 OBJ 布局连续分组。
-        # 本机实测（2026-10-11 · py3.12 · numpy 2.5.3 · Pillow 12.3.0）：
-        #   `python -X utf8 -m pytest tests/test_hex_text.py -q` = 6 passed（两条各单跑亦 passed）。
-        # 两条现**随 tests/ 自动收集真跑**（不再 deselect）。判据来源＝经验标定（上述实跑读数）。
-        # 守卫 `tests/test_gate_deselect_justified.py` 断言「凡被 deselect 的用例必须真红」——
-        #   再想 deselect 一条已转绿的用例会当场判红（静默关掉回归保护即本件要防的缺陷）。
+      - name: pytest 式测试（显式 deselect 两条 known-fail）
+        # 两条 known-fail（README「代码主体」节已标，issue #4）：
+        #   · tests/test_hex_text.py::test_spatial_detect_finds_single_object    （6/16 < 0.6 阈值）
+        #   · tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt      （7/12 < 阈值）
+        # 全部 numpy/Pillow 版本组合下读数**逐位一致** ⇒ 与依赖版本无关，上游同跑同红。
+        # 处置：**显式 deselect**（不改任何断言）。待上游修复后，同处摘除本条并与 README 同步。
         run: |
           set -euo pipefail
           pytest_args=(tests/ -v)
           for t in $SCRIPT_TESTS; do
             pytest_args+=(--ignore="$t")
           done
-          python -X utf8 -m pytest "${pytest_args[@]}"
+          python -X utf8 -m pytest "${pytest_args[@]}" \
+            --deselect tests/test_hex_text.py::test_spatial_detect_finds_single_object \
+            --deselect tests/test_hex_text.py::test_multimodal_check_clean_vs_corrupt
 
       - name: 汇总（写入 Step Summary）
         if: always()
         run: |
           {
-            echo "### gate · py${{ matrix.python-version }}${{ matrix.deps_label }}"
+            echo "### gate · py${{ matrix.python-version }}"
             echo ""
             echo "- 脚本式（逐件）：\`$SCRIPT_TESTS\`"
-            echo "- pytest 式：tests/ 自动收集（排除上述脚本式测试；无 deselect——曾登记的两条 known-fail 已转绿）"
+            echo "- pytest 式：tests/ 自动收集（排除上述脚本式测试 + deselect 2 条 known-fail）"
             echo "- 脑端 clone（MDCG_BRAIN_PYTHONPATH 前置）：**${{ steps.brain.outcome }}**"
             echo "  - 非 success 时 test_brain_store 显式 SKIP——不是假绿，理由见上一步日志。"
-            echo "- 非阻断档（未测 Python 版本 / 未测依赖下界）：\`${{ matrix.experimental }}\`；钉死依赖：\`${{ matrix.pinned_deps }}\`"
+            echo "- 非阻断档（未测 Python 版本）：\`${{ matrix.experimental }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

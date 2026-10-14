@@ -334,14 +334,9 @@ def discovery_report() -> dict:
         "configured_root_env": COMPONENT_ROOT_ENV,
         "configured_roots_set": bool(configured_roots()),
         "search_entries": len(safe_search_path()),
-        # cwd 类条目被挡在受控面之外的计数 = **仅计已由 _pathguard 从 sys.path
-        # 消除**的条目（`path_scrub.removed_count`）——这才是字面意义上的「已排除」。
-        # issue #338：旧式 `removed_count + _cwd_live` 把「已消除」与「仍存活于
-        # sys.path、只是被本模块忽略」（逃生口打开时）两个**语义相反**的量相加，
-        # 使「护栏生效」与「逃生口打开（放弃防护）」两状态下该字段读数相同（实测
-        # 均为 3）⇒ 计数无法反映防护是否生效。仍存活的 cwd 条目由下一字段
-        # `cwd_entries_in_sys_path` 单独给出，二者语义不同、不可相加。
-        "cwd_excluded_count": _pg["removed_count"],
+        # cwd 类条目被挡在受控面之外的计数 = 已由 _pathguard 从 sys.path 消除的
+        # （`path_scrub.removed_count`）+ 仍在 sys.path 但被本模块忽略的（逃生口打开时）。
+        "cwd_excluded_count": _pg["removed_count"] + _cwd_live,
         "cwd_entries_in_sys_path": _cwd_live,
         "script_dir_excluded": _main_script_dir() is not None,
         "script_dir_excluded_count": sum(1 for p in entries if _is_script_dir_entry(p)),

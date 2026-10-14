@@ -22,12 +22,10 @@
     anomaly 留痕不删）
 
 WAL（append-only 单调）：{seq, ts, tick, kind ∈ episode|growth|confirm|revert|verify}。
-`seq` 在**单个 WAL 文件内**严格单调——`__init__` 打开已存在文件时读末条 `seq`
-接着编号（见 #248）。回放一致性：顺序重放 episode 事件重建的世界图与当前 graph()
-逐节点逐边一致（WAL = 世界图演化的可逆投影；被 REVERT 的假设在快照消失但
-revert 事件留痕）。
+回放一致性：顺序重放 episode 事件重建的世界图与当前 graph() 逐节点逐边一致
+（WAL = 世界图演化的可逆投影；被 REVERT 的假设在快照消失但 revert 事件留痕）。
 
-设计稿：docs/世界模型推演循环显式化_设计稿_v0.1.md（该文档不在本仓，属上游/私域件）
+设计稿：docs/世界模型推演循环显式化_设计稿_v0.1.md
 （含 Nature co-design 八特性 checklist 审计与 v0.1 诚实边界）
 
 纯标准库 · 零外部依赖 · 零 LLM（D-005）· SimLoop 自身零 rng（确定性外推）
@@ -166,14 +164,7 @@ class SimulationLoop:
         self._clock = clock or time.time
         # WAL（内存 + 可选落盘，append-only）
         self.wal: List[Dict] = []
-        # #248：`seq` 必须在**单个 WAL 文件内**严格单调。旧实现 `_seq` 每实例从 0
-        # 开始、却对同一文件 `open(..., "a")` 追加写 ⇒ 每次 setup 新建实例后
-        # 同文件 seq 重复（实测 [0,1,0,1]），文件头声明的「append-only 单调」不成立。
-        # 修法：打开已存在文件时**只读一次末条** seq 接着编号（不每条读全文件）。
-        # ★不引入 session 字段：本类刻意保住「同配置两次运行 WAL 逐字节一致」
-        # （见下 `_alias` 注释）；用 `uuid4` 做 session 会当场作废该性质，而 issue
-        # #248 的期望是「seq 严格单调 **或** 带 session」——只做前半即已满足判据。
-        self._seq = self._resume_seq_from_wal(wal_path)
+        self._seq = 0
         self.ticks_stepped = 0             # 推演环推进的 tick 数（不含外部 perceive）
         self._alias: Dict[str, str] = {}   # WAL 稳定别名（SceneEntity 用 uuid4 随机
         #                                    id，别名保证同配置两次运行 WAL 逐字节
@@ -182,34 +173,6 @@ class SimulationLoop:
         self._growth_log: List[Dict] = []
         self._rolling_rates: List[float] = []
         self._flush_count = 0
-
-    def _resume_seq_from_wal(self, wal_path: Optional[str]) -> int:
-        """打开已存在 WAL 文件时读**末条**记录的 seq 并接着编号（#248）。
-
-        只在构造时读一次（不每条读全文件，避免 O(n²)）；文件不存在/空/末行损坏
-        时回 0（fail-safe：不因外部坏档拒绝构造）。**确定性**：只依赖文件内容，
-        故「同配置两次运行、各自独立新文件」时都从 0 开始（WAL 逐字节一致性质不受影响）。
-        """
-        if not wal_path or not os.path.exists(wal_path):
-            return 0
-        try:
-            with open(wal_path, "rb") as f:
-                f.seek(0, os.SEEK_END)
-                size = f.tell()
-                # 从尾部反向读一个块，取最后一条完整行（避免整文件读入）
-                chunk = min(65536, size)
-                f.seek(size - chunk)
-                tail = f.read().decode("utf-8", errors="ignore")
-            lines = [ln for ln in tail.splitlines() if ln.strip()]
-            if not lines:
-                return 0
-            last = json.loads(lines[-1])
-            return int(last.get("seq", -1)) + 1
-        except (OSError, ValueError, TypeError):
-            # 刻意静默（fail-safe）：读坏档不得拒绝构造，回 0 让新 WAL 从头编号。
-            # 收窄为 (OSError 文件 IO / ValueError=json 解析与 int 转换 /
-            # TypeError 末条非 dict) —— 不用宽 `except Exception`（#170 口径）。
-            return 0
 
     def _alias_of(self, eid: str) -> str:
         """eid → 稳定别名（首次出现顺序分配 e1,e2,…——确定性）。"""
@@ -253,14 +216,12 @@ class SimulationLoop:
             self.scene.step(n=1)                      # ② 物理结算（模型不可见内部）
             self.wm.perceive(observations=self._observe())  # ③ 观察（遮蔽注入点）
             v = self.wm.verify()                      # ④ 验证（外部观察者）
-            if v["hit_rate"] is not None:
-                self._rolling_rates.append(v["hit_rate"])
+            self._rolling_rates.append(v["hit_rate"])
             self._growth_tick(v)                      # ⑤ 拓扑生长/回退
             self._wal("episode", {                    # ⑥ 留痕（全量快照）
                 "nodes": self._snapshot_nodes(),
                 "edges": self._snapshot_edges(),
-                "hit_rate": v["hit_rate"], "hits": v["hits"],
-                "total": v["total"], "pending": v["pending"]})
+                "hit_rate": v["hit_rate"]})
         return self.state()
 
     def run(self, n: int = 10) -> Dict:
@@ -270,9 +231,7 @@ class SimulationLoop:
             "ticks": int(n), "tick": self.wm.tick,
             "rolling_hit_rate": round(sum(self._rolling_rates)
                                       / len(self._rolling_rates), 4)
-            if self._rolling_rates else None,
-            "verified_ticks": len(self._rolling_rates),
-            "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
+            if self._rolling_rates else 1.0,
             "growth_summary": {
                 "born": sum(1 for g in self._growth_log
                             if g["event"] in ("growth", "re-grow")),
@@ -317,7 +276,7 @@ class SimulationLoop:
     def _hit_for(self, verify_result: Dict, eid: str) -> Optional[bool]:
         for d in verify_result.get("details", []):
             if d["entity"] == eid:
-                return d["hit"] if d["hit"] is not None else None
+                return bool(d["hit"])
         return None
 
     def _traj(self, eid: str) -> List[Tuple[float, float, float]]:
@@ -568,20 +527,8 @@ class SimulationLoop:
         """认知图 contextual 层（tags 含 wm_simloop 的节点）→ 世界图实体先验。
 
         诚实边界：v1 只重建位置+类别先验（行为不重建，落 wander 缺省）。
-
-        #247（成立）：两处口径错误——
-          · 根来源：`os.environ.get("MDCG_ROOT", mdcg_root or "")` 让**环境变量
-            压过调用方显式传入的 `mdcg_root`**（显式参数被静默丢弃）；
-            改为「显式参数优先，缺省回落 MDCG_ROOT」，与 CLI `--root` 缺省读
-            `MDCG_ROOT`（tools/coggraph/export_coggraph.py:124）同口径。
-          · 上限：`limit` 只在外层文件循环检查，内层逐行 `seeded.append` 无
-            上限 ⇒ 单个文件可种入任意多条实体，`limit` 名存实亡。
-            改为内层循环同样以 `limit` 封顶。
-        判据来源：经验标定（本件 #247，仓内无「simloop 先验装载上限」的理论
-        章节；docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md
-        未涉及）。削掉的判别力：无（两处均为「参数本应生效而未生效」）。
         """
-        root = mdcg_root or os.environ.get("MDCG_ROOT", "")
+        root = os.environ.get("MDCG_ROOT", mdcg_root or "")
         seeded = []
         ctx = os.path.join(root, "contextual")
         if root and os.path.isdir(ctx):
@@ -599,8 +546,6 @@ class SimulationLoop:
                 if "wm_simloop" not in fm.split("tags:")[-1][:200]:
                     continue
                 for line in text.splitlines():
-                    if len(seeded) >= limit:      # #247：内层同样封顶
-                        break
                     e = self.parse_seed_entity(line)
                     if e:
                         new_id = self.scene.add_entity(
@@ -650,14 +595,8 @@ class SimulationLoop:
             lines.append(f"- {tag}: {n['category']} id={eid} "
                          f"pos=({n['pos'][0]}, {n['pos'][1]}, {n['pos'][2]}) "
                          f"confidence={round(n['confidence'], 3)}")
-        rate = round(self._rolling_rates[-1], 4) if self._rolling_rates else None
-        # 双契约并存：无读数时数值槽位保持 main 的 `None` 写法（tests/
-        # test_world_observation_contracts.py 断言 "命中率: None"），「暂无验证读数」
-        # 只作括号说明（tests/test_world_feedback.py 断言该标记存在）。
-        reading = f"{rate}（暂无验证读数）" if rate is None else rate
-        lines += ["", f"最近已验证轮次命中率: {reading} | "
-                  f"已验证轮次 {len(self._rolling_rates)}/{self.ticks_stepped} | "
-                  f"节点 {g['node_count']} | "
+        rate = round(self._rolling_rates[-1], 4) if self._rolling_rates else 1.0
+        lines += ["", f"命中率: {rate} | 节点 {g['node_count']} | "
                   f"边 {g['edge_count']} | WAL {self._seq} 条",
                   f"growth: born={sum(1 for x in self._growth_log if x['event'] in ('growth', 're-grow'))} "
                   f"confirmed={sum(1 for x in self._growth_log if x['event'] == 'confirm')} "
@@ -711,9 +650,7 @@ class SimulationLoop:
                 "anomaly_count": g["anomaly_count"],
                 "rolling_hit_rate": round(sum(self._rolling_rates)
                                           / len(self._rolling_rates), 4)
-                if self._rolling_rates else None,
-                "verified_ticks": len(self._rolling_rates),
-                "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
+                if self._rolling_rates else 1.0,
                 "hypotheses_active": len(self._hypotheses),
                 "growth_events": len(self._growth_log),
                 "wal_records": len(self.wal),

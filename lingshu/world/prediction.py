@@ -29,15 +29,10 @@ except Exception:  # 本仓形态：回落仓内 core 的同名实现（char_big
 
 
 class PredictionEngine:
-    """预测引擎：'图结构的过去 + 结构 → 候选未来集合'（候选集合确定性；日志含 time.time() 时间戳）"""
+    """预测引擎：'图结构的过去 + 结构 → 候选未来集合'（非确定性输出）"""
 
     MIN_SAMPLES = 50          # D-006：最低样本量（置信区间收敛）
     BASE_HIT_RATE = 0.40      # D-006：基线阈值（工程初值，非协议承诺）
-    # #242：D-006 动态校准的两窗口径——判定窗（近期）宽度与 σ 下界。
-    # 判据来源＝缺陷单 #242「期望行为/建议修法」（两窗 + σ=0 给下界）；
-    # **经验标定，追不到理论章节/引入 commit**（理论稿未给窗口宽度与 σ 下界）。
-    RECENT_WINDOW = 20        # 近期判定窗宽度（样本 ≥ MIN_SAMPLES 时 base 仍 ≥30）
-    MIN_STD = 0.05            # σ 下界：防全命中基线（σ=0）报出 threshold=1.0
     # #395：路线图生成的总量预算（资源上界）。
     # 判据来源＝**经验标定，追不到理论出处**（本仓理论稿
     # docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md 未给路线规模口径）；
@@ -123,15 +118,7 @@ class PredictionEngine:
           causal（显式因果边）→ 高可信主路径（边置信度）
           structural（共同父结构模式）→ 中可信探索路径（0.6）
           preference（注意力偏好）→ 低可信假设路径（0.3）
-        不禁止低可信候选（CNN/探索是感知机构，禁止会掐死探索）——只分层。
-
-        #561：返回前按**确定性判据**排序（可信度降序，同分按 target_id 升序）。
-        此前直接按「因果边 DB 返回序 + 语义邻近序」拼接返回，而调用方
-        `_generate_routes` 用 `[:max_branches]` 截断 ⇒ 实际含义变成「取 DB 返回的
-        前 N 条」而非「取最可信的 N 条」：一条 confidence=0.99 的强因果边只要插得
-        晚，就会被 5 条 0.11 的弱边挤出候选集；且仅改变边的插入序就得到完全不同的
-        路线集合（与 docstring 的分层语义相反）。同分按 id 定序保证跨运行可复现。
-        """
+        不禁止低可信候选（CNN/探索是感知机构，禁止会掐死探索）——只分层。"""
         candidates = []
         seen = set()
         for e in self.engine.store.get_outgoing_edges(start_id):
@@ -147,8 +134,6 @@ class PredictionEngine:
                 candidates.append((n.id, 0.6, "structural_pattern"))
             elif self._preference_weight(n.content) > 0.8:
                 candidates.append((n.id, 0.3, "semantic_induced"))
-        # #561：确定性排序——可信度降序，同分按 target_id 升序（切断对 DB 返回序的依赖）
-        candidates.sort(key=lambda c: (-c[1], str(c[0])))
         return candidates
 
     # ==================== 生成式预测：因果路线图（D-001/D-004） ====================
@@ -303,38 +288,21 @@ class PredictionEngine:
         """T_pred 四维度对齐（D-004 · 2.10 节）：
         trend(D₁ 边置信度) · boundary(D₂ 可信边界一致性) · verification(D₃ 命中率) · balance(D₄ 分支多样性)"""
         trend = route["conf"]
-        # ★优化（本笔 · 零行为变更）：`_boundary_consistency` 与 `_branch_diversity`
-        # 各自 `for nid in path: get_node(nid)` ⇒ 同一 `path` 的节点被 `get_node`
-        # 抓**两遍**（每次读整行 + 解析 JSON）。现将路径节点**取一次**后下传（2N → N）。
-        # 两方法只在本模块内被调用（全仓各 1 命中）⇒ 签名调整不外溢。
-        _nodes = self._path_nodes(route["path"])
-        boundary = self._boundary_consistency(route["path"], _nodes)
+        boundary = self._boundary_consistency(route["path"])
         verification = self._hit_rate()
-        balance = self._branch_diversity(route["path"], _nodes)
+        balance = self._branch_diversity(route["path"])
         composite = round(0.40 * trend + 0.20 * boundary + 0.25 * verification + 0.15 * balance, 4)
         return {"trend": round(trend, 4), "boundary": round(boundary, 4),
                 "verification": round(verification, 4), "balance": round(balance, 4),
                 "composite": composite}
 
-    def _path_nodes(self, path: List[str]) -> List:
-        """按 `path` **位置对齐**取节点（取不到的位保留 `None`）——`_score_route` 的单次取数点。
-
-        与旧实现逐位一致：旧实现每个 id 调一次 `get_node`，取不到即 `n` 为 `None`
-        且下游 `if n and ...` / `if n:` 不成立 ⇒ 不计数；占位 `None` 后同理。
-        **不去重**（重复 id 各取一次，与旧实现相同，以免改动分母）。
-        取数**不吞异常**（旧实现 `get_node` 直调、异常照常上抛；此处加一层
-        `except Exception` 会把「库读坏」静默降级成 D₂/D₄ 全零，属新增静默宽
-        except，与「零行为变更」自述不符）。
-        """
-        return [self.engine.store.get_node(_nid) for _nid in path]
-
-    def _boundary_consistency(self, path: List[str], nodes: List = None) -> float:
+    def _boundary_consistency(self, path: List[str]) -> float:
         """D₂：路径节点是否均有可信边界声明（boundary 标记/不确定声明）"""
         if not path:
             return 0.0
         ok = 0
-        _ns = nodes if nodes is not None else self._path_nodes(path)
-        for n in _ns:
+        for nid in path:
+            n = self.engine.store.get_node(nid)
             if n and ("boundary" in n.tags or "不确定" in n.content or "边界" in n.content):
                 ok += 1
         return round(ok / len(path), 4)
@@ -345,11 +313,11 @@ class PredictionEngine:
             return 0.0
         return round(sum(1 for h in self._hit_history if h) / len(self._hit_history), 4)
 
-    def _branch_diversity(self, path: List[str], nodes: List = None) -> float:
+    def _branch_diversity(self, path: List[str]) -> float:
         """D₄：路径覆盖语义子空间维度数（防单一偏好主导 · 盲区47）"""
         dims = set()
-        _ns = nodes if nodes is not None else self._path_nodes(path)
-        for n in _ns:
+        for nid in path:
+            n = self.engine.store.get_node(nid)
             if n:
                 sc = n.semantic_coordinates or {}
                 for k in sc.get("protocol", {}):
@@ -457,48 +425,17 @@ class PredictionEngine:
         return created
 
     def _dynamic_hit_threshold(self) -> Dict:
-        """D-006：动态阈值——**历史基线窗**的 mean−2·SE 去判定**近期窗**命中率。
-
-        issue #242（本件）：旧码 `threshold = max(BASE, mean - 2*std)` 后拿
-        `mean < threshold` 判定，而 `mean - 2*std ≤ mean` 恒成立 ⇒
-        `reflect` 与「`mean < BASE_HIT_RATE`」**逐位等价**（20000 组随机序列
-        0 次不一致），声明的「动态校准」在判定上不存在，动态项只会抬高返回的
-        `threshold` 数字（mean=1.0 时报 1.0）。
-        现拆两窗：`base = hist[:-RECENT_WINDOW]`（历史基线）、
-        `recent = hist[-RECENT_WINDOW:]`（近期）；阈值由基线均值的标准误给出
-        （`SE = σ_base/√|base|`），判定用近期窗均值——近期显著劣于历史才
-        `reflect=True`，动态项真正进入判定。
-
-        判据来源：模块自身声明 `prediction.py:14`「D-006 命中率动态校准
-        （MIN_SAMPLES=50 · 2.7.2 动态死区）」＋缺陷单 #242「期望行为/建议修法」
-        （两窗 + σ 下界）。`MIN_STD` 为**经验标定，追不到理论章节/引入 commit**
-        ——取缺陷单 #242 建议的「σ=0 时给 σ 一个下界」，避免全命中基线（σ=0）
-        报出 `threshold=1.0` 的退化读数；`RECENT_WINDOW=20` 同为经验标定
-        （未在理论稿中检索到窗口口径），取 MIN_SAMPLES 的可分辨子窗。
-
-        削掉的判别力（如实声明）：`"mean"` 字段仍是**全历史**均值（对外契约
-        不变），故 `reflect` 不再与 `mean < BASE_HIT_RATE` 等价——判定量是新增
-        的 `recent_mean`。旧的「只看全历史均值是否低于 0.40」这一粗口径不再
-        单独成立：全历史均值高、但近期窗崩塌时现在会 `reflect=True`（旧码
-        `False`）；反之全历史均值低、近期窗已恢复时不再误报。
-        """
+        """D-006：动态阈值 max(BASE, mean-2σ)；样本 < MIN_SAMPLES 不触发反思"""
         n = len(self._hit_history)
         if n < self.MIN_SAMPLES:
             return {"threshold": self.BASE_HIT_RATE, "samples": n,
                     "reflect": False, "note": "样本不足（<50），不触发反思"}
-        base = self._hit_history[:-self.RECENT_WINDOW]
-        recent = self._hit_history[-self.RECENT_WINDOW:]
-        nb = len(base)
         mean = sum(1 for h in self._hit_history if h) / n
-        mean_b = sum(1 for h in base if h) / nb
-        var_b = sum(((1.0 if h else 0.0) - mean_b) ** 2 for h in base) / nb
-        se = max(var_b ** 0.5, self.MIN_STD) / (nb ** 0.5)
-        threshold = max(self.BASE_HIT_RATE, mean_b - 2 * se)
-        mean_r = sum(1 for h in recent if h) / len(recent)
+        var = sum(((1.0 if h else 0.0) - mean) ** 2 for h in self._hit_history) / n
+        std = var ** 0.5
+        threshold = max(self.BASE_HIT_RATE, mean - 2 * std)
         return {"threshold": round(threshold, 4), "samples": n,
-                "reflect": mean_r < threshold, "mean": round(mean, 4),
-                "recent_mean": round(mean_r, 4),
-                "base_mean": round(mean_b, 4), "base_samples": nb}
+                "reflect": mean < threshold, "mean": round(mean, 4)}
 
     # ==================== 2D 语义地图（通道4 · 零依赖渲染） ====================
 

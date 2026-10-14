@@ -11,21 +11,9 @@
 「非有限输入 ⇒ 不可判 ⇒ 不给 ACCEPT」这一步理论未规定 NaN 语义（追不到），
 属工程 fail-closed 约定，与同仓 tests/test_issue402_nan_clamp_guard.py 头部
 「非有限输入不得被当作有效证据/支持」同源。阈值本体（0.10/0.30）未改。
-
-未声明域与零面积（#296）：
-  · `occlusion` 取 `__UNASSERTED__`（condition_normalize 对「未声明」的编码）
-    与**缺键**同义——均表示「无从断言遮挡」，**不是**「有遮挡」。旧实现只对缺键
-    默认「无遮挡」，却把 UNASSERTED 判成 `!= "无遮挡"` ⇒ 同一图归一前后结论相反。
-    判据：`condition_normalize.py:67-76`（UNASSERTED 编码）+ 卡 v0.2 P0-001
-    「未声明无可校验」；`clothing`/`contrast` 对 UNASSERTED 本已与缺键同结论，无需改。
-  · `part_area <= 0` ⇒ REJECT（无有效区域）。旧式 `_fg_ratio` 的 `max(1, part_area)`
-    在零面积时把比值退化为前景像素数本身，越过全部阈值判 ACCEPT。零面积是
-    整数边界（与 #196 的 NaN 面独立），判据：条件冲突 ⇒ REJECT（四态语义同源）。
 """
 import math
 from typing import Dict
-
-from .condition_normalize import UNASSERTED
 
 # 图像大域 → 部件遮挡映射(常服/裙等覆盖 → 相应部件 occluded)
 CLOTH_OCCLUDES = {
@@ -53,18 +41,6 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
     clothing = image_domains.get("clothing", "无")
     contrast = image_domains.get("contrast", "清晰")
     occluded = image_domains.get("occlusion", "无遮挡")
-    # 未声明（condition_normalize.UNASSERTED）与**缺键**同义：都表示「无从断言遮挡」，
-    # 不是「有遮挡」（issue #296）。旧实现在缺键时默认「无遮挡」、却把 UNASSERTED
-    # 判成 `!= "无遮挡"` ⇒ 同一张图经 canonical_condition 归一后 4 个可见部件被判
-    # DEFER，与未归一输入结论相反。判据：`condition_normalize.py:67-76` 的 UNASSERTED
-    # 编码「未声明」，卡 v0.2 P0-001「未声明无可校验」——不得据此判「有遮挡」。
-    if occluded == UNASSERTED:
-        occluded = "无遮挡"
-    # 0) 部件区面积为零/负 ⇒ 无有效区域，条件冲突 REJECT（issue #296）。
-    # 旧式 `_fg_ratio` 用 `max(1, part_area)`，零面积时比值退化为前景像素数本身
-    # （如 5.0）⇒ 越过所有阈值被判 ACCEPT。零面积不是「条件充分」。
-    if part_area <= 0:
-        return {"verdict": "REJECT", "reason": "part region empty", "fg_ratio": 0.0}
     # 1) 部件区几乎无前景 → 条件冲突 REJECT
     if ratio < 0.10:
         return {"verdict": "REJECT", "reason": "part region empty", "fg_ratio": round(ratio,2)}
