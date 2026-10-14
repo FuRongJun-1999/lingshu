@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import datetime
 import io
 import json
 import os
@@ -43,43 +42,6 @@ def neutral_path(p):
     return tail_seg(p) if is_abs_path(p) else p
 
 
-def ts_to_float(v, nid):
-    """把 _audit.jsonl 记录的 t 归一成 epoch 秒（issue #531）。
-
-    _audit.jsonl 的生产方在仓外，t 无类型契约：数字按原逻辑原样返回；
-    字符串尝试按 ISO 日期解析（无时区视为 UTC，与 derive_edges R4 的
-    gmtime 口径一致）；None/空串沿旧口径记 0；非法值 stderr 告警并
-    返回 None，调用方跳过该记录——不再整轮崩溃。
-    """
-    if v is None or v == "":
-        return 0
-    if isinstance(v, (int, float)):
-        return v
-    if isinstance(v, str):
-        s = v.strip()
-        if not s:
-            return 0
-        dt = None
-        try:
-            dt = datetime.datetime.fromisoformat(s)
-        except ValueError:
-            if s.endswith("Z"):
-                try:
-                    dt = datetime.datetime.fromisoformat(s[:-1] + "+00:00")
-                except ValueError:
-                    dt = None
-        if dt is not None:
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
-            return dt.timestamp()
-        print("[warn] session_chains: 节点 %r 的 t=%r 非法，已跳过该记录"
-              % (nid, v), file=sys.stderr)
-        return None
-    print("[warn] session_chains: 节点 %r 的 t=%r 类型非法，已跳过该记录"
-          % (nid, v), file=sys.stderr)
-    return None
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser(description="会话链构建器")
     ap.add_argument("--audit", required=True, help="_audit.jsonl 路径")
@@ -91,8 +53,7 @@ def main(argv=None):
 
     t0 = time.time()
     node_sess, node_ts = {}, {}
-    # utf-8-sig 剥 BOM：json.loads 首行遇 U+FEFF 直接抛异常被 except 吞掉，首条 add 事件丢失（issue #412 同族）。
-    with io.open(args.audit, encoding="utf-8-sig", errors="replace") as f:
+    with io.open(args.audit, encoding="utf-8", errors="replace") as f:
         for line in f:
             if '"add"' not in line:
                 continue
@@ -103,22 +64,9 @@ def main(argv=None):
             if d.get("op") != "add":
                 continue
             nid = d.get("id")
-            sid = d.get("session")
-            if nid and nid not in node_sess and sid:
-                # #300：缺会话 id 的节点**不并入**伪会话 "unknown"。
-                #   旧实现 `d.get("session") or "unknown"` 把一切无归属节点塞进同一
-                #   伪会话，再按时间戳两两串成 sequential 边 —— 不同进程/不同来源的
-                #   无归属节点被伪造成「同一会话的先后活动」，是凭空造出的关系。
-                #   判据来源：经验标定，追不到（缺陷 #300；本文件无对应理论章节）。
-                #   判别力取舍：不再产出 session:unknown 枢纽与其 sequential 边；
-                #   代价是无归属节点在本产物里彻底不出现（它们本就没有会话归属可言）。
-                # #531：t 无类型契约（生产方在仓外）；非法值告警并跳过该记录，
-                # 不整轮崩溃。
-                ts = ts_to_float(d.get("t"), nid)
-                if ts is None:
-                    continue
-                node_ts[nid] = ts
-                node_sess[nid] = sid
+            if nid and nid not in node_ts:
+                node_ts[nid] = d.get("t") or 0
+                node_sess[nid] = d.get("session") or "unknown"
 
     with io.open(args.graph, encoding="utf-8") as f:
         g = json.load(f)

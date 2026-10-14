@@ -138,22 +138,12 @@ def main(argv=None):
     buckets = collections.Counter()
     edge_types = collections.Counter()
     skipped = 0
-    # 节点 id 唯一性登记（issue #358）：同 id 的第二个及以后节点确定性改名（首见者
-    # 保留原名），冲突逐条登记进 meta/报告/告警 —— 否则 graph.json 出现同 id 双节点，
-    # counts.nodes 与去重 id 数自相矛盾，查看器 BY_ID 字典静默覆盖。
-    id_seen = {}
-    duplicate_ids = []
 
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root).replace("\\", "/")
         if rel_dir.startswith(("_", "trash")) or os.path.basename(dirpath).startswith("."):
             dirnames[:] = []
             continue
-        # 遍历顺序确定化（issue #360）：os.walk 的 dirnames 顺序 = 文件系统返回顺序
-        # （NTFS 恰为字母序、ext4 为目录项序），目录创建顺序不同的两份同内容真源会产出
-        # 不同节点顺序 ⇒ derive_edges R5 同名标题归属（title_owner 取 ids[0]）随之改变，
-        # 而 source_sha 相同（它按 id 排序计算）。就地排序即可与文件系统序解耦。
-        dirnames.sort()
         for fn in sorted(filenames):
             if not fn.endswith(".md"):
                 continue
@@ -179,42 +169,20 @@ def main(argv=None):
             # YAML 数字 id（如 `id: 12345`）会解析成 int；归一为 str，否则
             # sorted((id, sha)) 混排抛 TypeError（issue #290）。
             nid = str(fm.get("id") or os.path.splitext(fn)[0])
-            # 重复 id 判定与改名（issue #358）：**同 id 的后到者让位**，确定性改为
-            # `<nid>#<sha>`（sha = 该文件内容指纹前 12 位，逐内容定值 ⇒ 与遍历顺序
-            # 无关、重跑稳定）。不改写真源、不静默丢节点：改名结果进 meta.duplicate_ids
-            # 与导出告警，查看器 BY_ID 不再发生「后写覆盖先写」。
-            if nid in id_seen:
-                dup_sha = sha
-                new_nid = "%s#%s" % (nid, dup_sha)
-                duplicate_ids.append({"id": nid, "renamed_to": new_nid,
-                                      "kept": id_seen[nid], "path": os.path.relpath(p, root).replace("\\", "/")})
-                nid = new_nid
-            else:
-                id_seen[nid] = os.path.relpath(p, root).replace("\\", "/")
             layers[layer] += 1
             if bucket:
                 buckets[bucket] += 1
 
             eds = fm.get("edges") or []
-            # mapping 形态 {src: dst} → 转成边（issue #534）。之前直接 for 循环
-            # 迭代 dict 只拿到 key（字符串），被 isinstance 检查静默丢弃，
-            # 且 n_edges 按 len(eds) 计造成自相矛盾。
-            _eds_is_mapping = isinstance(eds, dict)
-            if _eds_is_mapping:
-                eds = [{"s": str(k), "t": str(v), "type": "untyped"}
-                       for k, v in eds.items() if v is not None]
-            _edge_base = len(edges)
+            df = fm.get("derived_from")
             for e in eds:
                 if not isinstance(e, dict):
                     continue
                 et = str(e.get("type") or "untyped")
                 edge_types[et] += 1
-                # mapping 形态已自带 "s"；list 形态用当前节点 nid 作源
-                src = str(e.get("s") or nid)
-                tgt = e.get("target") or e.get("to") or e.get("id") or e.get("t")
+                tgt = e.get("target") or e.get("to") or e.get("id")
                 if tgt:
-                    edges.append({"s": src, "t": str(tgt), "type": et, "derived": False})
-            df = fm.get("derived_from")
+                    edges.append({"s": nid, "t": str(tgt), "type": et, "derived": False})
             # derived_from 可能是标量串（"a, b"）或 YAML 列表（[a, b]）。列表若直接
             # str() 会拼成 "['a', 'b']" 的伪目标、随后因悬空被剔除 ⇒ 静默丢边（issue #298）。
             if isinstance(df, (list, tuple)):
@@ -246,7 +214,7 @@ def main(argv=None):
                 "sha": sha,
                 "ref_root": neutral_root_id(ref),
                 "ref_dir": neutral_path(os.path.dirname(str((dr or cr).get("path", "")).replace("\\", "/")).replace("\\", "/")),
-                "n_edges": len(edges) - _edge_base,
+                "n_edges": len(eds),
                 "path": os.path.relpath(p, root).replace("\\", "/"),
             })
 
@@ -267,9 +235,6 @@ def main(argv=None):
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "counts": {"nodes": len(nodes), "edges": len(edges), "buckets": len(buckets),
                        "with_edge": with_edge, "density_pct": round(density, 2), "skipped_md": skipped},
-            # 重复 id 登记（issue #358）：节点 id 已唯一化，此处留下「哪些原 id 撞过、
-            # 后到者被改名成什么、原名保留给哪个文件」，供审计与查看器排查。
-            "duplicate_ids": duplicate_ids,
             "layers": dict(layers),
             "edge_types": dict(edge_types),
         },
@@ -294,13 +259,6 @@ def main(argv=None):
     ] + ["- %s: %d" % (k, v) for k, v in edge_types.most_common()] + [
         "", "## 桶 Top20", "",
     ] + ["- %s: %d" % (b["bucket"], b["count"]) for b in graph["buckets"][:20]] + [""]
-
-    if duplicate_ids:
-        # 告警走 stderr（issue #358）：stdout 是 JSON 统计块，掺入文本会破坏消费方解析。
-        print("警告：%d 个重复节点 id 已改名（后到者 → <id>#<sha>），详见 meta.duplicate_ids：%s"
-              % (len(duplicate_ids), ", ".join(d["id"] for d in duplicate_ids)), file=sys.stderr)
-        report_lines += ["", "## 重复 id（已改名，后到者让位）", ""] + [
-            "- %s ← %s（保留原名：%s）" % (d["renamed_to"], d["path"], d["kept"]) for d in duplicate_ids] + [""]
 
     os.makedirs(args.out, exist_ok=True)
     if args.write:

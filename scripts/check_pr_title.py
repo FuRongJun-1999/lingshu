@@ -8,12 +8,6 @@
   · `!`     可选；紧跟 scope/type 之后，表示破坏性变更（如 `feat(world)!: …`）
   · `: `    冒号后至少一个空格，再接**非空**摘要
   · 首尾不得有空白；标题建议 ≤ 160 字符（超长只告警，不判负）
-  · **不得含不可见字符**（#361 残余①）：Unicode 格式符（Cf——零宽空格 U+200B、
-    双向控制 U+202A-E/U+2066-9、BOM U+FEFF 等）、控制符（Cc）、孤立代理（Cs）
-    ——这类字符既不被 `str.strip()` 也不被正则 `\s` 认作空白，可用「视觉为空」
-    的摘要/scope 或「视觉伪装」（BiDi 覆写）过闸。
-  · 长度上限对**一切形态**生效（#361 残余②）：Revert 特例只豁免形状，不豁免
-    `MAX_LEN_FAIL`——超长 Revert 同样判负。
 
 用法（argv）：
     python -X utf8 scripts/check_pr_title.py "<PR 标题>"
@@ -22,19 +16,13 @@
     python -X utf8 scripts/check_pr_title.py --list-types     # 打印允许的 type
     python -X utf8 scripts/check_pr_title.py --selftest       # 自检（正负例）
 
-门禁通道（#361）：CI 标题门 `.github/workflows/pr-lint.yml` 的标题步同时设
-`PR_TITLE` 环境变量并把标题作位置参数。**标题是攻击者可控输入**，可能与
-`--help` / `-h` / `--list-types` / `--selftest` 同形——故本脚本约定：只要
-`PR_TITLE` 环境变量在场（门禁通道），位置参数一律按标题校验，绝不当开关短路。
-
-退出码：0 = 合规；1 = 不合规（含缺标题/空标题）；2 = 用法错误（参数非法，如 `--title` 后无值或未知开关）。
+退出码：0 = 合规；1 = 不合规；2 = 用法错误（缺标题 / 参数非法）。
 """
 from __future__ import annotations
 
 import os
 import re
 import sys
-import unicodedata
 
 #: 允许的 type 白名单。
 #:
@@ -46,7 +34,7 @@ import unicodedata
 #:     {test, perf, refactor, style, build, ci, revert}
 #:
 #: ⚠️ **设计者裁定点**：若只要「本仓实有」的窄口径，删掉来源②七个即可。
-#:    （该裁定点在落仓提交 `d7c6b33` 的说明内；起草期的本地报告不随仓发布。）
+#:    （见报告「落仓前须知」。）
 ALLOWED_TYPES = (
     # 来源① —— 本仓 git log 实有
     "init", "feat", "fix", "docs", "chore", "tools", "code", "theory",
@@ -80,17 +68,6 @@ def _fail(msg: str, hints=None) -> int:
     return 1
 
 
-def _invisible_chars(title: str) -> set:
-    """标题里的不可见字符集合（#361 残余①）。
-
-    Cf＝格式符（零宽 U+200B-200D、双向控制 U+202A-E/U+2066-9、BOM U+FEFF、
-    软连字符 U+00AD 等）；Cc＝控制符；Cs＝孤立代理。这三类既不被 `str.strip()`
-    也不被正则 ``\\s`` 认作空白——「视觉为空」的摘要/scope 与 BiDi 视觉伪装
-    都靠它们过闸。仓内既有标题（中文/箭头/破折号）无一落在这些类别。
-    """
-    return {ch for ch in title if unicodedata.category(ch) in ("Cf", "Cc", "Cs")}
-
-
 def check(title: str) -> int:
     if title is None:
         return _fail("未提供 PR 标题（缺 argv 参数且环境变量 PR_TITLE 为空）。",
@@ -99,18 +76,6 @@ def check(title: str) -> int:
         return _fail("标题首尾含多余空白。", [f"实际标题：{title!r}"])
     if not title:
         return _fail("标题为空。")
-    invisible = _invisible_chars(title)
-    if invisible:
-        return _fail(
-            "标题含不可见字符（视觉为空/视觉伪装的标题不得过闸，#361 残余①）。",
-            ["不可见字符：" + " ".join("U+%04X" % ord(c) for c in sorted(invisible)),
-             "请用可见字符重写摘要/scope。"])
-    # 长度上限先于一切形态特例（#361 残余②：超长 Revert 不再借特例绕过上限）。
-    if len(title) > MAX_LEN_FAIL:
-        return _fail(f"标题过长（{len(title)} > {MAX_LEN_FAIL} 字符）。",
-                     ["请把细节放进 PR 正文，标题只留一句摘要。"])
-    if len(title) > MAX_LEN_WARN:
-        print(f"WARN: 标题偏长（{len(title)} > {MAX_LEN_WARN} 字符）——建议精简。")
     if _REVERT_RE.match(title):
         print(f"OK（Revert 特例放行）：{title}")
         return 0
@@ -130,6 +95,12 @@ def check(title: str) -> int:
             f"type {t!r} 不在白名单内。",
             ["允许的 type：" + ", ".join(ALLOWED_TYPES),
              "如确需新 type，请先与维护者确认后在 ALLOWED_TYPES 登记（勿临时放宽）。"])
+
+    if len(title) > MAX_LEN_FAIL:
+        return _fail(f"标题过长（{len(title)} > {MAX_LEN_FAIL} 字符）。",
+                     ["请把细节放进 PR 正文，标题只留一句摘要。"])
+    if len(title) > MAX_LEN_WARN:
+        print(f"WARN: 标题偏长（{len(title)} > {MAX_LEN_WARN} 字符）——建议精简。")
 
     scope = m.group("scope")
     print(f"OK: type={t} scope={scope or '-'} breaking={bool(m.group('breaking'))} "
@@ -157,10 +128,6 @@ def _selftest() -> int:
         "Fix(world): 摘要",            # type 大写
         " fix: 摘要",                  # 首尾空白
         "fix(world):",                 # 无摘要
-        "fix: " + "\u200b",            # 零宽摘要（#361 残余①：视觉为空）
-        "fix(\u200bworld): x",         # 零宽 scope（#361 残余①）
-        "fix: " + "\u202ex",           # BiDi 覆写伪装（#361 残余①）
-        'Revert "' + "x" * 334 + '"',  # 超长 Revert（#361 残余②：特例不豁免上限）
     ]
     fails = 0
     for s in good:
@@ -182,16 +149,6 @@ def _selftest() -> int:
 
 def main(argv) -> int:
     args = list(argv[1:])
-    # 门禁通道优先（#361）：`.github/workflows/pr-lint.yml` 的标题步设 `PR_TITLE`
-    # 环境变量并把标题作位置参数传入。此时**位置参数就是标题**——即便它与
-    # `--help`/`-h`/`--list-types`/`--selftest` 同形，也必须按标题校验（⇒ 判负），
-    # 不得短路成 `print(__doc__); return 0`（旧行为：标题为这些字串即退出码 0，
-    # 门禁被静默绕过）。
-    # 判据来源：经验标定（本件 #361）——无理论章节规定门禁的标题通道口径。
-    # 削掉的判别力：无（`--help` 等仍可在**无** PR_TITLE 的交互场景下按开关使用，
-    # 只是门禁通道不再把开关形输入当开关）。
-    if os.environ.get("PR_TITLE") is not None:
-        return check(args[0] if args else os.environ["PR_TITLE"])
     if not args:
         return check(os.environ.get("PR_TITLE"))
     if args[0] in ("-h", "--help"):

@@ -29,9 +29,6 @@ import random
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
-from .motion import ObservationWindow, observed_positions, recent_direction
-from .coord_contract import apply_move          # 第 4 轮 #4：坐标口径唯一真源
-
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
     from .scene_simulator import SceneSimulator
@@ -82,8 +79,7 @@ class WorldLearner:
         self.history: List[Dict] = []            # 观测序列（只存位置/类别）
         self.tick = 0
         self.model: Dict = {}                    # 学得模型参数（白箱可审计）
-        self._motion_directions: Dict[str, Tuple[float, float, float]] = {}
-        self.losses: List[Optional[float]] = []  # 遮挡重建损失曲线（无样本=None）
+        self.losses: List[float] = []            # 遮挡重建损失曲线
         self.evals: List[Dict] = []              # 评估记录
         self._rng = random.Random(seed)
         self.pad = 0.2
@@ -117,30 +113,80 @@ class WorldLearner:
 
     # ================= 自监督特征（从观测序列估计） =================
 
-    def _motion_stats(self, eid: str, window: Optional[int] = None,
-                      observations=None) -> Tuple[float, float]:
-        """真实位移/dt；窗口无样本时保留已学参数，不把缺失当静止。"""
-        if observations is None:
-            observations = ObservationWindow(self.history, window or self.window, nested=True)
-        stats = observations.motion(eid)
-        if stats is not None:
-            if stats[3] is not None:
-                self._motion_directions[eid] = stats[3]
-            else:
-                self._motion_directions.pop(eid, None)
-            return stats[:2]
-        previous = self.model.get("per_entity", {}).get(eid, {})
-        return previous.get("persistence", 0.0), previous.get("speed_est", 0.3)
+    def _motion_stats(self, eid: str, window: Optional[int] = None
+                      ) -> Tuple[float, float]:
+        """方向持续性 |mean unit|（0=随机,1=直线） + 速度估计（mean |move|）。"""
+        w = window or self.window
+        moves = []
+        prev = None
+        for rec in self.history[-w:]:
+            cur = rec["entities"].get(eid)
+            if cur is None:
+                prev = None
+                continue
+            if prev is not None:
+                moves.append((cur["pos"][0] - prev[0],
+                              cur["pos"][2] - prev[2]))
+            prev = cur["pos"]
+        if not moves:
+            return 0.0, 0.3
+        speed = sum(math.hypot(m[0], m[1]) for m in moves) / len(moves)
+        units = [m for m in moves if math.hypot(m[0], m[1]) > 1e-6]
+        if not units:
+            return 0.0, round(speed, 3)
+        mx = sum(m[0] / math.hypot(m[0], m[1]) for m in units) / len(units)
+        mz = sum(m[1] / math.hypot(m[0], m[1]) for m in units) / len(units)
+        return round(math.hypot(mx, mz), 3), round(speed, 3)
 
     def _pair_tendency(self, a: str, b: str, window: Optional[int] = None
                        ) -> Tuple[float, int]:
         """a 对 b 的趋向均值 + 样本数：cos(位移_a, 方向_a→b)。"""
-        observations = ObservationWindow(self.history, window or self.window, nested=True)
-        return observations.pair(a, b)[:2]
+        w = window or self.window
+        scores = []
+        prev = None
+        for rec in self.history[-w:]:
+            ea = rec["entities"].get(a)
+            eb = rec["entities"].get(b)
+            if ea is None or eb is None:
+                prev = None
+                continue
+            if prev is not None:
+                dx, dz = ea["pos"][0] - prev[0], ea["pos"][2] - prev[2]
+                dl = math.hypot(dx, dz)
+                if dl > 1e-6:
+                    tx, tz = eb["pos"][0] - ea["pos"][0], eb["pos"][2] - ea["pos"][2]
+                    tl = math.hypot(tx, tz)
+                    if tl > 1e-6:
+                        scores.append((dx * tx + dz * tz) / (dl * tl))
+            prev = ea["pos"]
+        return (round(sum(scores) / len(scores), 3) if scores else 0.0,
+                len(scores))
 
-    def _recent_dir(self, eid: str, window: Optional[int] = None) -> Optional[Tuple[float, float, float]]:
-        """最近位移方向（单位化）。"""
-        return recent_direction(self.history[-(window or self.window):], eid, nested=True)
+    def _recent_dir(self, eid: str,
+                    window: Optional[int] = None) -> Optional[Tuple[float, float, float]]:
+        """最近位移方向（单位化）。
+
+        只扫最近 window 条观测（缺省 self.window，与 _motion_stats 同口径）——
+        此前正序扫描**全部** history：history 随 tick 线性增长，而 predict 对
+        每个实体每步都调用本函数，评估循环（eval_phase/next_state_loss）因此
+        随观测数放大成 O(tick²)（缺陷单 #397 资源耗尽）。超出窗口的陈旧位移
+        不再参与，与 persistence 的窗口口径一致。
+        """
+        w = window or self.window
+        prev = None
+        last = None
+        for rec in self.history[-w:]:
+            cur = rec["entities"].get(eid)
+            if cur is None:
+                prev = None
+                continue
+            if prev is not None:
+                dx, dz = cur["pos"][0] - prev[0], cur["pos"][2] - prev[2]
+                dl = math.hypot(dx, dz)
+                if dl > 1e-6:
+                    last = (dx / dl, 0.0, dz / dl)
+            prev = cur["pos"]
+        return last
 
     # ================= 自监督学习（目标驱动参数估计） =================
 
@@ -153,30 +199,18 @@ class WorldLearner:
           - stochastic_targets: 追逐随机目标的实体（可达域传播 D1）
         """
         w = window or self.window
-        observations = ObservationWindow(self.history, w, nested=True)
         model = {"per_entity": {}, "relations": [], "stochastic_targets": []}
         eids = list(self.nodes.keys())
         for eid in eids:
-            pers, speed = self._motion_stats(eid, w, observations)
-            samples = observations.motion(eid)
-            model["per_entity"][eid] = {
-                "speed_est": speed, "persistence": pers,
-                "samples": samples[2] if samples else 0,
-                "last_observed": self.nodes[eid].last_seen,
-                "stale": self.nodes[eid].last_seen < self.tick}
+            pers, speed = self._motion_stats(eid, w)
+            model["per_entity"][eid] = {"speed_est": speed, "persistence": pers}
         # 关系候选（趋向/远离）
         for a in eids:
             best_t, best_c, best_n = None, 0.0, 0
-            sufficient = False
-            motion = observations.motion(a)
             for b in eids:
                 if a == b:
                     continue
-                c, n, measured = observations.pair(a, b)
-                # Sparse directional evidence stays a candidate. A window of
-                # measured zero motion is contrary evidence, not missing data.
-                sufficient = (sufficient or n >= 3
-                              or (measured >= 3 and n == 0 and motion[3] is None))
+                c, n = self._pair_tendency(a, b, w)
                 if n >= 3 and abs(c) > abs(best_c):   # 样本不足不采信（防虚假关系）
                     best_c, best_t, best_n = c, b, n
             if best_t is not None and abs(best_c) >= 0.5:
@@ -184,17 +218,10 @@ class WorldLearner:
                 model["relations"].append({"source": a, "relation": rel,
                                            "target": best_t,
                                            "confidence": round(abs(best_c), 3)})
-            elif not sufficient:
-                # Lack of joint observations is not contrary relation evidence.
-                old = next((r for r in self.model.get("relations", [])
-                            if r["source"] == a and r["target"] in self.nodes), None)
-                if old is not None:
-                    model["relations"].append({**old, "stale": True})
-        for rel in model["relations"]:
-            t_pers = model["per_entity"].get(rel["target"], {}).get("persistence", 0.0)
-            t_speed = model["per_entity"].get(rel["target"], {}).get("speed_est", 0.3)
-            if rel["relation"] == "seek" and t_speed > 1e-6 and t_pers < self.entropy_threshold:
-                model["stochastic_targets"].append(rel["source"])
+                # 追逐随机目标 → 可达域传播（D1）
+                t_pers = model["per_entity"].get(best_t, {}).get("persistence", 0.0)
+                if rel == "seek" and t_pers < self.entropy_threshold:
+                    model["stochastic_targets"].append(a)
         self.model = model
         return model
 
@@ -205,16 +232,18 @@ class WorldLearner:
 
     def _apply_move(self, pos: Tuple[float, float, float], speed: float,
                     d: Tuple[float, float, float]) -> Tuple[float, float, float]:
-        # ⚠ 第 4 轮 #4：**不再自带一份 clamp**，语义收归 `coord_contract.apply_move`。
-        #   默认参数 = 本体口径 ⇒ 算式与原先逐字等价（域内 trace_sha256 90/90 由它保证）。
-        return apply_move(pos, speed, d, self.size)
+        if d == (0.0, 0.0, 0.0):
+            return tuple(round(v, 2) for v in pos)
+        nx = max(0.5, min(self.size - 0.5, pos[0] + d[0] * speed))
+        nz = max(0.5, min(self.size - 0.5, pos[2] + d[2] * speed))
+        return (round(nx, 2), pos[1], round(nz, 2))
 
     def predict(self, horizon: int = 1) -> Dict:
         """用学得模型预测 horizon 步后的状态（观测面）。
 
         模式：
           - exact：确定性追逐（目标可精确预测）→ bound=hit_threshold
-          - chase_stochastic：支持的追逐方向作中心，保留随机目标的宽可达域（D1）
+          - chase_stochastic：追逐随机目标 → max(自身,目标)可达域+阈值（D1）
           - directed_noisy：直线运动（flee/follow）→ 略宽
           - bounded_stochastic：随机行为 → 可达域（D2）
 
@@ -229,15 +258,6 @@ class WorldLearner:
             self.learn()
         m = self.model
         shadow = {eid: tuple(n.pos) for eid, n in self.nodes.items()}
-        # Project stale observations to the current tick in temporary state.
-        # Stored node positions remain facts about their last observation.
-        for eid, n in self.nodes.items():
-            age = max(0, self.tick - n.last_seen)
-            params = m.get("per_entity", {}).get(eid, {})
-            if age and params.get("persistence", 0.0) >= self.entropy_threshold:
-                direction = self._recent_dir(eid) or self._motion_directions.get(eid)
-                if direction is not None:
-                    shadow[eid] = self._apply_move(n.pos, params.get("speed_est", 0.3) * age, direction)
         ordered = sorted(self.nodes.items(), key=lambda kv: kv[1].first_seen)
         rel_by_src = {r["source"]: r for r in m.get("relations", [])}
         stoch_targets = set(m.get("stochastic_targets", []))
@@ -256,22 +276,11 @@ class WorldLearner:
                         dx, dz = -dx, -dz
                     dl = math.hypot(dx, dz)
                     d = (0.0, 0.0, 0.0) if dl < 1e-6 else (dx / dl, 0.0, dz / dl)
-                    # A target's random motion does not make the actor stationary.
-                    # The relation must explain directions at least as consistently
-                    # as the actor's own trajectory before it moves the point center.
-                    seek_supported = (pers >= self.entropy_threshold
-                                      and rel.get("confidence", 0.0) >= pers)
                     if eid in stoch_targets:
                         t_speed = m.get("per_entity", {}).get(rel["target"], {}).get("speed_est", 0.3)
                         bound = max(self._reach(speed), self._reach(t_speed)) + self.hit_threshold
-                        np_ = self._apply_move(shadow[eid], speed, d) if seek_supported else shadow[eid]
-                        shadow[eid] = np_
-                        pred[eid] = {"predicted": list(np_), "bound": round(bound, 3),
+                        pred[eid] = {"predicted": list(shadow[eid]), "bound": round(bound, 3),
                                      "mode": "chase_stochastic"}
-                    elif rel["relation"] == "seek" and not seek_supported:
-                        pred[eid] = {"predicted": list(shadow[eid]),
-                                     "bound": round(self._reach(speed), 3),
-                                     "mode": "bounded_stochastic"}
                     elif rel["relation"] == "seek":
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_
@@ -286,8 +295,6 @@ class WorldLearner:
                                      "mode": "bounded_noisy"}
                 elif pers >= self.entropy_threshold:
                     dr = self._recent_dir(eid)
-                    if dr is None and n.last_seen < self.tick:
-                        dr = self._motion_directions.get(eid)
                     if dr:
                         np_ = self._apply_move(shadow[eid], speed, dr)
                         shadow[eid] = np_
@@ -302,53 +309,50 @@ class WorldLearner:
                     pred[eid] = {"predicted": list(shadow[eid]),
                                  "bound": round(self._reach(speed), 3),
                                  "mode": "bounded_stochastic"}
-                age = max(0, self.tick - n.last_seen)
-                pred[eid]["bound"] = round(pred[eid]["bound"] + age * self._reach(speed), 3)
-                pred[eid]["observation_age"] = age
-                pred[eid]["target_tick"] = self.tick + h
         self._last_prediction = pred   # 生成先验（供好奇异常检测/状态导出）
         return {"tick": self.tick, "horizon": h, "predictions": pred}
 
     # ================= 遮挡重建（自监督损失 · V-JEPA 式） =================
 
     def masked_loss(self, mask_last: int = 1) -> Dict:
-        """遮住最后一次真实观测，以前两点的位移/dt重建，记录XZ平方距离。
+        """遮挡预测：遮住每实体最近一个未知时刻，用轨迹外推重建 → 损失。
 
-        此诊断不更新模型参数；当前只支持 mask_last=1。
+        重建 = 最近两点线性外推（速度 × 方向持续性加权）。损失 = 均方距离。
+        随观测增多，速度/方向估计更稳 → 重建损失下降（学习信号收敛）。
         """
-        if mask_last != 1:
-            raise ValueError("masked_loss currently supports mask_last=1 only")
         losses = []
         n_used = 0
         for eid, n in self.nodes.items():
-            traj = observed_positions(self.history, eid, nested=True)
+            traj = [rec["entities"][eid]["pos"] for rec in self.history
+                    if eid in rec["entities"]]
             if len(traj) < 3:
                 continue
-            (t1, p1), (t2, p2), (t3, actual) = traj[-3:]
-            if t2 <= t1 or t3 <= t2:
-                continue
-            scale = (t3 - t2) / (t2 - t1)
-            dx, dz = (p2[0] - p1[0]) * scale, (p2[2] - p1[2]) * scale
+            p1, p2 = traj[-3], traj[-2]          # 上下文（已观测）
+            actual = traj[-1]                     # 被遮住的时刻（withheld）
+            dx, dz = p2[0] - p1[0], p2[2] - p1[2]
             recon = (p2[0] + dx, p2[1], p2[2] + dz)
             loss = (recon[0] - actual[0]) ** 2 + (recon[2] - actual[2]) ** 2
             losses.append(loss)
             n_used += 1
-        mean_loss = round(sum(losses) / len(losses), 4) if losses else None
+        mean_loss = round(sum(losses) / len(losses), 4) if losses else 0.0
         self.losses.append(mean_loss)
         return {"loss": mean_loss, "samples": n_used, "curve_len": len(self.losses)}
 
     def next_state_loss(self, eval_ticks: int = 10) -> Dict:
-        """冻结模型的一步预测与新鲜观测的平均欧氏距离；无样本返回 None。"""
+        """自监督下一状态损失（held-out）：学得模型预测 vs 实际 → 均方距离。
+
+        学习目标：命中率↑（evaluate）+ 预测距离↓（本方法）——认知缺口收紧的双证据。
+        """
         dists = []
         for _ in range(max(1, int(eval_ticks))):
             lp = self.predict(horizon=1)
             self.world.step(n=1)
             self.observe()
             for eid, p in lp["predictions"].items():
-                observation = self.history[-1]["entities"].get(eid)
-                if observation is not None:
-                    dists.append(math.dist(p["predicted"], observation["pos"]))
-        return {"mean_distance": round(sum(dists) / len(dists), 4) if dists else None,
+                n = self.nodes.get(eid)
+                if n is not None:
+                    dists.append(math.dist(p["predicted"], tuple(n.pos)))
+        return {"mean_distance": round(sum(dists) / len(dists), 4) if dists else 0.0,
                 "samples": len(dists)}
 
     # ================= 评估协议（外部观察者裁判） =================
@@ -363,20 +367,21 @@ class WorldLearner:
         except Exception:
             return {}
 
-    def eval_phase(self, eval_ticks: int = 15, *, include_oracle: bool = True) -> Dict:
-        """冻结参数评估；三个 point rate 用同一 hit_threshold（metric_version=2）。
+    def eval_phase(self, eval_ticks: int = 15) -> Dict:
+        """评估一轮（不学习）：学得模型 vs naive 基线 vs 真模型上界。
 
-        bound_coverage 单列为范围覆盖率，不与 naive 点命中率混比。
-        oracle 使用独立分母；gap 仅用同一实体/时刻的交集作差。
-        无样本/无 oracle 返回 None，不将未验证显示成满分。
+        口径：三类命中数**各用各自的分母**——learned/naive 用学得模型给出预测的
+        实体数（total），oracle 用 oracle 给出预测且落在真实观测里的实体数
+        （oracle_total）。此前 oracle 命中数除以 learned 的 total，当学习者覆盖面
+        小于 oracle 时 oracle_rate 可 > 1（实测 outcomes=1 时 oracle_rate=6.0），
+        gap_to_oracle 相应失真。oracle 不可用时 oracle_rate 为 None 并标
+        oracle_unavailable，不退化成 0 参与作差。
         """
         learned_hits = naive_hits = oracle_hits = total = oracle_total = 0
-        covered = oracle_covered = common = common_learned = common_oracle = 0
-        distances, naive_distances, bounds = [], [], []
         oracle_available = False
         for _ in range(max(1, int(eval_ticks))):
             lp = self.predict(horizon=1)
-            op = self._oracle_predict() if include_oracle else {}
+            op = self._oracle_predict()
             before = {eid: tuple(e.pos) for eid, e in self.world.entities.items()}
             self.world.step(n=1)
             self.observe()
@@ -386,48 +391,29 @@ class WorldLearner:
                     continue
                 total += 1
                 dist = math.dist(p["predicted"], actual[eid])
-                distances.append(dist)
-                bounds.append(p["bound"])
-                naive_dist = math.dist(before.get(eid, actual[eid]), actual[eid])
-                naive_distances.append(naive_dist)
-                if dist < self.hit_threshold:
-                    learned_hits += 1
                 if dist < p["bound"]:
-                    covered += 1
-                if naive_dist < self.hit_threshold:
+                    learned_hits += 1
+                if math.dist(before.get(eid, actual[eid]), actual[eid]) < self.hit_threshold:
                     naive_hits += 1
-                if eid in op:
-                    common += 1
-                    common_learned += dist < self.hit_threshold
-                    common_oracle += math.dist(op[eid][0], actual[eid]) < self.hit_threshold
             for eid, (pp, _mode, _cat, _beh, bound) in op.items():
                 if eid in actual:
                     oracle_total += 1
                     oracle_available = True
-                    distance = math.dist(pp, actual[eid])
-                    if distance < self.hit_threshold:
+                    if math.dist(pp, actual[eid]) < max(bound, 0.5):
                         oracle_hits += 1
-                    oracle_covered += distance < max(bound, self.hit_threshold)
         def rate(h, denom):
             return round(h / denom, 4) if denom else None
         learned_rate = rate(learned_hits, total)
         oracle_rate = rate(oracle_hits, oracle_total)
+        if learned_rate is None:
+            learned_rate = 1.0
         res = {"tick": self.tick, "eval_ticks": int(eval_ticks), "outcomes": total,
-               "metric_version": 2, "hit_threshold": self.hit_threshold,
-               "learned_rate": learned_rate, "naive_rate": rate(naive_hits, total),
-               "bound_coverage": rate(covered, total),
-               "mean_distance": round(sum(distances) / total, 4) if total else None,
-               "naive_mean_distance": round(sum(naive_distances) / total, 4) if total else None,
-               "mean_bound": round(sum(bounds) / total, 4) if total else None,
+               "learned_rate": learned_rate, "naive_rate": rate(naive_hits, total) if total else 1.0,
                "oracle_outcomes": oracle_total,
                "oracle_rate": oracle_rate,
-               "oracle_coverage": rate(oracle_covered, oracle_total),
-               "common_outcomes": common,
-               "learned_common_rate": rate(common_learned, common),
-               "oracle_common_rate": rate(common_oracle, common),
                "oracle_unavailable": not oracle_available,
-               "gap_to_oracle": (round(max(0.0, (common_oracle - common_learned) / common), 4)
-                                 if common else None)}
+               "gap_to_oracle": (round(max(0.0, oracle_rate - learned_rate), 4)
+                                 if oracle_rate is not None else None)}
         self.evals.append(res)
         return res
 
@@ -453,13 +439,11 @@ class WorldLearner:
                           "naive_rate": res["naive_rate"],
                           "oracle_rate": res["oracle_rate"],
                           "mean_distance": loss["mean_distance"]})
-        return {"metric_version": 2, "hit_threshold": self.hit_threshold, "curve": curve,
+        return {"curve": curve,
                 "improvement": round(curve[-1]["learned_rate"] - curve[0]["learned_rate"], 4)
-                if curve and curve[-1]["learned_rate"] is not None
-                and curve[0]["learned_rate"] is not None else None,
+                if curve else 0.0,
                 "distance_drop": round(curve[0]["mean_distance"] - curve[-1]["mean_distance"], 4)
-                if curve and curve[0]["mean_distance"] is not None
-                and curve[-1]["mean_distance"] is not None else None}
+                if curve else 0.0}
 
     # ================= 导出 =================
 

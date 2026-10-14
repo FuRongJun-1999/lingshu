@@ -46,9 +46,7 @@ dof / subject_priority）统一阻塞在「主体/部件求解器」上——它
 **误差桶（R319 实测，默认档 ⇒ 下一轮定靶用）**：精确 / 欠拆 / 过拆 ＝ 黑箱 37 条 **24 / 4 / 9**、
 多 seed 40 张 **22 / 10 / 8**、自家 37 件 **37 / 0 / 0**。**主导误差是「过拆」**（R318 已量：非凸形状的臂、
 自身纹理把一块切成多块），而缝通道两轮都救不了它 ⇒ 下一轮的靶是**过拆**（换「词表吻合度」判据），
-`n_proposed`（**未并的提议总数**，含切分遍新增）与 `n_clusters`（**参与聚类**的簇数，即通过
-`MIN_PX` 门者）一并输出，构成 `簇数 ≤ 实例数 ≤ 提议数` 的**不确定带**（#219：旧实现簇数计在
-`MIN_PX` 门**之前**、提议数不计切分新增 ⇒ 该带被自己的输出打破）。
+`n_proposed`（提议数）与 `n_clusters`（簇数）一并输出，构成 `簇数 ≤ 实例数 ≤ 提议数` 的**不确定带**。
 
 **R320 实测（词表吻合度判据，默认开）**：
   * **正/负对照（构造件，成对决策）**：该并的正例——星的两半 **2.355/2.551 → 0.040**、方块的两半
@@ -453,18 +451,12 @@ def split_subjects(img, tol=C.TOL, d=6, min_px=C.MIN_PX, seam_min=None,
     bg_lab = C.rgb_to_lab(bg)
     lab_d, n_d = C.cluster_of_pixels(raw, d)
     out = []
-    # #219：`n_clusters` 只计**参与聚类**的簇（即通过下面 `min_px` 门、真正产出提议的那些）——
-    #   旧实现计的是 `n_d`（**跳过前**的全簇数），被 `min_px` 门滤掉的碎屑簇照样计入 ⇒
-    #   声明的「簇数 ≤ 实例数」被自己的输出打破（28px 碎屑 + 一个主体：簇数读 2、实例数读 1）。
-    #   `n_proposed`＝**未并的提议总数**（簇内种子，含切分遍新增的提议）⇒ 与 `n_instances`
-    #   一起构成「簇数 ≤ 实例数 ≤ 提议数」的不确定带（见模块头 R319 段）。
-    diag = {"n_clusters": 0, "n_merge_events": 0, "n_fused": 0, "n_no_split": 0,
-            "n_proposed": 0}
+    diag = {"n_clusters": int(n_d), "n_merge_events": 0, "n_fused": 0, "n_no_split": 0,
+            "n_proposed": 0}   # `n_proposed`＝**提议总数**（未并）⇒ 与 `n_instances` 一起构成**不确定带**
     for c in range(n_d):
         sel = (lab_d == c) & raw
         if sel.sum() < min_px:
             continue
-        diag["n_clusters"] += 1
         sil = C.fill_holes(sel)
         ys, xs = np.nonzero(sil)
         area = int(sil.sum())
@@ -480,13 +472,10 @@ def split_subjects(img, tol=C.TOL, d=6, min_px=C.MIN_PX, seam_min=None,
             if len(pts) == 1:
                 diag["n_no_split"] += 1
         diag["n_proposed"] += len(pts)
-        #   切分（欧氏最近）。#523：网格与标签数组按**输入形状**建（H, W = sil.shape），
-        #   旧写法用模块常量 SIZE=512 建数组 ⇒ 非 512×512 输入广播失败
-        #   （300×300/800×800 实测 ValueError，512×512 恰好掩盖）。
-        hh, ww = sil.shape
-        yy, xx = np.mgrid[0:hh, 0:ww]
-        best = np.full((hh, ww), np.inf, np.float32)
-        labm = np.full((hh, ww), -1, np.int32)
+        #   切分（欧氏最近）
+        yy, xx = np.mgrid[0:SIZE, 0:SIZE]
+        best = np.full((SIZE, SIZE), np.inf, np.float32)
+        labm = np.full((SIZE, SIZE), -1, np.int32)
         for i, (py, px, _v) in enumerate(pts):
             dd = (yy - py) ** 2 + (xx - px) ** 2
             upd = sil & (dd < best)
@@ -509,9 +498,6 @@ def split_subjects(img, tol=C.TOL, d=6, min_px=C.MIN_PX, seam_min=None,
         smargin = SPLIT_MARGIN if split_margin is None else split_margin
         sdepth = SPLIT_DEPTH if split_depth is None else split_depth
         out, diag["n_split_events"] = _vocab_split_pass(out, img, sr_min, smargin, sdepth)
-        # #219：切分遍把 1 个实例拆成 ≥2 个（每次切分事件净 +1 实例）⇒ 提议总数同步 +事件数，
-        #   否则「实例数 ≤ 提议数」被切分打破（R321 引入切分遍后此上界失效）。
-        diag["n_proposed"] += diag["n_split_events"]
     # ---------------- 全局合并一遍（判据 `crit` = none | seam | vocab） ----------------
     #   ⚠ **R320 的关键改动：合并从「簇内」升到「全局」**。R320 诊断实测：误差多数落在**簇**这一层
     #   （一个对象被前景掩膜断成多簇：盒 `406` 真值 1 读 2、`502` 真值 1 读 3、`105` 真值 2 读 4、
@@ -522,9 +508,7 @@ def split_subjects(img, tol=C.TOL, d=6, min_px=C.MIN_PX, seam_min=None,
     diag["merge_crit"] = crit
     if crit != "none" and len(out) > 1:
         band = SEAM_BAND if crit == "seam" else max(1, int(math.ceil(max(0.0, merge_gap) / 2.0)))
-        #   #523：全局合并标签面同按输入形状建（旧写法 SIZE=512 同病）。
-        hh, ww = img.shape[0], img.shape[1]
-        lab_all = np.full((hh, ww), -1, np.int32)
+        lab_all = np.full((SIZE, SIZE), -1, np.int32)
         for k, (m, _i) in enumerate(out):
             lab_all[m] = k
         parent = list(range(len(out)))

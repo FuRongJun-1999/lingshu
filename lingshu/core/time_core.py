@@ -7,7 +7,7 @@
 衰减率 γ 按对象配置；任何在本模块之外出现的衰减核实现
 （exp(-t/τ)、×(1-factor)、EMA 保持率）都是 bug——
 由 tools/time_core_lint.py 按 E5 口径机械化审计。
-规范依据：docs/概念钉死批_GPT四点评审_v0.1.md 钉死 3（该文档不在本仓，属上游/私域件）。
+规范依据：docs/概念钉死批_GPT四点评审_v0.1.md 钉死 3。
 """
 import math
 
@@ -18,35 +18,21 @@ def cred(x0: float, x_inf: float, gamma: float, dt: float) -> float:
 
 
 def cred_factor(gamma: float, dt: float, floor: float = 0.0, ceil: float = 1.0) -> float:
-    """归一化**保持因子** r = e^(-γ·dt)，clamp 到 [floor, ceil]。
+    """归一化保持因子 e^(-γ·dt)，clamp 到 [floor, ceil]。
 
-    适用于 x0=1、x_inf=0 的新近度加权形态（如知识飞轮 recency factor）——
-    **乘性**使用：x ← x·r。
-    #180：本返回值与 `cred_step` 的第二形参**语义相反、互不通用**——
-    前者是保持率（乘），后者是每周期衰减量（减）。`cred_step(x, r) == x·(1-r)`，
-    不是 x·r；把本函数结果直送 `cred_step` 会得到「衰减量恰等于保持率」的数。
+    适用于 x0=1、x_inf=0 的新近度加权形态（如知识飞轮 recency factor）。
     """
     f = math.exp(-gamma * dt)
     return max(floor, min(ceil, f))
 
 
-def cred_step(x: float, decay: float) -> float:
-    """离散指数核单步：x ← x·(1-decay)。
+def cred_step(x: float, factor: float) -> float:
+    """离散指数核单步：x ← x·(1-factor)。
 
-    `decay` 是**每周期衰减量**（∈[0,1]），不是保持因子（保持因子 = 1-decay）。
-    #180：形参旧名为 `factor`，与 `cred_factor` 的返回值同名却语义相反——
-    `cred_step(x, cred_factor(γ,dt))` 静默得到 x·(1-r)（r 为保持率），
-    既不等于 x·r 也不报错。现正名为 `decay` 并写明互不通用，消除同名陷阱。
-    **只正名、不改行为**：调用方（`core.py:1449 decay_cycle(factor=0.02)`）的
-    实参语义本就是「每周期衰减 2%」（`x·(1-0.02)=0.98x`），与旧实现一致。
-    判据来源：本模块头部「核形状唯一」+ `cred_factor` 的保持因子语义（:20-28）；
-    实参语义取 `lingshu/core/core.py:1449-1501` 的既有调用（decay_cycle 默认
-    `factor=0.02`，50 轮后知识层 confidence 仍 >0，见 `tests/test_issue29_memory_pollution_guard.py` W4）。
-
-    decay_cycle 逐周期形态；n 步后 x·(1-decay)^n = x·e^(n·ln(1-decay))，
-    与连续核同族——衰减率 γ = -ln(1-decay) 每周期。
+    decay_cycle 逐周期形态；n 步后 x·(1-factor)^n = x·e^(n·ln(1-factor))，
+    与连续核同族——衰减率 γ = -ln(1-factor) 每周期。
     """
-    return x * (1.0 - decay)
+    return x * (1.0 - factor)
 
 
 def cred_blend(last: float, incoming: float, retain: float) -> float:

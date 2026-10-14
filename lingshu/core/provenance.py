@@ -24,8 +24,8 @@
 本文件是契约的**唯一权威实现**（协议内 · 纯标准库 · 零依赖）：
   · 写入方：`lingshu_runtime.py` / `voice_daemon.py` 为保持自包含进程，内联同等
     规则，但取值必须落在本文件取值域内；
-  · 工具链（上游仓 / 未随本仓导出）：`AEIS/tools/provenance.py` 是薄壳 re-export；
-    `AEIS/tools/audit_provenance.py` 用本契约对全库做合规普查（两者均不在本仓）。
+  · 工具链：`AEIS/tools/provenance.py` 是薄壳 re-export；
+    `AEIS/tools/audit_provenance.py` 用本契约对全库做合规普查。
 """
 from __future__ import annotations
 
@@ -149,24 +149,9 @@ class Provenance:
 
     @classmethod
     def from_json(cls, s: str) -> "Provenance":
-        """从 JSON 反序列化；**形状异常的行按契约落 unknown**（#342）。
-
-        既有库里可能有形状不对的 provenance 列（`null` / 数字 / 数组 /
-        `time_window=[null,null]`——core 自己的 ConditionSpace 规范化后会产出
-        后者）。此前这些行会让 `d.get` / `float(...)` 直接抛异常并毒化整条读链；
-        现在一律回落到字段默认值（source=unknown、time_window=(0,0)），不抛。
-        削掉的判别力：形状异常行与「合法但全默认」的行在本函数出口上不再可分
-        （二者的 Provenance 相同）；形状本身的信息不进 `synthetic`（本函数是
-        反序列化而非推断，无 provenance 上下文可记账）。
-        """
-        try:
-            d = json.loads(s or "{}")
-        except Exception:
-            d = {}
-        if not isinstance(d, dict):
-            d = {}
+        d = json.loads(s or "{}")
         tw = d.get("time_window") or [0.0, 0.0]
-        d["time_window"] = _safe_window(tw) or (0.0, 0.0)
+        d["time_window"] = (float(tw[0]), float(tw[1]))
         for k in ("verify_methods", "synthetic"):
             v = d.get(k)
             d[k] = list(v) if isinstance(v, (list, tuple)) else ([] if k == "synthetic" else ["none"])
@@ -187,24 +172,13 @@ class Provenance:
 
         人类/AI 的对话必须可回溯到具体会话；系统日志与夹具不必；
         来源 unknown 一律不可回溯——连「谁说的」都答不上来。
-
-        #20-B 口径决策（豁免）：**强验证记录**（`strength() == "strong"`，即含
-        whitebox_code / action_world / human_review）的可信链锚在**可复现凭证**上
-        （脚本 / 命令 / 测试 id / 行动裁决），不经过对话会话——故这类记录即便
-        没有 session_id 也判为可回溯。此前「白箱校验」记录 `strength()=="strong"`
-        而 `is_traceable()==False`，同一对象上两个公开判定给出相反的可信度结论，
-        下游读任一都会系统性偏乐观或偏保守。
-        削掉的判别力：一条声称强验证（且 verify_status != unverified）的记录，
-        即便查不到会话、连来源都是 unknown，也判为可回溯——本判定不再能区分
-        「强验证 + 有会话」与「强验证 + 无任何会话/来源」。判据来源：issue #20
-        第二节与「建议判据」第 2 条（口径决策落纸，非风格意见）。
         """
-        if self.source not in ("user", "assistant", "unknown"):
-            return True            # 系统日志 / 夹具：不必回溯到会话
-        if self.source != "unknown" and bool(self.session_id) \
-                and self.observation_tool != "unknown" and self.time_window[0] > 0:
-            return True
-        return self.strength() == "strong"   # #20-B 强验证豁免
+        if self.source == "unknown":
+            return False
+        if self.source in ("user", "assistant"):
+            return bool(self.session_id) and self.observation_tool != "unknown" \
+                and self.time_window[0] > 0
+        return True
 
     def extensions(self) -> List[str]:
         """哪些字段用了取值域之外的扩展值。
@@ -286,42 +260,12 @@ def new_provenance(position: str, tool: str, source: str,
 # 从既有数据推断（迁移 / 回填 / 审计用）
 # =============================================================================
 def _tags(tags: Any) -> List[str]:
-    """tags 列 → 字符串标签列表；形状异常一律回落到空表（= unknown，#342）。
-
-    既有库里 tags 列可能不是 JSON 数组：`'5'`（数字）、`'"dsh"'`（字符串标量）、
-    `null`、对象……。此前非列表会 `TypeError: 'int' object is not iterable`，
-    字符串标量会被**按字符拆**成 `['d','s','h']`。现在：JSON 字符串标量按
-    **单个标签**处理（不是拆字），其余非列表形状回落到空表。
-    削掉的判别力：形状异常行的原始形状（数字 / 对象）不再可辨——一律等同「无标签」。
-    """
     if isinstance(tags, str):
         try:
             tags = json.loads(tags)
         except Exception:
             return []
-    if isinstance(tags, str):
-        tags = [tags]                     # JSON 字符串标量 → 单标签，勿拆字符
-    if not isinstance(tags, (list, tuple)):
-        return []
-    return [str(t).strip() for t in tags]
-
-
-def _safe_window(tw: Any) -> Optional[Tuple[float, float]]:
-    """把候选 time_window 规整为 (start, end)；形状/数值不合法或 start<=0 → None。
-
-    #342：`float(tw[0])` 此前对 `[null,null]`（core 的 ConditionSpace 规范化
-    产物）抛 TypeError、对 `['2026-10-01', ...]` 抛 ValueError，直接毒化读链。
-    现在不合法一律返回 None，交由调用方回落到 unknown / created_at。
-    """
-    if not isinstance(tw, (list, tuple)) or len(tw) != 2:
-        return None
-    try:
-        start, end = float(tw[0]), float(tw[1])
-    except (TypeError, ValueError):
-        return None
-    if start <= 0:
-        return None
-    return (start, end)
+    return [str(t).strip() for t in (tags or [])]
 
 
 def from_legacy(tags: Any, created_at: Optional[float] = None,
@@ -382,21 +326,13 @@ def from_legacy(tags: Any, created_at: Optional[float] = None,
             cs = json.loads(cs or "{}")
         except Exception:
             cs = {}
-    if not isinstance(cs, dict):      # #342：JSON 数组/标量 → 视同未声明
-        cs = {}
-    tw = _safe_window(cs.get("time_window"))
-    if tw is not None:
-        p.time_window = tw
-    else:
-        t0 = None
-        if created_at:
-            try:
-                t0 = float(created_at)
-            except (TypeError, ValueError):
-                t0 = None
-        if t0 is not None:
-            p.time_window = (t0, t0 + DEFAULT_WINDOW)
-            p.synthetic.append("time_window")
+    cs = cs or {}
+    tw = cs.get("time_window")
+    if isinstance(tw, (list, tuple)) and len(tw) == 2 and float(tw[0]) > 0:
+        p.time_window = (float(tw[0]), float(tw[1]))
+    elif created_at:
+        p.time_window = (float(created_at), float(created_at) + DEFAULT_WINDOW)
+        p.synthetic.append("time_window")
     for k, v in DEFAULT_CS.items():
         cur = cs.get(k)
         if cur and cur != v:
@@ -412,23 +348,12 @@ def from_legacy(tags: Any, created_at: Optional[float] = None,
         if s in low:
             p.verify_status = s
             break
-    # 验证方式（#146）：既要认历史中文标签（白箱校验），也要读回本模块
-    # `to_tags` 自己写出的**规范英文方式名**——否则 to_tags → from_legacy
-    # 往返会把 strong 记录降成 weak，并让 validate 反报「未声明 verify_methods」。
-    # 同时使 VERIFY_METHODS 的每一项都有 legacy 入口（#20-A：此前 6 项仅 2 项
-    # 可反推，human_review 等静默丢失）。
-    methods: List[str] = []
-    if "白箱校验" in ts:                       # 历史中文标签
+    methods = []
+    if "白箱校验" in ts:
         methods.append("whitebox_code")
-    for m in sorted(VERIFY_METHODS - {"none"}):
-        if m in low and m not in methods:      # 规范英文名（大小写不敏感）
-            methods.append(m)
+    if "llm_verify" in low:
+        methods.append("llm_verify")
     p.verify_methods = methods or ["none"]
-    # 可复现凭证（#146）：读回 to_tags 写出的 `vref:<ref>`（ref 内可含 ':'）
-    for t in ts:
-        if t.startswith("vref:"):
-            p.verify_ref = t[len("vref:"):]
-            break
 
     if not p.session_id and p.source in ("user", "assistant"):
         p.synthetic.append("session_id")
@@ -436,18 +361,13 @@ def from_legacy(tags: Any, created_at: Optional[float] = None,
 
 
 def is_default_cs(cs: Any) -> bool:
-    """condition_space 是否为引擎默认值（= 四栏没有信息量）。
-
-    #342：形状异常（JSON 数组 / 标量 / 解析失败）不再抛 AttributeError——
-    一律视同「未声明」并返回 True。
-    """
+    """condition_space 是否为引擎默认值（= 四栏没有信息量）。"""
     if isinstance(cs, str):
         try:
             cs = json.loads(cs or "{}")
         except Exception:
             return True
-    if not isinstance(cs, dict):
-        return True
+    cs = cs or {}
     # 缺键 = 未声明 → 同样算「没有信息量」（灵枢/语音写入方曾直接写 "{}"）
     return (cs.get("observation_position", DEFAULT_CS["observation_position"]) == DEFAULT_CS["observation_position"]
             and cs.get("observation_tool", DEFAULT_CS["observation_tool"]) == DEFAULT_CS["observation_tool"]

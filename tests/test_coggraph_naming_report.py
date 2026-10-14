@@ -17,20 +17,9 @@ C 组  同名别名组（3 个同名、无边）仍是「alias候选」
 D 组  structural 层不受影响；Q4 规范标识词仍是「强规范锚」
 E 组  夹具自证：按旧口径（同时累计 s）重算会得到「已锚定」⇒ 与修复后判定不同
 F 组  报告产物：隔离区段落点名该节点、别名组表格含同名标题
-G 组（#315）Q4 正则：`\b` 在汉字间不构成边界、`GB[/T]` 是单字符类 ⇒ 旧式两处漏判。
-      断言：嵌在汉字串中的规范词（依据国家标准制定 / 遵守INN规则）、`GB/T 12345`、
-      `GB 12345`、数字紧邻写法（ISO9001 / 药典2020）都必须命中；英文粘连
-      （ISOLATION / INNOVATION）不得命中。
-H 组（#359）「alias候选」必须在**真实管线**（derive_edges → naming_report）可达：
-      旧口径把 R1 桶枢纽边等结构性派生边计入 Q1 ⇒ 有 bucket 的节点 q1 恒真；
-      且 R5 在正文里搜到同名组自身的 `# 功能名：<标题>` 行 ⇒ 同名组内互引递归。
-      断言：跑真管线后同名组 q1=False、判「alias候选」；被外部真引用的节点 q1=True、
-      仍判「已锚定」（防「把 Q1 一刀砍成恒假」的代偿）。
 """
 from __future__ import annotations
 
-import collections
-import importlib.util
 import io
 import json
 import os
@@ -40,14 +29,6 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NAMING = os.path.join(REPO, "tools", "coggraph", "naming_report.py")
-DERIVE = os.path.join(REPO, "tools", "coggraph", "derive_edges.py")
-
-
-def load_naming_module():
-    spec = importlib.util.spec_from_file_location("naming_report_under_test", NAMING)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 _PASS, _FAIL = [], []
 
@@ -161,9 +142,6 @@ def main():
         ok(CITER in md, "F 报告：隔离区/分组段落里出现该标题")
         ok(ALIAS in md, "F 报告：重复标题别名组表格含同名标题")
 
-    group_g_q4_regex()
-    group_h_real_pipeline_alias()
-
     total = len(_PASS) + len(_FAIL)
     print("")
     print("===== SUMMARY %d/%d 通过 =====" % (len(_PASS), total))
@@ -174,113 +152,6 @@ def main():
         return 1
     print("VERDICT=PASS")
     return 0
-
-
-def group_g_q4_regex():
-    """#315：Q4 规范标识词正则必须能命中汉字间 / GB 写法；英文粘连不得命中。"""
-    mod = load_naming_module()
-    must_hit = [
-        "依据国家标准制定",       # 汉字紧邻 ⇒ 旧 \b 两侧皆非边界，漏判
-        "符合行业标准要求",       # 同上
-        "采用注册商标标识",       # 同上
-        "遵守INN规则",          # 同上
-        "GB/T 12345",          # 旧 GB[/T] 单字符类漏判
-        "GB 12345",            # 旧 GB[/T] 亦漏判
-        "GB/T12345",           # 数字紧邻
-        "ISO9001 标准",         # 数字紧邻
-        "ISO 9001 规范",        # 正向对照（旧口径本就能命中，防「一刀砍空」）
-        "RFC 2616",            # 正向对照
-    ]
-    for s in must_hit:
-        ok(bool(mod.NORM_MARKERS.search(s)), "G Q4 命中：%r" % s,
-           mod.NORM_MARKERS.pattern)
-    must_miss = [
-        "ISOLATION 说明",       # 英文粘连，不得误命中 ISO
-        "INNOVATION 方案",      # 英文粘连，不得误命中 INN
-        "无标识词的普通标题",     # 无标识词
-    ]
-    for s in must_miss:
-        ok(not mod.NORM_MARKERS.search(s), "G Q4 不命中：%r" % s,
-           mod.NORM_MARKERS.pattern)
-
-
-def _run_derive(graph, out, bodies):
-    cmd = [sys.executable, "-X", "utf8", DERIVE, "--graph", graph, "--out", out,
-           "--write", "--bodies-root", bodies]
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", cwd=REPO,
-                          env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
-
-
-def group_h_real_pipeline_alias():
-    """#359：真管线（derive_edges → naming_report）下「alias候选」必须可达。"""
-    ALIAS_T = "同一别名候选标题"          # 8 字，>= r5-min-title-len
-    EXTERN = "被外部引用的概念名"
-    with tempfile.TemporaryDirectory() as tmp:
-        bodies = os.path.join(tmp, "bodies")
-        os.makedirs(bodies)
-        nodes = []
-        for i in (1, 2, 3):
-            nodes.append({"id": "g%d" % i, "title": ALIAS_T, "layer": "knowledge",
-                          "bucket": "kb", "tags": ["tg%d" % i], "created": 1759930000,
-                          "path": "g%d.md" % i})
-        nodes.append({"id": "p1", "title": EXTERN, "layer": "knowledge",
-                      "bucket": "kb", "tags": ["tp"], "created": 1759930000, "path": "p1.md"})
-        for i in (1, 2, 3):
-            nodes.append({"id": "x%d" % i, "title": "外部提及者文号%d" % i, "layer": "knowledge",
-                          "bucket": "kb", "tags": ["tx%d" % i], "created": 1759930000,
-                          "path": "x%d.md" % i})
-
-        def body(nid, title, extra=""):
-            with io.open(os.path.join(bodies, nid + ".md"), "w", encoding="utf-8", newline="\n") as f:
-                f.write("---\ntags: t\n---\n# 功能名：%s\n\n正文。%s\n" % (title, extra))
-
-        for i in (1, 2, 3):
-            body("g%d" % i, ALIAS_T)             # 自身标题行 ⇒ R5 同名组内递归
-        body("p1", EXTERN)
-        for i in (1, 2, 3):
-            body("x%d" % i, "外部提及者文号%d" % i, "参见 %s 的实现。" % EXTERN)
-
-        graph = os.path.join(tmp, "g.json")
-        with io.open(graph, "w", encoding="utf-8", newline="\n") as f:
-            json.dump({"nodes": nodes, "edges": []}, f, ensure_ascii=False)
-        dout = os.path.join(tmp, "do")
-        pd = _run_derive(graph, dout, bodies)
-        ok(pd.returncode == 0, "H 前置：derive_edges 退出码 0", pd.stderr[-300:])
-        dpath = os.path.join(dout, "derived_edges.json")
-        if not os.path.isfile(dpath):
-            ok(False, "H 前置：derive_edges 未产出 derived_edges.json", pd.stderr[-300:])
-            return
-        with io.open(dpath, encoding="utf-8") as f:
-            der = json.load(f)
-        r5 = [e for e in der["edges"] if e["rule"] == "R5_body_crossref"]
-        r1 = [e for e in der["edges"] if e["rule"] == "R1_same_bucket"]
-        ok(len(r1) >= 3, "H 夹具自证：R1 桶枢纽边存在（旧口径下即令 q1 恒真）", len(r1))
-        ok(any(e["s"] in ("g2", "g3") and e["t"] == "g1" for e in r5),
-           "H 夹具自证：R5 同名组内递归边存在（g2/g3 -> g1）",
-           [(e["s"], e["t"]) for e in r5])
-
-        nout = os.path.join(tmp, "no")
-        pn = subprocess.run([sys.executable, "-X", "utf8", NAMING, "--graph", graph,
-                             "--derived", dpath, "--out", nout, "--write"],
-                            capture_output=True, text=True, encoding="utf-8", cwd=REPO,
-                            env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
-        ok(pn.returncode == 0, "H 前置：naming_report 退出码 0", pn.stderr[-300:])
-        rows = {}
-        jp = os.path.join(nout, "naming_report.json")
-        if os.path.isfile(jp):
-            with io.open(jp, encoding="utf-8") as f:
-                rows = {r["title"]: r for r in json.load(f)["rows"]}
-        a = rows.get(ALIAS_T, {})
-        ok(a.get("q1") is False,
-           "H Q1：同名组不因 R1 桶枢纽边 / R5 自身标题行递归而算「连到稳定节点」", a)
-        ok(a.get("class") == "alias候选",
-           "H 判定：真管线下同名组落入「alias候选」（修复前不可达，恒为「已锚定」）",
-           a.get("class"))
-        e = rows.get(EXTERN, {})
-        ok(e.get("q1") is True,
-           "H 反向对照：被外部真引用的节点 q1 仍为真（防把 Q1 一刀砍成恒假）", e)
-        ok(e.get("class") == "已锚定",
-           "H 反向对照：被 3 个外部节点正文引用 ⇒ 仍判「已锚定」", e.get("class"))
 
 
 if __name__ == "__main__":

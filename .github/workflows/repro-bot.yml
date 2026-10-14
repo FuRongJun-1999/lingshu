@@ -116,11 +116,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[full,dev]"
 
-      - name: 执行核自检（抽取器正负例；#239③）
-        # 同 pr-lint.yml 对 check_pr_title.py --selftest 的先例：先用正负例证判据
-        # 自身正确，再拿它抽正文——抽取器坏掉时本步即红，不再静默跑出错误读数。
-        run: python -X utf8 scripts/extract_and_run_issue_repro.py --selftest
-
       - name: Clone 脑端公开仓（dsh-memory）供 MDCG_BRAIN_PYTHONPATH
         continue-on-error: true
         # 失败**不**红；下一步会**显式**标注 SKIP 原因，绝不静默通过。

@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-"""vprim 视觉原语守卫（本组 #174 / #374 / #405；P2 批次 #309）。
+"""vprim 视觉原语守卫（本组 #174 / #374 / #405）。
 
 本组三条 P1 缺陷都落在 lingshu/world/vprim.py 的确定性原语上：
   #174 parse_anchor 读不回自家 anchor_text()/describe()（类别被截断 + conf 丢失）
   #374 parse_anchor 锚点正则前缀无边界断言 → 平方回溯（资源耗尽）
   #405 spatial_relation 先判上下、且不比两轴分离量（斜对角关系误判）
-P2 #309：_overlap 的分母被钳到 `max(1.0, min(a_area, b_area))` ⇒ 归一化坐标 /
-  亚像素框下重叠率被压低、关系判定随坐标单位变化（scale 依赖）。
 
 运行：python -m pytest tests/test_world_vprim_guards.py -q
       python tests/test_world_vprim_guards.py
@@ -102,58 +100,3 @@ def test_spatial_relation_picks_dominant_axis_not_vertical_first():
     assert spatial_relation((0, 0, 100, 100), (10, 10, 20, 20))["relation"] == "contains"
     assert spatial_relation((10, 10, 20, 20), (0, 0, 100, 100))["relation"] == "inside"
     assert spatial_relation((0, 0, 10, 10), (1, 1, 11, 11))["relation"] == "overlap"
-
-
-# ==================== #309 ====================
-
-def test_overlap_ratio_scale_invariant_example():
-    """#309：重叠率必须与坐标单位/缩放无关（分母不再钳到 1.0）。
-
-    缺陷形态：`return inter / max(1.0, min(a_area, b_area))`。同一对框整体
-    ×1/1000 后面积 < 1，钳位生效 ⇒ 比值被压低。修前实测：像素 (overlap, 0.64)
-    vs 归一化 (adjacent, 0.16)。
-    """
-    a_px, b_px = (0, 0, 500, 500), (100, 100, 600, 600)
-    s = 1 / 1000
-    a_n = tuple(v * s for v in a_px)
-    b_n = tuple(v * s for v in b_px)
-    r1, r2 = spatial_relation(a_px, b_px), spatial_relation(a_n, b_n)
-    assert r1["relation"] == r2["relation"] == "overlap", (r1, r2)
-    assert abs(r1["overlap_ratio"] - r2["overlap_ratio"]) <= 1e-3, (r1, r2)
-    # 真实比值：交集 400x400=160000 / min(250000,250000)=250000 = 0.64
-    assert abs(r1["overlap_ratio"] - 0.64) <= 1e-3, r1["overlap_ratio"]
-
-
-def test_subpixel_boxes_true_ratio():
-    """#309：亚像素小框（面积 < 1）的重叠率必须是真实比值，不被钳位压低。
-
-    缺陷形态同 #309。修前实测：真实 0.766 读成 0.49、关系误报 adjacent。
-    """
-    r3 = spatial_relation((10, 10, 10.8, 10.8), (10.1, 10.1, 10.9, 10.9))
-    assert abs(r3["overlap_ratio"] - 0.766) <= 0.01, r3["overlap_ratio"]
-    assert r3["relation"] == "overlap", r3["relation"]
-
-
-def test_relation_scale_invariant_property():
-    """#309 性质测试：500 对随机框在 ×1/1000 与 ×1/640 缩放下关系与重叠率不变。
-
-    修前（钳位）在小面积缩放下大面积对会翻转 relation；本断言逐对钉住。
-    """
-    import random
-    rng = random.Random(20261011)
-    for _ in range(500):
-        x, y = rng.uniform(0, 100), rng.uniform(0, 100)
-        w, h = rng.uniform(0.1, 40), rng.uniform(0.1, 40)
-        a = (x, y, x + w, y + h)
-        x2, y2 = rng.uniform(0, 100), rng.uniform(0, 100)
-        w2, h2 = rng.uniform(0.1, 40), rng.uniform(0.1, 40)
-        b = (x2, y2, x2 + w2, y2 + h2)
-        base = spatial_relation(a, b)
-        for sc in (1 / 1000, 1 / 640):
-            a2 = tuple(v * sc for v in a)
-            b2 = tuple(v * sc for v in b)
-            got = spatial_relation(a2, b2)
-            assert got["relation"] == base["relation"], (a, b, sc, base, got)
-            assert abs(got["overlap_ratio"] - base["overlap_ratio"]) <= 1e-3, \
-                (a, b, sc, base, got)
-

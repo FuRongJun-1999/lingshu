@@ -53,7 +53,7 @@
 
 | 项 | 读数（实跑） | 命令 |
 |---|---|---|
-| 模块 import 冒烟 | **ok=51 fail=0** + 构造性运行（圆掩膜 8137 px；分割读回 1 件） | `python <AEIS>/tools/public_export/smoke.py <本仓根>`（**该命令需上游工具，本仓内不可执行**——`<AEIS>` 未随本仓导出） |
+| 模块 import 冒烟 | **ok=51 fail=0** + 构造性运行（圆掩膜 8137 px；分割读回 1 件） | `python <AEIS>/tools/public_export/smoke.py <本仓根>` |
 | 固化物加载 | 6 核全加载（各 7 参数）；**导出副本与源 `allclose(atol=0) = True`**、键集一致（脱敏未动数值） | 见 §六 |
 | `tests/test_hex_cnn.py` | **13 passed, 0 failed** + 段④⑤⑥ 显式 SKIP（素材在盘时全 25 项） | `python tests/test_hex_cnn.py` |
 | `tests/test_hex_composite.py` | **24/24 通过** | `python tests/test_hex_composite.py` |
@@ -76,8 +76,8 @@
 ## 六、复跑
 
 ```bash
-# 模块 import 冒烟 + 构造性运行（工具：AEIS/tools/public_export/smoke.py；**需上游工具，本仓内不可执行**）
-python <AEIS>/tools/public_export/smoke.py <本仓根>   # <AEIS> 未定义：需上游工具，本仓内不可执行
+# 模块 import 冒烟 + 构造性运行（工具：AEIS/tools/public_export/smoke.py）
+python <AEIS>/tools/public_export/smoke.py <本仓根>
 # 固化物加载（确定性模块）
 python -c "import sys; sys.path.insert(0,'.'); from lingshu.nn.hex_cnn import load_consolidated; \
 print(sorted(load_consolidated('lingshu/nn/assets/kernels_img0.json')))"

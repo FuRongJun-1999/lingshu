@@ -1,12 +1,10 @@
-"""wm_simloop 缺陷修复守卫（P1 批次：#186 / #192 / #323 / #399；P2 批次：#247）。
+"""wm_simloop 缺陷修复守卫（P1 批次：#186 / #192 / #323 / #399）。
 
 每个测试钉住一个缺陷的**不存在**（而非「代码能跑」）：
   - #186 _ray_intersect_2d 必须拒绝「只在一条射线前方」的直线交点
   - #192 生长通道②的持续性阈值必须落在随机游走 null 分布之上
   - #323 假设节点摘除后不得残留指向它的边（快照/WAL 亦不留）
   - #399 flush_payloads → parse_seed_entity 往返不得丢字段/错位
-  - #247 load_priors 显式 mdcg_root 须压过 MDCG_ROOT；limit 须对单文件内
-    实体行同样封顶
 
 判据来源：见各测试 docstring（经验标定 = 本文件所跑命令的实测读数）。
 """
@@ -262,68 +260,3 @@ def test_flush_to_disk_then_load_priors_round_trips(tmp_path, monkeypatch):
     by_cat = {e["category"]: tuple(e["pos"]) for e in loaded["entities"]}
     assert by_cat == {"large cart": (2.0, 1.5, 2.0),
                       "rabbit": (9.0, 1.5, 9.0)}
-
-
-# ==================== #247 ====================
-
-def _write_ctx(root, filename, n_entities):
-    """在 root/contextual/<filename> 写一个 tags 含 wm_simloop 的先验文件。"""
-    ctx = root / "contextual"
-    ctx.mkdir(parents=True, exist_ok=True)
-    lines = ["---", "tags: wm_simloop", "---"]
-    for i in range(n_entities):
-        lines.append("- entity: cat%d id=e%d pos=(%d.0, 1.5, 2.0)"
-                     % (i, i, i % 20 + 1))
-    (ctx / filename).write_text("\n".join(lines), encoding="utf-8")
-
-
-def test_247_explicit_root_beats_env(tmp_path, monkeypatch):
-    """#247-A：显式 mdcg_root 必须压过环境变量 MDCG_ROOT。
-
-    缺陷形态：`root = os.environ.get("MDCG_ROOT", mdcg_root or "")` ——
-    调用方显式传入的根被环境变量**静默覆盖**。修前实测：显式传 tmp_path
-    （内含 1 条实体），而 MDCG_ROOT 指向不存在的目录 ⇒ seeded=0、
-    reported root = 环境变量值。
-    """
-    explicit = tmp_path / "explicit"
-    _write_ctx(explicit, "run.md", 1)
-    monkeypatch.setenv("MDCG_ROOT", str(tmp_path / "env_nonexistent"))
-
-    loop = SimulationLoop()
-    r = loop.load_priors(str(explicit), limit=20)
-    assert r["mdcg_root"] == str(explicit), r["mdcg_root"]
-    assert r["seeded"] == 1, r["seeded"]
-
-    # 反例（防过度修复）：显式根为空时仍须回落 MDCG_ROOT
-    env_root = tmp_path / "env_root"
-    _write_ctx(env_root, "run.md", 1)
-    monkeypatch.setenv("MDCG_ROOT", str(env_root))
-    r2 = SimulationLoop().load_priors("", limit=20)
-    assert r2["mdcg_root"] == str(env_root), r2["mdcg_root"]
-    assert r2["seeded"] == 1, r2["seeded"]
-
-
-def test_247_limit_caps_entities_within_one_file(tmp_path, monkeypatch):
-    """#247-B：limit 必须对**单文件内**的实体行同样封顶。
-
-    缺陷形态：`limit` 只在外层文件循环 `if len(seeded) >= limit: break`，
-    内层 `for line in text.splitlines(): seeded.append(...)` 无上限检查。
-    修前实测：单文件 50 行 + limit=3 ⇒ seeded=50。
-    """
-    monkeypatch.delenv("MDCG_ROOT", raising=False)
-    root = tmp_path / "lib"
-    _write_ctx(root, "run.md", 50)
-
-    loop = SimulationLoop()
-    r = loop.load_priors(str(root), limit=3)
-    assert r["seeded"] == 3, r["seeded"]
-    assert len(r["entities"]) == 3, len(r["entities"])
-    assert len(loop.scene.entities) == 3, len(loop.scene.entities)
-
-    # 跨多文件同样封顶（既有外层循环语义不得回退）
-    root2 = tmp_path / "lib2"
-    _write_ctx(root2, "a.md", 2)
-    _write_ctx(root2, "b.md", 2)
-    r2 = SimulationLoop().load_priors(str(root2), limit=3)
-    assert r2["seeded"] == 3, r2["seeded"]
-

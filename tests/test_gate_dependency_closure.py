@@ -177,7 +177,7 @@ def _declared():
 def test_scanner_is_alive():
     """量具自检：扫描器必须真的读到文件、且必须认出已知的两种形态。"""
     if tomllib is None:                                # pragma: no cover
-        pytest.skip("需要 tomllib（Python ≥3.11）解析 pyproject.toml；本仓 requires-python>=3.12")
+        pytest.skip("需要 tomllib（Python ≥3.11）解析 pyproject.toml；本仓 requires-python>=3.10")
     found = _scan()
     assert found, "扫描器没扫到任何第三方导入 ⇒ 它坏了（或 SCAN_DIRS 失效），本判据此时无判别力"
     assert "numpy" in found, "没扫到 `numpy`（已知的普通形态导入）⇒ 扫描器坏了"
@@ -190,7 +190,7 @@ def test_scanner_is_alive():
 def test_every_hard_third_party_import_is_declared():
     """判据：门禁会执行的硬依赖必须已在 pyproject 声明（dependencies 或任一 extra）。"""
     if tomllib is None:                                # pragma: no cover
-        pytest.skip("需要 tomllib（Python ≥3.11）解析 pyproject.toml；本仓 requires-python>=3.12")
+        pytest.skip("需要 tomllib（Python ≥3.11）解析 pyproject.toml；本仓 requires-python>=3.10")
     found = _scan()
     declared, raw = _declared()
     undeclared = {}

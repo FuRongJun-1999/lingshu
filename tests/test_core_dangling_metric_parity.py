@@ -17,14 +17,6 @@
   若有人把 `dangling_rows` 改成按边×端点累加（该场景变 2），或把 `orphan_edges`
   改成按行去重（该场景变 1），则这条元组断言**必红** ⇒ 口径漂移当场可见。
 
-#93 后夹具口径变更（如实标注）：`import_all` 所在连接已开 `PRAGMA foreign_keys=ON`，
-  且导入 `edges` 前会**预筛孤儿边**（不落库、随返回值报告）⇒ **不再能**用「导入一份
-  含悬挂边的备份」来构造悬挂库（旧夹具做法，本件已失效）。现改为：先导入合法 `nodes`，
-  再用**裸 `sqlite3.connect`**（该连接默认 `foreign_keys=OFF`）把待测边直插库中——
-  模拟「外部/历史损坏库」，再跑一次合法 `import_all` 取 `dangling_rows`
-  （其 `PRAGMA foreign_key_check` 会看到既有悬挂行）、`verify_integrity()` 取
-  `orphan_edges`。**两条计数口径与断言元组一字未改**，改的只是「悬挂行从哪来」。
-
 定点变异自证（人工做，非本脚本自动执行）：
   ① 把 core.py 里 `dangling = {(table, rid) ...}`（集合去重）改成 list（按行不去重）
      ⇒ A 组必红；② 或把 `orphan_edges` 改成按边去重（COUNT DISTINCT e.id）⇒ A 组必红。
@@ -46,7 +38,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import sys
 import tempfile
 import time
@@ -77,6 +68,7 @@ def _node(nid):
             "created_at": time.time(), "semantic_coordinates": "{}",
             "state_attributes": "{}", "entity_id": None}
 
+
 def _edge(eid, src, dst):
     return {"id": eid, "source_id": src, "target_id": dst, "relation_type": "causal",
             "condition_space": _CS, "confidence": 0.5, "weight": 1.0, "verified": 1,
@@ -84,35 +76,13 @@ def _edge(eid, src, dst):
 
 
 def _import(nodes, edges):
-    """造备份 → 导入新库 → 返回 (engine, import_all 返回值)。
-
-    #93 后 `edges` 参数**不经备份导入**（孤儿边会被预筛拒收）：只把 `nodes` 经
-    `import_all` 导入，随后用裸连接（`foreign_keys` 默认 OFF）把 `edges` 直插库中，
-    模拟「历史/外部损坏库」；最后再跑一次合法 `import_all` 取其 `dangling_rows`。
-    """
+    """造备份 → 导入新库 → 返回 (engine, import_all 返回值)。"""
+    payload = {"meta": {"version": "v1.6"}, "nodes": nodes, "edges": edges}
+    path = os.path.join(tempfile.mkdtemp(), "backup.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
     eng = SpacetimeMemoryEngine(os.path.join(tempfile.mkdtemp(), "t.db"))
-    node_payload = {"meta": {"version": "v1.6"}, "nodes": nodes, "edges": []}
-    npath = os.path.join(tempfile.mkdtemp(), "nodes.json")
-    with open(npath, "w", encoding="utf-8") as f:
-        json.dump(node_payload, f, ensure_ascii=False)
-    eng.import_all(npath)
-    if edges:
-        raw = sqlite3.connect(eng.store.db_path)     # 默认 foreign_keys=OFF
-        try:
-            for e in edges:
-                raw.execute("INSERT INTO edges VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                            (e["id"], e["source_id"], e["target_id"], e["relation_type"],
-                             e["condition_space"], e["confidence"], e["weight"],
-                             e["verified"], e["created_at"], e["last_verified"],
-                             e["source_evidence"]))
-            raw.commit()
-        finally:
-            raw.close()
-    empty = os.path.join(tempfile.mkdtemp(), "empty.json")
-    with open(empty, "w", encoding="utf-8") as f:
-        json.dump({"meta": {"version": "v1.6"}, "nodes": [], "edges": []}, f,
-                  ensure_ascii=False)
-    return eng, eng.import_all(empty)
+    return eng, eng.import_all(path)
 
 
 def _read_pair(nodes, edges):

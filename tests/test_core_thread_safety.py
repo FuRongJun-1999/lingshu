@@ -52,23 +52,11 @@ _WRITE_GUARD_WHITELIST = {
     ("LayeredStore", "_tx"):
         "装饰器实现本体：@_transactional 的 wrapper 调用的就是它——若给它再套装饰器即"
         "无限递归。其自身即事务边界（正常 commit / 异常 rollback 后原样抛）。",
-    ("LayeredStore", "increment_access_many"):
-        "**旁路写**形态（`increment_access` 的批量入口，PR #513 把两处实现收成这一个单点）："
+    ("LayeredStore", "increment_access"):
         "另开独立连接 `sqlite3.connect(self.db_path, timeout=0)` 并自带 try/finally: "
         "obs.close()，**不共用** self.conn；PR #202 明确列为「另一议题」（访问计数为统计"
         "性质，拿不到锁即放弃，不阻断检索主流程）。其写不落在 self.conn 的事务面上，"
         "故不适用本装饰器。",
-    ("LayeredStore", "_strip_incident_edges"):
-        "#168 抽出的**删边助手**：只接收调用方（`delete_node` / `decay_cycle` / "
-        "`_trim_self_snapshots`，三者均已挂 @_transactional）传入的游标 `c`，在**同一**"
-        "事务内执行 `action_logs` 审计 INSERT ＋ `DELETE FROM edges`。给它再套 "
-        "@_transactional 会另起一层 `self._tx()` 边界（中途 commit/rollback），把调用方"
-        "的原子事务切开——故按「共享调用方事务边界的内部助手」豁免。",
-    ("SpacetimeMemoryEngine", "export_all"):
-        "#383 起本方法在本连接不在事务中时显式 `BEGIN`（**延迟读事务**，WAL 下整趟"
-        "导出共用一个快照）并在读完后 `commit` 收尾。该 `commit()` 结的是**读事务**"
-        "（快照隔离），本方法对库**零写**——不是写点，故不挂 @_transactional（`_tx`"
-        "的边界也不会给 SELECT 开读快照）。同理 `_existing_tables` / `rows` 只读。",
 }
 
 

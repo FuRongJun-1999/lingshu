@@ -51,28 +51,16 @@ class LongTermMemoryGate:
         return hist[-1]["d_norm"] if hist else 0.5
 
     def _d_second(self) -> float:
-        """信息差二阶变化 Δ²D：**最近一点**的二阶差分（需 ≥3 样本）。
-        正=信息差加速扩大（新领域涌现信号）；负=收敛。
-
-        #387 修复：旧实现 `d1[-1] - d1[0]` 是**窗口两端一阶差之差**
-        （跨整窗的趋势量），不是二阶差分——与文件头 `:10`「gap_history 二阶差分」
-        及本函数 docstring「二阶变化」不符。后果：只要窗口内 slope 曾变过，
-        该量就按**窗口跨度**取满，`max(-0.5, …)` 常被钳到 −0.5 档（与最近一步的
-        真实加速度无关）。现取 d1[-1] - d1[-2]（= vals[-1] - 2·vals[-2] + vals[-3]），
-        即最近一点的二阶差分。
-        判据来源：本文件头 `:10-11` 的声明（「Δ²D 信息差二阶 → gap_history
-        二阶差分（加速/减速）」）＋ 二阶差分的标准定义（Δ²x_n = x_n − 2x_{n−1}
-        + x_{n−2}）；理论章节追不到（本仓无 longterm_gate 独立理论稿）⇒ 属
-        文件内声明与实现的自洽性修复。
-        """
+        """信息差二阶变化 Δ²D：slope 的变化趋势（需 ≥3 样本）。
+        正=信息差加速扩大（新领域涌现信号）；负=收敛。"""
         hist = getattr(self.engine, "_gap_history", None) or []
         if len(hist) < 3:
             return 0.0
         vals = [h["d_norm"] for h in hist[-5:]]
         d1 = [vals[i + 1] - vals[i] for i in range(len(vals) - 1)]
-        if len(d1) < 2:
+        if not d1:
             return 0.0
-        return max(-0.5, min(0.5, d1[-1] - d1[-2]))  # 归一化钳制
+        return max(-0.5, min(0.5, d1[-1] - d1[0]))  # 归一化钳制
 
     def _trust(self) -> float:
         """当前信任值 T（0-1）。
@@ -96,21 +84,16 @@ class LongTermMemoryGate:
         return float(t)
 
     def _trust_second(self) -> float:
-        """信任二阶变化 Δ²T：trust_history 的**最近一点**二阶差分（信任跃升信号）。
-
-        #387 修复：与 `_d_second` 同根——旧实现 `d1[-1] - d1[0]` 是窗口两端一阶差
-        之差（跨整窗趋势量），不是二阶差分；现取 `d1[-1] - d1[-2]`。
-        判据来源同 `_d_second`（文件头 `:11` 声明 ＋ 二阶差分标准定义）。
-        """
+        """信任二阶变化 Δ²T：trust_history 二阶差分（信任跃升信号）。"""
         th = getattr(getattr(self.engine, "self_model", None),
                      "trust_history", None) or []
         if len(th) < 3:
             return 0.0
         vals = [h["t_total"] for h in th[-6:]]
         d1 = [vals[i + 1] - vals[i] for i in range(len(vals) - 1)]
-        if len(d1) < 2:
+        if not d1:
             return 0.0
-        return max(-0.5, min(0.5, d1[-1] - d1[-2]))
+        return max(-0.5, min(0.5, d1[-1] - d1[0]))
 
     # 非 ASCII 文字面：CJK 基本区/扩展A/兼容表意 + 假名 + 谚文 + 西里尔 + 拉丁扩展 + 希腊。
     # 旧实现只留 \u4e00-\u9fff，假名/谚文/西里尔等一律被删（lingshu #213）。

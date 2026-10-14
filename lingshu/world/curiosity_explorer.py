@@ -47,16 +47,13 @@ class CuriosityExplorer(WorldLearner):
 
     继承 WorldLearner 的学得模型/预测/模式推断机制，新增：
       - observe(entities)：子集观测（有限带宽传感器）
-      - explore_tick/explore：好奇探索循环（选择→预测→世界演化→观测→学习）
+      - explore_tick/explore：好奇探索循环（选择→观测→学习→世界演化）
       - _info_gain/_prediction_bound：好奇心的计算
       - uncertainty()/uncertainty_curve：不确定度轨迹
       - probe()：全带宽探针评估
       - compare_policies()：同世界轨迹下 好奇 vs 随机 vs 轮询
       - exploration_log_view()：探索决策日志（可审计）
     """
-
-    # issue #233（B）：合法策略名白名单（`_select` 的唯一分派依据）
-    POLICY_NAMES = ("curiosity", "random", "round_robin")
 
     def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
                  window: int = 6, world=None):
@@ -82,17 +79,9 @@ class CuriosityExplorer(WorldLearner):
                 for eid, e in self.world.entities.items() if eid in eids}
 
     def observe(self, entities: Optional[List[str]] = None) -> Dict:
-        """观测实体子集（有限带宽）；entities=None 时观测全部（兼容基类/探针）。
-
-        #148：全带宽路径同样登记 `last_observed`/`obs_counts`。旧码直接
-        `return super().observe()`，基类只更新 nodes/history，两份好奇簿记不变，
-        而下游把「无记录」当「刚看过」：`_prediction_bound` 的陈旧度放大恒为 0
-        （`k = ... if last else 0`）、`_info_gain` 的新奇度恒为 1.0
-        （`1/(1+obs_counts.get(eid,0))`）。全带宽 observe 是正常路径——
-        `probe()`、`compare_policies` 预热、`seven_layer_loop.run` 自举都走它。
-        """
+        """观测实体子集（有限带宽）；entities=None 时观测全部（兼容基类/探针）。"""
         if entities is None:
-            entities = list(self.world.entities.keys())
+            return super().observe()
         self.tick += 1
         obs = self._sensor_read(entities)
         for eid, o in obs.items():
@@ -129,8 +118,7 @@ class CuriosityExplorer(WorldLearner):
         if not self.model:
             self.learn()
         if self._is_stationary(eid):
-            age = max(0, self.tick - self.last_observed.get(eid, self.tick))
-            return self.hit_threshold * (1 + age / float(self.window))
+            return self.hit_threshold   # 静止 = 最可预测
         m = self.model
         speed = m.get("per_entity", {}).get(eid, {}).get("speed_est", 0.3)
         pers = m.get("per_entity", {}).get(eid, {}).get("persistence", 0.0)
@@ -138,10 +126,8 @@ class CuriosityExplorer(WorldLearner):
         if rel:
             t_speed = m.get("per_entity", {}).get(rel["target"], {}).get("speed_est", 0.3)
             t_pers = m.get("per_entity", {}).get(rel["target"], {}).get("persistence", 0.0)
-            if rel["relation"] == "seek" and t_speed > 1e-6 and t_pers < self.entropy_threshold:
+            if rel["relation"] == "seek" and t_pers < self.entropy_threshold:
                 bound = max(self._reach(speed), self._reach(t_speed)) + self.hit_threshold
-            elif rel["relation"] == "seek" and rel.get("confidence", 0.0) < pers:
-                bound = self._reach(speed)
             elif rel["relation"] == "seek":
                 bound = self.hit_threshold + 0.05
             else:
@@ -178,22 +164,10 @@ class CuriosityExplorer(WorldLearner):
         空世界（无实体，issue #55）：无候选可观测，直接返回空选择——
         旧码 `b = max(1, min(budget, 0)) = 1` 后 random 的 sample 与
         round_robin 的 `% n`（n=0）分别崩 ValueError / ZeroDivisionError。
-
-        issue #233（B）：策略名**白名单 fail-closed**。旧码只识别
-        `"curiosity"`/`"random"`，其余（含 `"curious"` 这类拼错）一律落进
-        轮询兜底且返回空 scores——审计面把**请求的**字符串照抄成「实际执行的
-        策略」，而 `ig_scores={}` 恰是「没走好奇分支」的痕迹却无任何字段标注
-        降级。现 `"round_robin"` 升为显式分支（此前只能靠兜底触达），未知策略
-        抛 ValueError，不再静默退化（判据＝《PR 审核细则 v0.1》§三.3 边界诚实：
-        不静默降级、不静默失败）。
         """
-        if policy not in self.POLICY_NAMES:
-            raise ValueError(
-                "未知 policy %r（可用：%s）——拒绝静默退化为轮询（issue #233）"
-                % (policy, "/".join(self.POLICY_NAMES)))
         eids = list(self.world.entities.keys())
         n = len(eids)
-        if not n:
+        if n == 0:
             return [], {}
         b = max(1, min(int(budget), n))
         if policy == "curiosity":
@@ -203,7 +177,6 @@ class CuriosityExplorer(WorldLearner):
         if policy == "random":
             chosen = self._rng.sample(eids, b)
             return chosen, {e: 0.0 for e in chosen}
-        # policy == "round_robin"（显式分支）
         chosen = [eids[(self._rr_index + i) % n] for i in range(b)]
         self._rr_index = (self._rr_index + b) % n
         return chosen, {}
@@ -216,8 +189,7 @@ class CuriosityExplorer(WorldLearner):
         for eid in chosen:
             exp = self._last_prediction.get(eid)
             n = self.nodes.get(eid)
-            if (exp is None or n is None or n.last_seen != self.tick
-                    or exp.get("target_tick", self.tick) != self.tick):
+            if exp is None or n is None:
                 continue
             if math.dist(exp["predicted"], tuple(n.pos)) >= exp["bound"]:
                 self._anomaly_counts[eid] = self._anomaly_counts.get(eid, 0) + 1
@@ -225,10 +197,10 @@ class CuriosityExplorer(WorldLearner):
         return n_anom
 
     def explore_tick(self, budget: int = 2, policy: str = "curiosity") -> Dict:
-        """探索一步：选择→预测→世界演化→真实观测→对比→学习。"""
+        """探索一步：预测（好奇心依据）→ 选择 → 观测 → 学习 → 世界演化。"""
         chosen, scores = self._select(budget, policy)
-        self.predict(horizon=1)
-        self.world.step(n=1)
+        if self.model:
+            self.predict(horizon=1)
         self.observe(entities=chosen)
         self._count_anomalies(chosen)
         self.learn()
@@ -237,26 +209,17 @@ class CuriosityExplorer(WorldLearner):
                  "ig_scores": scores, "mean_bound": mean_bound}
         self.exploration_log.append(entry)
         self.uncertainty_curve.append(mean_bound)
+        self.world.step(n=1)
         return entry
 
     def explore(self, ticks: int = 40, budget: int = 2,
                 policy: str = "curiosity") -> Dict:
-        """探索阶段：ticks 个好奇探索 tick。
-
-        返回诚实（#497）：ticks=0 ⇒ 一步不推进、返回 ticks=0；负数钳 0 同理。
-        旧形态 `range(max(1, int(ticks)))` 把 0 偷跑成 1 tick 却仍报
-        「ticks: 0」——返回值与实际行为矛盾（改前实测：tick 0→1、curve 长 1、
-        返回 ticks=0）。final_uncertainty 在零 tick（curve 仍空）时回落到
-        现场 `uncertainty()`，不再借偷跑的那一步撑出读数。
-        """
-        n = max(0, int(ticks))
-        for _ in range(n):
+        """探索阶段：ticks 个好奇探索 tick。"""
+        for _ in range(max(1, int(ticks))):
             self.explore_tick(budget=budget, policy=policy)
-        return {"status": "ok", "ticks": n, "tick": self.tick,
+        return {"status": "ok", "ticks": int(ticks), "tick": self.tick,
                 "policy": policy, "budget": int(budget),
-                "final_uncertainty": (self.uncertainty_curve[-1]
-                                      if self.uncertainty_curve
-                                      else self.uncertainty()),
+                "final_uncertainty": self.uncertainty_curve[-1],
                 "obs_distribution": dict(self.obs_counts)}
 
     # ================= 不确定度与评估 =================
@@ -267,9 +230,25 @@ class CuriosityExplorer(WorldLearner):
         return round(sum(bounds) / len(bounds), 4) if bounds else 1.0
 
     def probe(self, ticks: int = 15) -> Dict:
-        """全带宽冻结参数评估，沿用统一点误差与范围覆盖口径。"""
-        result = self.eval_phase(ticks, include_oracle=False)
-        return {**result, "probe_ticks": int(ticks)}
+        """全带宽探针：观测所有实体，评估学得模型 held-out 命中率。"""
+        learned_hits = naive_hits = total = 0
+        for _ in range(max(1, int(ticks))):
+            lp = self.predict(horizon=1)
+            before = {eid: tuple(n.pos) for eid, n in self.nodes.items()}
+            self.world.step(n=1)
+            self.observe()
+            actual = {eid: tuple(n.pos) for eid, n in self.nodes.items()}
+            for eid, p in lp["predictions"].items():
+                if eid not in actual:
+                    continue
+                total += 1
+                if math.dist(p["predicted"], actual[eid]) < p["bound"]:
+                    learned_hits += 1
+                if math.dist(before.get(eid, actual[eid]), actual[eid])                         < self.hit_threshold:
+                    naive_hits += 1
+        return {"tick": self.tick, "probe_ticks": int(ticks), "outcomes": total,
+                "learned_rate": round(learned_hits / total, 4) if total else 1.0,
+                "naive_rate": round(naive_hits / total, 4) if total else 1.0}
 
     def _build_world(self) -> "CuriosityExplorer":
         """标准测试世界：追逐链 player(wander)←wolf(seek)←rabbit(flee)。
@@ -306,19 +285,14 @@ class CuriosityExplorer(WorldLearner):
                 ex.explore_tick(budget=budget, policy=pol)
             pr = ex.probe(ticks=probe_ticks)
             results[pol] = {
-                "metric_version": pr["metric_version"],
-                "hit_threshold": pr["hit_threshold"],
                 "probe_rate": pr["learned_rate"],
                 "naive_rate": pr["naive_rate"],
-                "bound_coverage": pr["bound_coverage"],
-                "mean_distance": pr["mean_distance"],
-                "mean_bound": pr["mean_bound"],
                 "final_uncertainty": ex.uncertainty_curve[-1],
                 "uncertainty_min": min(ex.uncertainty_curve),
                 "obs_distribution": dict(ex.obs_counts),
                 "curve": list(ex.uncertainty_curve),
             }
-        return {"metric_version": 2, "budget": int(budget), "explore_ticks": int(explore_ticks),
+        return {"budget": int(budget), "explore_ticks": int(explore_ticks),
                 "results": results}
 
     # ================= 导出 =================

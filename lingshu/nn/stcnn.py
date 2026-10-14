@@ -126,18 +126,7 @@ def motion_speed(centroids, frames_per_unit=1.0):
 def detect_period(signal, min_period=2):
     """周期检测：运动/亮度信号 → 周期（帧），无周期返回 None。
     用「前沿」检测（信号从低→高的跳变位置，间隔即周期）——
-    平台型信号（1,1 相邻）无严格局部极大，局部极大法会漏检。
-
-    #57（本件）：`min_period` 此前在函数体内**零引用**（声明参数不兑现）——
-    实测 `min_period=2/3/5/99` 对同一信号都返回同一周期。现让它参与判定：
-    读出的候选周期 `period < min_period` 时返回 `None`（视作「低于最小可辨
-    周期 ⇒ 无有效周期」），与既有 `if count < 2: return None` 的返回 `None`
-    语义一致（该分支同样以 `None` 表「无周期」）。默认 `min_period=2` 下，
-    既有回归读数不变（最小真周期本就 ≥2）。
-    判据来源：公开 issue #57（声明参数零引用）＋ 本函数既有 `None`=无周期口径。
-    边界（削掉的判别力）：只做下界过滤，**不**校验 `min_period` 自身合法性
-    （`min_period<=0` 等价于不过滤）；同型面全仓共 29 处，本件只修有实害的 3 处。
-    """
+    平台型信号（1,1 相邻）无严格局部极大，局部极大法会漏检。"""
     sig = np.asarray(signal, dtype=np.float32)
     edges = []
     for i in range(1, len(sig)):
@@ -150,8 +139,6 @@ def detect_period(signal, min_period=2):
     period, count = Counter(intervals).most_common(1)[0]
     if count < 2:
         return None  # 无重复间隔 → 非周期（此前 count=1 且间隔多时误判为周期）
-    if period < min_period:
-        return None  # #57：低于声明的最小可辨周期 ⇒ 无有效周期
     return period
 
 

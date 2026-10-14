@@ -77,18 +77,7 @@ def _center(b: BBox) -> Tuple[float, float]:
 
 
 def _overlap(a: BBox, b: BBox) -> float:
-    """重叠面积占较小者比例 [0,1]（与坐标单位/缩放无关）。
-
-    #309（成立）：分母此前写作 `max(1.0, min(a_area, b_area))`——用 1.0 防除零，
-    等于假定面积至少 1 像素²。但在 `inter > 0` 的分支里两框面积都 ≥ inter > 0，
-    除零根本不会发生；该钳位只把**小面积/归一化坐标**下的比值压低：
-    同一对框整体缩放后关系从 `overlap` 变 `adjacent`（实测 ①像素 0.64/overlap
-    vs 归一化 0.16/adjacent；②亚像素框真实 0.766 读成 0.49）。
-    现改为 `inter / min(a_area, b_area)`；宽高都 ≥1 的像素框结果不变。
-    判据来源：经验标定（本件 #309；仓内无「vprim 重叠率」理论章节——
-    docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md 未涉及）。
-    削掉的判别力：无（钳位仅造成单位依赖，不是有意的判别口径）。
-    """
+    """重叠面积占较小者比例 [0,1]。"""
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
     inter = ix * iy
@@ -96,8 +85,7 @@ def _overlap(a: BBox, b: BBox) -> float:
         return 0.0
     a_area = (a[2] - a[0]) * (a[3] - a[1])
     b_area = (b[2] - b[0]) * (b[3] - b[1])
-    # inter > 0 ⇒ 两框面积皆 > 0，无除零风险（#309）
-    return inter / min(a_area, b_area)
+    return inter / max(1.0, min(a_area, b_area))
 
 
 def spatial_relation(a: BBox, b: BBox) -> Dict:

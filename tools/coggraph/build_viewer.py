@@ -139,9 +139,7 @@ function build(){
   cy.edges().forEach(e=>{ const d=e.data(); const t=d.id.split('|')[2];
     e.style('line-color', ruleColor[t]||'#666'); e.style('line-style', d.id.endsWith('|1')?'dashed':'solid'); });
   const shown = cy.nodes().length, se = cy.edges().length;
-  // #413：derived 计数写在 viewer_graph 顶层（vgraph["derived"]），不在 g["meta"] 里；
-  //   旧写法从 meta 取 derived（键不存在 ⇒ undefined）⇒ 与 counts.edges 相加恒为 NaN（侧栏「全库 … 边」显示 NaN）。
-  document.getElementById('stat').innerHTML = '显示 '+shown+' 节点 / '+se+' 边<br>全库 '+G.meta.counts.nodes+' 节点 / '+(G.meta.counts.edges+G.derived)+' 边'+(G.merged_aliases?('（已归并 '+G.merged_aliases+' 个重复/同义节点）'):'')+'<br>真源指纹 '+G.meta.source_sha;
+  document.getElementById('stat').innerHTML = '显示 '+shown+' 节点 / '+se+' 边<br>全库 '+G.meta.counts.nodes+' 节点 / '+(G.meta.counts.edges+G.meta.derived)+' 边'+(G.merged_aliases?('（已归并 '+G.merged_aliases+' 个重复/同义节点）'):'')+'<br>真源指纹 '+G.meta.source_sha;
   cy.on('tap','node', async evt=>{
     const id = evt.target.id(); const box = document.getElementById('detail');
     box.style.display='block'; box.innerHTML = '<h3>'+esc(id)+'</h3><div class="m">加载中…</div>';
@@ -332,16 +330,6 @@ def main(argv=None):
     hub_ids = {h["id"] for h in hubs_list}
     hubs_by_id = {h["id"]: h for h in hubs_list}
 
-    # 枢纽节点的 degree 必须按实际连接边数算，不能直接用 h["count"]——
-    # count 是 derive_edges 登记的"当日节点数"（R4 语义，测试已锁定），不是连接度。
-    # 直接套用会导致 50 条孤立笔记的日枢纽被画成 degree=50 的超级节点。
-    hub_deg = collections.Counter()
-    for e in all_edges:
-        if e["s"] in hub_ids:
-            hub_deg[e["s"]] += 1
-        if e["t"] in hub_ids:
-            hub_deg[e["t"]] += 1
-
     title2cls = {}
     if args.naming and os.path.isfile(args.naming):
         with io.open(args.naming, encoding="utf-8") as f:
@@ -361,8 +349,7 @@ def main(argv=None):
     for h in hubs_list:
         vnodes.append({"id": h["id"], "layer": "hub", "title": h["label"],
                        "bucket": "", "tags": [], "importance": 0,
-                       "degree": hub_deg.get(h["id"], 0),
-                       "node_count": h["count"], "hub": True})
+                       "degree": h["count"], "hub": True})
 
     # 先算布局，再把枢纽移到成员质心（必须在拷进 vnodes 之前；否则拷贝到的是未居中的坐标）
     pos = build_layout(g["nodes"], hubs_by_id)

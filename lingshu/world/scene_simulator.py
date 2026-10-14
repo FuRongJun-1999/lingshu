@@ -33,7 +33,6 @@ import uuid
 import warnings
 from collections import deque
 from dataclasses import dataclass, field, asdict
-from .coord_contract import clamp_xz              # 第 4 轮 #4
 from typing import Deque, Dict, List, Optional, Tuple
 
 try:
@@ -98,11 +97,7 @@ class SceneSimulator:
         # 最近点会立刻变回原点 ⇒ 原地振荡，永不前进。
         self._follow_target: Dict[str, int] = {}
         self.tick_count = 0
-        # 确定性随机：**同一实体插入顺序下**可复现（#428：step 按 entities 迭代
-        # 序决策，随机数按该序切分，且决策读目标 pos 后同循环写回 ⇒ 换插入顺序
-        # 结果变）。seed 缺省 42 = 历史硬编码值，既有实验行为不变。
-        # 顺序无关化（排序/分相/每实体 rng）属设计裁定，本处不改（见 step
-        # docstring 与 .tmp/待裁清单_20261010.md #428）。
+        # 确定性随机（可复现）。seed 缺省 42 = 历史硬编码值，既有实验行为不变。
         self._rng = random.Random(seed)
 
     # ---- 场景构建 ----
@@ -247,19 +242,6 @@ class SceneSimulator:
 
         返回 `actions` = **最后一个 tick 实际发生位移的实体数**（#193-A：此前
         返回的是实体总数，与真算好的行动列表不同义）。
-
-        #428（成立）：轨迹依赖实体**插入顺序**——本循环 `for eid, e in
-        self.entities.items()` 的迭代序即插入序，且循环体内有两个顺序敏感点：
-        ① `_decide` 按该序从共享 `self._rng` 取随机数（wander/flee 分支）⇒
-        同一随机数流按迭代序切分给各实体；② `_decide` 读目标实体 `pos`，同循环
-        随即写回 `e.pos` ⇒ 先动者改变后动者的决策依据。故「确定性随机」仅保证
-        **同一插入顺序**下可复现（同 seed 逐位一致）；换插入顺序结果变（issue
-        #428 实测：同 seed 换序末态差最大 0.77 m，`world_learner.speed_est`
-        偏差约 14%）。本处**如实声明契约**，不改数值行为——顺序无关化（排序 /
-        决策-行动分相 / 每实体 rng 流）三种取向都会改变既有实验数值，属设计
-        裁定（`.tmp/待裁清单_20261010.md` #428「修复取向需设计者裁」）。
-        判据来源：issue #428 正文（其判据即「:86 注释自称『可复现』但该确定性
-        只保证同插入顺序可复现」）。
         """
         n = int(n)
         if n < 0 or n > MAX_STEPS_PER_CALL:
@@ -290,8 +272,8 @@ class SceneSimulator:
                         "⇒ 拒绝写入" % (eid, nx, nz), RuntimeWarning, stacklevel=2)
                     e.velocity = (0.0, 0.0, 0.0)
                     continue
-                # ⚠ 第 4 轮 #4：边界语义收归 `coord_contract.clamp_xz`（算式逐字一致）
-                nx, nz = clamp_xz(nx, nz, self.world.size)
+                nx = max(0.5, min(self.world.size - 0.5, nx))
+                nz = max(0.5, min(self.world.size - 0.5, nz))
                 old = e.pos
                 e.pos = (round(nx, 2), old[1], round(nz, 2))
                 # #193-B：velocity 此前只有声明、从无写入点（对外恒为 (0,0,0)）。

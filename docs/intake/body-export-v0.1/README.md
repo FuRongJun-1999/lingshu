@@ -37,15 +37,10 @@ lingshu/
 - **core 保留 5 处「未随本导出」的扩展接口**（`vision` / `game_web.generate` / `game_web.semantics`）：
   运行期检测，缺失时返回 `BLINDSPOT` / `gen_not_ready`——这是上游**原生的公开形态设计**
   （源码注释原文：「没有则诚实声明 BLINDSPOT（公开仓库形态）」）。
-- **core 保留 12 个「未实现扩展点」名义**（`flywheel_engine` / `prediction_engine` /
+- **core 保留 10 个「未实现扩展点」名义**（`flywheel_engine` / `prediction_engine` /
   `self_cognition_engine` / `lifecycle_engine` / `attention_policy` / `entity_registry` /
-  `cognitive_orchestrator` / `blindspot_learning_loop` / `scene_reconstruction` / `semantic_space` /
-  `body` / `pattern_separation`）：
+  `cognitive_orchestrator` / `blindspot_learning_loop` / `scene_reconstruction` / `semantic_space`）：
   全部在函数内 `try/except` 降级，未装入即为空实现。
-  （#10 修：本表原列 10 项，与同目录 `_export_manifest.json` 的 core.py 条目 `externals`
-  ∪ `hidden_refs` 及 `core.py` 实有裸名导入不一致——漏列 `body` / `pattern_separation`。
-  判据来源：`lingshu/core/core.py` 的 AST 裸名导入面 ∪ 该清单条目；守卫
-  `tests/test_issue10_intake_registration_guard.py` 三方同源复算。）
 - **导出精修（一次性，逐条记录于 `_export_manifest.json`）**：
   ① `core.py` 内联 `_bigram_set` 三行工具函数（原借自私有侧 LLM 路由模块——白箱化）；
   ② `activation.py` 数据路径由本机字面量 → 环境变量 `LINGSHU_DATA_ROOT`（缺省 `data/`）；
@@ -67,18 +62,6 @@ lingshu/
   下批按「构造性 vs 语料依赖」分拣后迁移。本次验证＝import 冒烟 51/51 ＋ 构造性运行（渲染圆→分割读回）。
 
 ## 六、复核记录
-
-- **2026-10-10 本地 fork 修改**：世界模型的6个既有文件在用户授权下修复，
-  `_export_manifest.json` 的 `sha256` 核验当前工作区的 LF 归一内容，
-  `base_sha256` 保留本次修改前的登记值，`working_tree_update` 记录基线提交及报告。
-  这不是重新从私有侧导出。新增 `motion.py`、bench及回归测试
-  不属于原61项导出清单，其完整指纹与前后证据见
-  [改动与测量报告](../../world_model_optimization.md)。
-- 同日追逐预测修正继续修改其中3个文件，清单 `follow_up.previous_sha256` 保留
-  上一轮工作区指纹；[调查及验证](../../world_model_optimization.md)
-  记录逐实体归因、原bench对比、额外种子与近距离压力测试。
-- 提交前整合上游 `c22385c` 测量，并继续合入 `777e18f`，保留上游修复；清单同时记录
-  `integration_base_sha256`，与历史两轮读数分开登记。
 
 - 双清单机械审计：`AUDIT.md`（0 命中）；误报复核先例（`SelfModel`/`_self_cognition`/`f://enum`）记录在
   审计器源码注释中。
