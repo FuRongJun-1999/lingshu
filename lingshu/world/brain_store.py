@@ -380,7 +380,11 @@ class _ConnShim:
     `cg(op=state_event)`（subject=**该节点 id**、slot=「状态」、kind=acquisition
     ——issue #366：实体名跨场景不唯一，不作台账键）。
     其它 SQL 抛 NotImplementedError（不静默吞）；状态事件未入账时抛
-    `BrainError`（同样不静默吞）。legacy 侧 `commit()` 为无操作。
+    `BrainError`（同样不静默吞）。legacy 侧 `commit()`/`rollback()` 均为无操作
+    （事件经 `record_state` 即时落账，无客户端事务可回滚）；`executemany`
+    逐条复用 `execute` 的同款翻译（#596 补齐——#515 的批量状态写入口此前
+    在脑侧恒 AttributeError，被 ingest_scene 的兜底 except 吞掉后静默回落
+    逐条路径，批量优化对脑侧永不生效）。
     """
 
     UPDATE_PREFIX = "UPDATE NODES SET STATE_ATTRIBUTES"
@@ -404,6 +408,20 @@ class _ConnShim:
         return self
 
     def commit(self):        # noqa: D102 —— 事件已即时落账，无事务
+        pass
+
+    def executemany(self, sql, seq_of_params):
+        """批量状态写 → 逐条走 `execute` 的同款翻译（#596）。
+
+        脑侧没有真正的批量接口，逐条循环即与单条路径完全同语义；补齐后
+        #515 的 `executemany` 入口在脑侧不再 AttributeError 回落。
+        空 seq 为 no-op（与 sqlite3.executemany 口径一致）。
+        """
+        for params in seq_of_params or ():
+            self.execute(sql, params)
+        return self
+
+    def rollback(self):      # noqa: D102 —— 与 commit 同口径：无事务可回滚
         pass
 
 

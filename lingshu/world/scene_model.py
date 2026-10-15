@@ -415,7 +415,10 @@ def ingest_scene(agent, scene_desc, store=None, tag: str = "spatial",
         # ★优化（本笔）：旧实现**每个实体**一次 `execute` + `commit()`（N 次 fsync）。
         # 现改为**先登记、循环后一次 `executemany` + 一次提交**；批量失败时
         # **回落到逐条路径**（保留原有的逐实体告警文案与「不阻断导入」语义）。
-        # ⇒ 常见路径省 N−1 次提交；失败路径逐位等同旧实现。
+        # ⇒ 常见路径省 N−1 次提交；失败路径逐位等同旧实现。脑侧 `_ConnShim`
+        # 自 #596 起同样提供 `executemany`（逐条翻译）/`rollback`（no-op），
+        # 批量路径对脑侧同样生效——此前垫片缺这两方法，executemany 恒
+        # AttributeError 被 except 吞掉、静默回落逐条，批量优化对脑侧永不成立。
         _pending_states.append((name, state, node.id))
         written.append(node.id)
     if _pending_states:
@@ -431,10 +434,12 @@ def ingest_scene(agent, scene_desc, store=None, tag: str = "spatial",
             try:
                 store.conn.rollback()
             except (AttributeError, sqlite3.Error):
-                # best-effort 清事务：脑侧 store 的 `conn` 是 `_ConnShim`（无
-                # `rollback`，AttributeError 属**常态**而非异常）；真 sqlite 连接
-                # 无活动事务时 rollback 为 no-op。故此处收窄到这两种预期失败，
-                # 不放宽成 `except Exception`（那会把「库读坏」这类真错静默吞掉）。
+                # best-effort 清事务：脑侧 store 的 `conn` 是 `_ConnShim`，#596
+                # 起已提供 `rollback`（no-op，与 `commit` 同口径），故 AttributeError
+                # 对脑侧**不再是常态**——但兜底不删：垫片之外的其它简易 conn 桩
+                # 仍可能缺 `rollback`；真 sqlite 连接无活动事务时 rollback 为
+                # no-op。故仍收窄到这两种预期失败，不放宽成 `except Exception`
+                # （那会把「库读坏」这类真错静默吞掉）。
                 pass
             for _nm, _st, _nid in _pending_states:
                 try:
