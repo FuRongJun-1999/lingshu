@@ -13,7 +13,7 @@
 白箱:每条连接可直读("条纹卡 ← 特征7,方向+,g=0.8,θ=0.2")。
 """
 from __future__ import annotations
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
