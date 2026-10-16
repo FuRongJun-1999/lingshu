@@ -7425,7 +7425,36 @@ class SpacetimeMemoryEngine:
     #: 边界（削掉的判别力）：**不**加扩展名白名单（issue 建议 2）——issue 自身实测
     #: 边界已证非图像扩展名由 `PIL.Image.save` 抛 `ValueError` 拒绝，本件不重复设卡；
     #: 亦**不**加 `overwrite=False`（issue 建议 3，属新的产品决策，非本缺陷面）。
+    EXPORT_OUT_ROOT_ENV = "LINGSHU_EXPORT_OUT_ROOT"
+
     WORLD3D_OUT_ROOT_ENV = "LINGSHU_WORLD3D_OUT_ROOT"
+
+    @classmethod
+    def _export_out_roots(cls) -> List[str]:
+        """`export_all` / `export_trajectory` 输出白名单根（仅显式配置面）。"""
+        raw = os.environ.get(cls.EXPORT_OUT_ROOT_ENV, "")
+        return [p for p in str(raw).split(os.pathsep) if p.strip()] if raw else []
+
+    @classmethod
+    def _confine_export_out_path(cls, out_path: str) -> str:
+        """把 `out_path` 限制在白名单根内（越界 fail-closed）；无根则原样放行。
+
+        与 `_confine_world3d_out_path` / `_confine_simloop_out_path` **同三条口径**：
+        ①未显式配置根 ⇒ 不限制（保持既有行为，不改变默认语义）；
+        ②配置了根 ⇒ 归一后必须落在某个根内，否则抛错；
+        ③归一用 realpath + normcase（软链与大小写不放过）。
+        """
+        roots = cls._export_out_roots()
+        if not roots:
+            return out_path
+        target = os.path.normcase(os.path.realpath(out_path))
+        for r in roots:
+            root = os.path.normcase(os.path.realpath(r))
+            if target == root or target.startswith(root + os.sep):
+                return out_path
+        raise ValueError(
+            "export 输出路径越界（fail-closed）：%s 不在白名单根 %s 内"
+            % (out_path, roots))
 
     @classmethod
     def _world3d_out_roots(cls) -> List[str]:
@@ -10425,6 +10454,11 @@ class SpacetimeMemoryEngine:
         # 边界（如实标注）：只搬**权限位**，不搬属主/属组（`chown` 需特权，未做）；
         # 目标不存在时行为与改前逐字一致（umask 默认）；不引入目录 fsync（#330
         # 面边界不变）；返回值 `path` 仍是**调用方给的**路径（对外契约不变）。
+        # #746：写向根闸——`output_path` 由宿主 API 传入，但本方法**无任何根判定**，
+        # 任意路径可写成功（实测：无白名单根的临时目录写出成功）。与 `_confine_world3d_out_path`
+        # / `_confine_simloop_out_path` 同口径（realpath + normcase，越界 fail-closed）；
+        # 本仓不发明新根：未显式配置根时不限制（与既有两处 `#480 三条` 的一致行为）。
+        output_path = self._confine_export_out_path(output_path)
         target_path = os.path.realpath(output_path)
         tmp_path = "%s.tmp-%s" % (target_path, uuid.uuid4().hex[:8])
         # #698：覆盖已存在目标 ⇒ 显式上报（不改覆盖语义，只让「静默」消失）。
