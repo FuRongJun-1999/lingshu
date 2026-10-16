@@ -362,6 +362,13 @@ def shade_intensity_mode(normal: Sequence[float], view: Sequence[float],
         i = 0.38 * (0.5 + 0.5 * ny) + 0.72 * key + 0.17 * head
         return i if i >= 0.12 else 0.12
     i = look_curve(shade_studio(normal, view, role))
+    # 非有限值**穿透**（#715，与 `studio` 同口径）：`mode="studio"` 对 NaN 是原样
+    # 返回，而 toon 走到下面 `math.floor(i * b)`（NaN 仍是 NaN）再 `int(...)` ⇒
+    # `ValueError: cannot convert float NaN to integer`——同一个输入两种模式行为
+    # 不同，且报错点离成因（法线含 NaN）很远、难定位。故此处对非有限值不做量化、
+    # 原样返回，让 NaN/Inf 穿透到调用方，与本模块既有 `studio` 语义对齐。
+    if not math.isfinite(i):
+        return i
     if mode in ("toon", "toon_studio"):
         b = int(bands or TOON_BANDS)
         if b < 2:
