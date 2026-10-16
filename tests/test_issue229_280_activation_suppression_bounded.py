@@ -44,9 +44,13 @@ def add_node(store, node_id, content):
 
 
 def add_edge(store, edge_id, src, dst, relation):
+    # #521：抑制（opposite）边幅值按**该边 confidence** 成比例
+    # （activation.suppression_weight）；STEdge 缺省 confidence=0.5 ⇒ 抑制减半
+    # （target 0.75−1/3·0.5=0.5833 而非 0.75−1/3≈0.4167），本守卫判据按满强度抑制写。
+    # 显式置 confidence=1.0 恢复 #521 前的无条件抑制语义，断言阈值不动。
     store.add_edge(STEdge(
         id=edge_id, source_id=src, target_id=dst,
-        relation_type=relation, condition_space=CONDITION))
+        relation_type=relation, condition_space=CONDITION, confidence=1.0))
 
 
 @pytest.fixture(params=("edge-list", "scipy"))
