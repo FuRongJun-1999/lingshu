@@ -183,7 +183,7 @@ def parse_anchor(text: str) -> Optional[VPrim]:
     import re
 
     m = re.search(
-        r"@\((\d+),(\d+),(\d+),(\d+)\)"
+        r"@\((-?\d+),(-?\d+),(-?\d+),(-?\d+)\)"
         r"(?:\s+\d+x\d+\s+conf=([0-9]*\.?[0-9]+))?", text)
     if not m:
         return None
