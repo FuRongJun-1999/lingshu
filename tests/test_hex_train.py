@@ -122,6 +122,53 @@ def test_set_vec_does_not_alias_caller_buffer_unit():
     assert np.array_equal(net.get_vec(), snap), "调用方写入穿透到模型参数"
 
 
+def test_unit_annotations_resolve_under_get_type_hints():
+    """守卫(#734):hex_unit 的注解须能在 `typing.get_type_hints()` 下完整解析。
+
+    根因(#734):`hex_unit.py` 头部 `from typing import Dict, List, Tuple` 缺
+    `Optional`,而 `UnitHeadNet.describe`(:99 `feat_names: Optional[List[str]]`)
+    与 `finetune_units`(:113 `feat_cache: Optional[np.ndarray]`)的注解用了它。
+    模块有 `from __future__ import annotations`(惰性字符串注解),运行期 import
+    与调用不炸——但任何内省方(`typing.get_type_hints()`、pydantic/dataclass
+    工具链、IDE/文档生成)一解析即 `NameError: name 'Optional' is not defined`
+    (clean main 实测,describe/finetune_units 双中)。
+
+    断言:两处注解不仅不抛,且解析出的类型正确(Optional 参数与 NoneType 的
+    并集、内外层容器都对),防「导入了但拼错名」的假绿。
+
+    定点变异自证:把导入里的 `Optional` 去掉(即回退到 #734 前的
+    `from typing import Dict, List, Tuple`),本测试立即变红(NameError)。
+    """
+    import typing
+
+    from lingshu.nn import hex_unit as hu
+
+    # ① describe(:99):feat_names 可缺省 Optional[List[str]],返回 List[str]
+    hints_d = typing.get_type_hints(hu.UnitHeadNet.describe)
+    assert hints_d["feat_names"] == typing.Optional[typing.List[str]], \
+        f"describe.feat_names 解析错误: {hints_d['feat_names']!r}"
+    assert hints_d["return"] == typing.List[str], \
+        f"describe 返回注解解析错误: {hints_d['return']!r}"
+    assert type(None) in typing.get_args(hints_d["feat_names"]), \
+        "describe.feat_names 应含 NoneType(Optional 语义)"
+
+    # ② finetune_units(:113):feat_cache 可缺省 Optional[np.ndarray]
+    hints_f = typing.get_type_hints(hu.finetune_units)
+    assert hints_f["feat_cache"] == typing.Optional[np.ndarray], \
+        f"finetune_units.feat_cache 解析错误: {hints_f['feat_cache']!r}"
+    assert type(None) in typing.get_args(hints_f["feat_cache"]), \
+        "finetune_units.feat_cache 应含 NoneType(Optional 语义)"
+
+    # ③ 反证缺名即红:解析时从模块命名空间抽走 Optional 必须抛 NameError
+    #    (证明本守卫盯的就是「模块级名字缺失」这一缺陷类,而非碰巧不抛)
+    saved = hu.__dict__.pop("Optional")
+    try:
+        with pytest.raises(NameError):
+            typing.get_type_hints(hu.UnitHeadNet.describe)
+    finally:
+        hu.__dict__["Optional"] = saved
+
+
 def test_branch_deadzone_freezes():
     """支路死区: 更新量分辨率设极大→全部冻结(信息差进死区,支路终止)。"""
     xs, ys = _toy_images()
