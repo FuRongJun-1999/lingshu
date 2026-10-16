@@ -412,11 +412,33 @@ def _parse_escalation_value_bound(condition: str):
     digits_start = j
     while j < len(condition) and (condition[j].isdigit() or condition[j] == "."):
         j += 1
+    # 指数部分（#747）：`1e400` / `1e-400` 的 `e` 不在上面的字符集里，
+    # 原实现会在 `e` 前停下并把 `1e400` **静默钳成 `1`** —— 解析器不报错、
+    # 调用方拿到一个看似合法的窄界，于是 `value < 1e400`（意图「永不触发」）
+    # 变成 `value < 1.0`（在 value=0.5 时**误触发**）。这里把完整数值词元吃进来。
+    if j < len(condition) and condition[j] in "eE":
+        k = j + 1
+        if k < len(condition) and condition[k] in "+-":
+            k += 1
+        exp_start = k
+        while k < len(condition) and condition[k].isdigit():
+            k += 1
+        if k > exp_start:          # 指数部分必须有数字，否则 `e` 不属于数值词元
+            j = k
     if j == digits_start:
         return None
+    raw = condition[i:j]
     try:
-        threshold = float(condition[i:j])
+        threshold = float(raw)
     except ValueError:
+        return None
+    # 溢出/下溢不得静默通过（#747）：`1e400` 经 `float()` 变 `inf`，而
+    # `value < inf` **恒真** —— 与「截断成 1」同类的误触发，只是换了形态；
+    # `1e-400` 则下溢成 `0.0`，丢掉原文的量级。两者都回落 `None`（调用方
+    # 走既有旧行为），让无法精确表达的界**显式退场**而不是伪装成有效窄界。
+    if not math.isfinite(threshold):
+        return None
+    if threshold == 0.0 and any(ch in raw for ch in "eE"):
         return None
     return (op, threshold)
 
