@@ -19,10 +19,16 @@
         ——max-plus 口径,**不跨跳累加**(scipy 稀疏与 edge-list 降级同口径);
         故 act 有界(≤ max(种子, 上一步先验)),不随跳数/轮数发散(issue #280)。
   抑制(负记忆同价,第五篇;issue #229):decay(u→v) < 0 的边(opposite)走抑制通路——
-        supp(v) = max over u∈N(v): act(u)·|decay(u→v)|;act(v) ← max(act(v) − supp(v), 0),
+        supp(v) = max over u∈N(v): act(u)·|decay(u→v)|·conf(u→v);act(v) ← max(act(v) − supp(v), 0),
         即相反记忆扣减目标激活(取最强抑制,不叠加),扣减后钳制到 0。
         判据:边衰减符号承自本文件 :15 锚点「第五篇:…负记忆同价…」;幅值 base=-1.0 为
         经验标定(满激活源 1.0 恰抵消目标满激活)——追不到理论常数。
+        #521:抑制幅值再乘**该边 confidence** 的成比例系数(见 suppression_weight)——
+        修前装载期不读边 confidence/verified ⇒ register_conflict 建的
+        OPPOSITE(confidence=0.3, verified=False) 与手工改成的 (1.0, True) 读数完全相同、
+        一律把目标压到 0(未复核的低置信边等价于「已确认否决」)。现按 confidence 成比例;
+        confidence 缺失/NULL(老库无该列)⇒ 系数 1.0,既有语义不变。verified 一并装载
+        (存 _inh_conf 供审计),本轮不参与系数(衰减/删除策略属 D-38,本笔不动)。
   衰减: decay(u→v) = base(边类型) × cond_match(两端条件空间重合率)
         ——#53:此前 cond_match 定义后**零调用**(装载期是空循环),公式与实现不一致;
         现于 `_load_graph` 装载边时按节点对算一次(重合率静态,与逐跳算等价),
@@ -82,6 +88,39 @@ DEFAULT_DECAY = 0.5     # 未注册边类型
 # 条件空间重合率的中性值(不奖励也不惩罚)——`cond_match` 的既有回落值。
 # #709:同一常量也用作 `_load_graph` 里该函数意外异常时的兜底衰减因子(两处同源)。
 COND_MATCH_NEUTRAL = 0.5
+
+# #521:抑制(opposite)边的强度系数——按**该边 confidence** 成比例。
+#   修前 _load_graph 只 SELECT source_id/target_id/relation_type/condition_space,
+#   抑制幅值恒 = |EDGE_BASE_DECAY['opposite']| × cond_match,与边 confidence 无关:
+#   LayeredStore.register_conflict(core.py)建的矛盾边是 confidence=0.3 / verified=False,
+#   却与手工置 confidence=1.0 / verified=True 的边读数逐位相同(目标激活一律被压到 0)
+#   ——未复核的低置信边等价于「已确认否决」。
+#   · confidence 缺失/NULL(老库 edges 无该列、或 #185 前的 NaN 路径落 NULL)
+#     ⇒ 1.0:保持既有「无条件抑制」语义,不因装载口径变化凭空削弱存量库的抑制;
+#   · 其余 ⇒ clamp(confidence, 0, 1);非有限值回落中性 0.5(与 STEdge.from_row
+#     对 NULL confidence 的缺省同源)。
+#   边界(削掉的判别力):verified 已随行装载(见 _inh_conf),但**不参与**本系数——
+#   母栏裁定本笔只让抑制强度按 confidence 成比例,复核语义(D-43)与衰减/删除策略
+#   (core.py decay_cycle 对 opposite 的豁免,D-38)不在本笔范围内。
+SUPPRESSION_CONFIDENCE_NEUTRAL = 0.5
+
+
+def suppression_weight(confidence) -> float:
+    """#521:抑制边强度系数 ∈[0,1]——按边 confidence 成比例。
+
+    confidence 为 None(缺列/NULL)⇒ 1.0(既有「无条件抑制」语义不变);
+    非有限值/非数值 ⇒ 中性 0.5;其余钳到 [0,1]。
+    """
+    if confidence is None:
+        return 1.0
+    try:
+        c = float(confidence)
+    except (TypeError, ValueError):
+        return SUPPRESSION_CONFIDENCE_NEUTRAL
+    if not math.isfinite(c):
+        return SUPPRESSION_CONFIDENCE_NEUTRAL
+    return min(1.0, max(0.0, c))
+
 
 # self-conditioning 回注权重(工程默认值,与 EDGE_BASE_DECAY 同类;可调用级覆盖)。
 # 0.0 = 关闭(与 ACTIVATION-REV1 行为严格等价);0.5 = 推荐值(先验与种子同权)。
@@ -200,7 +239,8 @@ class ActivationEngine:
         self._adj_inh = None        # 本轮抑制邻接(仅 opposite 边,存 |decay|)
         self._node_index = None     # node_id → idx
         self._edge_meta = None      # (src_idx, dst_idx, decay) 兴奋边列表
-        self._inh_meta = None       # (src_idx, dst_idx, |decay|) 抑制边列表
+        self._inh_meta = None       # (src_idx, dst_idx, |decay|·conf) 抑制边列表
+        self._inh_conf = None       # #521:抑制边逐条 (confidence, verified, 系数) 审计面
 
     # ---------------- 表结构(独立激活表,与内容记忆分离) ----------------
     def _ensure_tables(self):
@@ -253,6 +293,10 @@ class ActivationEngine:
         `no such table` 视作**空图**（`nodes=[]` / `edges=[]`），让 `activate()` 落到
         既有的空工作态返回路径（`status=ok, size=0`），而不是整轮抛穿。
         两条腿分开 catch：缺 `edges` 而 `nodes` 在场时仍保留节点域。
+
+        #521：`edges` 腿装载 `confidence` / `verified`（缺列时退回四列、两列按
+        None），抑制边幅值再乘 `suppression_weight(confidence)`——未复核的低置信
+        OPPOSITE 边不再等价于「已确认否决」；缺列/NULL 仍为 1.0（既有语义）。
         """
         con = self._con()
         cur = con.cursor()
@@ -263,10 +307,21 @@ class ActivationEngine:
             node_rows = []
         node_ids = [r[0] for r in node_rows]
         try:
-            cur.execute("SELECT source_id, target_id, relation_type, condition_space FROM edges")
+            # #521:一并装载边 confidence/verified——抑制强度按 confidence 成比例
+            #   (verified 只入 _inh_conf 审计面,本轮不参与系数)。
+            cur.execute("SELECT source_id, target_id, relation_type, condition_space, "
+                        "confidence, verified FROM edges")
             edges = cur.fetchall()
-        except sqlite3.OperationalError:  # #714:无内容表 ⇒ 空图
-            edges = []
+        except sqlite3.OperationalError:
+            # #521:老库 / 独立激活库的 edges 可能没有 confidence/verified 列
+            #   (两列在 #185 之后才进 schema)。退回四列形态、两列按 None 装载
+            #   ⇒ 抑制系数回落 1.0(既有「无条件抑制」语义,不凭空削弱存量库)。
+            try:
+                cur.execute("SELECT source_id, target_id, relation_type, "
+                            "condition_space FROM edges")
+                edges = [tuple(r) + (None, None) for r in cur.fetchall()]
+            except sqlite3.OperationalError:  # #714:无内容表 ⇒ 空图
+                edges = []
         con.close()
         idx = {nid: i for i, nid in enumerate(node_ids)}
         n = len(node_ids)
@@ -278,7 +333,12 @@ class ActivationEngine:
                 cur_cs[nid] = {}
         rows, cols, decays = [], [], []
         inh_rows, inh_cols, inh_mags = [], [], []
-        for src, dst, rtype, cs_json in edges:
+        inh_conf = []  # #521:抑制边 (confidence, verified, 系数) 审计面
+        for row in edges:
+            src, dst, rtype, cs_json = row[0], row[1], row[2], row[3]
+            # #521:缺列形态(退回四列)不足 6 列 ⇒ 两列按 None 装载(系数回落 1.0)
+            edge_conf = row[4] if len(row) > 4 else None
+            edge_verified = row[5] if len(row) > 5 else None
             si, di = idx.get(src), idx.get(dst)
             if si is None or di is None:
                 continue
@@ -299,7 +359,11 @@ class ActivationEngine:
             except (TypeError, ValueError):
                 d = d * COND_MATCH_NEUTRAL
             if d < 0:  # 负记忆同价(第五篇):相反边走独立抑制通路,不进兴奋邻接(issue #229)
-                inh_rows.append(si); inh_cols.append(di); inh_mags.append(-d)
+                # #521:抑制幅值再乘该边 confidence 的成比例系数——未复核的低置信
+                #   OPPOSITE 边不再等价于「已确认否决」(高置信边仍可把目标压到 0)。
+                w = suppression_weight(edge_conf)
+                inh_rows.append(si); inh_cols.append(di); inh_mags.append(-d * w)
+                inh_conf.append((edge_conf, bool(edge_verified), w))
             else:
                 rows.append(si); cols.append(di); decays.append(d)
         if csr_matrix is not None and rows:
@@ -317,6 +381,7 @@ class ActivationEngine:
         self._node_index = idx
         self._edge_meta = (rows, cols, decays)
         self._inh_meta = (inh_rows, inh_cols, inh_mags)
+        self._inh_conf = inh_conf
         self._node_ids = node_ids
         # 节点条件空间(节点级 cond_match 用;装载期已消费,留作审计/调试)
         self._node_cond = cur_cs
