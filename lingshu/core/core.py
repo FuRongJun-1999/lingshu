@@ -412,11 +412,37 @@ def _parse_escalation_value_bound(condition: str):
     digits_start = j
     while j < len(condition) and (condition[j].isdigit() or condition[j] == "."):
         j += 1
+    # 指数部分（#747）：`1e400` / `1e-400` 的 `e` 不在上面的字符集里，
+    # 原实现会在 `e` 前停下并把 `1e400` **静默钳成 `1`** —— 解析器不报错、
+    # 调用方拿到一个看似合法的窄界，于是 `value < 1e400`（意图「永不触发」）
+    # 变成 `value < 1.0`（在 value=0.5 时**误触发**）。这里把完整数值词元吃进来。
+    if j < len(condition) and condition[j] in "eE":
+        k = j + 1
+        if k < len(condition) and condition[k] in "+-":
+            k += 1
+        exp_start = k
+        while k < len(condition) and condition[k].isdigit():
+            k += 1
+        if k > exp_start:          # 指数部分必须有数字，否则 `e` 不属于数值词元
+            j = k
     if j == digits_start:
         return None
+    raw = condition[i:j]
+    # 逐字符回验：确保 `float()` 消费的正是我们扫描到的这段文本。
+    # 防的是「扫描吃了一段、float 只认前一半」这类**静默**语义漂移（#747）。
+    if len(raw) != len(raw.strip()) or not raw:
+        return None
     try:
-        threshold = float(condition[i:j])
+        threshold = float(raw)
     except ValueError:
+        return None
+    # 溢出/下溢不得静默通过（#747）：`1e400` 经 `float()` 变 `inf`，而
+    # `value < inf` **恒真** —— 与「截断成 1」同类的误触发，只是换了形态；
+    # `1e-400` 则下溢成 `0.0`，丢掉原文的量级。两者都回落 `None`（调用方
+    # 走既有旧行为），让无法精确表达的界**显式退场**而不是伪装成有效窄界。
+    if not math.isfinite(threshold):
+        return None
+    if threshold == 0.0 and any(ch in raw for ch in "eE"):
         return None
     return (op, threshold)
 
@@ -1056,14 +1082,6 @@ class LayeredStore:
     #: ＋ 公开 issue #222「建议修复 2：对 status 做白名单（`open`/`resolved`/…）」。
     #: 只列仓内实际出现的两种状态；issue 括注的「…」属未定项，不擅扩。
     BLINDSPOT_STATUSES = ("open", "resolved")
-
-    #: `action_logs` 显式回收面 `prune_action_logs` 的缺省保留行数（#723）。
-    #: **经验标定，追不到理论出处**——仓内无规定审计留存期的理论章节；取值照
-    #: 公开 issue #723 的建议「保留最近 10000 行」（量级与同族钳制 `gap_history`
-    #: 的 2000 行、`SELF_SNAPSHOT_MAX=200` 同档）。★该原语**不被自动调用**：
-    #: 自动裁剪会与「审计只追加、无更新/删除路径」的既有声明契约冲突，保留窗口
-    #: 的取值属设计者裁面（见 `prune_action_logs` docstring 与交付报告）。
-    ACTION_LOGS_KEEP_ROWS = 10000
     SCHEMA_VERSION = 2  # 建表块每新增表/列时 +1（配合 _init_tables 启动只读化守卫；
                         # 守卫已兼比结构 _SCHEMA_TABLES/_SCHEMA_COLUMNS，
                         # 版本号不再单独作「跳过建表块」的依据）
@@ -1944,33 +1962,16 @@ class LayeredStore:
         # 的 IN 绑定上限单点）分批取 `id, layer`，循环内查表。
         # 转换用 `MemoryLayer(...)`，与 `STNode.from_row` 的 `MemoryLayer(row[8])`
         # **同款裸露转换** ⇒ 行内 layer 非法时的失败语义与旧路径逐位一致。
-        # #720：该「逐位一致」是**本件要收口的缺陷面**——`layer` 存了未知值
-        # （如 `'not-a-layer'`）时 `MemoryLayer(...)` 抛 `ValueError`，整条
-        # `delete_node` / `decay_cycle` 情境段中止（**合法节点因邻接坏行删不掉**，
-        # 与坏 `tags` 同族）。#267 的逐行容错只收在批量装载面 `_tolerant_nodes`，
-        # 本处与下方 tags 解析同属单点裸解析的漏网调用点。
-        # 现逐行容错：解析不出即**不登记**该对端（⇒ 按「非不可变层」处理、不落
-        # 不可变层审计——不猜它的层），id 如实计入 `last_skipped_rows`，
-        # 删除主流程不中断。
         _others = list({(tid if sid == node_id else sid)
                         for _eid, _rel, sid, tid in _rows_e})
         _layer_of: Dict[str, MemoryLayer] = {}
-        _bad_layer: List[str] = []
         for _i in range(0, len(_others), _SQL_IN_CHUNK):
             _chunk = _others[_i:_i + _SQL_IN_CHUNK]
             _ph = ",".join("?" * len(_chunk))
             for _oid, _lay in c.execute(
                     f"SELECT id, layer FROM nodes WHERE id IN ({_ph})",
                     _chunk).fetchall():
-                try:
-                    _layer_of[_oid] = MemoryLayer(_lay)
-                except (TypeError, ValueError):
-                    _bad_layer.append(_oid)
-        if _bad_layer:
-            # #720：与调用方本轮已记的坏行**合并**（同一轮内本助手可能被多次调用）
-            # ——不覆盖，避免漏报。
-            self.last_skipped_rows = list(dict.fromkeys(
-                list(self.last_skipped_rows or []) + _bad_layer))
+                _layer_of[_oid] = MemoryLayer(_lay)
         for eid, rel, sid, tid in _rows_e:
             other = tid if sid == node_id else sid
             _lay = _layer_of.get(other)
@@ -2040,9 +2041,6 @@ class LayeredStore:
                       " WHERE relation_type=? AND (source_id=? OR target_id=?)",
                       (EdgeType.OPPOSITE.value, node_id, node_id))
             peers = {t if s == node_id else s for s, t in c.fetchall()}
-            # #720：本方法逐行容错计数（写路径也刷新一次；语义＝「本次调用跳过的
-            # 坏行 id」，与装载面 `_tolerant_nodes` 的刷新口径同名同义）。
-            self.last_skipped_rows = []
             # #168：删边经唯一真源（对不可变层对端的边先落审计）
             # #93：**先删边再删节点**——开启 `PRAGMA foreign_keys=ON` 后，节点仍被
             # 关联边引用时 `DELETE FROM nodes` 会抛 `FOREIGN KEY constraint failed`
@@ -2050,7 +2048,6 @@ class LayeredStore:
             # 无害，开外键后即整条删除路径报错；顺序反了必红。
             self._strip_incident_edges(c, node_id)
             c.execute("DELETE FROM nodes WHERE id=?", (node_id,))
-            _bad_tag_peers: List[str] = []
             for peer in peers:
                 c.execute("SELECT COUNT(*) FROM edges WHERE relation_type=?"
                           " AND (source_id=? OR target_id=?)",
@@ -2059,22 +2056,12 @@ class LayeredStore:
                     continue  # 对端仍与其它节点冲突 ⇒ 标签保留
                 # ★优化（本笔 · 零行为变更）：本处只用对端的 **tags** 一个字段，
                 # 旧实现 `self.get_node(peer)` 是 `SELECT *`（读整行 + 建 `STNode`）。
-                # 改为只取 `tags`。
-                # #720：`json.loads` 改为**逐行容错**——坏 tags（非法 JSON）此前
-                # 让整个 `delete_node` 抛 `JSONDecodeError`，**合法节点因邻接坏行
-                # 删不掉**（本事务回滚、节点仍在库）。#267 的容错只收在批量装载面
-                # `_tolerant_nodes`，本处是单点裸解析的漏网调用点。
-                # 口径与 `_tolerant_nodes` 一致：坏行**跳过**（本处＝该 peer 的
-                # `conflict` 标签清理跳过、标签原样留在库，不去猜它的内容），
-                # 跳过 id 如实计入 `last_skipped_rows`；**不**阻断删除主流程。
+                # 改为只取 `tags`。`json.loads` 与 `STNode.from_row` 同款裸调
+                # （该列由 `_dumps_tags` 写、`from_row` 亦裸解析）⇒ 坏行失败语义一致；
+                # `fetchone()` 为 None 时与旧 `pnode` 为 None 同分支（都不进 if）。
                 c.execute("SELECT tags FROM nodes WHERE id=?", (peer,))
                 _prow = c.fetchone()
-                try:
-                    _ptags = ((json.loads(_prow[0]) if _prow[0] else [])
-                              if _prow else None)
-                except (TypeError, ValueError):
-                    _bad_tag_peers.append(peer)
-                    continue
+                _ptags = (json.loads(_prow[0]) if _prow and _prow[0] else []) if _prow else None
                 if _ptags is not None and "conflict" in _ptags:
                     tags = [t for t in _ptags if t != "conflict"]
                     c.execute("UPDATE nodes SET tags=? WHERE id=?", (_dumps_tags(tags), peer))
@@ -2086,9 +2073,6 @@ class LayeredStore:
                                json.dumps({"reason": "opposite_edge_gone",
                                            "removed_node": node_id}, ensure_ascii=False),
                                json.dumps({}, ensure_ascii=False)))
-            if _bad_tag_peers:
-                self.last_skipped_rows = list(dict.fromkeys(
-                    list(self.last_skipped_rows or []) + _bad_tag_peers))
             self._commit_locked()
         return True
 
@@ -3102,10 +3086,6 @@ class LayeredStore:
         `start_auto_decay` 默认 interval 同源），未把 γ 拆成独立配置项。
         """
         dt = self._decay_dt(now)
-        # #720：本轮逐行容错计数（写路径也刷新一次；语义＝「本次调用跳过的坏行 id」，
-        # 与装载面 `_tolerant_nodes` 的刷新口径同名同义）。下方情境段/知识段遇到
-        # 坏 `tags` 行时跳过该行并把 id 记入本表，**不再让整轮遗忘循环停摆**。
-        self.last_skipped_rows = []
         with self._lock:
             c = self.conn.cursor()
             # 获取所有未验证的边
@@ -3207,29 +3187,16 @@ class LayeredStore:
             # 受保护件仍经 `_is_forget_protected` 跳过（#36 不变）。判别力变化只在
             # 「≤ 阈值的低价值情境节点现在会进入遗忘面」——这正是本件要修的死区。
             c.execute("SELECT id, importance, tags FROM nodes WHERE layer='context'")
-            # #720：本轮逐行容错跳过的坏行 id（两段共用，末尾一次性如实上报）。
-            _bad_rows: List[str] = []
             for nid, imp, _tags in c.fetchall():
                 # ★优化（本笔）：旧实现传 `self.get_node(nid)` —— 那是
                 # `SELECT * FROM nodes WHERE id=?`（读**整行** + 建 `STNode`），
                 # 每节点一次；而本谓词只用 `tags` 与 `id` 两字段。现由本查询带出
                 # `tags` 并走 `_is_forget_protected` 的直传入口（同一段判定体）。
-                # #720：`tags` 解析改为**逐行容错**——坏 tags（非法 JSON）此前经
-                # `STNode.from_row` 的 `json.loads` 抛 `JSONDecodeError`，**整轮
-                # 遗忘循环停摆**（本事务回滚、importance 零进展、后台衰减线程退出）。
-                # #267 的容错只收在批量装载面 `_tolerant_nodes`，本处是单点裸解析
-                # 的漏网调用点。口径与 `_tolerant_nodes` 逐字同款：**跳过该行**
-                # （不衰减、不删除、原文留在库里——不去猜它的内容），id 如实计入
-                # `last_skipped_rows`。取「跳过」而非「按未受保护继续衰减」：坏行
-                # 的 `no_forget` 位不可知，fail-safe 侧是不动它。
-                try:
-                    _n_tags = json.loads(_tags) if _tags else []
-                except (TypeError, ValueError):
-                    _bad_rows.append(nid)
-                    continue
+                # `json.loads` 与 `STNode.from_row` 同款裸调（该列由 `_dumps_tags`
+                # 写、`from_row` 亦裸解析）⇒ 坏行的失败语义与旧路径**逐位一致**。
                 if self._is_forget_protected(None, protected_set,
                                              node_id=nid,
-                                             tags=_n_tags):
+                                             tags=json.loads(_tags) if _tags else []):
                     continue  # 不可遗忘（3.2 节）：受保护件不因衰减路径消失
                 # #185：存量坏行兜底——`importance` 为 NULL/非有限时
                 # `cred_step(None, factor)` 抛 TypeError 会**整轮衰减中断**
@@ -3263,27 +3230,13 @@ class LayeredStore:
             ''', (min_confidence,))
             for nid, conf, _tags in c.fetchall():
                 # ★优化（本笔）：与上一段同款——`tags` 由本查询带出，不再逐节点
-                # `get_node`（读整行 + 建 STNode）。
-                # #720：与情境段同款逐行容错——坏 `tags` 此前抛 `JSONDecodeError`
-                # 令**整轮衰减中断**（本段同样走裸 `json.loads`）。口径逐字同款：
-                # 跳过该行（本段只降 confidence，跳过＝该知识节点本轮不衰减）、
-                # id 如实计入 `last_skipped_rows`，不中断整轮。
-                try:
-                    _k_tags = json.loads(_tags) if _tags else []
-                except (TypeError, ValueError):
-                    _bad_rows.append(nid)
-                    continue
+                # `get_node`（读整行 + 建 STNode）。谓词本体与失败语义未变。
                 if self._is_forget_protected(None, protected_set,
                                              node_id=nid,
-                                             tags=_k_tags):
+                                             tags=json.loads(_tags) if _tags else []):
                     continue
                 c.execute("UPDATE nodes SET confidence=? WHERE id=?",
                           (self._decay_value(conf, factor, dt), nid))
-            if _bad_rows:
-                # #720：与 `_strip_incident_edges` 本轮已记的坏 layer 行**合并**
-                # （同一轮内删边助手也往 `last_skipped_rows` 记账）——不覆盖，避免漏报。
-                self.last_skipped_rows = list(dict.fromkeys(
-                    list(self.last_skipped_rows or []) + _bad_rows))
             self._commit_locked()
 
     # ==================== 检索层（M1） ====================
@@ -5162,58 +5115,6 @@ class LayeredStore:
         self._commit_locked()
 
     @_transactional
-    def prune_action_logs(self, keep_rows: int = None) -> int:
-        """回收治理审计表 `action_logs`：只保留最近 `keep_rows` 行
-        （按**插入序** `rowid` 降序，本表 `id` 为 `INTEGER PRIMARY KEY AUTOINCREMENT`
-        ⇒ `id` 序即插入序），返回删除条数。
-
-        #723：本表此前**只追加、无任何回收面**（DDL 无上限、全仓无
-        `DELETE FROM action_logs`）——而高频写点有三：`consolidate_cycle` 尾部
-        （`run_maintenance_cycle` 每周期一行）、`_strip_incident_edges` 审计
-        （每条不可变层边剥离一行）、`set_escalation_enabled`。长程部署
-        （MCP 3 进程 + 心跳 + 睡眠巩固默认 60s）按每维护周期一行估算年化约
-        53 万行/进程。本方法补齐**显式**回收面，形态沿用同族先例
-        `prune_self_snapshots`（「只留最近 keep 条、返回删除条数」）。
-        ★**刻意不自动调用**：本表在多处 docstring 与守卫中被声明为「审计只追加
-        （`action_logs` 无更新/删除路径）」（`log_action` / `import_all` 的 #125
-        #479 硬配套 / `_strip_incident_edges`），且 `import_all` 把**带 id 的
-        `action_logs` 行**视为需密钥治理载荷。自动裁剪会与「不可篡改审计」这一
-        声明契约直接冲突（保留窗口取多少、审计留存期多长属治理策略）⇒ **自动
-        调用与保留窗口的取值属设计者裁面**，本件只提供可显式调用的原语，不改任何
-        既有写路径的行为（见交付报告「需设计者裁」节）。
-        边界（削掉的判别力，如实标注）：①`keep_rows` 缺省取 `ACTION_LOGS_KEEP_ROWS`
-        （**经验标定，追不到理论出处**，取值照 issue #723 建议的「保留最近 10000
-        行」）；②保留序取 `rowid`/`id` 插入序而非墙钟 `ts`（`time.time()` 不单调：
-        NTP 步进 / 快照回滚下按墙钟淘汰会先删刚写入的行，与 #489 同因）；③裁剪
-        本身**留痕**（在删除后落一条 `action_logs_pruned` 审计——否则「审计行被
-        删」这件事反而不可审计；该审计行是删后插入的，必在保留窗口内，不会自删）；
-        ④不动 `engine_meta` 等其它表。
-        """
-        if keep_rows is None:
-            keep_rows = self.ACTION_LOGS_KEEP_ROWS
-        c = self.conn.cursor()
-        c.execute("SELECT COUNT(*) FROM action_logs")
-        before = c.fetchone()[0]
-        if before <= keep_rows:
-            return 0
-        c.execute("DELETE FROM action_logs WHERE id NOT IN"
-                  " (SELECT id FROM action_logs ORDER BY id DESC LIMIT ?)",
-                  (keep_rows,))
-        removed = before - keep_rows
-        # 裁剪留痕（治理动作可审计）：删后插入 ⇒ 本行 id 最大、必在保留窗口内。
-        c.execute("INSERT INTO action_logs"
-                  " (ts, action_type, summary, node_ids, outcome, context)"
-                  " VALUES (?,?,?,?,?,?)",
-                  (time.time(), "action_logs_pruned",
-                   f"action_logs 滚动回收：保留最近 {keep_rows} 行，删除 {removed} 行",
-                   json.dumps([], ensure_ascii=False),
-                   json.dumps({"keep_rows": keep_rows, "removed": removed},
-                              ensure_ascii=False),
-                   json.dumps({}, ensure_ascii=False)))
-        self._commit_locked()
-        return removed
-
-    @_transactional
     def set_escalation_enabled(self, escalation_id: str, enabled: bool,
                                designer_key: str = None):
         """启用/停用升级点（危机响应开关）。
@@ -5349,13 +5250,6 @@ class SpacetimeMemoryEngine:
     #: 仓内无规定该上界的理论章节；取值只需覆盖「当前轮 + 极少近邻轮」即可满足
     #: 同轮去重语义（见 `_note_reuse` docstring 边界）。
     _REUSE_TRACKER_ROUNDS = 5
-
-    #: `flywheel_reuse` 持久表的行数上界（#722）。**经验标定，追不到理论出处**——
-    #: 仓内无规定该上界的理论章节；取值与同族钳制（`gap_history` 滚动保留 2000 条、
-    #: `SELF_SNAPSHOT_MAX=200`）同量级，只为「常驻部署不再无界增长」而不追求保留
-    #: 全历史（该表的用途是跨进程复用观测，滚动窗口足够；见 `_note_reuse` 边界）。
-    #: 裁剪在 `_note_reuse` 落库后同事务执行（同 `record_info_gap` 手法）。
-    FLYWHEEL_REUSE_MAX_ROWS = 20000
 
     def __init__(self, db_path: str = ":memory:", identity: str = "协议实例", role: Role = Role.PRIMARY):
         self.store = LayeredStore(db_path, role=role)
@@ -5495,10 +5389,7 @@ class SpacetimeMemoryEngine:
             err = getattr(self, err_field, "")
             if getattr(self, slot, None) is not None:
                 ok.append(name)
-            elif name == "vision" and not getattr(self, "_vision_attempted", False):
-                # #602：lazy 的判据是**显式**的「尚未尝试」状态，不再是
-                # 「err 为空」——无消息异常（str(e)==""）曾使「尝试过 + 失败」
-                # 与「从未尝试」读数逐位相同。其它 10 个组件无此特判。
+            elif name == "vision" and not err:
                 lazy.append(name)          # 惰性组件：尚未尝试装配
             else:
                 failed[name] = err or "未装配（无错误信息）"
@@ -5510,34 +5401,21 @@ class SpacetimeMemoryEngine:
         启动零负担，身体功能不再拖慢进程启动/MCP 握手）"""
         self._vision_provider = None
         self._vision_error = ""
-        # #602：显式「是否尝试过装配」状态——状态面据此判 lazy，不再用
-        # 「_vision_error 为空」当「未尝试」的代理（无消息异常 ⇒ 空串 ⇒ 误报 lazy）。
-        self._vision_attempted = False
 
     def _ensure_vision(self):
         """惰性装配视觉 provider（首次视觉调用触发）。
-        返回 provider 或 None（失败时 _vision_error 记录原因）。
-
-        #602：进入即置 `_vision_attempted=True`——「是否尝试过」由显式状态承载，
-        不再让观测面从「错误是否为空」反推。
-        #603：成功出口**擦除** `_vision_error`——失败→恢复是惰性装配的常规路径
-        （装好依赖后不重启即恢复），陈旧错误不得继续挂在能力声明上。
-        """
+        返回 provider 或 None（失败时 _vision_error 记录原因）。"""
         if self._vision_provider is not None:
             return self._vision_provider
-        self._vision_attempted = True          # #602：显式「已尝试」状态
         try:
             from vision import create_vision_provider
             p = create_vision_provider()
             if p is not None and p.available():
                 self._vision_provider = p
-                self._vision_error = None      # #603：清陈旧错误（与置位同处落）
                 return p
             self._vision_error = "ultralytics 未安装（pip install ultralytics）"
         except Exception as e:
-            # #602：无消息异常（bare `raise ImportError`）str(e)=="" ⇒ 回落 repr/类名，
-            # 保证失败一定带**可读**标识（空串会被状态面误读成「从未尝试」）。
-            self._vision_error = str(e) or repr(e) or type(e).__name__
+            self._vision_error = str(e)
         return None
 
     def _setup_body(self):
@@ -5673,20 +5551,6 @@ class SpacetimeMemoryEngine:
     # 标记」这一最小面，不做极性求和——本仓零外部依赖，不跨仓 import）。
     _NEGATION_MARKERS = ("不", "非", "未", "无", "没", "别", "莫", "勿")
 
-    # ---- #484：否定判据的**词面**豁免表（单字嵌在非否定常用词里 ≠ 否定） ----
-    # 判据来源：公开 issue #484（「按**词**而不是按**字**匹配」）＋ 复用仓内既有词面
-    # 口径 `lingshu/core/contradiction.py::_NON_NEG`（其 `_has_neg` 在差异片段上先整词
-    # 剔除的「非否定常用词」表），并按 issue 点名的清单补 4 词：无法 / 不同 / 不久 /
-    # 没事。中文无空格词界（本仓不引分词器，与 `_synonym_trigger_hit` 同款声明），故
-    # 以「整词剔除后判剩余否定标记」代替 `\b`；剔除按**长词优先**（确定性排序）。
-    # `_NEGATION_MARKERS` 本身**取值集合不变**（本件不扩否定标记词表）。
-    # 边界（削掉的判别力，如实标注）：`无法`/`不同`/`不久`/`没事` 被豁免后，
-    # 「无法完成 ↔ 能完成」「不同 ↔ 相同」这类**单侧替换**不再判 `negation`
-    # （旧实现会判）——这是 issue 点名要求的豁免，代价如实登记，不隐藏。
-    _NON_NEGATION_WORDS = tuple(sorted(
-        set(_contradiction._NON_NEG) | {"无法", "不同", "不久", "没事"},
-        key=lambda _w: (-len(_w), _w)))
-
     # ---- M5 去重的「成败极性」标签（lingshu #225） ----
     # 判据来源：经验标定（#225 修复轮；**理论章节追不到**）。极性由
     # `record_action_sequence` 的 `success`/`failure` 标签承载（正文前缀
@@ -5721,26 +5585,6 @@ class SpacetimeMemoryEngine:
         b0, b1 = b.time_window
         return min(a1, b1) >= max(a0, b0)
 
-    # ---- #484：否定判据的**词面**口径（非否定常用词豁免） ----
-    # 判据来源：公开 issue #484（「比较两句之间的差异，而不是各自的全局存在性」）＋
-    # 仓内既有词面口径 `lingshu/core/contradiction.py::_NON_NEG`（整词出现即不算否定的
-    # 常用词表，供其 `_has_neg` 在差异片段上使用）。此处**复用同一张表**（不另造词表、
-    # 不引第三方分词库）：中文无空格词界，故以「整词剔除」代替 `\b`。
-    @staticmethod
-    def _has_negation_word(s: str) -> bool:
-        """整串是否含**否定词**（#484：按词面判，而非「是否含否定字」）。
-
-        `_NEGATION_MARKERS` 里的单字大量嵌在**非否定的常用词**里（非常/未来/无法/
-        无论/不同/不久/别人/没事…）：先整词剔除 `_NON_NEGATION_WORDS` 里的非否定
-        常用词，再判剩余否定标记。非 `str` / 空串返回 `False`（退化输入不抛）。
-        """
-        if not isinstance(s, str) or not s:
-            return False
-        t = s
-        for w in SpacetimeMemoryEngine._NON_NEGATION_WORDS:
-            t = t.replace(w, " ")
-        return any(m in t for m in SpacetimeMemoryEngine._NEGATION_MARKERS)
-
     @staticmethod
     def _assertion_divergence(a: str, b: str) -> str:
         """判定两条内容是否构成**实质分歧**（而非同一断言的重复表述）。
@@ -5750,28 +5594,10 @@ class SpacetimeMemoryEngine:
         仍不可达（如实声明边界，不猜）。判据保守：宁判分歧（另立节点）不判重复。
         边界（削掉的判别力）：数值判据只认**阿拉伯数字**字面量；「百分之五十 →
         百分之六十」这类纯中文数词变更不在本判据内（仍按重复合并）——如实声明。
-        #484：否定判据按**词面**（否定**词**）而非「否定**字**」——`_NEGATION_MARKERS`
-        里的单字大量嵌在**非否定的常用词**里（非常/未来/无法/无论/不同/不久/别人/
-        没事…）。旧实现 `any(w in a …) != any(w in b …)` 只比「两句**各自**是否出现过
-        任一否定字」：原句带一个这样的常用词即为 True，更正句再插入「不」/「尚未」
-        也是 True ⇒ 判为无分歧，更正被 M5 当重复吞并（更正文本不落库、无 conflict
-        标签、无 OPPOSITE 边，且 #223 的合并把**错误节点**的 importance 抬到更正的
-        0.9 ⇒ 用更正的原话 recall 反而返回错误事实）。
-        现按**整词**判（`_has_negation_word`，复用仓内 `contradiction._NON_NEG`），且
-        只在「**一方被否定、另一方未被否定**」时判 `negation`——两句都含否定标记
-        （含同向「都 不 X」）仍判无分歧。判据来源：公开 issue #484 正文与维护者复核帖
-        （判据 = 否定标记的**差异**，按词不按字）。
-        边界（判别力变化，如实标注）：①`_NEGATION_MARKERS` **取值集合不变**（未扩
-        否定标记词表；豁免表见 `_NON_NEGATION_WORDS` = 仓内 `contradiction._NON_NEG`
-        ∪ {无法, 不同, 不久, 没事}）；②判在**整句**上（非差异片段）——「他非常认可」
-        vs「他非常认可，不过还需复核」会判分歧（保守方向：宁另立不误并）；③豁免表
-        内的词被整词剔除 ⇒「无法完成 ↔ 能完成」「不同 ↔ 相同」这类**单侧替换**不再
-        判 `negation`（旧实现会判）——这是 issue 点名要求的豁免，代价如实登记；
-        ④不做英文否定识别（旧实现也没有，不扩大面）。
         """
         import re as _re
-        if (SpacetimeMemoryEngine._has_negation_word(a)
-                != SpacetimeMemoryEngine._has_negation_word(b)):
+        marks = SpacetimeMemoryEngine._NEGATION_MARKERS
+        if any(w in a for w in marks) != any(w in b for w in marks):
             return "negation"
         na = _re.findall(r"\d+(?:\.\d+)?", a)
         nb = _re.findall(r"\d+(?:\.\d+)?", b)
@@ -6396,20 +6222,6 @@ class SpacetimeMemoryEngine:
         标签的自动快照，不动其它 SELF 节点与 `protections` 名单）。"""
         return self.store.prune_self_snapshots(
             self.SELF_SNAPSHOT_MAX if keep is None else keep)
-
-    def prune_action_logs(self, keep_rows: int = None) -> int:
-        """回收治理审计表：只留最近 `keep_rows` 行（缺省 `ACTION_LOGS_KEEP_ROWS`），
-        返回删除条数。
-
-        #723：与 `prune_self_snapshots` 同款的「无清理路径补齐」——`action_logs`
-        此前只追加、无任何回收面（DDL 无上限），而高频写点有三（维护周期 / 不可变
-        层边剥离审计 / 升级点开关），长程部署年化约 53 万行/进程。清理面收在 store
-        级 `prune_action_logs`，本方法只是引擎侧的同名入口（便于从公共面调用）。
-        ★**不被自动调用**：本表在多处声明为「审计只追加（无更新/删除路径）」，
-        自动裁剪与保留窗口取值属设计者裁面（见 store 级 docstring 与交付报告）。
-        """
-        return self.store.prune_action_logs(
-            self.ACTION_LOGS_KEEP_ROWS if keep_rows is None else keep_rows)
 
     def get_self_model(self) -> SelfModel:
         """取自认知模型（SelfModel：价值观/信任史/状态变更历史的聚合快照）。"""
@@ -7095,26 +6907,6 @@ class SpacetimeMemoryEngine:
                 "INSERT INTO flywheel_reuse (session_id, round, node_id, ts) "
                 "VALUES (?, ?, ?, ?)",
                 [(self._session_id, rnd, nid, ts) for nid in sorted(new)])
-            # #722：本表是**跨会话累计**的复用观测（行数 = 会话数 × 每会话命中节点
-            # 数），#208 只把去重钉在内存 tracker（最近 K 轮）与「只插 new」两处，
-            # DB 累计层既无读取窗口也无回收面 ⇒ 常驻部署只增不减（#122「无界增长
-            # 族」的 DB 表落点）。现按同文件 `record_info_gap` 对 `gap_history` 的
-            # **同款钳制手法**裁剪：只保留最近 `FLYWHEEL_REUSE_MAX_ROWS` 行。
-            # 保留序取 `rowid`（本表无主键/自增列，`rowid` 即**插入序**）——与
-            # `prune_self_snapshots`(#489) / `enforce_context_cap`(#259) 同键同法，
-            # 不用墙钟 `ts`（`time.time()` 不单调：NTP 步进 / 快照回滚下按墙钟
-            # 淘汰会先删刚写入的行）。
-            # 判据来源：公开 issue #722（「`_note_reuse` 插入后追加同 `gap_history`
-            # 款裁剪」）＋ 同文件 `gap_history` 的既有 2000 行钳制先例。
-            # 边界（削掉的判别力，如实标注）：①上界 `FLYWHEEL_REUSE_MAX_ROWS` 取
-            # **经验标定，追不到理论出处**（与 `_REUSE_TRACKER_ROUNDS` 同族）；
-            # ②裁剪后该表只反映「最近的行」，不构成全历史复用观测——按行数统计
-            # 复用率的下游读到的是**滚动窗口**（与 `gap_history`「滚动保留 2000 条」
-            # 同口径）；③只裁行、不动 `_reuse_tracker` 的内存语义。
-            conn.execute(
-                "DELETE FROM flywheel_reuse WHERE rowid NOT IN"
-                " (SELECT rowid FROM flywheel_reuse ORDER BY rowid DESC LIMIT ?)",
-                (self.FLYWHEEL_REUSE_MAX_ROWS,))
             conn.commit()
         except Exception:
             pass  # 观测落库失败静默（不阻断检索）
@@ -10484,20 +10276,6 @@ class SpacetimeMemoryEngine:
         降级口径（issue #16）：目标库不存在的表跳过并计入 `skipped_tables`；
         否则导出产物一旦含 `entities` 行，回灌同样抛 `OperationalError`。
 
-        #721（值形状闸，与 #125 的键闸并列的第二道）：上列 ② 只管**键**白名单，
-        值形状零校验 ⇒ 备份里某 TEXT(JSON) 列的值若是**容器**（嵌套 dict/list，
-        例如 `context` 列 = `{"k":1}` 而非 `'{"k":1}'` 文本），绑定层抛
-        `ProgrammingError: type 'dict' is not supported`（部分 sqlite 版本族报
-        `IntegrityError: datatype mismatch`）⇒ **整批回滚、整表 0 落库**，既不
-        「部分恢复」也报不出坏行位置。现绑定前逐行逐列归一：列声明类型为 TEXT
-        ⇒ 容器值 `json.dumps` 归一为 JSON 文本（无损往返，`export_all` 写的正是
-        JSON 文本），按表按列计数上报 `normalized_values`；其余列型无法容纳容器
-        ⇒ **跳过该行**并计入 `skipped_rows`（`imported` 计数同步扣除），其余行
-        照常落库。判据来源：公开 issue #721（「绑定前逐行逐列做值归一…或跳过该行
-        并记入 discarded/failed 计数」）＋ 同处 #652② 的「新增上报键」先例。
-        边界（如实标注）：只归一**容器**值；数值越界仍走 #574/#690 的钳制，
-        字符串编码口径不动（#378/#494 的面）。
-
         #93（悬挂引用不再静默落库）：本方法所在连接已开 `PRAGMA
         foreign_keys=ON`（见 `LayeredStore._connect`），备份里指向不存在节点的边
         若照旧 `INSERT OR REPLACE` 会抛 `FOREIGN KEY constraint failed` 并**中断
@@ -10586,9 +10364,6 @@ class SpacetimeMemoryEngine:
         missing_columns = {}
         orphan_rows = []
         rejected_layer = []
-        # #721：值形状面上报（容器值经 JSON 文本归一 / 无法容纳而跳过的行）。
-        normalized_values = {}
-        skipped_rows = {}
         for table in self.M13_TABLES:
             if table not in existing:
                 skipped.append(table)
@@ -10627,11 +10402,6 @@ class SpacetimeMemoryEngine:
                 continue
             placeholders = ",".join("?" for _ in cols)
             col_sql = ",".join(cols)
-            # #721：列**声明类型**（`PRAGMA table_info` 的 type 栏）——值形状归一的
-            # 判据来源（TEXT 列才可把容器值 `json.dumps` 归一）。与上方 `allowed`
-            # 同源同一次表结构读数（同一 `PRAGMA table_info`，不引入第二份列真源）。
-            col_types = {r[1]: (r[2] or "").upper()
-                         for r in c.execute(f"PRAGMA table_info({table})")}
             # #93：外键开启（`PRAGMA foreign_keys=ON`）后，指向不存在节点的边会让
             # `INSERT OR REPLACE` 抛 `FOREIGN KEY constraint failed` 并**中断整次
             # 导入**。故先按库内节点集合预筛：孤儿边**不导入**、计入返回值
@@ -10717,44 +10487,9 @@ class SpacetimeMemoryEngine:
                     if "confidence" in r:
                         r["confidence"] = _finite_clamp(
                             r.get("confidence"), 0.0, 1.0, default=0.5)
-                # #721：**值形状**归一（绑定前逐行逐列）。#125 的闸只管**键**白名单，
-                # 值形状零校验 ⇒ 备份里某 TEXT(JSON) 列的值若是**容器**（嵌套 dict /
-                # list，例如 `context` 列 = `{"k":1}` 而非 `'{"k":1}'` 文本），
-                # `tuple(r.get(col) …)` 直接绑 SQL 时绑定层抛
-                # `ProgrammingError: type 'dict' is not supported`（部分 sqlite 版本族
-                # 报 `IntegrityError: datatype mismatch`）——**整批回滚、整表 0 落库**，
-                # 既不「部分恢复」、也报不出坏行位置，与 docstring 承诺的
-                # 「跳过并报告 / 保持部分恢复语义」相悖。
-                # 口径（与 `_tolerant_nodes`「逐行容错、如实计数」同款，且**不丢数据**）：
-                #   · 列声明类型为 TEXT ⇒ 容器值按该列**既有存储形态**归一为 JSON 文本
-                #     （`json.dumps`，`export_all` 写的正是 JSON 文本 ⇒ 无损往返），
-                #     逐列计数上报 `normalized_values`；
-                #   · 其余列型（REAL/INTEGER/BLOB…）无法容纳容器 ⇒ **跳过该行**并计入
-                #     `skipped_rows`（不去猜「这个 dict 想表达什么数」），其余行照常落库。
-                # 合法值（None/str/int/float/bytes；bool 是 int 子类）原样通过 ⇒
-                # 合法备份零改动、零新键内容。
-                # 判据来源：公开 issue #721（「绑定前逐行逐列做值归一…或跳过该行并计入
-                # discarded/failed 计数」）＋ 同处 #652② 的「新增上报键」先例。
-                # 边界（如实标注）：只归一**容器**值；数值越界仍走 #574/#690 的钳制、
-                # 字符串编码口径不动（那是 #378/#494 的面）。
-                _skip_row = False
-                for _col in cols:
-                    _val = r.get(_col)
-                    if _val is None or isinstance(_val, (str, int, float, bytes)):
-                        continue
-                    if col_types.get(_col, "") == "TEXT":
-                        r[_col] = json.dumps(_val, ensure_ascii=False)
-                        _nv = normalized_values.setdefault(table, {})
-                        _nv[_col] = _nv.get(_col, 0) + 1
-                    else:
-                        _skip_row = True
-                        break
-                if _skip_row:
-                    skipped_rows[table] = skipped_rows.get(table, 0) + 1
-                    continue
                 c.execute(f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})",
                           tuple(r.get(col) for col in cols))
-            counts[table] = len(rows) - skipped_rows.get(table, 0)
+            counts[table] = len(rows)
         # ③ 硬配套：审计只追加（`action_logs` 无更新/删除路径）。
         if guarded_meta or id_log_rows:
             self.store.log_action(
@@ -10770,15 +10505,6 @@ class SpacetimeMemoryEngine:
                 outcome={"requires_review": True, "immutable_rows": len(immutable_rows),
                          "relayer_rows": len(relayer_rows)})
         self._commit_locked()
-        # #493：导入后把运行期容量状态随盘面刷新（与「启动时从库读」同口径）：
-        # 上方逐表 INSERT OR REPLACE 已把备份的 engine_meta（含 context_max）落库，
-        # 但 self._context_max 仍是构造期读到的旧值；而 enforce_context_cap 的 FIFO
-        # 淘汰作用于**整库**情境层 ⇒ 下一次 add_context 会按旧上限（默认 200）静默批量
-        # 删掉备份里多出的情境记忆（灾备恢复等于无效）。复用既有读数路径
-        # _load_context_max（不触发淘汰，语义与构造期一致）；读点置于本次写事务提交
-        # 之后，读到的是已落定状态。不覆盖 set_context_cap 的显式设置语义，也不改
-        # enforce_context_cap 的裁剪判据。判据来源：公开 issue #493。
-        self._context_max = self._load_context_max()
         # 恢复自检：导入后跑 `PRAGMA foreign_key_check` 体检。经上方 #93 预筛，正常
         # 路径下应恒为空；保留本步作为「白名单列裁剪后仍出现悬挂」的兜底观测
         # （不拦写入，随返回值交付）。
@@ -10799,10 +10525,7 @@ class SpacetimeMemoryEngine:
                 "immutable_rows": [i for i in immutable_rows if i],
                 "requires_review": bool(immutable_rows or guarded_meta or id_log_rows),
                 "rejected_invalid_layer": {"count": len(rejected_layer),
-                                           "sample": rejected_layer[:20]},
-                # #721：值形状面上报（新增键，与 #652② 加 `missing_columns` 同例）。
-                "normalized_values": normalized_values,
-                "skipped_rows": skipped_rows}
+                                           "sample": rejected_layer[:20]}}
 
     def verify_integrity(self) -> Dict:
         """M13：完整性校验（边引用节点存在性 + 表计数）
