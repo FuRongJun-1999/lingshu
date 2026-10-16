@@ -75,6 +75,19 @@ def frame_points(points: Sequence[Vec3], screen_w: int, screen_h: int, *,
     fit = [tuple(float(v) for v in p) for p in (fit_points or points)]
     if not pts or not fit:
         raise ValueError("frame_points：点集为空")
+    #: fov_deg 是视锥**全角**，半角 half = fov/2 必须落在开区间 (0°, 90°)：
+    #: `tan(half)` 在 0° 处为 0（除零）、在 90° 处发散，两侧都算不出有限距离。
+    #: 不校验的后果不是「报错」而是**两种更坏的形态**：
+    #:   · fov_deg == 0.0 ⇒ `math.tan(0.0) == 0.0` ⇒ 下方 `dist` 除零 → `ZeroDivisionError`
+    #:     （且本函数的调用方 `frame_mesh` 会吞掉该异常，退回角点路径再调一次，掩盖第一次）
+    #:   · fov_deg < 0 或 >= 180 ⇒ **静默**算出负的 / 发散的 `dist`，得到物理上无意义的相机，
+    #:     一路带进 `Camera3D`（其 `focal()` 同一处除法也会崩），错误延后到投影才现形。
+    #: 故在入口显式拒绝——与本函数「点集为空即 raise」同一惯例，且与 `Camera3D` 的
+    #: `to_meta`/`from_meta` 把相机参数当**真实位姿**（残缺即拒绝）的口径一致。
+    if not (0.0 < float(fov_deg) < 180.0):
+        raise ValueError(
+            "frame_points：fov_deg 必须在开区间 (0, 180) 内（当前 %r）；"
+            "视锥半角 tan 在两端分别除零与发散" % (fov_deg,))
 
     lo = [min(p[k] for p in pts) for k in range(3)]
     hi = [max(p[k] for p in pts) for k in range(3)]
