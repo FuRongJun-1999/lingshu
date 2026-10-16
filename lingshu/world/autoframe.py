@@ -76,6 +76,17 @@ def frame_points(points: Sequence[Vec3], screen_w: int, screen_h: int, *,
     if not pts or not fit:
         raise ValueError("frame_points：点集为空")
 
+    # #731：fov 是取景几何的唯一视角参数，非法值在深处才爆或干脆静默产出病态相机：
+    #   · fov=0   ⇒ tan(半角)=0 ⇒ 下方初值公式 ZeroDivisionError（改前实测）；
+    #   · fov<0   ⇒ tan(半角)<0 ⇒ 距离为负 ⇒ 相机跑到主体另一侧（静默错）；
+    #   · fov≥180 ⇒ 半角 ≥90° ⇒ tan 爆大 ⇒ 距离→0 ⇒ 相机退到主体中心（静默错）。
+    # 故在**入口**统一校验（所有公开路径 frame_mesh/auto_view/frame_world 最终
+    # 都汇聚到本函数；frame_mesh 的 try 回退分支之后还会在 try 外再调一次
+    # frame_points，ValueError 能完整传到调用方，不会被 except 吞掉）。
+    if not (0.0 < float(fov_deg) < 180.0):
+        raise ValueError(
+            "frame_points：fov_deg 必须落在开区间 (0,180) 度，got %r" % (fov_deg,))
+
     lo = [min(p[k] for p in pts) for k in range(3)]
     hi = [max(p[k] for p in pts) for k in range(3)]
     center = tuple((lo[k] + hi[k]) / 2.0 for k in range(3))
