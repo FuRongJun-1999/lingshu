@@ -173,6 +173,13 @@ def parse_anchor(text: str) -> Optional[VPrim]:
         `person-1` 之外的 `obj.2` / `a/b` / 含非 \\w 的类别会被截断成末段
         （`obj.2@(...)` 读回 `2`）——现放宽到非空白/非 `@`/非括号。
       - describe() 尾部的 `conf=` 一并读回；旧实现丢弃该字段 ⇒ 一律回默认 0.5。
+      - 坐标允许**负号**（#730）：写出侧 `int(v)` 天然带 `-`，而检测框溢出画面
+        （目标部分在画布外）时 x1/y1 为负是常见形态——`docs/second_third_batch_usage.md`
+        自带的 `bbox=[px-20, py-30, px+20, py+30]` 配方在目标靠左/靠上时就产出负坐标；
+        世界侧 `Camera3D.unproject` 对负像素同样线性可逆，全仓无任何非负钳位
+        （`world3d.build_camera_observation` / `add_vprim` 只校验有限数）。故坐标
+        本就是**有符号**量，读回侧正则必须收 `-?\\d+`；旧式 `\\d+` 是读回侧单方面
+        收窄了格式 ⇒ 自家 `anchor_text()`/`describe()` 的负坐标产物读不回。
       - 正则不再带可变长前缀（旧式 `([\\w\\-]+)@\\(` 的无边界前缀在长词串上
         平方回溯：`'a'*16000` 实测 0.69s，调用方 core.world3d build / vprim_query
         对库内 content 不截断 → 可被内容拖垮）。现改为先定位字面量 `@(`
@@ -183,7 +190,7 @@ def parse_anchor(text: str) -> Optional[VPrim]:
     import re
 
     m = re.search(
-        r"@\((\d+),(\d+),(\d+),(\d+)\)"
+        r"@\((-?\d+),(-?\d+),(-?\d+),(-?\d+)\)"
         r"(?:\s+\d+x\d+\s+conf=([0-9]*\.?[0-9]+))?", text)
     if not m:
         return None
