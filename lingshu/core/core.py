@@ -8140,6 +8140,77 @@ class SpacetimeMemoryEngine:
                 "（%s 在 %s 之下）⇒ fail-closed，不向真源追加写" % (wal_path, md))
         return wal_path
 
+    #: `load` 的 `mdcg_root` 读入白名单根来源（issue #744 · SEC P1）。
+    #:
+    #: 缺陷：`load` 分支把模型驱动面的 `params["mdcg_root"]` **原样**透传给
+    #: `SimulationLoop.load_priors`，后者只做 `mdcg_root or MDCG_ROOT` 回落、
+    #: 无任何根判定 ⇒ 指向部署方任一可读目录即枚举其 `contextual/*.md`，
+    #: `- entity:` 行被原样 `scene.add_entity` 种进世界模型（对抗先验注入）——
+    #: 与写向 `flush` 经 `_confine_simloop_out_path`（#324）的白名单根闸
+    #: **不对称**（本件实测写拒读放：同一根外树 flush 拒、load 放行 seeded=2）。
+    #: 修法（与写向同款根判定，读向语义）：模型给的 `mdcg_root` 须落在
+    #: 「认知图真源 `MDCG_ROOT` ＋ 显式配置面 `LINGSHU_SIMLOOP_IN_ROOT`
+    #: （`os.pathsep` 多根）」的**并集**内，越界 fail-closed。与写向（#480 起
+    #: 默认根**不**回落 `MDCG_ROOT`——写真源是被禁止的）刻意不同：读向的
+    #: **设计对象就是真源**（load 的语义＝「认知图现在时节点 → 世界图先验」，
+    #: `load_priors` 缺省回落 `MDCG_ROOT`），故真源恒在白名单内；显式面只用于
+    #: 真源之外另有语料库的部署**加挂**。归一 `realpath + normcase`（与
+    #: `_confine_simloop_out_path` 同口径）——软链/junction 别名与 `..` 逃逸
+    #: 不得绕过根判定。零可读根（`MDCG_ROOT` 与显式面均缺）而模型仍给非空根
+    #: ⇒ 同样 fail-closed（此时无「已配置根」可言）。
+    #: 边界（如实标注）：闸在门面侧（模型驱动面）——`load_priors` 本身仍是
+    #: 直调库 API、不在此层设白名单（与 `flush_payloads` 的 out_path 走门面闸
+    #: 同一分层口径，见其 docstring）；读向**不**限 `Role.PRIMARY`（#480 的
+    #: 角色闸判据是「写文件类动作」，读真源属 SUB 合法语义）；亦不改
+    #: `limit`/BOM/显式参数优先（#247/#600）等既有读向口径。
+    #: 判据来源：公开 issue #744 修复建议（「load 分支对 `mdcg_root` 施加与
+    #: `_confine_simloop_out_path` 同款根判定（越界 fail-closed），或直接拒绝
+    #: 与已配置根不一致的模型输入」）＋ 同文件 #324/#480 已采纳的
+    #: 「realpath+normcase 包含性判定 → fail-closed」先例。
+    SIMLOOP_IN_ROOT_ENV = "LINGSHU_SIMLOOP_IN_ROOT"
+
+    @classmethod
+    def _simloop_in_roots(cls) -> List[str]:
+        """`load` 读入白名单根＝`MDCG_ROOT`（真源·设计的读取对象）＋显式配置面。
+
+        与 `_simloop_out_roots`（#480 起仅显式面、不回落真源）刻意不同：读真源
+        就是 load 的本职（「认知图 → 世界图先验」），故真源**恒在**白名单；
+        `LINGSHU_SIMLOOP_IN_ROOT` 只做加挂（真源之外另有语料库的部署）。
+        """
+        roots: List[str] = []
+        md = str(os.environ.get("MDCG_ROOT", "") or "").strip()
+        if md:
+            roots.append(md)
+        raw = os.environ.get(cls.SIMLOOP_IN_ROOT_ENV, "")
+        if raw:
+            roots.extend(p for p in str(raw).split(os.pathsep) if p.strip())
+        return roots
+
+    @classmethod
+    def _confine_simloop_mdcg_root(cls, mdcg_root: str) -> str:
+        """把 `load` 的 `mdcg_root` 收进读入白名单根；越界/零可读根 ⇒ `ValueError`（#744）。
+
+        归一用 `realpath + normcase`（与 `_confine_simloop_out_path` 同口径）——
+        软链/junction 别名不得绕过根判定。空串原样放行：`load_priors` 内部回落
+        `MDCG_ROOT`（恒属白名单；`MDCG_ROOT` 缺则什么都不读），与 #247 的
+        「显式参数优先，缺省回落」口径不冲突。
+        """
+        if not str(mdcg_root).strip():
+            return mdcg_root
+        roots = cls._simloop_in_roots()
+        if not roots:
+            raise ValueError(
+                "#744 load 拒绝：未配置可读根（MDCG_ROOT 与 LINGSHU_SIMLOOP_IN_ROOT "
+                "均缺）⇒ fail-closed，不接受模型驱动的任意目录读")
+        target = os.path.normcase(os.path.realpath(mdcg_root))
+        for r in roots:
+            root = os.path.normcase(os.path.realpath(r))
+            if target == root or target.startswith(root + os.sep):
+                return mdcg_root
+        raise ValueError(
+            "#744 load 拒绝：mdcg_root 越出白名单根（%s 不在 %r 之下）"
+            % (mdcg_root, roots))
+
     def wm_simloop(self, action: str, params: dict = None) -> dict:
         """世界模型推演循环（里程碑 M5.1 · WM-SIMLOOP-REV1）：
         - setup: 构建推演循环（size/seed/entities/mask/wal_path）
@@ -8228,8 +8299,15 @@ class SpacetimeMemoryEngine:
         if action == "step":
             return {"status": "ok", "state": sl.step(n=int(p.get("n", 1)))}
         if action == "load":
+            try:
+                # #744：模型驱动面给的 mdcg_root 先过读入白名单根闸（先判后读，
+                # 越界即拒）——与 flush 的 _confine_simloop_out_path 对称收口，
+                # 写拒读放的不对称就此闭合
+                root_in = self._confine_simloop_mdcg_root(str(p.get("mdcg_root", "")))
+            except ValueError as e:
+                return {"status": "error", "error": str(e)}
             return {"status": "ok",
-                    "load": sl.load_priors(str(p.get("mdcg_root", "")),
+                    "load": sl.load_priors(root_in,
                                            limit=int(p.get("limit", 20)), brain=p.get("brain"),
                                            memory_id=p.get("memory_id"))}
         if action == "flush":

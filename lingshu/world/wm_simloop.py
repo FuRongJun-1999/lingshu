@@ -644,6 +644,15 @@ class SimulationLoop:
         判据来源：经验标定（本件 #247，仓内无「simloop 先验装载上限」的理论
         章节；docs/theory/世界模型与语义时空图_完整理论整理与实现路线.md
         未涉及）。削掉的判别力：无（两处均为「参数本应生效而未生效」）。
+
+        #744（安全 P1 · 读向根闸的所在层）：`mdcg_root` 由模型驱动面给出时，
+        白名单闸在门面侧——`SpacetimeMemoryEngine._confine_simloop_mdcg_root`
+        （`wm_simloop("load")` 先判后读，`mdcg_root` 须落在 `MDCG_ROOT` ＋
+        `LINGSHU_SIMLOOP_IN_ROOT` 并集内，越界 fail-closed）。与 `flush_payloads`
+        的 `out_path` 走 `_confine_simloop_out_path`（#324）同一分层口径：本方法
+        是被 Python 直接持有的库 API（调用方已持对象、本可任意 open），不在此层
+        做路径白名单。直调时 `mdcg_root` 语义不变（显式参数优先，缺省回落
+        MDCG_ROOT）。
         """
         if brain is not None:
             store = getattr(brain, "store", brain)
