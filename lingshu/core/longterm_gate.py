@@ -23,6 +23,29 @@ import time
 _log = logging.getLogger(__name__)
 
 
+def _prefix_signature(conn, max_rowid: int):
+    """`rowid <= max_rowid` 前缀的库签名 (COUNT(*), MAX(rowid), SUM(LENGTH(content)))。
+
+    lingshu #462：供 _prefix_intact 判断缓存覆盖的那段前缀是否**一字未动**。
+    """
+    row = conn.execute(
+        "SELECT COUNT(*), COALESCE(MAX(rowid),0), "
+        "COALESCE(SUM(LENGTH(content)),0) FROM nodes WHERE rowid <= ?",
+        (max_rowid,)).fetchone()
+    return (int(row[0]), int(row[1]), int(row[2]))
+
+
+def _prefix_intact(conn, cached_sig) -> bool:
+    """缓存覆盖的前缀是否未变（lingshu #462）。
+
+    生效条件：`rowid <= 缓存时的 MAX(rowid)` 这一段的
+    (节点数, MAX(rowid), 正文总长) 与缓存时刻三项**全等**才返回 True
+    —— 此时缓存里的 per_node/union/counts 对旧行仍然成立，可安全增量并入。
+    """
+    old_cnt, old_max, old_len = cached_sig
+    return _prefix_signature(conn, old_max) == (old_cnt, old_max, old_len)
+
+
 class LongTermMemoryGate:
     """长期记忆写入决策器（挂载于引擎，纯标准库）。"""
 
@@ -43,6 +66,7 @@ class LongTermMemoryGate:
         if weights:
             self.weights.update(weights)
         # 全库核心词表缓存（lingshu #389）：按 (节点数, max rowid) 签名失效。
+        # #462 起，增量并入前另做「前缀不变校验」（见 _prefix_intact）。
         self._known_cache = None
         self._known_sig = None
 
@@ -192,6 +216,16 @@ class LongTermMemoryGate:
         **仅追加**（节点数与总长增加、max(rowid) 增加）→ 只切新增行并增量并入
         （#389 的实际工作负载是「每条外部输入都写一个节点」，全量重建会让缓存
         形同虚设）；其余情形（删除/改写/清空）→ 全量重建。
+
+        lingshu #462（P1）：上述「只比三项变大」的判据**分不清追加与删除/改写**
+        ——「删 1 条再增 ≥2 条」时三项同样全变大，于是误走增量分支；而增量分支
+        只 `SELECT ... WHERE rowid > old_max` 并入新行、从不剔除已删节点，
+        被删节点的 gram 就永久留在参考集里。后果：被遗忘的内容再次出现时
+        novelty 被算成 0.0，写入层级从 knowledge 掉到 context（新知识被当旧知识
+        降级）。修法：增量并入**之前**加「前缀不变校验」——查
+        `rowid <= old_max` 前缀的 (节点数, MAX(rowid), 正文总长)，与缓存时刻
+        三项全等才走增量，否则落回全量重建。生效条件即该前缀一字未动；
+        纯追加时前缀不动，故 #389 的快路径（不重切全库正文）不被回退。
         """
         row = self.engine.store.conn.execute(
             "SELECT count(*), COALESCE(MAX(rowid),0), "
@@ -203,19 +237,27 @@ class LongTermMemoryGate:
         if cache is not None:
             old_cnt, old_max, old_len = self._known_sig
             if sig[0] > old_cnt and sig[1] > old_max and sig[2] > old_len:
-                rows = self.engine.store.conn.execute(
-                    "SELECT id, content FROM nodes WHERE rowid > ?", (old_max,)
-                ).fetchall()
-                union, counts, per_node = (cache["union"], cache["counts"],
-                                           cache["per_node"])
-                for nid, content in rows:
-                    gs = self._core_grams(content)
-                    per_node[str(nid)] = gs
-                    union |= gs
-                    for g in gs:
-                        counts[g] = counts.get(g, 0) + 1
-                self._known_sig = sig
-                return union, counts, per_node, sig
+                # lingshu #462：三项全变大**不等于**「只是追加」——删除
+                # （典型「删 1 条再增 ≥2 条」）与改写旧行都会让全表签名变大，
+                # 旧判据于是误走增量分支，把被删/被改写节点的 gram 留在参考集里
+                # （被遗忘的内容再现时 novelty=0.0、层级从 knowledge 掉到 context）。
+                # 生效条件：`rowid <= old_max` 前缀的 (节点数, MAX(rowid),
+                # 正文总长) 与缓存时刻三项**全等**才允许增量并入；否则落回
+                # 下面的全量重建。纯追加时前缀不动，#389 的快路径不受影响。
+                if _prefix_intact(self.engine.store.conn, self._known_sig):
+                    rows = self.engine.store.conn.execute(
+                        "SELECT id, content FROM nodes WHERE rowid > ?", (old_max,)
+                    ).fetchall()
+                    union, counts, per_node = (cache["union"], cache["counts"],
+                                               cache["per_node"])
+                    for nid, content in rows:
+                        gs = self._core_grams(content)
+                        per_node[str(nid)] = gs
+                        union |= gs
+                        for g in gs:
+                            counts[g] = counts.get(g, 0) + 1
+                    self._known_sig = sig
+                    return union, counts, per_node, sig
         rows = self.engine.store.conn.execute(
             "SELECT id, content FROM nodes").fetchall()
         union, counts, per_node = set(), {}, {}
@@ -319,6 +361,24 @@ class LongTermMemoryGate:
             out.append(t)
         return out
 
+    def _assertion_divergence(self, a: str, b: str) -> str:
+        """复用**引擎侧**分歧判据（core.py:5904，与 M5 去重腿同款 · #481）。
+
+        gate 的「已存在」命中腿必须与 add_perception 的 M5 去重腿用**同一套**
+        判据（core.py:6094 的 self._assertion_divergence）——在 gate 内另造一套
+        会让同一对文本在一条腿合并、另一条腿另立，行为分叉。
+
+        引擎缺该方法（旧版 / 测试桩引擎）或调用抛错时返回空串（无分歧）：
+        新闸失败时退回修复前的合并语义，不因判定器异常而拒绝写入。
+        """
+        fn = getattr(self.engine, "_assertion_divergence", None)
+        if not callable(fn):
+            return ""
+        try:
+            return fn(a, b) or ""
+        except Exception:
+            return ""
+
     def write_snapshot(self, content: str, source: str = "snapshot",
                        tags: list = None, entities: list = None,
                        importance_hint: float = None) -> dict:
@@ -385,10 +445,28 @@ class LongTermMemoryGate:
                     "write_failed": False, "write_error": None}
 
         node_id = None
+        # #481：分歧状态（命中腿判定结果）与分歧对象，供下方新建腿落账用。
+        divergence = ""
+        divergent_with = None
         if existing_id:
             node = engine.store.get_node(existing_id)
+            divergence = (self._assertion_divergence(content, node.content)
+                          if node is not None else "")
             if node is None or node.layer in engine.store.IMMUTABLE_LAYERS:
                 existing_id = None      # 不可写共享层 → 改为新建（#217）
+            elif divergence:
+                # #481：命中腿旧实现只按 hits[0][1] >= 0.95（search_content 得分）
+                # 判「已存在」即合并，**不看断言是否分歧** ⇒ 否定更正
+                # （「仍然可用」→「仍然不可用」，jaccard 0.960526 ≥ 0.95）被并进
+                # 旧节点：更正文本不落库（content 行数为 0），旧节点 importance
+                # 被抬到更正值，hint ≥ 0.7 时更被 protect_node 打 no_forget
+                # ——**错误记忆被永久保护**；无 hint 时整条 discarded。
+                # 同一对文本走 add_perception 却会另立新节点（M5 腿有 divergence
+                # 闸）⇒ 缺陷只在 gate 这条腿。现命中后先问分歧判据（与 M5 腿同款、
+                # 同判据），判为分歧（negation/numeric）即另立新节点并落库更正文本；
+                # 纯重复/无分歧仍走原合并逻辑。0.95 阈值与 tag_bonus 计分未动。
+                divergent_with = existing_id
+                existing_id = None
             else:
                 try:
                     import json as _json
@@ -439,6 +517,18 @@ class LongTermMemoryGate:
                     content, importance=imp, tags=(tags or []) + ["gate"],
                     entities=entities or None, skip_dedup=True)
                 node_id = getattr(node, "id", None) or node
+
+        if divergent_with and node_id is not None:
+            # #481：分歧更正与原命题落账（复用 core.py:6142 M5 同款通道：
+            # OPPOSITE 边 + 双方 conflict 标签，待验证单元复核）。共享层/角色闸
+            # 拒绝时只告警，不回滚已写入的更正节点，也不改返回值语义。
+            try:
+                engine.store.register_conflict(node_id, divergent_with)
+            except Exception as exc:
+                _log.warning(
+                    "write_snapshot 分歧落账失败（更正节点 %s 已入库，与 %s 的"
+                    "OPPOSITE 边未建）：%s: %s",
+                    node_id, divergent_with, type(exc).__name__, exc)
 
         # 回报 = 事实：layer 取回读的实写层（#224）
         stored = engine.store.get_node(node_id)

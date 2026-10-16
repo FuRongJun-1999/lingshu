@@ -2186,7 +2186,21 @@ class LayeredStore:
         旧实现把 delta 原样拼进 `confidence + ?` ⇒ `confidence + NaN = NaN` 落库成
         NULL（`MIN/MAX` 遇 NULL 仍回 NULL）；此后 `decay_cycle` 的
         `WHERE confidence > ? AND confidence < 1.0` 对 NULL 全不成立 ⇒ 该行永不衰减。
+
+        #127（共享层越权写面 · 数值接口）：非 PRIMARY 不得改**共享层**（anchor/structure）
+        节点的置信度。旧实现方法体内零层/角色判定 ⇒ SUB 对 PRIMARY 建的锚点/结构行调负
+        delta（实测 -1.0）不抛异常且值落 0.0（1.0 → 0.0），把「不可遗忘」的共享层记忆直接
+        打空并落库。判据与措辞同源 `add_node`（core.py:1666）/ `tag_node`（core.py:3783）：
+        写权限 = `SHARED_LAYERS`，按**目标节点**的 layer 判、不看调用者所在层 ⇒ SUB 对本地
+        层（knowledge/context/self）仍可写，不过度封锁。闸在写入之前，被拒时值不变。
+        判据来源：公开 issue #127 ＋ 待裁清单 D-33（core.py:1640-1641 记其为待裁项，本件收口）。
         """
+        if self.role != Role.PRIMARY:
+            _n = self.get_node(node_id)
+            if _n is not None and _n.layer in self.SHARED_LAYERS:
+                raise PermissionError(
+                    f"role={self.role.value} 无权更新共享层节点（{node_id} 为 "
+                    f"{_n.layer.value}）的置信度，共享层由父节点主控（#127）")
         delta = _finite_or(delta, 0.0)
         with self._lock:
             c = self.conn.cursor()
@@ -4550,7 +4564,21 @@ class LayeredStore:
         旧实现原样拼进 `importance + ?` ⇒ NaN 落库成 NULL，此后 `decay_cycle` 的
         `WHERE importance > ?`（情境层遗忘门）对 NULL 全不成立 ⇒ 该节点**永不遗忘**；
         `+inf` 则使其在所有 `ORDER BY importance DESC` 检索里永远排第一。
+
+        #127（共享层越权写面 · 数值接口）：非 PRIMARY 不得改**共享层**（anchor/structure）
+        节点的重要度。旧实现方法体内零层/角色判定 ⇒ SUB 对 PRIMARY 建的结构/锚点行调负
+        delta（实测 -5.0）不抛异常且值落 0.0（0.8 → 0.0），共享层节点被静默降权并落库。
+        判据与措辞同源 `add_node`（core.py:1666）/ `tag_node`（core.py:3783）：写权限 =
+        `SHARED_LAYERS`，按**目标节点**的 layer 判、不看调用者所在层 ⇒ SUB 对本地层
+        （knowledge/context/self）仍可写，不过度封锁。闸在写入之前，被拒时值不变。
+        判据来源：公开 issue #127 ＋ 待裁清单 D-33（core.py:1640-1641 记其为待裁项，本件收口）。
         """
+        if self.role != Role.PRIMARY:
+            _n = self.get_node(node_id)
+            if _n is not None and _n.layer in self.SHARED_LAYERS:
+                raise PermissionError(
+                    f"role={self.role.value} 无权更新共享层节点（{node_id} 为 "
+                    f"{_n.layer.value}）的重要度，共享层由父节点主控（#127）")
         delta = _finite_or(delta, 0.0)
         c = self.conn.cursor()
         c.execute("UPDATE nodes SET importance = MIN(1.0, MAX(0.0, importance + ?)) WHERE id=?",
@@ -6138,7 +6166,25 @@ class SpacetimeMemoryEngine:
     def add_evidence(self, node_id: str, source: str, supports: bool = True,
                      weight: float = 1.0, note: str = "",
                      self_generated: bool = False) -> Dict:
-        """为节点记一条外部证据（supports=False 即反证），返回更新后的评估。"""
+        """为节点记一条外部证据（supports=False 即反证），返回更新后的评估。
+
+        #127（共享层越权写面 · 证据账本腿）：非 PRIMARY 不得给**共享层**（anchor/
+        structure）节点记证据。旧实现方法体内零角色检查 ⇒ 经 `evidence.py` 的
+        `record()` → `sync()` 裸 SQL `UPDATE nodes SET confidence=?`（core/evidence.py:130）
+        可把 PRIMARY 建的锚点 confidence 1.0 打到 0.333333、评估状态变 refuted，绕开
+        `add_node`/`tag_node` 的角色闸。闸放**入口**而非 `evidence.py.sync`：sync 也服务
+        PRIMARY 的内部同步腿，拦在底层会改 PRIMARY 行为（本件要求 PRIMARY 逐位不变）。
+        判据与措辞同源 `add_node`（core.py:1666）/ `tag_node`（core.py:3783）：写权限 =
+        `SHARED_LAYERS`，按**目标节点**的 layer 判 ⇒ SUB 对本地层节点仍可记证据。
+        两个角色载体任一为 SUB 即拒（`SpacetimeMemoryEngine.role` 与 `LayeredStore.role`；
+        正常构造下二者同值，见 core.py:5491-5493）。判据来源：公开 issue #127。
+        """
+        if self.role != Role.PRIMARY or self.store.role != Role.PRIMARY:
+            _n = self.store.get_node(node_id)
+            if _n is not None and _n.layer in self.store.SHARED_LAYERS:
+                raise PermissionError(
+                    f"role={self.role.value} 无权给共享层节点（{node_id} 为 "
+                    f"{_n.layer.value}）记证据，共享层由父节点主控（#127）")
         from .evidence import SUPPORT, CONTRADICT
         ledger = self.enable_evidence_ledger()
         ledger.record(node_id, source, SUPPORT if supports else CONTRADICT,
