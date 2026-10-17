@@ -1,0 +1,57 @@
+{
+  "schema": "mvbrief/1",
+  "title": "夜行",
+  "artist": "灵枢 · 六十",
+  "duration_s": 24.0,
+  "fps": 24,
+  "size": [960, 540],
+  "export_size": [960, 540],
+  "tempo": {"bpm": 120.0, "meter": [4, 4], "offset_s": 0.0},
+  "key": {"tonic": "A", "mode": "minor"},
+  "style": {
+    "mood": "low_key",
+    "palette": "neon_night",
+    "sky_top": [8, 10, 26],
+    "sky_horizon": [58, 38, 72],
+    "ground": [16, 18, 30],
+    "fog_density": 0.28,
+    "bloom": 0.55,
+    "vignette": 0.42,
+    "grain": 0.018,
+    "shade": "studio",
+    "smooth": true,
+    "cull": true,
+    "grade": {
+      "contrast": 1.10,
+      "saturation": 1.18,
+      "shadow_tint": [0.90, 0.98, 1.18],
+      "highlight_tint": [1.08, 1.00, 0.94],
+      "lift": 0.02
+    }
+  },
+  "sections": [
+    {"kind": "intro", "start_s": 0.0, "end_s": 4.0, "energy": 0.22, "shot_scale": "extreme_wide", "move_bias": 0.15},
+    {"kind": "verse", "start_s": 4.0, "end_s": 10.0, "energy": 0.42, "shot_scale": "wide", "move_bias": 0.30},
+    {"kind": "pre_chorus", "start_s": 10.0, "end_s": 12.0, "energy": 0.58, "shot_scale": "medium_wide", "move_bias": 0.45},
+    {"kind": "chorus", "start_s": 12.0, "end_s": 18.0, "energy": 0.86, "shot_scale": "medium", "move_bias": 0.70},
+    {"kind": "bridge", "start_s": 18.0, "end_s": 20.0, "energy": 0.50, "shot_scale": "close", "move_bias": 0.25},
+    {"kind": "chorus", "start_s": 20.0, "end_s": 24.0, "energy": 0.90, "shot_scale": "medium", "move_bias": 0.75}
+  ],
+  "lyrics": [
+    {"section": "intro", "lines": ["夜色沿着屋檐落下", "把整条街折成一张黑纸"], "cps_max": 12.0},
+    {"section": "verse", "lines": ["我数着路灯往北走", "影子比我先到下一个路口"], "cps_max": 13.0},
+    {"section": "pre_chorus", "lines": ["风从巷口灌进来", "把所有沉默都吹亮"], "cps_max": 13.0},
+    {"section": "chorus", "lines": ["今夜我不睡", "让霓虹替我说话"], "cps_max": 12.0},
+    {"section": "bridge", "lines": ["如果城市也会做梦"], "cps_max": 10.0},
+    {"section": "chorus", "lines": ["今夜我不睡", "让霓虹替我说话"], "cps_max": 12.0}
+  ],
+  "scene": {
+    "subject": "walker",
+    "subject_color": [236, 214, 188],
+    "accent": [86, 214, 236],
+    "neon": [236, 96, 168],
+    "props": ["monolith", "lamp_post", "crate"],
+    "physics": {"kind": "projectile", "category": "spark", "p0": [-4.2, 0.15, 2.0], "v0": [3.1, 7.4, 0.0], "restitution": 0.62, "max_bounces": 4},
+    "character_height": 1.72
+  }
+}

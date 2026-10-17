@@ -144,11 +144,14 @@ def normalize_score(sc):
     meter = C.req_list(tp, "meter", "score.tempo")
     if len(meter) != 2 or not all(C.is_num(x) and float(x).is_integer() for x in meter):
         raise ScoreError("score.tempo.meter 须为 [分子, 分母] 两个整数，实为 %r" % (meter,))
-    meter = (int(meter[0]), int(meter[1]))
-    if meter not in METERS:
+    m = (int(meter[0]), int(meter[1]))
+    if m not in METERS:
         raise ScoreError("score.tempo.meter 须为闭集之一 %s，实为 %r"
-                         % (" / ".join("%d/%d" % m for m in METERS), meter))
-    out["tempo"] = {"bpm": bpm, "meter": meter,
+                         % (" / ".join("%d/%d" % mm for mm in METERS), m))
+    #: ★ 存 **list** 而不是 tuple：`req_list` 只收 list，若这里落 tuple，
+    #: `normalize_score(normalize_score(x))` 第二次就会抛 —— **规范化必须幂等**，
+    #: 否则"校验已规范化的文档"这一常见用法（trust but verify）直接崩。
+    out["tempo"] = {"bpm": bpm, "meter": [m[0], m[1]],
                     "offset_s": C.opt_num(tp, "offset_s", 0.0, "score.tempo")}
 
     # ---- beats / downbeats
