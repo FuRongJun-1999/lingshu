@@ -7579,7 +7579,14 @@ class SpacetimeMemoryEngine:
     # ==================== 检索层（M1） ====================
 
     def search_content(self, query: str, layers: List[MemoryLayer] = None,
-                       limit: int = 20) -> List[Tuple[STNode, float]]:
+                       limit: int = 20,
+                       min_score: float = 0.0) -> List[Tuple[STNode, float]]:
+        """内容检索（多词 OR 预筛 + 二元组 Jaccard 相似度；分数为 0-1 相似度）。
+
+        #795：min_score 为**返回面阈值**——低于阈值的结果不返回（候选池与
+        记账口径不动）；默认 0.0 完全兼容（等价于不过滤）。阈值按调用方语料
+        自行标定，仓内不硬编码推荐值。
+        """
         results = self.store.search_content(query, layers, limit)
         self._note_reuse([n.id for n, _ in results])
         # v1.12 P0-5a：模式成员检索加权（使用模式，不修改蒸馏产物）
@@ -7588,6 +7595,9 @@ class SpacetimeMemoryEngine:
             self._self_cognition.note_search(query, results)
         self._note_action("search", query, [n.id for n, _ in results],
                           {"hits": len(results)})
+        # #795：只截断返回面——候选池/加权/记账均在过滤前完成；min_score<=0 关闭
+        if min_score > 0.0:
+            results = [(n, s) for (n, s) in results if s >= min_score]
         return results
 
     def semantic_search(self, query: str, limit: int = 10) -> List[Tuple[STNode, float]]:
@@ -7645,11 +7655,19 @@ class SpacetimeMemoryEngine:
                 break
         return out
 
-    def recall(self, context_content: str, limit: int = 10) -> List[Tuple[STNode, float]]:
+    def recall(self, context_content: str, limit: int = 10,
+               min_score: float = 0.0) -> List[Tuple[STNode, float]]:
         """组合联想（内容相似 0.5 + 重要性 0.3 + 近因 0.2）——记忆参与推理（1.1.1）
 
         #29④：终排与 search_content 同口径，同分再按置信度降序（confidence 与
         importance 一起进排序键；未验证/被矛盾标记的低置信节点不再压过高置信节点）。
+
+        #795：min_score 为**返回面阈值**——低于阈值的结果不返回（只截断返回面，
+        检索候选池/终排/记账口径不动）；默认 0.0 完全兼容（等价于不过滤），
+        min_score<=0 即关闭。分数语义：组合分里 importance 与近因两项与查询无关，
+        完全无关的查询也有 ~0.35-0.41 的地板（实测 5 条无关文章 + 无关查询
+        score≈0.38-0.41，相关查询≈0.51）——调用方应按自身语料标定 min_score
+        （可取无关地板与相关带之间），仓内不硬编码推荐值。
         """
         results = self.store.search_content(context_content, limit=50)
         if not results:
@@ -7672,7 +7690,12 @@ class SpacetimeMemoryEngine:
         self._note_action("recall", context_content,
                           [n.id for n, _ in scored[:limit]],
                           {"hits": len(scored[:limit])})
-        return scored[:limit]
+        # #795：只截断返回面——检索候选池（50）/终排/加权/记账均在过滤前完成；
+        # min_score<=0 关闭（默认），旧调用行为逐字节不变
+        out = scored[:limit]
+        if min_score > 0.0:
+            out = [(n, s) for (n, s) in out if s >= min_score]
+        return out
 
     # ==================== 盲区注册表（M2 · D-001 语义判定） ====================
 
