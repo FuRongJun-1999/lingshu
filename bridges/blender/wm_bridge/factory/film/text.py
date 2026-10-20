@@ -73,9 +73,13 @@ def normalize_text(tx):
     补全的默认值：
       aspect_ratio  -> 16/9（已裁 D4）
       safe_area     -> {"title_safe": 0.80, "action_safe": 0.90}   （EBU R95）
-      limits        -> LATIN_LIMITS（附录已录的拉丁口径）
+      limits        -> LATIN_LIMITS（**拉丁侧默认**，附录已录；script="cjk"
+                       时三项上限必须显式齐全 —— 空/None/缺项即拒，绝不把
+                       拉丁口径当使用者的 CJK 声明套用）
       cue.script    -> "latin"
-      cue.lines     -> 由 text 按换行切分
+      cue.lines     -> 由 text 按换行切分（显式给出时须与 text 的实际换行
+                       逐行一致 —— lines 只是可选的预分行，行数/行宽/CPS
+                       三项硬门与 cps_of/summary 读数都以 text 正文为准）
 
     生效条件：合法 ⇒ 返回新 dict；不合法 ⇒ raise TextError（消息含字段路径）。
     """
@@ -137,16 +141,32 @@ def normalize_text(tx):
                             % (w, st, en, fb["frame_start"], fb["frame_end"]))
 
         body = C.req_str(c, "text", w)
+        # 正文的实际分行（按 \n 切分、去每行首尾空白）—— 行数 / 行宽 / CPS
+        # 三项可读性硬门与 cps_of/summary 读数都钉在这份「实际上屏正文」上；
+        # lines 只是可选的预分行，显式给出时必须与 text 的实际换行逐行一致。
+        canon = [s.strip() for s in body.split("\n")]
+        for j, ln in enumerate(canon):
+            if not ln:
+                raise TextError("%s.text 第 %d 行为空或纯空白（正文按 \\n 分行后"
+                                "须为非空行），实为 %r" % (w, j, body.split("\n")[j]))
         lines = c.get("lines")
         if lines is None:
-            lines = body.split("\n")
-        if not isinstance(lines, list) or not lines:
-            raise TextError("%s.lines 须为非空列表，实为 %r" % (w, lines))
-        clean = []
-        for j, ln in enumerate(lines):
-            if not isinstance(ln, str) or not ln.strip():
-                raise TextError("%s.lines[%d] 须为非空字符串，实为 %r" % (w, j, ln))
-            clean.append(ln.strip())
+            clean = canon
+        else:
+            if not isinstance(lines, list) or not lines:
+                raise TextError("%s.lines 须为非空列表，实为 %r" % (w, lines))
+            clean = []
+            for j, ln in enumerate(lines):
+                if not isinstance(ln, str) or not ln.strip():
+                    raise TextError("%s.lines[%d] 须为非空字符串，实为 %r" % (w, j, ln))
+                clean.append(ln.strip())
+            if clean != canon:
+                raise TextError(
+                    "%s.lines 与 text 不一致 —— lines 只是可选的预分行，"
+                    "可读性硬门按 text 的实际换行计：lines 合计 %d 行 / %d 字符，"
+                    "text 实际 %d 行 / %d 字符（fail-closed：不猜哪份是对的）"
+                    % (w, len(clean), sum(len(x) for x in clean),
+                       len(canon), sum(len(x) for x in canon)))
         if len(clean) > lim["max_lines"]:
             raise TextError(
                 "%s 有 %d 行，超过 limits.max_lines=%d（附录已录：同屏 <= 2 行）"
@@ -159,12 +179,17 @@ def normalize_text(tx):
                     % (w, j, len(ln), lim["max_chars_per_line"]))
 
         script = C.opt_enum(c, "script", "latin", w, SCRIPTS)
-        if script == "cjk" and "limits" not in tx:
-            raise TextError(
-                "%s.script=\"cjk\" 但未显式声明 text.limits —— "
-                "CJK 的 CPS/行宽口径**附录未录**，本版不给默认值（不编造标准）；"
-                "请按你的平台规范显式给出 max_cps / max_chars_per_line / max_lines"
-                % w)
+        if script == "cjk":
+            # 「显式声明」判据落在内容上：三项上限缺任一项（含空对象 /
+            # 显式 null / 只给部分）即拒 —— LATIN_LIMITS 是附录已录的拉丁
+            # 默认，不是使用者的 CJK 声明，绝不让它冒名顶替（#825 ①）。
+            missing = [k for k in _KEYS_LIMITS if lm.get(k) is None]
+            if missing:
+                raise TextError(
+                    "%s.script=\"cjk\" 但 text.limits 未显式声明 %s —— "
+                    "CJK 的 CPS/行宽口径**附录未录**，本版不给默认值（不编造标准）；"
+                    "请按你的平台规范显式给出 max_cps / max_chars_per_line / max_lines"
+                    % (w, " / ".join(missing)))
 
         cues.append({"kind": kind, "start_frame": st, "end_frame": en,
                      "text": body, "lines": clean, "script": script})
@@ -193,11 +218,15 @@ def normalize_text(tx):
 
 # ─────────────────────────────────────────────────────────── 查询面与摘要
 def cps_of(cue, fps):
-    """单条文本的 CPS（每秒字符数）。字符数按**所有行合计**（含空格）。"""
+    """单条文本的 CPS（每秒字符数）。字符数按**所有行合计**（含空格）。
+
+    行按 text 的实际换行计（lines 只是预分行，规范化后须与 text 一致）——
+    读数钉在实际上屏正文上，不受 lines 单方面改写的影响（#825 ②）。
+    """
     dur_s = (cue["end_frame"] - cue["start_frame"] + 1) / float(fps)
     if dur_s <= 0.0:
         raise TextError("cps_of 的时长须为正，实为 %r" % (dur_s,))
-    n = sum(len(ln) for ln in cue["lines"])
+    n = sum(len(ln) for ln in cue["text"].split("\n"))
     return n / dur_s
 
 

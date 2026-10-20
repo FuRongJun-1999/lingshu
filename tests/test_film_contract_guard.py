@@ -30,6 +30,8 @@
     [D] 跨契约一致性（闭集唯一权威 / digest 绑定）      改成分散定义 ⇒ D 红
     [E] B4 纯标准库（不引入 bpy / numpy / PIL）         误加重依赖 ⇒ E 红
     [F] 口径数值（16:9 安全区 / CPS 上限）              改口径 ⇒ F 红
+    [G] #825 双门（CJK limits 判据落到内容 / 硬门读     拆判据或重开旁路 ⇒ G 红
+        text 正文、cps_of 读数与正文一致）
 """
 import os
 import sys
@@ -565,6 +567,91 @@ def test_f4_oracle_verdict_and_family_closed_sets():
     assert OR.family_of("P2a") == "P"
     with pytest.raises(Exception):
         OR.family_of("X1")
+
+
+# ══════════════════════════════════════════════════════ [G] #825 双门
+_CJK_CUE = {"kind": "lyric", "start_frame": 0, "end_frame": 95,
+            "text": "一二三四五六七八九十", "script": "cjk"}
+_CJK_LIMITS = {"max_cps": 8.0, "max_chars_per_line": 16, "max_lines": 2}
+
+
+def _cjk_text(**kw):
+    d = _text()
+    d["cues"] = [dict(_CJK_CUE)]
+    d.update(kw)
+    return d
+
+
+def test_g1_cjk_limits_declaration_must_be_content_complete():
+    """#825 ①：「显式声明」落在内容上 —— 空对象 / null / 部分给出都拒。
+
+    模块头宣称 CJK「不给默认值、必须显式声明」—— 若判据只认键存在，
+    limits={} 即可让 LATIN_LIMITS 冒名顶替使用者的 CJK 声明。
+    """
+    for bad in ({}, None, {"max_cps": 8.0},
+                {"max_cps": 8.0, "max_chars_per_line": 16},
+                {"max_cps": 8.0, "max_chars_per_line": None, "max_lines": 2}):
+        d = _cjk_text(limits=bad)
+        assert TX.validate_text(d)[0] is False, "limits=%r 须拒" % (bad,)
+
+
+def test_g2_cjk_full_limits_accepted_and_user_values_applied():
+    """三项全给才放行，且生效的是使用者声明的值（非拉丁默认）。"""
+    d = _cjk_text(limits=dict(_CJK_LIMITS))
+    assert TX.validate_text(d) == (True, "")
+    n = TX.normalize_text(d)
+    assert n["limits"] == {"max_cps": 8.0, "max_chars_per_line": 16,
+                           "max_lines": 2}
+    assert n["limits"] != dict(TX.LATIN_LIMITS)      # 不得冒名顶替
+    lat = _text()
+    lat["limits"] = {}                               # 拉丁侧默认是设计内行为
+    assert TX.validate_text(lat) == (True, "")
+
+
+def test_g3_lines_cannot_bypass_line_width_gate():
+    """#825 ②：47 字符 text 配短 lines —— 旁路封死（两形态都拒）。"""
+    long_text = "This line is far too long to read in two frames"   # 47 > 42
+    a = _text()
+    a["cues"] = [{"kind": "lyric", "start_frame": 0, "end_frame": 2,
+                  "text": long_text}]
+    b = _text()
+    b["cues"] = [{"kind": "lyric", "start_frame": 0, "end_frame": 2,
+                  "text": long_text, "lines": ["ok"]}]
+    assert TX.validate_text(a)[0] is False           # 只给 text：行宽门
+    ok, why = TX.validate_text(b)
+    assert ok is False and "不一致" in why           # 加 lines 不再翻盘
+
+
+def test_g4_lines_cannot_bypass_line_count_gate():
+    a = _text()
+    a["cues"] = [{"kind": "lyric", "start_frame": 0, "end_frame": 95,
+                  "text": "aa\nbb\ncc"}]
+    b = _text()
+    b["cues"] = [{"kind": "lyric", "start_frame": 0, "end_frame": 95,
+                  "text": "aa\nbb\ncc", "lines": ["aa", "bb"]}]
+    assert TX.validate_text(a)[0] is False           # 3 行 > max_lines=2
+    assert TX.validate_text(b)[0] is False           # 旁路封死
+
+
+def test_g5_consistent_explicit_lines_still_accepted():
+    """对照：与 text 逐行一致的 lines（含每行带尾随空格）不误杀。"""
+    d = _text()
+    d["cues"] = [dict(_text()["cues"][0],
+                      lines=["Hold the light ", "before it fades"])]
+    assert TX.validate_text(d) == (True, "")
+    n = TX.normalize_text(d)
+    assert n["cues"][0]["lines"] == ["Hold the light", "before it fades"]
+
+
+def test_g6_cps_of_and_summary_read_the_text_body():
+    """#825 ②读数一致：cps_of/text_summary 钉在 text 正文上，不读 lines。"""
+    n = TX.normalize_text(_text())
+    c = n["cues"][0]
+    expect = sum(len(x) for x in c["text"].split("\n")) / (48 / 24.0)
+    assert TX.cps_of(c, 24.0) == pytest.approx(expect)
+    assert TX.text_summary(_text())["max_cps"] == pytest.approx(expect)
+    hand = {"start_frame": 0, "end_frame": 2, "text": "x" * 47, "lines": ["ok"]}
+    assert TX.cps_of(hand, 24.0) == pytest.approx(376.0)   # 47 / 0.125s
 
 
 # ══════════════════════════════════════════════════════ REPORT
