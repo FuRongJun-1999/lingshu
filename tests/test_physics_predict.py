@@ -54,7 +54,9 @@ def test_A1_projectile_closed_form():
     up, g = 1, P.DEFAULT_G
     p0, v0 = (0.0, 1.2, 0.0), (3.0, 7.5, 1.0)
     tr = P.projectile_truth(p0, v0, ground=0.0)
-    assert abs(tr["apex_height"] - v0[up] ** 2 / (2 * g)) < 1e-12
+    # #786：apex_height 已改为**世界坐标**顶点高度（p0[up]+v0²/2g，与 projectile_state 同口径）；
+    # 旧钉子钉的是位移口径（v0²/2g），与本测试 :61 的世界坐标断言在同一测试内两口径并存。
+    assert abs(tr["apex_height"] - (p0[up] + v0[up] ** 2 / (2 * g))) < 1e-12
     assert abs(tr["t_land"] - (v0[up] + math.sqrt(v0[up] ** 2 + 2 * g * p0[up])) / g) < 1e-12
     m = {"p0": p0, "v0": v0, "up": up, "t0": 0.0}
     p_apex, _ = P.projectile_state(m, tr["t_apex"])

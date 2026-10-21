@@ -1,0 +1,10 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE] _
+tests\test_context_capacity_atomicity.py:97: in test_caller_transaction_is_rejected_without_changing_or_ending_it
+    with pytest.raises(RuntimeError, match="独立事务"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE RuntimeError
+=========================== short test summary info ===========================
+FAILED tests/test_context_capacity_atomicity.py::test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]
+1 failed in 0.55s

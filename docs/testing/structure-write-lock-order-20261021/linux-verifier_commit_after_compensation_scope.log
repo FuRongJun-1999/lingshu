@@ -1,0 +1,14 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________ test_commit_failure_restores_runtime_configuration[verifier] _________
+tests/test_structure_write_lock_order.py:128: in test_commit_failure_restores_runtime_configuration
+    assert engine._verifier_config == {"dedup_static": 0.65}, "verifier runtime was published before a failed commit"
+E   AssertionError: verifier runtime was published before a failed commit
+E   assert {'dedup_static': 0.8} == {'dedup_static': 0.65}
+E
+E     Differing items:
+E     {'dedup_static': 0.8} != {'dedup_static': 0.65}
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_structure_write_lock_order.py::test_commit_failure_restores_runtime_configuration[verifier]
+1 failed in 0.72s

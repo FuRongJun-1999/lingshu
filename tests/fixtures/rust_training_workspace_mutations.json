@@ -1,0 +1,81 @@
+{
+  "sources": [
+    "lingshu/nn/rust_bridge.py"
+  ],
+  "guard": "tests/test_rust_training_workspace.py",
+  "total": 7,
+  "baseline_failures": [
+    "test_concurrent_default_calls_keep_their_own_inputs",
+    "test_default_call_preserves_caller_files",
+    "test_failed_child_cleans_only_its_default_workspace",
+    "test_output_must_match_this_call_dimensions[short_curve]",
+    "test_output_must_match_this_call_dimensions[short_vector]"
+  ],
+  "mutations": [
+    {
+      "name": "reuse_default_shared_directory",
+      "changes": [
+        {
+          "file": "lingshu/nn/rust_bridge.py",
+          "method": "run_rust_train",
+          "old": "TemporaryDirectory(prefix=\"lingshu_hex_\") if workdir is None else nullcontext(workdir)",
+          "new": "nullcontext(workdir or Path(\"data/rust_bridge\"))"
+        }
+      ],
+      "test": "test_concurrent_default_calls_keep_their_own_inputs",
+      "assertion": "training result belongs to another call"
+    },
+    {
+      "name": "leave_owned_temporary_directory",
+      "changes": [
+        {
+          "file": "lingshu/nn/rust_bridge.py",
+          "method": "run_rust_train",
+          "old": "TemporaryDirectory(prefix=\"lingshu_hex_\")",
+          "new": "nullcontext(__import__(\"tempfile\").mkdtemp(prefix=\"lingshu_hex_\"))"
+        }
+      ],
+      "test": "test_default_call_preserves_caller_files",
+      "assertion": "owned training workspace was not cleaned"
+    },
+    {
+      "name": "accept_wrong_curve_length",
+      "changes": [
+        {
+          "file": "lingshu/nn/rust_bridge.py",
+          "method": "run_rust_train",
+          "old": "len(curve) != len(plan[\"plan_batch\"])",
+          "new": "False"
+        }
+      ],
+      "test": "test_output_must_match_this_call_dimensions[short_curve]",
+      "assertion": "DID NOT RAISE"
+    },
+    {
+      "name": "accept_wrong_vector_length",
+      "changes": [
+        {
+          "file": "lingshu/nn/rust_bridge.py",
+          "method": "run_rust_train",
+          "old": "vector.size != np.asarray(vec0).size",
+          "new": "False"
+        }
+      ],
+      "test": "test_output_must_match_this_call_dimensions[short_vector]",
+      "assertion": "DID NOT RAISE"
+    },
+    {
+      "name": "discard_explicit_diagnostic_workspace",
+      "changes": [
+        {
+          "file": "lingshu/nn/rust_bridge.py",
+          "method": "run_rust_train",
+          "old": "TemporaryDirectory(prefix=\"lingshu_hex_\") if workdir is None else nullcontext(workdir)",
+          "new": "TemporaryDirectory(prefix=\"lingshu_hex_\")"
+        }
+      ],
+      "test": "test_explicit_workdir_retains_diagnostic_files",
+      "assertion": "explicit workdir files were not retained"
+    }
+  ]
+}

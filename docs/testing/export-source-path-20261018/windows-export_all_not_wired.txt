@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_source_database_rejected_before_write[all] _______________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11923: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-l13xkukk\\tmp\\test_source_database_rejected_0\\source.db.tmp-03249010' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-l13xkukk\\tmp\\test_source_database_rejected_0\\source.db'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:67: in test_source_database_rejected_before_write
+    _reject(engine, method, path, "G1")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G1 source path was not rejected before filesystem write
+=========================== short test summary info ===========================
+FAILED tests/test_export_source_path_guard.py::test_source_database_rejected_before_write[all]
+1 failed, 9 warnings in 1.00s

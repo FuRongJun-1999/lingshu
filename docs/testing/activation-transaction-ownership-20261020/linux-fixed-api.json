@@ -1,0 +1,20 @@
+[
+  {
+    "phase": "constructor",
+    "caller_transaction_preserved": true,
+    "victim_after_rollback_and_reopen": 1
+  },
+  {
+    "phase": "activate",
+    "caller_transaction_preserved": true,
+    "victim_after_rollback_and_reopen": 1
+  },
+  {
+    "phase": "failed_activate",
+    "error": "IntegrityError: synthetic_activation_failure",
+    "transaction_left_open": false,
+    "old_workset_before": 2,
+    "old_workset_after": 2,
+    "old_workset_preserved": true
+  }
+]

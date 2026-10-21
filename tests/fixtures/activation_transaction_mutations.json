@@ -1,0 +1,92 @@
+{
+  "guard": "tests/test_activation_transaction_ownership.py",
+  "total": 14,
+  "sources": [
+    "lingshu/core/activation.py"
+  ],
+  "baseline_failures": [
+    "test_constructor_preserves_caller_rollback[begin]",
+    "test_constructor_preserves_caller_rollback[savepoint]",
+    "test_activate_preserves_caller_rollback[store]",
+    "test_activate_preserves_caller_rollback[conn]",
+    "test_failed_replacement_restores_previous_workset[activate-standalone]",
+    "test_failed_replacement_restores_previous_workset[activate-caller]",
+    "test_commit_failure_rolls_back_workset_and_trigger_rows[activate]",
+    "test_commit_failure_rolls_back_workset_and_trigger_rows[import]",
+    "test_release_failure_undoes_only_activation_work[activate]",
+    "test_release_failure_undoes_only_activation_work[import]",
+    "test_failed_schema_initialization_rolls_back_created_table"
+  ],
+  "mutations": [
+    {
+      "name": "commit_borrowed_caller_transaction",
+      "test": "test_activate_preserves_caller_rollback[store]",
+      "assertion": "activation committed caller deletion",
+      "changes": [
+        {
+          "file": "lingshu/core/activation.py",
+          "class": "ActivationEngine",
+          "method": "_transaction",
+          "old": "                if nested:\n                    con.execute(\"RELEASE SAVEPOINT %s\" % savepoint)",
+          "new": "                if nested:\n                    con.commit()"
+        }
+      ]
+    },
+    {
+      "name": "leave_statement_failure_unrolled_back",
+      "test": "test_failed_replacement_restores_previous_workset[activate-standalone]",
+      "assertion": "failed activation discarded the previous workset",
+      "changes": [
+        {
+          "file": "lingshu/core/activation.py",
+          "class": "ActivationEngine",
+          "method": "_transaction",
+          "old": "                            con.rollback()",
+          "new": "                            pass"
+        }
+      ]
+    },
+    {
+      "name": "commit_failure_bypasses_rollback",
+      "test": "test_commit_failure_rolls_back_workset_and_trigger_rows[import]",
+      "assertion": "activation commit failure left staged changes",
+      "changes": [
+        {
+          "file": "lingshu/core/activation.py",
+          "class": "ActivationEngine",
+          "method": "_transaction",
+          "old": "            except BaseException as error:",
+          "new": "            except sqlite3.OperationalError as error:"
+        }
+      ]
+    },
+    {
+      "name": "retain_failed_savepoint_replacement",
+      "test": "test_release_failure_undoes_only_activation_work[import]",
+      "assertion": "failed activation release kept partial replacement",
+      "changes": [
+        {
+          "file": "lingshu/core/activation.py",
+          "class": "ActivationEngine",
+          "method": "_transaction",
+          "old": "                            con.execute(\"ROLLBACK TO SAVEPOINT %s\" % savepoint)",
+          "new": "                            pass"
+        }
+      ]
+    },
+    {
+      "name": "initialize_without_atomic_schema",
+      "test": "test_failed_schema_initialization_rolls_back_created_table",
+      "assertion": "failed activation initialization left a partial schema",
+      "changes": [
+        {
+          "file": "lingshu/core/activation.py",
+          "class": "ActivationEngine",
+          "method": "_ensure_tables",
+          "old": "        with self._transaction() as con:\n            con.execute(\"\"\"CREATE TABLE IF NOT EXISTS activation_nodes (\n                id TEXT PRIMARY KEY, workset TEXT NOT NULL, node_id TEXT NOT NULL,\n                activation REAL NOT NULL, source TEXT NOT NULL, hop INTEGER NOT NULL, ts REAL NOT NULL)\"\"\")\n            con.execute(\"CREATE INDEX IF NOT EXISTS idx_act_ws ON activation_nodes(workset)\")\n",
+          "new": "        con = self._con()\n        con.execute(\"\"\"CREATE TABLE IF NOT EXISTS activation_nodes (\n            id TEXT PRIMARY KEY, workset TEXT NOT NULL, node_id TEXT NOT NULL,\n            activation REAL NOT NULL, source TEXT NOT NULL, hop INTEGER NOT NULL, ts REAL NOT NULL)\"\"\")\n        con.execute(\"CREATE INDEX IF NOT EXISTS idx_act_ws ON activation_nodes(workset)\")\n        con.commit(); con.close()\n"
+        }
+      ]
+    }
+  ]
+}

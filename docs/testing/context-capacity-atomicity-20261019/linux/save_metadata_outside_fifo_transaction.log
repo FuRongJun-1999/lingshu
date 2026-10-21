@@ -1,0 +1,15 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes ________
+tests/test_context_capacity_atomicity.py:64: in test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes
+    _assert_original_state(engine, original)
+tests/test_context_capacity_atomicity.py:31: in _assert_original_state
+    assert engine.store.get_meta("context_max")["context_max"] == "10", "failed capacity change changed stored metadata"
+E   AssertionError: failed capacity change changed stored metadata
+E   assert '1' == '10'
+E
+E     - 10
+E     + 1
+=========================== short test summary info ============================
+FAILED tests/test_context_capacity_atomicity.py::test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes
+1 failed in 0.86s

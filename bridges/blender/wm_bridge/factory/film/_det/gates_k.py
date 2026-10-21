@@ -18,7 +18,7 @@
     | K2 视线匹配 | **事实**（`subject_gaze_screen`，§六.1 未列 —— 契约缺口） | 无该字段 ⇒ BLINDSPOT |
     | K3 屏幕方向 | **事实**（`subject_motion_screen` 或相邻帧 bbox 位移） | 无 ⇒ BLINDSPOT |
     | K4 30° 规则 | 声明（相邻镜头首帧机位） | 缺镜头契约 ⇒ BLINDSPOT |
-    | K5 景别跳跃 | **事实**（`subject_bbox_screen`）+ 角度 | 无 bbox / 无画幅 ⇒ BLINDSPOT |
+    | K5 景别跳跃 | **事实**（`subject_bbox_screen`）+ 角度 | 无 bbox / 无画幅 / 夹角不可算 ⇒ BLINDSPOT |
 
 ★ K4 与 K5 的关系（**不是重复**）
     K4 吃**声明**：相邻同主体镜头首帧机位的夹角 ≥ 30°。它拦得住「同机位同景别」的跳切，
@@ -56,6 +56,9 @@ K4_NEGATIVE = (
 K5_NEGATIVE = (
     "真值缺 subject_bbox_screen 时不可判（本版一律 BLINDSPOT，不猜）。",
     "主体被遮挡 / 出画导致 bbox 非完整主体时，高度比例不代表景别。",
+    "相邻镜头机位夹角不可算（缺镜头契约 / 瞄准点相差 > 0.5 m）时不可判 —— "
+    "本版一律 BLINDSPOT（与 K4 同口径，reason 保留不可算原因），"
+    "且不写 -1.0 之类的哨兵读数冒充实测夹角。",
 )
 
 #: 两镜头瞄准点差异超过此值（米）时，30° 规则基准不唯一 ⇒ BLINDSPOT
@@ -276,6 +279,8 @@ def check_k5(sc):
 
     微变（实测高度相对差 ≤ 容差）且机位夹角 < 30° ⇒ REJECT（既不换景别也不换机位
     = 跳切）；夹角 ≥ 30° ⇒ 放行（换机位可同景别，这是正常剪辑）。
+    机位夹角不可算（缺镜头契约 / 瞄准点相差 > 0.5 m）⇒ BLINDSPOT —— 与 K4 同款
+    缺料口径：reason 保留 `_pair_angle` 的不可算原因，且不写 -1.0 哨兵冒充读数。
     """
     name = "K5"
     pairs = _adjacent_same_subject(sc)
@@ -287,7 +292,7 @@ def check_k5(sc):
     except S.SceneError as exc:
         return {"name": name, "verdict": "BLINDSPOT", "measured": [],
                 "reason": "画幅不可用：%s" % exc}
-    readings, bad, lack = [], [], []
+    readings, bad, lack, no_angle = [], [], [], []
     for id1, id2, _spec in pairs:
         h1 = _scale_frac(sc, id1, fsz)
         h2 = _scale_frac(sc, id2, fsz)
@@ -295,14 +300,21 @@ def check_k5(sc):
             lack.append(id1 if h1 is None else id2)
             continue
         rd = S.rel_diff(h1, h2)
-        ang, _why = _pair_angle(sc, id1, id2)
-        readings.extend([rd, -1.0 if ang is None else ang])
-        if rd <= THRESHOLDS[1][1] and (ang is None or ang < THRESHOLDS[0][1]):
+        ang, why = _pair_angle(sc, id1, id2)
+        if ang is None:              # 与 K4 同款缺料口径：不可算 ⇒ BLINDSPOT 不猜，
+            no_angle.append("%s→%s（%s）" % (id1, id2, why))   # 原因进 reason 可归档
+            continue                 # 不写 -1.0 —— 哨兵不是实测夹角（#812）
+        readings.extend([rd, ang])
+        if rd <= THRESHOLDS[1][1] and ang < THRESHOLDS[0][1]:
             bad.append("%s→%s=%.3f" % (id1, id2, rd))
     if lack:
         return {"name": name, "verdict": "BLINDSPOT", "measured": readings,
                 "reason": "真值缺 subject_bbox_screen（镜头 %s）—— 实测景别不可得，不猜"
                           % ", ".join(sorted(set(lack)))}
+    if no_angle:
+        return {"name": name, "verdict": "BLINDSPOT", "measured": readings,
+                "reason": "机位夹角不可算：%s —— 缺料不猜，不写哨兵读数"
+                          % "；".join(no_angle)}
     if bad:
         return {"name": name, "verdict": "REJECT", "measured": readings,
                 "threshold": "K5_scale_rel_tol",

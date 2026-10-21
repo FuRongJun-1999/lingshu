@@ -1,0 +1,14 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_commit_failure_restores_runtime_configuration[attention] ________
+tests\test_structure_write_lock_order.py:126: in test_commit_failure_restores_runtime_configuration
+    assert engine._attention_policy.preference_weights == {"signal": 0.2}, "attention runtime was published before a failed commit"
+E   AssertionError: attention runtime was published before a failed commit
+E   assert {'signal': 0.8} == {'signal': 0.2}
+E
+E     Differing items:
+E     {'signal': 0.8} != {'signal': 0.2}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_structure_write_lock_order.py::test_commit_failure_restores_runtime_configuration[attention]
+1 failed in 0.53s

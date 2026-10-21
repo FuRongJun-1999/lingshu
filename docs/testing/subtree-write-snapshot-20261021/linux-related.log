@@ -1,0 +1,9 @@
+.........................                                                [100%]
+25 passed, 153 warnings in 15.18s
+
+MANIFEST
+ORIGINS origin-only=3 src-only=61 both=0 neither=0
+SUMMARY manifests=2 entries=64 match=64 mismatch=0 bytes_mismatch=0 missing=0 malformed=0 unparseable=0 exit_code=0
+
+TIME-CORE
+exit=0; raw log SHA256 4c0ff96c162168d351e875544088d0ff9bfe57ace7e304340b195614d64cbcac

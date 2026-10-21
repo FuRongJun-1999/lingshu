@@ -1,0 +1,12 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______ test_commit_failure_rolls_back_workset_and_trigger_rows[import] _______
+tests\test_activation_transaction_ownership.py:124: in test_commit_failure_rolls_back_workset_and_trigger_rows
+    assert not store.conn.in_transaction, "activation commit failure left staged changes"
+E   AssertionError: activation commit failure left staged changes
+E   assert not True
+E    +  where True = <sqlite3.Connection object at 0x000001DF6D5FB970>.in_transaction
+E    +    where <sqlite3.Connection object at 0x000001DF6D5FB970> = <lingshu.core.core.LayeredStore object at 0x000001DF6D5AC4D0>.conn
+=========================== short test summary info ===========================
+FAILED tests/test_activation_transaction_ownership.py::test_commit_failure_rolls_back_workset_and_trigger_rows[import]
+1 failed in 0.65s

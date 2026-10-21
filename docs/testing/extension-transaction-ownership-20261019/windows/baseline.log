@@ -1,0 +1,119 @@
+.FFFFFFFFFFFFFF                                                          [100%]
+================================== FAILURES ===================================
+_________ test_failed_subgraph_replace_leaves_no_partial_nodes[True] __________
+tests\test_extension_transaction_ownership.py:42: in test_failed_subgraph_replace_leaves_no_partial_nodes
+    assert engine.store.get_nodes_by_tag("subgraph_replace") == [], "failed replacement left partial nodes"
+E   AssertionError: failed replacement left partial nodes
+E   assert [STNode(id='n...tity_id=None)] == []
+E
+E     Left contains one more item: STNode(id='node_f9080fe2_1792377430876', content='{"name": "replacement"}', modality='visual', spatial_coordinates={'i...eplace', 'img:replacement-root', 'ent:replacement-root'], semantic_coordinates={}, state_attributes={}, entity_id=None)
+E     Use -v to get more diff
+___________ test_ledger_write_preserves_caller_rollback[perception] ___________
+tests\test_extension_transaction_ownership.py:64: in test_ledger_write_preserves_caller_rollback
+    assert engine.store.conn.in_transaction, "extension committed the caller transaction"
+E   AssertionError: extension committed the caller transaction
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x00000227A7BA6110>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA6110> = <lingshu.core.core.LayeredStore object at 0x00000227A5936510>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A5936510> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A5936390>.store
+_____________ test_ledger_write_preserves_caller_rollback[record] _____________
+tests\test_extension_transaction_ownership.py:64: in test_ledger_write_preserves_caller_rollback
+    assert engine.store.conn.in_transaction, "extension committed the caller transaction"
+E   AssertionError: extension committed the caller transaction
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x00000227A7BA72E0>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA72E0> = <lingshu.core.core.LayeredStore object at 0x00000227A5934470>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A5934470> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A59346B0>.store
+______________ test_ledger_write_preserves_caller_rollback[sync] ______________
+tests\test_extension_transaction_ownership.py:64: in test_ledger_write_preserves_caller_rollback
+    assert engine.store.conn.in_transaction, "extension committed the caller transaction"
+E   AssertionError: extension committed the caller transaction
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x00000227A7BA7D30>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA7D30> = <lingshu.core.core.LayeredStore object at 0x00000227A5935940>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A5935940> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A5936450>.store
+_____________ test_tms_write_preserves_caller_rollback[register] ______________
+tests\test_extension_transaction_ownership.py:85: in test_tms_write_preserves_caller_rollback
+    assert engine.store.conn.in_transaction, "TMS committed the caller transaction"
+E   AssertionError: TMS committed the caller transaction
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x00000227A7B3C310>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7B3C310> = <lingshu.core.core.LayeredStore object at 0x00000227A5935610>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A5935610> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A5935700>.store
+_____________ test_tms_write_preserves_caller_rollback[propagate] _____________
+tests\test_extension_transaction_ownership.py:85: in test_tms_write_preserves_caller_rollback
+    assert engine.store.conn.in_transaction, "TMS committed the caller transaction"
+E   AssertionError: TMS committed the caller transaction
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x00000227A7BA6020>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA6020> = <lingshu.core.core.LayeredStore object at 0x00000227A5936E10>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A5936E10> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A5937B30>.store
+_____ test_record_failure_rolls_back_evidence_confidence_and_propagation ______
+tests\test_extension_transaction_ownership.py:108: in test_record_failure_rolls_back_evidence_confidence_and_propagation
+    assert not engine.store.conn.in_transaction, "failed propagation left an open transaction"
+E   AssertionError: failed propagation left an open transaction
+E   assert not True
+E    +  where True = <sqlite3.Connection object at 0x00000227A7BA7790>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA7790> = <lingshu.core.core.LayeredStore object at 0x00000227A59373E0>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A59373E0> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A5935D60>.store
+_____________ test_justification_failure_rolls_back_registration ______________
+tests\test_extension_transaction_ownership.py:126: in test_justification_failure_rolls_back_registration
+    assert not engine.store.conn.in_transaction
+E   assert not True
+E    +  where True = <sqlite3.Connection object at 0x00000227A7BA73D0>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA73D0> = <lingshu.core.core.LayeredStore object at 0x00000227A5935940>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A5935940> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A5935AC0>.store
+___________ test_commit_failure_rolls_back_extension_write[ledger] ____________
+tests\test_extension_transaction_ownership.py:156: in test_commit_failure_rolls_back_extension_write
+    assert not engine.store.conn.in_transaction, "failed extension commit left a pending transaction"
+E   AssertionError: failed extension commit left a pending transaction
+E   assert not True
+E    +  where True = <sqlite3.Connection object at 0x00000227A7BA5B70>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA5B70> = <lingshu.core.core.LayeredStore object at 0x00000227A59343B0>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A59343B0> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A5935FA0>.store
+_____________ test_commit_failure_rolls_back_extension_write[tms] _____________
+tests\test_extension_transaction_ownership.py:156: in test_commit_failure_rolls_back_extension_write
+    assert not engine.store.conn.in_transaction, "failed extension commit left a pending transaction"
+E   AssertionError: failed extension commit left a pending transaction
+E   assert not True
+E    +  where True = <sqlite3.Connection object at 0x00000227A7BA5C60>.in_transaction
+E    +    where <sqlite3.Connection object at 0x00000227A7BA5C60> = <lingshu.core.core.LayeredStore object at 0x00000227A591D1C0>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x00000227A591D1C0> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A591C710>.store
+_ test_first_enable_rejects_caller_transaction_without_committing_it[ledger] __
+tests\test_extension_transaction_ownership.py:167: in test_first_enable_rejects_caller_transaction_without_committing_it
+    with pytest.raises(RuntimeError, match="独立事务"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE RuntimeError
+___ test_first_enable_rejects_caller_transaction_without_committing_it[tms] ___
+tests\test_extension_transaction_ownership.py:167: in test_first_enable_rejects_caller_transaction_without_committing_it
+    with pytest.raises(RuntimeError, match="独立事务"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE RuntimeError
+__ test_initialization_failure_can_be_retried_without_partial_schema[ledger] __
+tests\test_extension_transaction_ownership.py:199: in test_initialization_failure_can_be_retried_without_partial_schema
+    assert not _table_exists(engine, table), "failed initialization left partial schema"
+E   AssertionError: failed initialization left partial schema
+E   assert not True
+E    +  where True = _table_exists(<lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A593CF50>, 'evidence')
+___ test_initialization_failure_can_be_retried_without_partial_schema[tms] ____
+tests\test_extension_transaction_ownership.py:199: in test_initialization_failure_can_be_retried_without_partial_schema
+    assert not _table_exists(engine, table), "failed initialization left partial schema"
+E   AssertionError: failed initialization left partial schema
+E   assert not True
+E    +  where True = _table_exists(<lingshu.core.core.SpacetimeMemoryEngine object at 0x00000227A593CB90>, 'justifications')
+=========================== short test summary info ===========================
+FAILED tests/test_extension_transaction_ownership.py::test_failed_subgraph_replace_leaves_no_partial_nodes[True]
+FAILED tests/test_extension_transaction_ownership.py::test_ledger_write_preserves_caller_rollback[perception]
+FAILED tests/test_extension_transaction_ownership.py::test_ledger_write_preserves_caller_rollback[record]
+FAILED tests/test_extension_transaction_ownership.py::test_ledger_write_preserves_caller_rollback[sync]
+FAILED tests/test_extension_transaction_ownership.py::test_tms_write_preserves_caller_rollback[register]
+FAILED tests/test_extension_transaction_ownership.py::test_tms_write_preserves_caller_rollback[propagate]
+FAILED tests/test_extension_transaction_ownership.py::test_record_failure_rolls_back_evidence_confidence_and_propagation
+FAILED tests/test_extension_transaction_ownership.py::test_justification_failure_rolls_back_registration
+FAILED tests/test_extension_transaction_ownership.py::test_commit_failure_rolls_back_extension_write[ledger]
+FAILED tests/test_extension_transaction_ownership.py::test_commit_failure_rolls_back_extension_write[tms]
+FAILED tests/test_extension_transaction_ownership.py::test_first_enable_rejects_caller_transaction_without_committing_it[ledger]
+FAILED tests/test_extension_transaction_ownership.py::test_first_enable_rejects_caller_transaction_without_committing_it[tms]
+FAILED tests/test_extension_transaction_ownership.py::test_initialization_failure_can_be_retried_without_partial_schema[ledger]
+FAILED tests/test_extension_transaction_ownership.py::test_initialization_failure_can_be_retried_without_partial_schema[tms]
+14 failed, 1 passed in 1.62s

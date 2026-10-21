@@ -1,0 +1,10 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_first_enable_rejects_caller_transaction_without_committing_it[ledger] __
+tests\test_extension_transaction_ownership.py:167: in test_first_enable_rejects_caller_transaction_without_committing_it
+    with pytest.raises(RuntimeError, match="独立事务"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE RuntimeError
+=========================== short test summary info ===========================
+FAILED tests/test_extension_transaction_ownership.py::test_first_enable_rejects_caller_transaction_without_committing_it[ledger]
+1 failed in 0.58s

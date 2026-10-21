@@ -1,0 +1,68 @@
+FFFFFF...                                                                [100%]
+=================================== FAILURES ===================================
+_ test_pending_change_survives_rejected_save_and_later_recovery[values-statement] _
+tests/test_self_model_save_recovery.py:77: in test_pending_change_survives_rejected_save_and_later_recovery
+    assert saved[key] == pending[key], "pending self-model change was dropped after recovery"
+E   AssertionError: pending self-model change was dropped after recovery
+E   assert ['存在优先', '信任深化', '结构完整'] == ['retain local correction']
+E
+E     At index 0 diff: '存在优先' != 'retain local correction'
+E     Left contains 2 more items, first extra item: '信任深化'
+E     Use -v to get more diff
+_ test_pending_change_survives_rejected_save_and_later_recovery[values-commit] _
+tests/test_self_model_save_recovery.py:77: in test_pending_change_survives_rejected_save_and_later_recovery
+    assert saved[key] == pending[key], "pending self-model change was dropped after recovery"
+E   AssertionError: pending self-model change was dropped after recovery
+E   assert ['存在优先', '信任深化', '结构完整'] == ['retain local correction']
+E
+E     At index 0 diff: '存在优先' != 'retain local correction'
+E     Left contains 2 more items, first extra item: '信任深化'
+E     Use -v to get more diff
+_ test_pending_change_survives_rejected_save_and_later_recovery[trust-statement] _
+tests/test_self_model_save_recovery.py:77: in test_pending_change_survives_rejected_save_and_later_recovery
+    assert saved[key] == pending[key], "pending self-model change was dropped after recovery"
+E   AssertionError: pending self-model change was dropped after recovery
+E   assert {'e_weight': ...t_total': 0.0} == {'e_weight': ..._total': 0.83}
+E
+E     Omitting 1 identical items, use -vv to show
+E     Differing items:
+E     {'p_gap': 0.5} != {'p_gap': 0.12}
+E     {'t_total': 0.0} != {'t_total': 0.83}
+E     {'p_trust': 0.5} != {'p_trust': 0.64}
+E     Use -v to get more diff
+_ test_pending_change_survives_rejected_save_and_later_recovery[trust-commit] __
+tests/test_self_model_save_recovery.py:77: in test_pending_change_survives_rejected_save_and_later_recovery
+    assert saved[key] == pending[key], "pending self-model change was dropped after recovery"
+E   AssertionError: pending self-model change was dropped after recovery
+E   assert {'e_weight': ...t_total': 0.0} == {'e_weight': ..._total': 0.83}
+E
+E     Omitting 1 identical items, use -vv to show
+E     Differing items:
+E     {'p_gap': 0.5} != {'p_gap': 0.12}
+E     {'t_total': 0.0} != {'t_total': 0.83}
+E     {'p_trust': 0.5} != {'p_trust': 0.64}
+E     Use -v to get more diff
+_ test_pending_change_survives_rejected_save_and_later_recovery[goal-statement] _
+tests/test_self_model_save_recovery.py:77: in test_pending_change_survives_rejected_save_and_later_recovery
+    assert saved[key] == pending[key], "pending self-model change was dropped after recovery"
+E   AssertionError: pending self-model change was dropped after recovery
+E   assert 'initial goal' == 'retain pending goal'
+E
+E     - retain pending goal
+E     + initial goal
+__ test_pending_change_survives_rejected_save_and_later_recovery[goal-commit] __
+tests/test_self_model_save_recovery.py:77: in test_pending_change_survives_rejected_save_and_later_recovery
+    assert saved[key] == pending[key], "pending self-model change was dropped after recovery"
+E   AssertionError: pending self-model change was dropped after recovery
+E   assert 'initial goal' == 'retain pending goal'
+E
+E     - retain pending goal
+E     + initial goal
+=========================== short test summary info ============================
+FAILED tests/test_self_model_save_recovery.py::test_pending_change_survives_rejected_save_and_later_recovery[values-statement]
+FAILED tests/test_self_model_save_recovery.py::test_pending_change_survives_rejected_save_and_later_recovery[values-commit]
+FAILED tests/test_self_model_save_recovery.py::test_pending_change_survives_rejected_save_and_later_recovery[trust-statement]
+FAILED tests/test_self_model_save_recovery.py::test_pending_change_survives_rejected_save_and_later_recovery[trust-commit]
+FAILED tests/test_self_model_save_recovery.py::test_pending_change_survives_rejected_save_and_later_recovery[goal-statement]
+FAILED tests/test_self_model_save_recovery.py::test_pending_change_survives_rejected_save_and_later_recovery[goal-commit]
+6 failed, 3 passed, 73 warnings in 4.48s

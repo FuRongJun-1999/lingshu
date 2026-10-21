@@ -379,7 +379,8 @@ def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
         if log_every and step % log_every == 0 and verbose:
             print(f"  [step {step}] D={d:.4f} 死区={dead_zone:.4f} 冻结{sample.size - updates}/{sample.size}")
 
-    return {"algo": ALGO, "dead_zone": round(dead_zone, 5), "final_D": history[-1]["D"],
+    final_D = history[-1]["D"] if history else round(d0, 5)
+    return {"algo": ALGO, "dead_zone": round(dead_zone, 5), "final_D": final_D,
             "steps": len(history), "growths": growths, "reverts": reverts,
             "final_K": net.K, "n_params": net.n_params(),
             "frozen_total": frozen_total,

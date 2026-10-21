@@ -57,9 +57,11 @@
 #   `except Exception` 跳过坏边、内层兜底取 row[0] 计数），理由已写在 core.py 该方法 docstring。
 #   仅按实读登记，不增豁免、不放宽 lint 判据。
 
+# 2026-10-20 35b64f6（#487②） lingshu/_pathguard.py 25 → 29：新增 `_capture_argv_script_dir` 的 argv[0] 防御式兜底（`sys.argv` 读取 / `abspath`+`isfile` / `realpath` / 外层共 4 处宽 except ⇒ 返回中性值），与本模块既有「任何异常都不得改变导入语义」承重契约同款；不改 lint 判据。
+
 # ── 登记面 · 结束 ──
 
-lingshu/_pathguard.py	25
+lingshu/_pathguard.py	29
 lingshu/core/component_resolver.py	7
 lingshu/core/core.py	77
 lingshu/core/longterm_gate.py	7

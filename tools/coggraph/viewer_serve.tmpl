@@ -23,6 +23,24 @@ with io.open(os.path.join(ROOT, "viewer_graph.json"), encoding="utf-8") as f:
 BY_ID = {n["id"]: n for n in GRAPH["nodes"]}
 
 
+def _within_root(path):
+    """路径包含性校验（issue #276）：真实路径必须落在 MDCG 之内。
+
+    `path` 取自 `viewer_graph.json` 的节点字段 —— 该文件可能被替换或来自他方，
+    故不能当作可信输入。旧码 `os.path.join(MDCG, p)` 对 `../` 会正常归一化并
+    **逃出** MDCG；若 `p` 本身是绝对路径，`os.path.join` 还会直接丢弃 MDCG。
+    两种形态都在此拦下；`realpath` 同时解掉软链别名，`normcase` 对齐大小写。
+    """
+    if not MDCG:
+        return False
+    try:
+        root = os.path.normcase(os.path.realpath(MDCG))
+        real = os.path.normcase(os.path.realpath(path))
+    except OSError:
+        return False
+    return real == root or real.startswith(root + os.sep)
+
+
 def node_detail(nid):
     meta = BY_ID.get(nid)
     if meta is None:
@@ -34,7 +52,9 @@ def node_detail(nid):
     p = meta.get("path", "")
     if MDCG and p:
         fp = os.path.join(MDCG, p.replace("/", os.sep))
-        if os.path.isfile(fp):
+        # issue #276：`path` 来自 viewer_graph.json（可被替换/来自他方），
+        # 先做包含性校验再判 isfile —— 否则 `../x` 与绝对路径都能读到 MDCG 之外。
+        if _within_root(fp) and os.path.isfile(fp):
             # utf-8-sig 剥 BOM：BOM 会让 startswith("---") 判否，front matter 被整段当正文展示（issue #412 同族）。
             with io.open(fp, encoding="utf-8-sig", errors="replace") as f:
                 raw = f.read()
@@ -52,6 +72,15 @@ class H(http.server.SimpleHTTPRequestHandler):
         super().__init__(*a, directory=ROOT, **k)
 
     def do_GET(self):
+        # issue #240：Host 头校验。服务只绑 127.0.0.1，能防局域网访问，但防不住
+        # DNS rebinding —— 恶意网页把自己的域名重新解析到 127.0.0.1 后，即可以
+        # **同源身份**读取 viewer_graph.json（全部节点 id/标题/路径）以及逐个
+        # `/api/node?id=…` 返回的正文。只接受本机 Host，其余一律 403。
+        port = self.server.server_address[1]
+        allowed = {"127.0.0.1:%d" % port, "localhost:%d" % port, "[::1]:%d" % port}
+        if (self.headers.get("Host") or "").strip().lower() not in allowed:
+            self.send_error(403, "Host not allowed")
+            return
         u = urllib.parse.urlparse(self.path)
         if u.path == "/api/node":
             q = urllib.parse.parse_qs(u.query)

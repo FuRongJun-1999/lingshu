@@ -74,6 +74,9 @@ env:
     tests/test_prediction_path_nodes_single_fetch.py
     tests/test_coggraph_utf8_bom.py
     tests/test_issue454_unpack_out_guard.py
+    tests/test_issue481_snapshot_divergence.py
+    tests/test_issue487b_launch_dir.py
+    tests/test_issue825_text_gates.py
 
 jobs:
   gate:

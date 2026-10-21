@@ -1,0 +1,124 @@
+{
+  "guard": "tests/test_extension_transaction_ownership.py",
+  "total": 15,
+  "sources": [
+    "lingshu/core/evidence.py",
+    "lingshu/core/tms.py"
+  ],
+  "baseline_failures": [
+    "test_commit_failure_rolls_back_extension_write[ledger]",
+    "test_commit_failure_rolls_back_extension_write[tms]",
+    "test_failed_subgraph_replace_leaves_no_partial_nodes[True]",
+    "test_first_enable_rejects_caller_transaction_without_committing_it[ledger]",
+    "test_first_enable_rejects_caller_transaction_without_committing_it[tms]",
+    "test_initialization_failure_can_be_retried_without_partial_schema[ledger]",
+    "test_initialization_failure_can_be_retried_without_partial_schema[tms]",
+    "test_justification_failure_rolls_back_registration",
+    "test_ledger_write_preserves_caller_rollback[perception]",
+    "test_ledger_write_preserves_caller_rollback[record]",
+    "test_ledger_write_preserves_caller_rollback[sync]",
+    "test_record_failure_rolls_back_evidence_confidence_and_propagation",
+    "test_tms_write_preserves_caller_rollback[propagate]",
+    "test_tms_write_preserves_caller_rollback[register]"
+  ],
+  "mutations": [
+    {
+      "name": "ledger_record_owns_caller_transaction",
+      "test": "test_ledger_write_preserves_caller_rollback[record]",
+      "assertion": "extension committed the caller transaction",
+      "changes": [
+        {
+          "file": "lingshu/core/evidence.py",
+          "class": "EvidenceLedger",
+          "method": "record",
+          "old": "        with self.store._structure_event_transaction() as c:",
+          "new": "        with self.store.conn as c:"
+        }
+      ]
+    },
+    {
+      "name": "ledger_sync_owns_caller_transaction",
+      "test": "test_ledger_write_preserves_caller_rollback[sync]",
+      "assertion": "extension committed the caller transaction",
+      "changes": [
+        {
+          "file": "lingshu/core/evidence.py",
+          "class": "EvidenceLedger",
+          "method": "sync",
+          "old": "        with self.store._structure_event_transaction() as c:",
+          "new": "        with self.store.conn as c:"
+        }
+      ]
+    },
+    {
+      "name": "tms_registration_owns_caller_transaction",
+      "test": "test_tms_write_preserves_caller_rollback[register]",
+      "assertion": "TMS committed the caller transaction",
+      "changes": [
+        {
+          "file": "lingshu/core/tms.py",
+          "class": "TruthMaintenance",
+          "method": "add_justification",
+          "old": "        with self.store._structure_event_transaction() as c:",
+          "new": "        with self.store.conn as c:"
+        }
+      ]
+    },
+    {
+      "name": "tms_propagation_owns_caller_transaction",
+      "test": "test_tms_write_preserves_caller_rollback[propagate]",
+      "assertion": "TMS committed the caller transaction",
+      "changes": [
+        {
+          "file": "lingshu/core/tms.py",
+          "class": "TruthMaintenance",
+          "method": "propagate",
+          "old": "        with self.store._structure_event_transaction() as c:",
+          "new": "        with self.store.conn as c:"
+        }
+      ]
+    },
+    {
+      "name": "synchronize_after_record_commit",
+      "test": "test_record_failure_rolls_back_evidence_confidence_and_propagation",
+      "assertion": "failed record committed evidence",
+      "changes": [
+        {
+          "file": "lingshu/core/evidence.py",
+          "class": "EvidenceLedger",
+          "method": "record",
+          "old": "            self.sync(node_id)\n            if self.on_change is not None:\n                self.on_change(node_id)\n",
+          "new": "        self.sync(node_id)\n        if self.on_change is not None:\n            self.on_change(node_id)\n"
+        }
+      ]
+    },
+    {
+      "name": "allow_first_enable_inside_caller_transaction",
+      "test": "test_first_enable_rejects_caller_transaction_without_committing_it[ledger]",
+      "assertion": "DID NOT RAISE",
+      "changes": [
+        {
+          "file": "lingshu/core/evidence.py",
+          "class": "EvidenceLedger",
+          "method": "__init__",
+          "old": "            if store.conn.in_transaction:\n                raise RuntimeError(\"首次启用证据账本需要独立事务；请先结束调用方事务\")\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "name": "retain_tms_cache_after_failure",
+      "test": "test_record_failure_rolls_back_evidence_confidence_and_propagation",
+      "assertion": "failed propagation left a stale runtime cache",
+      "changes": [
+        {
+          "file": "lingshu/core/tms.py",
+          "class": "TruthMaintenance",
+          "method": "propagate",
+          "old": "            finally:\n                self._just_cache = {}\n",
+          "new": "            finally:\n                pass\n"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_failed_replacement_restores_previous_workset[activate-standalone] ____
+tests/test_activation_transaction_ownership.py:99: in test_failed_replacement_restores_previous_workset
+    assert _rows(store) == before, "failed activation discarded the previous workset"
+E   AssertionError: failed activation discarded the previous workset
+E   assert [] == [('act_9df202...eed', 0, ...)]
+E
+E     Right contains 2 more items, first extra item: ('act_9df202da_1792481223642', 'w', 'victim', 0.4348, 'seed', 0, ...)
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_activation_transaction_ownership.py::test_failed_replacement_restores_previous_workset[activate-standalone]
+1 failed in 0.86s

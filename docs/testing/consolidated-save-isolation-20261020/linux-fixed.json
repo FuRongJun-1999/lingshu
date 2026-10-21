@@ -1,0 +1,46 @@
+{
+  "platform": "Linux",
+  "python": "3.13.12",
+  "source_sha256": "f94d2cbfdd88781c879b1412810ab8a9b40cbff4a0180f4cb7b62c8a61e72926",
+  "cases": [
+    {
+      "case": "successful_second",
+      "errors": {},
+      "completed": [
+        "first",
+        "second"
+      ],
+      "final_run": "first",
+      "loaded_kernel": [
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0
+      ],
+      "temporary_files": []
+    },
+    {
+      "case": "failing_second",
+      "errors": {
+        "second": "TypeError"
+      },
+      "completed": [
+        "first"
+      ],
+      "final_run": "first",
+      "loaded_kernel": [
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0
+      ],
+      "temporary_files": []
+    }
+  ]
+}

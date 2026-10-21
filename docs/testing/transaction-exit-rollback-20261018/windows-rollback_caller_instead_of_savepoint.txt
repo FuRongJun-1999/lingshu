@@ -1,0 +1,29 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______ test_release_failure_rolls_back_only_its_caller_owned_savepoint _______
+
+database = (<lingshu.core.core.SpacetimeMemoryEngine object at 0x000002141EAC3C80>, <sqlite3.Connection object at 0x0000021420E4E020>)
+
+    def test_release_failure_rolls_back_only_its_caller_owned_savepoint(database):
+        """G2: a failed RELEASE must retain the caller's pending work/ownership."""
+        engine, observer = database
+        store, conn = engine.store, engine.store.conn
+        conn.execute("BEGIN IMMEDIATE")
+        _write(conn, "caller")
+        before = _meta(conn)
+        with deny_once(conn, sqlite3.SQLITE_SAVEPOINT, "RELEASE") as denied:
+            with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
+                with store._tx():
+                    _write(conn, "rejected_inner")
+                    store._commit_locked()
+    
+        assert denied == ["RELEASE"]
+>       assert conn.in_transaction, "G2 caller transaction was ended by inner recovery"
+E       AssertionError: G2 caller transaction was ended by inner recovery
+E       assert False
+E        +  where False = <sqlite3.Connection object at 0x000002141EA9A200>.in_transaction
+
+tests\test_transaction_exit_rollback.py:109: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_transaction_exit_rollback.py::test_release_failure_rolls_back_only_its_caller_owned_savepoint
+1 failed, 9 warnings in 0.57s

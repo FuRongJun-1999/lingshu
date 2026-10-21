@@ -1,0 +1,13 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________ test_success_publishes_capacity_after_commit _________________
+tests/test_context_capacity_atomicity.py:126: in test_success_publishes_capacity_after_commit
+    assert engine.store.get_node(original[0]) is None, "successful capacity change did not trim FIFO"
+E   AssertionError: successful capacity change did not trim FIFO
+E   assert STNode(id='ctx_0d0c2ad4_1792377494607', content='original context 0', modality='text', spatial_coordinates={}, tempora...6076994, created_at=1792377494.6076996, tags=['context'], semantic_coordinates={}, state_attributes={}, entity_id=None) is None
+E    +  where STNode(id='ctx_0d0c2ad4_1792377494607', content='original context 0', modality='text', spatial_coordinates={}, tempora...6076994, created_at=1792377494.6076996, tags=['context'], semantic_coordinates={}, state_attributes={}, entity_id=None) = get_node('ctx_0d0c2ad4_1792377494607')
+E    +    where get_node = <lingshu.core.core.LayeredStore object at 0x7aa48e7cdd30>.get_node
+E    +      where <lingshu.core.core.LayeredStore object at 0x7aa48e7cdd30> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x7aa48e7cd010>.store
+=========================== short test summary info ============================
+FAILED tests/test_context_capacity_atomicity.py::test_success_publishes_capacity_after_commit
+1 failed in 0.93s

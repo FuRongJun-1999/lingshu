@@ -1,0 +1,183 @@
+FFFFFFFFFFFFFF...                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_source_database_rejected_before_write[all] _______________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11901: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_database_rejected_0\\source.db.tmp-6a434aa0' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_database_rejected_0\\source.db'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:67: in test_source_database_rejected_before_write
+    _reject(engine, method, path, "G1")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G1 source path was not rejected before filesystem write
+___________ test_source_database_rejected_before_write[trajectory] ____________
+tests\test_export_source_path_guard.py:67: in test_source_database_rejected_before_write
+    _reject(engine, method, path, "G1")
+tests\test_export_source_path_guard.py:52: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write")
+E   AssertionError: G1 source path was not rejected before filesystem write
+___________ test_source_database_rejected_before_write[structured] ____________
+tests\test_export_source_path_guard.py:67: in test_source_database_rejected_before_write
+    _reject(engine, method, path, "G1")
+tests\test_export_source_path_guard.py:52: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write")
+E   AssertionError: G1 source path was not rejected before filesystem write
+___________ test_source_sidecars_rejected_even_if_absent[-wal-all] ____________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11901: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_sidecars_rejected_0\\source.db-wal.tmp-e89f5b91' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_sidecars_rejected_0\\source.db-wal'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:81: in test_source_sidecars_rejected_even_if_absent
+    _reject(engine, method, target, "G2")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G2 source path was not rejected before filesystem write
+________ test_source_sidecars_rejected_even_if_absent[-wal-trajectory] ________
+tests\test_export_source_path_guard.py:81: in test_source_sidecars_rejected_even_if_absent
+    _reject(engine, method, target, "G2")
+tests\test_export_source_path_guard.py:52: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write")
+E   AssertionError: G2 source path was not rejected before filesystem write
+___________ test_source_sidecars_rejected_even_if_absent[-shm-all] ____________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11901: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_sidecars_rejected_2\\source.db-shm.tmp-d670db67' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_sidecars_rejected_2\\source.db-shm'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:81: in test_source_sidecars_rejected_even_if_absent
+    _reject(engine, method, target, "G2")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G2 source path was not rejected before filesystem write
+________ test_source_sidecars_rejected_even_if_absent[-shm-trajectory] ________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:41: in _export
+    return engine.export_trajectory(output_path=str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:13215: in export_trajectory
+    with open(output_path, "w", encoding="utf-8") as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   OSError: [Errno 22] Invalid argument: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_sidecars_rejected_3\\source.db-shm'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:81: in test_source_sidecars_rejected_even_if_absent
+    _reject(engine, method, target, "G2")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G2 source path was not rejected before filesystem write
+_________ test_source_sidecars_rejected_even_if_absent[-journal-all] __________
+tests\test_export_source_path_guard.py:81: in test_source_sidecars_rejected_even_if_absent
+    _reject(engine, method, target, "G2")
+tests\test_export_source_path_guard.py:52: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write")
+E   AssertionError: G2 source path was not rejected before filesystem write
+______ test_source_sidecars_rejected_even_if_absent[-journal-trajectory] ______
+tests\test_export_source_path_guard.py:81: in test_source_sidecars_rejected_even_if_absent
+    _reject(engine, method, target, "G2")
+tests\test_export_source_path_guard.py:52: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write")
+E   AssertionError: G2 source path was not rejected before filesystem write
+______________ test_source_inside_allowed_root_is_still_rejected ______________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11901: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_inside_allowed_roo0\\source.db.tmp-db339a46' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_inside_allowed_roo0\\source.db'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:90: in test_source_inside_allowed_root_is_still_rejected
+    _reject(engine, "all", path, "G3")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G3 source path was not rejected before filesystem write
+___________________ test_source_hardlink_alias_is_rejected ____________________
+tests\test_export_source_path_guard.py:102: in test_source_hardlink_alias_is_rejected
+    _reject(engine, "trajectory", target, "G4")
+tests\test_export_source_path_guard.py:52: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write")
+E   AssertionError: G4 source path was not rejected before filesystem write
+____________________ test_source_symlink_alias_is_rejected ____________________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11901: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_symlink_alias_is_r0\\source.db.tmp-10970949' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_source_symlink_alias_is_r0\\source.db'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:115: in test_source_symlink_alias_is_rejected
+    _reject(engine, "all", target, "G5")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G5 source path was not rejected before filesystem write
+___________ test_connection_path_survives_working_directory_change ____________
+E:\lingshu\outputs\p0-fixes-20261018\export-replay-windows-public\export-source-_wzrpyz9\tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+E:\lingshu\outputs\p0-fixes-20261018\export-replay-windows-public\export-source-_wzrpyz9\tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E:\lingshu\outputs\p0-fixes-20261018\export-replay-windows-public\export-source-_wzrpyz9\lingshu\core\core.py:11901: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_connection_path_survives_0\\relative.db.tmp-a46c11c9' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_connection_path_survives_0\\relative.db'
+
+The above exception was the direct cause of the following exception:
+E:\lingshu\outputs\p0-fixes-20261018\export-replay-windows-public\export-source-_wzrpyz9\tests\test_export_source_path_guard.py:128: in test_connection_path_survives_working_directory_change
+    _reject(engine, "all", tmp_path / "relative.db", "G6")
+E:\lingshu\outputs\p0-fixes-20261018\export-replay-windows-public\export-source-_wzrpyz9\tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G6 source path was not rejected before filesystem write
+_____________________ test_attached_database_is_protected _____________________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11901: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_attached_database_is_prot0\\attached.db.tmp-84992c2f' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-_wzrpyz9\\tmp\\test_attached_database_is_prot0\\attached.db'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:138: in test_attached_database_is_protected
+    _reject(engine, "all", attached, "G7")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G7 source path was not rejected before filesystem write
+=========================== short test summary info ===========================
+FAILED tests/test_export_source_path_guard.py::test_source_database_rejected_before_write[all]
+FAILED tests/test_export_source_path_guard.py::test_source_database_rejected_before_write[trajectory]
+FAILED tests/test_export_source_path_guard.py::test_source_database_rejected_before_write[structured]
+FAILED tests/test_export_source_path_guard.py::test_source_sidecars_rejected_even_if_absent[-wal-all]
+FAILED tests/test_export_source_path_guard.py::test_source_sidecars_rejected_even_if_absent[-wal-trajectory]
+FAILED tests/test_export_source_path_guard.py::test_source_sidecars_rejected_even_if_absent[-shm-all]
+FAILED tests/test_export_source_path_guard.py::test_source_sidecars_rejected_even_if_absent[-shm-trajectory]
+FAILED tests/test_export_source_path_guard.py::test_source_sidecars_rejected_even_if_absent[-journal-all]
+FAILED tests/test_export_source_path_guard.py::test_source_sidecars_rejected_even_if_absent[-journal-trajectory]
+FAILED tests/test_export_source_path_guard.py::test_source_inside_allowed_root_is_still_rejected
+FAILED tests/test_export_source_path_guard.py::test_source_hardlink_alias_is_rejected
+FAILED tests/test_export_source_path_guard.py::test_source_symlink_alias_is_rejected
+FAILED tests/test_export_source_path_guard.py::test_connection_path_survives_working_directory_change
+FAILED tests/test_export_source_path_guard.py::test_attached_database_is_protected
+14 failed, 3 passed, 137 warnings in 5.31s

@@ -30,11 +30,9 @@ v2 补强（issue #156 第二版）：
   - `sys.path` 的 cwd/空串条目由 `lingshu._pathguard` 在**包首次 import 时装
     解析期拒绝 finder**（早于 core.py 的 `import json`）——#273 裁定（路 B）
     起**不删条目**、只拒绝解析（命中 cwd 面 ⇒ 跳过该条目、在净化路径上继续
-    解析）。本模块的 `_is_cwd_entry` 仍保留，用于**包内帧**发起的白名单名导入在
-    逃生口打开（不装 finder、cwd 条目仍在）时**依旧不**从 cwd 解析。**本句按
-    调用方分档**（issue #750 实测口径）：宿主帧发起的同名导入不在其内——宿主帧
-    `return None` 交还后续 finder（v3 段），由标准 `PathFinder` 按 `sys.path`
-    解析，逃生口打开时该面即含 cwd / 脚本目录条目。
+    解析）。本模块的 `_is_cwd_entry` 仍保留，用于受控面判定。cwd / 空串 /
+    脚本目录条目对白名单名**一律不是解析面**（**#750 残余修复起不再按调用方
+    分档**）：受控面未命中即按「组件缺失」失败，与逃生口状态无关（见 v4 段）。
   - **脚本目录**（`python <script>.py` 形态的 `sys.path[0]`）同属「解释器隐式
     塞入的解析面」，不再被当作受控面 ⇒ 白名单名不从脚本目录解析（见
     `_is_script_dir_entry` / `_pathguard.main_script_dir`）。
@@ -56,6 +54,22 @@ v3 收窄（issue #275 · #156 v2 的回归）：上一版 finder 对白名单 1
 不再保证「宿主进程里任何代码 import 这些名字都拿不到 cwd/脚本目录里的同名模块」
 ——那本就不是本模块要保护的面（组件是引擎内部约定，非对外 API）；引擎自身的
 组件导入仍逐字维持 v2 收口。
+
+v4 残余收口（issue #750 残余 · EQRS #817 复核方向①）：v3/#782 的「宿主帧
+`return None`」把整条 `sys.path`（含 cwd / 脚本目录条目）交还标准 `PathFinder`
+⇒ A 臂（逃生口开 + cwd 毒件）、D 臂（逃生口关 + 脚本目录≠cwd + 脚本目录在
+`sys.path[0]`）、E 臂（开 + 脚本目录≠cwd）的毒白名单组件仍在引擎进程内执行
+（#782 只关掉「受控面有同名实现」的 B 臂）。本版起**白名单名的解析面只剩
+`safe_search_path()`**（受控面）：未命中即按「组件缺失」失败（原生同文本
+`ModuleNotFoundError` + 告警），**不再交还 `PathFinder`**——与调用方（包内 /
+宿主）、与逃生口状态均无关。#275 的「宿主自有同名模块必须可解析」保证随之
+**按名收窄**为两条支持径：① 放在受控面上（`LINGSHU_COMPONENT_ROOT` /
+`PYTHONPATH` 显式声明 / site-packages）；② 早于本 finder 生效（先于
+`import lingshu.core` 导入、或 `sys.modules` 预注册——Python 导入语义天然最
+优先，本模块不干预）。逃生口 `LINGSHU_ALLOW_CWD_IMPORTS` 仍保留其**原有语义**
+（只作用于 `_pathguard` 层非白名单名的 cwd 解析面），不再恢复白名单名的
+cwd / 脚本目录解析。取舍依据见 issue #750 线程（TRIAGE-750 §四 / MERGE-782
+-750-RESIDUAL §四「收口点」；EQRS #817 §一处置方向①）。
 
 零外部依赖 · 纯标准库（D-005）。
 """
@@ -220,11 +234,14 @@ def _importer_is_lingshu() -> bool:
 
       · 包内：模块名以 `lingshu` 开头，或**代码对象**来自本包根目录之下 ⇒ True
         （引擎自己的组件导入，须继续走 #156 的受控面收口）；
-      · 宿主 / `__main__` / 其它库 ⇒ False（`return None` 交还后续 finder）。
+      · 宿主 / `__main__` / 其它库 ⇒ False（v3/#782 时代据此 `return None`
+        交还后续 finder；v4 起该差别不再改变解析结果，仅作诊断观测）。
 
     无法取得调用栈（非 CPython 实现等）时返回 True —— 保守维持 #156 的收口
-    （宁可多收，不可放松安全面）。本函数**不改变**受控面本身的判定，只决定
-    「找不到时是 raise 还是 return None」，故不放宽任何安全判据。
+    （宁可多收，不可放松安全面）。#750 残余收口（v4）后 `find_spec` 对**所有**
+    调用方一视同仁（受控面未命中即失败），本函数不再决定「raise 还是 return
+    None」，保留为判据面自身（#652④ 伪造方向守卫）与诊断观测——「宿主帧」
+    与「包内帧」的**解析结果**自此没有差别，判别结果不再影响任何安全判据。
 
     **判据取值面（#652④）**：第二判据取 `frame.f_code.co_filename`——它是**代码
     对象**的编译期事实（这段代码编译自哪个文件），而**不是**模块全局
@@ -259,52 +276,46 @@ def _importer_is_lingshu() -> bool:
 
 
 class _ComponentFinder:
-    """meta_path finder：只对 `COMPONENT_NAMES` 生效，不走 cwd/空串条目。
+    """meta_path finder：只对 `COMPONENT_NAMES` 生效，不走 cwd/空串/脚本目录条目。
 
-    被询问时（即 `sys.modules` 未命中——别名缺失）**一律先**在受控面上查找
-    （issue #750 已登记最小改动；此前宿主帧不查受控面）；受控面命中即返回 spec
-    ——**不论调用方是包内还是宿主**。受控面**未命中**时才分两种（issue #275）：
+    被询问时（即 `sys.modules` 未命中——别名缺失）**一律**在受控面
+    （`safe_search_path()`）上查找；受控面命中即返回 spec——**不论调用方是包内
+    还是宿主、不论逃生口开或关**（#782 起；#750 残余收口起对未命中分支同样
+    不再分档）。受控面**未命中**时按「组件缺失」抛原生同文本
+    `ModuleNotFoundError`（**不**回落到 cwd / 脚本目录解析面，**不**交还
+    `PathFinder`），并告警。
 
-      · 调用栈来自 lingshu 包内（引擎自己的组件导入）⇒ 按「组件缺失」抛原生
-        同文本 `ModuleNotFoundError`（**不**回落到 cwd 解析面），并告警；
-      · 调用栈来自宿主代码 ⇒ `return None` 交还后续 finder——`vision` / `body`
-        / `game_web` 等**通用顶层名**不属 lingshu 组件面，宿主自有同名模块
-        必须能被标准 `PathFinder` 按 `sys.path` 正常解析。
-
-    issue #275（#156 v2 的回归）：本 finder 装在 `sys.meta_path[0]` 且对白名单
-    15 个**通用顶层名**（`vision` / `body` / `game_web` / `semantic_space` …）不
-    区分调用方、找不到即 `raise`——宿主项目里同名的自有模块，在 `import
-    lingshu.core` 之后一律 `ModuleNotFoundError`（逃生口也无效，因为排除
-    cwd/脚本目录是**本 finder** 的行为）。修法：**只对「调用栈来自 lingshu 包内」
-    的导入**保留严格收口；宿主发起的同名导入 `return None`，交还后续 finder
-    （由标准 `PathFinder` 按 `sys.path` 解析宿主自己的模块）。
+    issue #750 残余（#817 复核坐实的 A/D/E 三臂）：v3/#782 在受控面未命中且
+    调用栈来自宿主时 `return None` 交还后续 finder ⇒ 标准 `PathFinder` 按**整条
+    `sys.path`**（含 cwd / 脚本目录条目）解析——A（逃生口开+cwd 毒件执行）、
+    D（逃生口关+脚本目录≠cwd，脚本目录条目在 `sys.path[0]`，毒件执行）、
+    E（开+脚本目录≠cwd，毒件执行）。本类自 v4 起封死该交还：白名单 15 名的
+    裸名解析**只**发生在受控面上。宿主确需同名自有模块的两条支持径见模块头
+    v4 段（受控面显式声明 / 早于本 finder 导入）。
     """
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in COMPONENT_NAMES:
             return None
-        # issue #750（已登记最小改动）：**先**查受控面，命中即返回受控实现——
-        # 不再按调用方分档短路。旧顺序为「宿主帧一律 return None（#275）」先于
-        # 受控面查找，于是宿主帧发起 `import vision` 这类白名单名导入时，
-        # 标准 PathFinder 会按 sys.path 解析到 cwd/脚本目录里的**同名毒模块**并
-        # 在引擎进程内执行（逃生口 LINGSHU_ALLOW_CWD_IMPORTS=1 打开时更直接）。
-        # 收口后：受控面（组件根 / PYTHONPATH 显式声明目录）有实现就**绝不**落到
-        # cwd；受控面未命中仍 `return None` 交还后续 finder（#275 语义逐字保留：
-        # 宿主自有同名模块依旧可解析）。
+        # issue #750 残余收口（EQRS #817 方向①）：白名单名**只**在受控面
+        # safe_search_path() 上解析——受控面未命中时不再 `return None` 交还
+        # 标准 PathFinder（那会把整条 sys.path、含 cwd / 脚本目录条目一并
+        # 交回：A=逃生口开+cwd 毒件、D=逃生口关+脚本目录≠cwd 且脚本目录在
+        # sys.path[0]、E=开+脚本目录≠cwd，三臂的毒模块正是在引擎进程内执行
+        # 的那几条路）。#782 已关掉「受控面有同名实现」的 B 臂（先查受控面、
+        # 命中即返回）；本处关掉其余三臂：未命中即按「组件缺失」失败，与
+        # 调用方（包内/宿主）、与逃生口状态均无关。#275 的宿主自有同名模块
+        # 保证按名收窄——两条支持径（受控面显式声明 / 早于本 finder 导入）
+        # 见模块头 v4 段。
         roots = safe_search_path()
         spec = importlib.machinery.PathFinder.find_spec(fullname, roots)
         if spec is not None:
             return spec
-        if not _importer_is_lingshu():
-            # issue #275：宿主进程发起的同名导入不属 lingshu 组件面 ⇒ 受控面
-            # 未命中时交还后续 finder（由标准 PathFinder 按 sys.path 解析宿主
-            # 自己的模块）。
-            return None
         # 受控面缺失 ⇒ 按「组件缺失」失败（原生同文本异常 + 可观测告警）
         try:
             warnings.warn(
                 "[issue156] 组件 %r 未在受控解析面找到（已查 %d 个条目；%s %s；"
-                "cwd/空串 sys.path 条目已排除）。若确需该组件，请用 %s 或 "
+                "cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 %s 或 "
                 "PYTHONPATH 显式声明其所在目录。" % (
                     fullname, len(roots), COMPONENT_ROOT_ENV,
                     "已设置" if configured_roots() else "未设置",

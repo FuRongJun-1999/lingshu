@@ -1,0 +1,13 @@
+{
+  "pytest": "74 passed in 161.96s (0:02:41)",
+  "summary": {
+    "files": 81,
+    "new": 0,
+    "registered": 23,
+    "total": 23
+  },
+  "new_violations": [],
+  "stale_baseline_entries": [],
+  "registration_move": "activation.py:298:R3 -> activation.py:335:R3",
+  "same_expression": "d *= cond_match(cur_cs.get(src), cur_cs.get(dst))"
+}

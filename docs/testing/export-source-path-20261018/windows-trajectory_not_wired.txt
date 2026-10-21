@@ -1,0 +1,11 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_source_database_rejected_before_write[trajectory] ____________
+tests\test_export_source_path_guard.py:67: in test_source_database_rejected_before_write
+    _reject(engine, method, path, "G1")
+tests\test_export_source_path_guard.py:52: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write")
+E   AssertionError: G1 source path was not rejected before filesystem write
+=========================== short test summary info ===========================
+FAILED tests/test_export_source_path_guard.py::test_source_database_rejected_before_write[trajectory]
+1 failed, 9 warnings in 0.65s

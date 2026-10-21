@@ -1,0 +1,25 @@
+{
+  "windows": {
+    "related_total": 119,
+    "related_passed": 118,
+    "related_skips": [
+      {
+        "test": "test_authenticated_process_business_workflow",
+        "reason": "环境缺 OpenSSL CLI：无法生成临时 TLS 测试证书（其余 2 条用例不受影响）"
+      }
+    ],
+    "related_failures": [],
+    "related_errors": [],
+    "native_posix_temp": false,
+    "related_temp_cleaned": true
+  },
+  "linux": {
+    "related_total": 119,
+    "related_passed": 119,
+    "related_skips": [],
+    "related_failures": [],
+    "related_errors": [],
+    "native_posix_temp": true,
+    "related_temp_cleaned": true
+  }
+}

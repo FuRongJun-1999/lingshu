@@ -1,0 +1,146 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "77c738235846839c33b1932d11e7e61778d427d0",
+  "guard_sha256": "bef305c461d5be52b75b4134ae0097865b1b6d6fb724c03d386aa9ad95f2547e",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 7,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "7 passed in 1.08s",
+      "source_sha256": {
+        "lingshu/nn/rust_bridge.py": "6df44dd3788c2890019af6327170d0cfe7bbe01a149924b896f8301060f43dc1"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 2,
+      "failed_tests": [
+        "test_concurrent_default_calls_keep_their_own_inputs",
+        "test_default_call_preserves_caller_files",
+        "test_failed_child_cleans_only_its_default_workspace",
+        "test_output_must_match_this_call_dimensions[short_curve]",
+        "test_output_must_match_this_call_dimensions[short_vector]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_concurrent_default_calls_keep_their_own_inputs",
+        "test_default_call_preserves_caller_files",
+        "test_failed_child_cleans_only_its_default_workspace",
+        "test_output_must_match_this_call_dimensions[short_curve]",
+        "test_output_must_match_this_call_dimensions[short_vector]"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "5 failed, 2 passed in 1.25s",
+      "source_sha256": {
+        "lingshu/nn/rust_bridge.py": "20b8a3811f7271c7f21a7507b82fb1cf2cd8570246a7a55d346924d07b7f9126"
+      }
+    },
+    {
+      "case": "reuse_default_shared_directory",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_concurrent_default_calls_keep_their_own_inputs"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_concurrent_default_calls_keep_their_own_inputs"
+      ],
+      "expected_assertion": "training result belongs to another call",
+      "pytest_summary": "1 failed in 0.56s",
+      "source_sha256": {
+        "lingshu/nn/rust_bridge.py": "0bf645bcec64ce207b69ef2d298dee458351764fe1600c9f9132662546bf28a4"
+      }
+    },
+    {
+      "case": "leave_owned_temporary_directory",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_default_call_preserves_caller_files"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_default_call_preserves_caller_files"
+      ],
+      "expected_assertion": "owned training workspace was not cleaned",
+      "pytest_summary": "1 failed in 0.55s",
+      "source_sha256": {
+        "lingshu/nn/rust_bridge.py": "7ee5eb3bf3c5935afa246f868e1b44fab53b64a8474f766cee92c04bc926ebea"
+      }
+    },
+    {
+      "case": "accept_wrong_curve_length",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_output_must_match_this_call_dimensions[short_curve]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_output_must_match_this_call_dimensions[short_curve]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.53s",
+      "source_sha256": {
+        "lingshu/nn/rust_bridge.py": "e390e377522cdd2cf2ea3517c39d9b37604b19ad463dbc07c49cd6f482b8dfd0"
+      }
+    },
+    {
+      "case": "accept_wrong_vector_length",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_output_must_match_this_call_dimensions[short_vector]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_output_must_match_this_call_dimensions[short_vector]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.56s",
+      "source_sha256": {
+        "lingshu/nn/rust_bridge.py": "a662895e816bcc68faf96bc30299e3bcae2621ce9da80f516d771e9b897958a5"
+      }
+    },
+    {
+      "case": "discard_explicit_diagnostic_workspace",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_explicit_workdir_retains_diagnostic_files"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_explicit_workdir_retains_diagnostic_files"
+      ],
+      "expected_assertion": "explicit workdir files were not retained",
+      "pytest_summary": "1 failed in 0.55s",
+      "source_sha256": {
+        "lingshu/nn/rust_bridge.py": "ba4741f1c3148a9a2f5e74a89c4b8e3116feda90dee7cef31c7c6ed97dad6231"
+      }
+    }
+  ]
+}

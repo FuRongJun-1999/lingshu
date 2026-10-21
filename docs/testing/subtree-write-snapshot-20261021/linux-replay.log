@@ -1,0 +1,75 @@
+CASE fixed
+.....                                                                    [100%]
+5 passed in 2.84s
+
+CASE baseline
+FFF..                                                                    [100%]
+=================================== FAILURES ===================================
+______________ test_new_protection_rejects_the_whole_replacement _______________
+tests/test_subtree_write_snapshot.py:62: in test_new_protection_rejects_the_whole_replacement
+    assert rejected, "subtree protection was checked before write ownership"
+E   AssertionError: subtree protection was checked before write ownership
+E   assert False
+_______________ test_moved_subtree_is_rechecked_before_deletion ________________
+tests/test_subtree_write_snapshot.py:85: in test_moved_subtree_is_rechecked_before_deletion
+    assert rejected, "subtree replacement deleted outside its current parent scope"
+E   AssertionError: subtree replacement deleted outside its current parent scope
+E   assert False
+_____________ test_descendants_are_collected_after_write_ownership _____________
+tests/test_subtree_write_snapshot.py:106: in test_descendants_are_collected_after_write_ownership
+    assert result["removed_nodes"] == 3, "subtree replacement used stale descendants"
+E   AssertionError: subtree replacement used stale descendants
+E   assert 2 == 3
+=========================== short test summary info ============================
+FAILED tests/test_subtree_write_snapshot.py::test_new_protection_rejects_the_whole_replacement
+FAILED tests/test_subtree_write_snapshot.py::test_moved_subtree_is_rechecked_before_deletion
+FAILED tests/test_subtree_write_snapshot.py::test_descendants_are_collected_after_write_ownership
+3 failed, 2 passed in 3.04s
+
+CASE skip_entry_transaction
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______________ test_new_protection_rejects_the_whole_replacement _______________
+tests/test_subtree_write_snapshot.py:62: in test_new_protection_rejects_the_whole_replacement
+    assert rejected, "subtree protection was checked before write ownership"
+E   AssertionError: subtree protection was checked before write ownership
+E   assert False
+=========================== short test summary info ============================
+FAILED tests/test_subtree_write_snapshot.py::test_new_protection_rejects_the_whole_replacement
+1 failed in 1.06s
+
+CASE ignore_protected_subtree
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______________ test_new_protection_rejects_the_whole_replacement _______________
+tests/test_subtree_write_snapshot.py:62: in test_new_protection_rejects_the_whole_replacement
+    assert rejected, "subtree protection was checked before write ownership"
+E   AssertionError: subtree protection was checked before write ownership
+E   assert False
+=========================== short test summary info ============================
+FAILED tests/test_subtree_write_snapshot.py::test_new_protection_rejects_the_whole_replacement
+1 failed in 1.07s
+
+CASE ignore_current_parent_scope
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_moved_subtree_is_rechecked_before_deletion ________________
+tests/test_subtree_write_snapshot.py:85: in test_moved_subtree_is_rechecked_before_deletion
+    assert rejected, "subtree replacement deleted outside its current parent scope"
+E   AssertionError: subtree replacement deleted outside its current parent scope
+E   assert False
+=========================== short test summary info ============================
+FAILED tests/test_subtree_write_snapshot.py::test_moved_subtree_is_rechecked_before_deletion
+1 failed in 1.05s
+
+CASE omit_current_descendants
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_descendants_are_collected_after_write_ownership _____________
+tests/test_subtree_write_snapshot.py:106: in test_descendants_are_collected_after_write_ownership
+    assert result["removed_nodes"] == 3, "subtree replacement used stale descendants"
+E   AssertionError: subtree replacement used stale descendants
+E   assert 1 == 3
+=========================== short test summary info ============================
+FAILED tests/test_subtree_write_snapshot.py::test_descendants_are_collected_after_write_ownership
+1 failed in 1.10s

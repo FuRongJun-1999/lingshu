@@ -1,0 +1,10 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_temporary_name_collision_keeps_unowned_file _______________
+tests/test_consolidated_save_isolation.py:88: in test_temporary_name_collision_keeps_unowned_file
+    assert error is not None, "temporary-name collision was not rejected"
+E   AssertionError: temporary-name collision was not rejected
+E   assert None is not None
+=========================== short test summary info ============================
+FAILED tests/test_consolidated_save_isolation.py::test_temporary_name_collision_keeps_unowned_file
+1 failed in 0.42s

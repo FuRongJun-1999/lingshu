@@ -1,0 +1,35 @@
+{
+  "windows": {
+    "passed": 49,
+    "failed": [
+      "test_p1_符号链接量具能力探测"
+    ],
+    "errors": 0,
+    "skipped": 6
+  },
+  "linux": {
+    "passed": 56,
+    "failed": [],
+    "errors": 0,
+    "skipped": 0
+  },
+  "windows_baseline_failure": {
+    "test": "test_p1_符号链接量具能力探测",
+    "assertion": "AssertionError: P1 非 posix 上 symlink 竟成功（开发者模式？）——SKIP_LINK 可重核\nassert False",
+    "reason": "The existing guard assumes Windows cannot create a symlink; this host can."
+  },
+  "manifest": {
+    "strict_exit_code": 0,
+    "entries": 64,
+    "match": 64
+  },
+  "component_ast": {
+    "assertions_passed": 6,
+    "failed": 0
+  },
+  "initial_invocation_error": {
+    "exit_code": 4,
+    "tests_ran": 0,
+    "error": "Nonexistent test filename tests/test_privacy_public_json.py; corrected to test_public_docs_privacy_guard.py."
+  }
+}

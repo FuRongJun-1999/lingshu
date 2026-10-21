@@ -1,0 +1,48 @@
+{
+  "windows": {
+    "passed": 156,
+    "failed": [],
+    "errors": [],
+    "skipped": 16,
+    "skip_reasons": {
+      "SciPy is optional; install it to exercise the sparse backend": 16
+    },
+    "skipped_tests": [
+      "test_new_node_becomes_a_seed_on_the_next_activation[scipy]",
+      "test_new_edge_propagates_to_an_existing_node[scipy]",
+      "test_replaced_edge_uses_its_current_relation_decay[scipy]",
+      "test_removed_edge_stops_propagating[scipy]",
+      "test_deleted_node_cannot_reenter_through_previous_workset[scipy]",
+      "test_unchanged_graph_preserves_propagation_self_condition_and_audit[scipy]",
+      "test_cond_match_actually_gates_propagation[scipy]",
+      "test_cond_match_factor_is_the_only_difference[scipy]",
+      "test_cond_match_half_overlap_scales_decay[scipy]",
+      "test_cond_match_backends_agree",
+      "test_opposite_edge_does_not_excite_its_target[scipy]",
+      "test_opposite_edge_subtracts_from_excitatory_activation[scipy]",
+      "test_opposite_suppression_is_clamped_at_zero[scipy]",
+      "test_propagation_is_max_plus_not_sum_across_sources[scipy]",
+      "test_self_conditioned_activation_stays_bounded_across_rounds[scipy]",
+      "test_audit_max_act_is_bounded_under_self_condition[scipy]"
+    ],
+    "pytest_summary": "156 passed, 16 skipped, 211 warnings in 21.86s"
+  },
+  "linux": {
+    "passed": 172,
+    "failed": [],
+    "errors": [],
+    "skipped": 0,
+    "skip_reasons": {},
+    "skipped_tests": [],
+    "pytest_summary": "172 passed, 211 warnings in 107.57s (0:01:47)"
+  },
+  "manifest": {
+    "strict_exit_code": 0,
+    "match": 64,
+    "entries": 64
+  },
+  "component_ast": {
+    "passed": 6,
+    "failed": 0
+  }
+}

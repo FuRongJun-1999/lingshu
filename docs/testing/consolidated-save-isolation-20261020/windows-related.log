@@ -1,0 +1,10 @@
+.....F......ss.....ss.....ss............................                 [100%]
+================================== FAILURES ===================================
+_____________________________ test_p1_符号链接量具能力探测 ______________________________
+tests\test_issue498_atomic_write_perm_symlink_guard.py:202: in test_p1_符号链接量具能力探测
+    assert POSIX, "P1 非 posix 上 symlink 竟成功（开发者模式？）——SKIP_LINK 可重核"
+           ^^^^^
+E   AssertionError: P1 非 posix 上 symlink 竟成功（开发者模式？）——SKIP_LINK 可重核
+=========================== short test summary info ===========================
+FAILED tests/test_issue498_atomic_write_perm_symlink_guard.py::test_p1_符号链接量具能力探测
+1 failed, 49 passed, 6 skipped, 41 warnings in 6.96s

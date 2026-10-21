@@ -89,6 +89,11 @@ try:
     sc.camera = cam
     res["camera"] = {"loc": [round(v, 3) for v in cam.location],
                      "ctr": [round(v, 3) for v in ctr], "radius": round(radius, 3)}
+    #: 2026-10-18 外部审计 R13-O01：baked 关节（ease/prismatic/static）的唯一落地路径是
+    #: `bake_keyframes` —— 不调用它，渲染出来的是**静置姿态**，与 `gate_gait_contact`
+    #: 验证的运动学不是同一套动作（交付物功能错误）。烘焙必须在渲染之前、取景之后。
+    res["bake"] = BA.bake_keyframes(ctx, list(range(n)))
+
     #: ⚠ `render_frames` 返回的是 **dict** `{"paths": [...], "snapshots": {...}}`（**不是列表**）。
     #: #699 F16：旧版写 `paths = BA.render_frames(...)` 后 `len(paths)` 取的是**键数**(=2)、
     #: `for p in paths` 迭代的是**键名** ⇒ `rendered` 恒为 2、`frames` 记成 ["paths","snapshots"]。

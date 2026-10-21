@@ -1,0 +1,13 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____ test_record_failure_rolls_back_evidence_confidence_and_propagation ______
+tests\test_extension_transaction_ownership.py:109: in test_record_failure_rolls_back_evidence_confidence_and_propagation
+    assert engine._evidence.entries(premise.id) == before_entries, "failed record committed evidence"
+E   AssertionError: failed record committed evidence
+E   assert [{'id': '8390...t': 1.0, ...}] == [{'id': '8390...t': 1.0, ...}]
+E
+E     Left contains one more item: {'id': '36d2caba18e640f680a852e03eb0b64a', 'source': 'counterevidence', 'polarity': -1, 'weight': 1.0, ...}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_extension_transaction_ownership.py::test_record_failure_rolls_back_evidence_confidence_and_propagation
+1 failed in 0.60s

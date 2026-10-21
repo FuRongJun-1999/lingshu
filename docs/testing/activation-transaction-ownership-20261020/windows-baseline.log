@@ -1,0 +1,90 @@
+FFFFFF..FFFFF.                                                           [100%]
+================================== FAILURES ===================================
+______________ test_constructor_preserves_caller_rollback[begin] ______________
+tests\test_activation_transaction_ownership.py:60: in test_constructor_preserves_caller_rollback
+    assert con.in_transaction, "activation initialization committed caller deletion"
+E   AssertionError: activation initialization committed caller deletion
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x0000019C5B677A60>.in_transaction
+____________ test_constructor_preserves_caller_rollback[savepoint] ____________
+tests\test_activation_transaction_ownership.py:60: in test_constructor_preserves_caller_rollback
+    assert con.in_transaction, "activation initialization committed caller deletion"
+E   AssertionError: activation initialization committed caller deletion
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x0000019C5B6776A0>.in_transaction
+_______________ test_activate_preserves_caller_rollback[store] ________________
+tests\test_activation_transaction_ownership.py:79: in test_activate_preserves_caller_rollback
+    assert store.conn.in_transaction, "activation committed caller deletion"
+E   AssertionError: activation committed caller deletion
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x0000019C5B694310>.in_transaction
+E    +    where <sqlite3.Connection object at 0x0000019C5B694310> = <lingshu.core.core.LayeredStore object at 0x0000019C5B5CD3A0>.conn
+________________ test_activate_preserves_caller_rollback[conn] ________________
+tests\test_activation_transaction_ownership.py:79: in test_activate_preserves_caller_rollback
+    assert store.conn.in_transaction, "activation committed caller deletion"
+E   AssertionError: activation committed caller deletion
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x0000019C5B6945E0>.in_transaction
+E    +    where <sqlite3.Connection object at 0x0000019C5B6945E0> = <lingshu.core.core.LayeredStore object at 0x0000019C5B62D790>.conn
+___ test_failed_replacement_restores_previous_workset[activate-standalone] ____
+tests\test_activation_transaction_ownership.py:99: in test_failed_replacement_restores_previous_workset
+    assert _rows(store) == before, "failed activation discarded the previous workset"
+E   AssertionError: failed activation discarded the previous workset
+E   assert [] == [('act_05fae1...eed', 0, ...)]
+E
+E     Right contains 2 more items, first extra item: ('act_05fae18a_1792481196333', 'w', 'seed', 1.0, 'seed', 0, ...)
+E     Use -v to get more diff
+_____ test_failed_replacement_restores_previous_workset[activate-caller] ______
+tests\test_activation_transaction_ownership.py:99: in test_failed_replacement_restores_previous_workset
+    assert _rows(store) == before, "failed activation discarded the previous workset"
+E   AssertionError: failed activation discarded the previous workset
+E   assert [] == [('act_553ca2...eed', 0, ...)]
+E
+E     Right contains 2 more items, first extra item: ('act_553ca286_1792481196357', 'w', 'seed', 1.0, 'seed', 0, ...)
+E     Use -v to get more diff
+______ test_commit_failure_rolls_back_workset_and_trigger_rows[activate] ______
+tests\test_activation_transaction_ownership.py:124: in test_commit_failure_rolls_back_workset_and_trigger_rows
+    assert not store.conn.in_transaction, "activation commit failure left staged changes"
+E   AssertionError: activation commit failure left staged changes
+E   assert not True
+E    +  where True = <sqlite3.Connection object at 0x0000019C5B694B80>.in_transaction
+E    +    where <sqlite3.Connection object at 0x0000019C5B694B80> = <lingshu.core.core.LayeredStore object at 0x0000019C5B62C4A0>.conn
+_______ test_commit_failure_rolls_back_workset_and_trigger_rows[import] _______
+tests\test_activation_transaction_ownership.py:124: in test_commit_failure_rolls_back_workset_and_trigger_rows
+    assert not store.conn.in_transaction, "activation commit failure left staged changes"
+E   AssertionError: activation commit failure left staged changes
+E   assert not True
+E    +  where True = <sqlite3.Connection object at 0x0000019C5B6953F0>.in_transaction
+E    +    where <sqlite3.Connection object at 0x0000019C5B6953F0> = <lingshu.core.core.LayeredStore object at 0x0000019C5B62D220>.conn
+_________ test_release_failure_undoes_only_activation_work[activate] __________
+tests\test_activation_transaction_ownership.py:148: in test_release_failure_undoes_only_activation_work
+    with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE DatabaseError
+__________ test_release_failure_undoes_only_activation_work[import] ___________
+tests\test_activation_transaction_ownership.py:153: in test_release_failure_undoes_only_activation_work
+    assert _rows(store) == before, "failed activation release kept partial replacement"
+E   AssertionError: failed activation release kept partial replacement
+E   assert [('act_2b62d2...red', 2, ...)] == [('act_06a1e1...eed', 0, ...)]
+E
+E     At index 0 diff: ('act_2b62d21f_1792481196502', 'w', 'seed', 0.75, 'restored', 2, 1792481196.5027277) != ('act_06a1e128_1792481196500', 'w', 'seed', 1.0, 'seed', 0, 1792481196.5007274)
+E     Right contains one more item: ('act_39d5ed5c_1792481196500', 'w', 'victim', 0.4348, 'seed', 0, ...)
+E     Use -v to get more diff
+_________ test_failed_schema_initialization_rolls_back_created_table __________
+tests\test_activation_transaction_ownership.py:173: in test_failed_schema_initialization_rolls_back_created_table
+    assert store.conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='activation_nodes'").fetchone()[0] == 0, (
+E   AssertionError: failed activation initialization left a partial schema
+E   assert 1 == 0
+=========================== short test summary info ===========================
+FAILED tests/test_activation_transaction_ownership.py::test_constructor_preserves_caller_rollback[begin]
+FAILED tests/test_activation_transaction_ownership.py::test_constructor_preserves_caller_rollback[savepoint]
+FAILED tests/test_activation_transaction_ownership.py::test_activate_preserves_caller_rollback[store]
+FAILED tests/test_activation_transaction_ownership.py::test_activate_preserves_caller_rollback[conn]
+FAILED tests/test_activation_transaction_ownership.py::test_failed_replacement_restores_previous_workset[activate-standalone]
+FAILED tests/test_activation_transaction_ownership.py::test_failed_replacement_restores_previous_workset[activate-caller]
+FAILED tests/test_activation_transaction_ownership.py::test_commit_failure_rolls_back_workset_and_trigger_rows[activate]
+FAILED tests/test_activation_transaction_ownership.py::test_commit_failure_rolls_back_workset_and_trigger_rows[import]
+FAILED tests/test_activation_transaction_ownership.py::test_release_failure_undoes_only_activation_work[activate]
+FAILED tests/test_activation_transaction_ownership.py::test_release_failure_undoes_only_activation_work[import]
+FAILED tests/test_activation_transaction_ownership.py::test_failed_schema_initialization_rolls_back_created_table
+11 failed, 3 passed in 1.14s

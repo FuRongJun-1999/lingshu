@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____ test_record_failure_rolls_back_evidence_confidence_and_propagation ______
+tests\test_extension_transaction_ownership.py:111: in test_record_failure_rolls_back_evidence_confidence_and_propagation
+    assert tms._just_cache == {}, "failed propagation left a stale runtime cache"
+E   AssertionError: failed propagation left a stale runtime cache
+E   assert {'node_6fcedc...2377440953']]} == {}
+E
+E     Left contains 2 more items:
+E     {'node_6fcedc55_1792377440953': [],
+E      'node_9d281d32_1792377440955': [['node_6fcedc55_1792377440953']]}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_extension_transaction_ownership.py::test_record_failure_rolls_back_evidence_confidence_and_propagation
+1 failed in 0.63s

@@ -1,0 +1,27 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_commit_failure_restores_subtree_and_allows_durable_followup _______
+
+database = (<lingshu.core.core.SpacetimeMemoryEngine object at 0x000001EC361D3BF0>, <sqlite3.Connection object at 0x000001EC38461F30>)
+
+    def test_commit_failure_restores_subtree_and_allows_durable_followup(database):
+        """G1: failed public replace cannot poison later successful writes."""
+        engine, observer = database
+        conn = engine.store.conn
+        parent, old = _subtree(engine)
+        before = _snapshot(observer)
+    
+        with deny_once(conn, sqlite3.SQLITE_TRANSACTION, "COMMIT") as denied:
+            with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
+                engine.subgraph_replace(parent, old, {"id": "replacement", "content": {}})
+    
+        assert denied == ["COMMIT"], "G1 fault must reach the real outer COMMIT"
+>       assert not conn.in_transaction, "G1 failed COMMIT left a transaction pending"
+E       AssertionError: G1 failed COMMIT left a transaction pending
+E       assert not True
+E        +  where True = <sqlite3.Connection object at 0x000001EC361AE200>.in_transaction
+
+tests\test_transaction_exit_rollback.py:76: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_transaction_exit_rollback.py::test_commit_failure_restores_subtree_and_allows_durable_followup
+1 failed, 9 warnings in 0.56s

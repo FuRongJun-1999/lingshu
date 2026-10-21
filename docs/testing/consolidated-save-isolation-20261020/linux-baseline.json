@@ -1,0 +1,46 @@
+{
+  "platform": "Linux",
+  "python": "3.13.12",
+  "source_sha256": "c0d9639796fc8525fee203307f017ea097f9b411d0b0e916491f0f028a3973a0",
+  "cases": [
+    {
+      "case": "successful_second",
+      "errors": {
+        "first": "FileNotFoundError"
+      },
+      "completed": [
+        "second"
+      ],
+      "final_run": "second",
+      "loaded_kernel": [
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0
+      ],
+      "temporary_files": []
+    },
+    {
+      "case": "failing_second",
+      "errors": {
+        "second": "TypeError",
+        "first": "FileNotFoundError"
+      },
+      "completed": [],
+      "final_run": "original",
+      "loaded_kernel": [
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0
+      ],
+      "temporary_files": []
+    }
+  ]
+}

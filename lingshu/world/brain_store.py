@@ -180,10 +180,31 @@ _ENV_ALLOW_NAMES = frozenset({
 #: 结论：**前缀白名单为空**——「不声明就不给」现在是完整的（无前缀旁路）。
 _ENV_ALLOW_PREFIXES = ()
 
+#: 子进程 env **黑名单·拒传**（issue #750 残余面 ③ · **deny 优先于 allow**）：
+#: 这两个名字决定子进程的**导入安全态 / 组件解析根**——`LINGSHU_ALLOW_CWD_
+#: IMPORTS` 是 `lingshu/_pathguard.py` 的身侧逃生口（开了等于放弃 cwd 解析面
+#: 保护），`LINGSHU_COMPONENT_ROOT` 是 `component_resolver` 的显式组件根
+#: （改写白名单组件的解析面）。父进程一旦把它们透传给脑子子进程，等于**改写
+#: 孙进程的保护态**（#750 原报告实测：`LINGSHU_` 宽前缀时代曾整体透传）。
+#: #652③/#495 已把前缀白名单收敛为空、二者不再透传；本层再把「永不透传」
+#: 钉成**结构化黑名单**——未来白名单若再放宽（重引入前缀 / 具名误收），
+#: deny 仍先行拦截。脑侧子进程（`md_cg.mcp_server`）对二者零读取点；
+#: 确需给子进程重定向组件根的部署走 `extra_env` **显式**声明。
+_ENV_DENY_NAMES = frozenset({
+    "LINGSHU_ALLOW_CWD_IMPORTS",
+    "LINGSHU_COMPONENT_ROOT",
+})
+
 
 def _env_is_allowed(name: str) -> bool:
-    """继承的环境变量名是否在白名单内（大小写无关：Windows 上 `os.environ` 键为大写）。"""
+    """继承的环境变量名是否在白名单内（大小写无关：Windows 上 `os.environ` 键为大写）。
+
+    #750 残余面 ③：`_ENV_DENY_NAMES` **优先**于白名单——黑名单名一律拒传
+    （防白名单未来再放宽时连带复活「子进程保护态被父进程改写」面）。
+    """
     up = str(name).upper()
+    if up in _ENV_DENY_NAMES:
+        return False
     if up in _ENV_ALLOW_NAMES:
         return True
     return any(up.startswith(p) for p in _ENV_ALLOW_PREFIXES)

@@ -1,0 +1,14 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_release_failure_undoes_only_activation_work[import] ___________
+tests\test_activation_transaction_ownership.py:153: in test_release_failure_undoes_only_activation_work
+    assert _rows(store) == before, "failed activation release kept partial replacement"
+E   AssertionError: failed activation release kept partial replacement
+E   assert [('act_476f84...red', 2, ...)] == [('act_2a242d...eed', 0, ...)]
+E
+E     At index 0 diff: ('act_476f847e_1792481202021', 'w', 'seed', 0.75, 'restored', 2, 1792481202.0214815) != ('act_2a242dbf_1792481202019', 'w', 'victim', 0.4348, 'seed', 0, 1792481202.0194814)
+E     Right contains one more item: ('act_9b105c74_1792481202019', 'w', 'seed', 1.0, 'seed', 0, ...)
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_activation_transaction_ownership.py::test_release_failure_undoes_only_activation_work[import]
+1 failed in 0.65s

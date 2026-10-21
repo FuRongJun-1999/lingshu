@@ -1,0 +1,11 @@
+{
+  "baseline": "049dd79d902fcbb5d0b097fc5e1f7cf3197dae44",
+  "guard_validation_commit": "33c55085e31309dd4baa7b6608266fd452837f7a",
+  "related_production_commit": "33c55085e31309dd4baa7b6608266fd452837f7a",
+  "sha256_lf": {
+    "lingshu/core/core.py": "6ff4f5b9126d0d019d53e189ed147a01441679449f9886f43e0be211dc883882",
+    "tests/test_context_write_unit.py": "97803642de1fb1ac7ef5f3463c85244fc2508b512b7ec42341259f006eadb153",
+    "tests/fixtures/context_write_mutations.json": "db7b58859940239afc6b83db48ac222dd629155c2e0a12461b04460c7bb9ae20"
+  },
+  "note": "本轮对齐最新 main 后，守卫、变异与相关回归均在同一验证提交运行；生产源码、守卫与规格逐字节对账。早期 Windows 管道超时与旧运行另留本地，不计最终通过。"
+}

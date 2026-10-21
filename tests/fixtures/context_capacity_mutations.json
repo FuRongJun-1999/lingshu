@@ -1,0 +1,73 @@
+{
+  "guard": "tests/test_context_capacity_atomicity.py",
+  "total": 7,
+  "sources": [
+    "lingshu/core/core.py"
+  ],
+  "baseline_failures": [
+    "test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]",
+    "test_caller_transaction_is_rejected_without_changing_or_ending_it[SAVEPOINT caller]",
+    "test_commit_failure_rolls_back_fifo_and_preserves_runtime_cap",
+    "test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes",
+    "test_success_publishes_capacity_after_commit",
+    "test_write_lock_failure_does_not_apply_cap_to_next_write"
+  ],
+  "mutations": [
+    {
+      "name": "publish_runtime_before_commit",
+      "test": "test_success_publishes_capacity_after_commit",
+      "assertion": "runtime cap was published before the single final commit",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "set_context_cap",
+          "old": "            with self.store._structure_event_transaction():\n                self.store.set_meta(\"context_max\", str(capacity))\n                self.store.enforce_context_cap(capacity)\n            self._context_max = capacity\n",
+          "new": "            self._context_max = capacity\n            with self.store._structure_event_transaction():\n                self.store.set_meta(\"context_max\", str(capacity))\n                self.store.enforce_context_cap(capacity)\n"
+        }
+      ]
+    },
+    {
+      "name": "save_metadata_outside_fifo_transaction",
+      "test": "test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes",
+      "assertion": "failed capacity change changed stored metadata",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "set_context_cap",
+          "old": "            with self.store._structure_event_transaction():\n                self.store.set_meta(\"context_max\", str(capacity))\n                self.store.enforce_context_cap(capacity)\n            self._context_max = capacity\n",
+          "new": "            self.store.set_meta(\"context_max\", str(capacity))\n            with self.store._structure_event_transaction():\n                self.store.enforce_context_cap(capacity)\n            self._context_max = capacity\n"
+        }
+      ]
+    },
+    {
+      "name": "allow_existing_caller_transaction",
+      "test": "test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]",
+      "assertion": "DID NOT RAISE",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "set_context_cap",
+          "old": "            if self.store.conn.in_transaction:\n                raise RuntimeError(\"容量设置需要独立事务；请先结束调用方事务\")\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "name": "omit_fifo_trimming",
+      "test": "test_success_publishes_capacity_after_commit",
+      "assertion": "successful capacity change did not trim FIFO",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "set_context_cap",
+          "old": "                self.store.enforce_context_cap(capacity)\n",
+          "new": ""
+        }
+      ]
+    }
+  ]
+}

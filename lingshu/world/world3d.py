@@ -29,7 +29,13 @@ from typing import Dict, List, Optional, Tuple
 MAX_SCREEN_DIM = 4096
 
 # ---------------------------------------------------------------------------
-# 类别视觉词典：语义 → 真实尺寸/颜色/形状（伪 3D 的先验）
+# 类别视觉词典：语义 → 真实尺寸/颜色/形状
+#
+# #8 口径登记：本表是**类别先验**（手工词表，非度量观测）。`add_vprim` 的
+# X/Y/Z 由 `spec.size[0]`（真实宽）反投影推导，所以同一像素框在不同类别下
+# 会得到不同深度；地面物体的 Y 还被 `spec.size[1]` 直接覆盖。未知类别的
+# 回落见 `default_spec`——那是**未登记先验**，不是观测。调用方若要区分
+# 「量出来的」与「猜出来的」，先查 `category in DEFAULT_VISUAL_SPECS`。
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -163,6 +169,12 @@ DEFAULT_VISUAL_SPECS: Dict[str, VisualSpec] = {
 
 
 def default_spec(category: str) -> VisualSpec:
+    """未知类别的默认视觉先验。
+
+    #8 口径：回落为 1m×1m×1m 立方体——**未登记先验**，不是观测。该值会参与
+    `add_vprim` 的深度反投影（同一 bbox 因此得到另一个深度）；调用方若需要
+    区分观测/猜测，应先用 `category in DEFAULT_VISUAL_SPECS` 判定。
+    """
     return DEFAULT_VISUAL_SPECS.get(category, VisualSpec((1.0, 1.0, 1.0), (180, 180, 190)))
 
 

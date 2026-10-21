@@ -14,17 +14,32 @@
   `game_web` / `semantic_space` 四行**全部** `ModuleNotFoundError`。
 
 修复：`_ComponentFinder.find_spec` 先判「本次导入是否由 lingshu 包内代码发起」
-  （`_importer_is_lingshu()`：沿调用栈取第一个有归属的帧，`lingshu` 包内 ⇒ True）。
-  · 包内（引擎自己的组件导入）⇒ 维持 #156 的严格收口（受控面缺失即原生
+（`_importer_is_lingshu()`：沿调用栈取第一个有归属的帧，`lingshu` 包内 ⇒ True）。
+· 包内（引擎自己的组件导入）⇒ 维持 #156 的严格收口（受控面缺失即原生
     `ModuleNotFoundError` + 告警）；
-  · 宿主 / `__main__` / 其它库 ⇒ `return None` 交还后续 finder，由标准
-    `PathFinder` 按 `sys.path` 解析宿主自己的模块。
+· 宿主 / `__main__` / 其它库 ⇒ `return None` 交还后续 finder，由标准
+  `PathFinder` 按 `sys.path` 解析宿主自己的模块。
+
+★#750 残余修复（EQRS #817 方向①）后的口径修订：上面「宿主帧 return None」
+分支已删除——`return None` 会把整条 `sys.path`（含 cwd / 脚本目录条目）交还
+标准 `PathFinder`，正是 #817 四臂矩阵 A/D/E 三臂毒模块执行的通路。宿主自有
+同名模块的保证**按名收窄**为两条支持径（component_resolver 模块头 v4 段）：
+  ① 受控面：同名模块放 `LINGSHU_COMPONENT_ROOT` / `PYTHONPATH` 显式声明的
+     目录（`safe_search_path()` 命中即返回，宿主帧同样受益）；
+  ② 早于 finder 生效：先 `import` 自身模块再 `import lingshu.core`（sys.modules
+     天然最优先，组件 finder 不干预）。
+本守卫 G1/G2 相应改钉「脚本目录同名模块 ⇒ ModuleNotFoundError（不再交还）」
+＋「受控面径 ⇒ ok owner=host（支持径活着）」；取舍依据见 issue #750 线程
+（TRIAGE-750 §四 / MERGE-782-750-RESIDUAL §四「收口点」）。
 
 断言组（回退 / 放宽即红）：
-  G1 复现脚本 [A]：宿主 app 目录放自有 `vision.py`/`body.py`/`game_web.py`/
-     `semantic_space.py`，脚本先 `import lingshu.core.core` 再逐个 `__import__`
-     ⇒ 四行全 `ok`，且取到的模块 `OWNER == 'host'`（是宿主自己的模块）。
-  G2 同上 + `LINGSHU_ALLOW_CWD_IMPORTS=1`（逃生口）⇒ 四行全 `ok`。
+  G1 复现脚本 [A]（新口径）：宿主 app 目录放自有 `vision.py`/`body.py`/
+     `game_web.py`/`semantic_space.py`，脚本先 `import lingshu.core.core` 再逐个
+     `__import__` ⇒ 四行全 `ModuleNotFoundError`（解释器隐式面不解析白名单名）；
+     同批模块经 `LINGSHU_COMPONENT_ROOT=app` 声明后 ⇒ 四行全 `ok owner=host`
+     （支持径①未坏）。
+  G2 同上 + `LINGSHU_ALLOW_CWD_IMPORTS=1`（逃生口）⇒ 仍全 `ModuleNotFoundError`
+     （逃生口不再恢复白名单名的 cwd/脚本目录解析——A 臂封死）。
   G3 反向腿（防过度放松 · 钉 #156 收口仍在）：毒 cwd 里放白名单组件
      `self_cognition_engine.py`，从该 cwd 构造引擎 ⇒ 毒文件**不执行**
      （MARKER 不存在）且 `_self_cognition_error` 含 `No module named`
@@ -107,28 +122,41 @@ def _run_host(main, extra_env=None):
                           capture_output=True, text=True, encoding="utf-8")
 
 
+def _assert_all_refused(out, label):
+    for name in HOST_NAMES:
+        line = "import %-15s -> ModuleNotFoundError" % name
+        assert line in out, f"{label}: 缺 `{line}`\n实际输出：\n{out}"
+    assert "owner=" not in out, (
+        f"{label}: 白名单名仍从解释器隐式面解析（#750 残余未收口）\n{out}")
+
+
 def _assert_all_ok(out, label):
     for name in HOST_NAMES:
         line = "import %-15s -> ok owner=host" % name
         assert line in out, f"{label}: 缺 `{line}`\n实际输出：\n{out}"
     assert "ModuleNotFoundError" not in out, (
-        f"{label}: 宿主自有同名模块被组件 finder 接管（应全部可导入）\n{out}")
+        f"{label}: 受控面支持径被修坏（宿主自有同名模块应可解析）\n{out}")
 
 
-def test_g1_host_own_modules_importable_after_lingshu():
-    """G1（#275 [A]）：先 import lingshu.core 后，宿主自有同名模块仍可导入。"""
+def test_g1_script_dir_refused_controlled_root_ok():
+    """G1（#275 [A] · 新口径）：先 import lingshu.core 后，脚本目录同名模块不再
+    被隐式面解析（ModuleNotFoundError）；经 LINGSHU_COMPONENT_ROOT 声明后全 ok。"""
     app, main = _mk_host_app()
     r = _run_host(main)
     assert r.returncode == 0, f"宿主脚本 rc={r.returncode}\nstderr={r.stderr[-400:]}"
-    _assert_all_ok(r.stdout, "[A]")
+    _assert_all_refused(r.stdout, "[A]脚本目录面")
+    # 支持径①：同名模块目录经受控面（显式组件根）声明 ⇒ 照旧可解析且是宿主自己的
+    r2 = _run_host(main, {"LINGSHU_COMPONENT_ROOT": app})
+    assert r2.returncode == 0, f"rc={r2.returncode} stderr={r2.stderr[-400:]}"
+    _assert_all_ok(r2.stdout, "[A]受控面径")
 
 
 def test_g2_escape_hatch_also_ok():
-    """G2（#275 [B]）：逃生口打开时同样全 ok（缺陷形态逃生口无效）。"""
+    """G2（#275 [B] · 新口径）：逃生口打开时同样全拒（不再恢复隐式面解析）。"""
     app, main = _mk_host_app()
     r = _run_host(main, {"LINGSHU_ALLOW_CWD_IMPORTS": "1"})
     assert r.returncode == 0, f"宿主脚本 rc={r.returncode}\nstderr={r.stderr[-400:]}"
-    _assert_all_ok(r.stdout, "[B]")
+    _assert_all_refused(r.stdout, "[B]")
 
 
 def test_g3_engine_side_strictness_intact():
@@ -181,7 +209,7 @@ def test_g4_explicit_root_still_assembles():
 
 
 if __name__ == "__main__":
-    test_g1_host_own_modules_importable_after_lingshu()
+    test_g1_script_dir_refused_controlled_root_ok()
     test_g2_escape_hatch_also_ok()
     test_g3_engine_side_strictness_intact()
     test_g4_explicit_root_still_assembles()

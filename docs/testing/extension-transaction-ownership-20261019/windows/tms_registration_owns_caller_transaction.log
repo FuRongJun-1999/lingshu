@@ -1,0 +1,13 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_tms_write_preserves_caller_rollback[register] ______________
+tests\test_extension_transaction_ownership.py:85: in test_tms_write_preserves_caller_rollback
+    assert engine.store.conn.in_transaction, "TMS committed the caller transaction"
+E   AssertionError: TMS committed the caller transaction
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x000001B3DC606110>.in_transaction
+E    +    where <sqlite3.Connection object at 0x000001B3DC606110> = <lingshu.core.core.LayeredStore object at 0x000001B3DA3CCFE0>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x000001B3DA3CCFE0> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x000001B3DA3CCEF0>.store
+=========================== short test summary info ===========================
+FAILED tests/test_extension_transaction_ownership.py::test_tms_write_preserves_caller_rollback[register]
+1 failed in 0.60s

@@ -1,0 +1,12 @@
+{
+  "validated_production_commit": "a33215ff5275cdc120efe5854ed33d2f6e4567da",
+  "baseline": "77c738235846839c33b1932d11e7e61778d427d0",
+  "sha256_lf": {
+    "lingshu/nn/rust_bridge.py": "6df44dd3788c2890019af6327170d0cfe7bbe01a149924b896f8301060f43dc1",
+    "tests/test_rust_training_workspace.py": "bef305c461d5be52b75b4134ae0097865b1b6d6fb724c03d386aa9ad95f2547e",
+    "tests/fixtures/rust_training_workspace_mutations.json": "fac9632822c70d3250de8cd752ade028e00d91457d12aa6ce0a3ccdd0fea3bea"
+  },
+  "windows_git_probe": "a33215ff5275cdc120efe5854ed33d2f6e4567da",
+  "linux_initial_git_probe": "fc4e3fd8350cd67340a57292789e52fbf8d176f4",
+  "note": "Linux 驱动的 HEAD 探针指向共享 Git 目录，误报主检出 HEAD；原始值保留。实际测试在本工作树运行；源码、守卫、规格与上述验证提交逐字节对账，两平台源码及守卫指纹一致。固定基线通过 git show 读取指定提交，不依赖 HEAD 探针。"
+}

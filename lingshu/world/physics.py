@@ -517,9 +517,9 @@ def predict_at(model, t):
         up = model["up"]
         idx = [i for i in range(3) if i != up]
         th = model["theta0"] + model["omega"] * tau
-        h = (model["center"][0] + model["radius"] * math.cos(th),
-             model["center"][1] + model["radius"] * math.sin(th))
-        vert = model["center"][2] + model["v_up"] * tau
+        h = (model["center"][idx[0]] + model["radius"] * math.cos(th),  # #786：center 是世界序（fit_circular 的 _unhv 展开），按轴取；旧码按打包序读 center[0..2] ⇒ up∈{0,1} 时 roundtrip 必错（实测误差 2.5）
+             model["center"][idx[1]] + model["radius"] * math.sin(th))
+        vert = model["center"][up] + model["v_up"] * tau
         p = _unhv(h, vert, up)
         vh = (-model["radius"] * model["omega"] * math.sin(th),
               model["radius"] * model["omega"] * math.cos(th))
@@ -582,7 +582,7 @@ def predict_trajectory(model, times, reflector=None):
 
 # =========================================================== 解析真值
 def projectile_truth(p0, v0, gravity=DEFAULT_G, up=1, ground=None):
-    """抛体闭式真值：顶点时刻/高度、（给地面时）落地时刻/水平射程/落地速度。"""
+    """抛体闭式真值：顶点时刻/**世界坐标**顶点高度（p0[up]+v0_up²/2g，#786 与 projectile_state 同口径）、（给地面时）落地时刻/水平射程/落地速度。"""
     up = _axis_of(up)
     g = float(gravity)
     v_up = float(v0[up])
@@ -592,7 +592,7 @@ def projectile_truth(p0, v0, gravity=DEFAULT_G, up=1, ground=None):
         t_apex = v_up / g
         if t_apex >= 0.0:
             out["t_apex"] = t_apex
-            out["apex_height"] = v_up * t_apex - 0.5 * g * t_apex * t_apex
+            out["apex_height"] = p_up + v_up * t_apex - 0.5 * g * t_apex * t_apex  # #786：世界坐标顶点高度（与 projectile_state 同口径）；旧码缺 +p_up ⇒ 退化为相对起点位移 v0²/2g
     if ground is not None:
         h = p_up - float(ground)
         disc = v_up * v_up + 2.0 * g * h
@@ -693,7 +693,7 @@ class Reflector:
                 y += 2.0 * L
             sign = 1.0 if y <= L else -1.0
             p_out.append(m)
-            v_out.append(abs(float(vel[i])) * sign)
+            v_out.append(float(vel[i]) * sign)  # #786：保留调用方速度方向；旧码 abs(vel[i])*sign 抹掉负初速 ⇒ 未触壁的下行轴速度反号
         return tuple(p_out), tuple(v_out)
 
     def truth(self, p0, v0):
@@ -2231,7 +2231,8 @@ def _integrate_env(model, env, t, dt):
             "（span=%.6g, dt=%.6g）——**不静默截断**：请放大 dt、缩短 span，"
             "或改用闭式路径" % (steps, MAX_INTEGRATION_STEPS, abs(span), dt))
     h = span / steps
-    p = list(_vec3(model["p0"], "p0"))
+    p0 = _vec3(model["p0"], "p0")   # 接触面过 p0（起点在坡面上）
+    p = list(p0)
     v = list(_vec3(model["v0"], "v0"))
     for _ in range(steps):
         a = list(g_vec)
@@ -2241,6 +2242,13 @@ def _integrate_env(model, env, t, dt):
                 a[i] -= beta * sp * v[i]
         if ter is not None:
             u = ter["incline_dir"]
+            nrm = ter["normal"]
+            # 地面法向反力：抵消重力在法向的分量 —— 物体贴坡面运动、不穿透。
+            # 2026-10-18 外部审计 R14-Z01：旧实现只加重力 + 沿坡摩擦、无法向约束，
+            # 积分路径下法向速度以 g·cosθ 累积 ⇒ 位置以 ~½·g·cosθ·t² 沉穿坡面。
+            g_n = sum(g_vec[i] * nrm[i] for i in range(3))
+            for i in range(3):
+                a[i] -= g_n * nrm[i]
             v_s = sum(v[i] * u[i] for i in range(3))
             mu_a = ter["mu_k"] * env["gravity"] * math.cos(ter["slope_rad"])
             if abs(v_s) > _EPS:
@@ -2251,6 +2259,15 @@ def _integrate_env(model, env, t, dt):
         for i in range(3):
             v[i] += a[i] * h
             p[i] += v[i] * h
+        if ter is not None:
+            # 接触约束：去掉法向速度分量，并把位置拉回 p0 所在的坡面（法向零位移）
+            nrm = ter["normal"]
+            v_n = sum(v[i] * nrm[i] for i in range(3))
+            for i in range(3):
+                v[i] -= v_n * nrm[i]
+            p_n = sum((p[i] - p0[i]) * nrm[i] for i in range(3))
+            for i in range(3):
+                p[i] -= p_n * nrm[i]
     return tuple(p), tuple(v), steps
 
 

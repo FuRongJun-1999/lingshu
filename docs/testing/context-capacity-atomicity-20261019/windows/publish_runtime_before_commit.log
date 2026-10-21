@@ -1,0 +1,13 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_success_publishes_capacity_after_commit _________________
+tests\test_context_capacity_atomicity.py:123: in test_success_publishes_capacity_after_commit
+    assert observed == [10], "runtime cap was published before the single final commit"
+E   AssertionError: runtime cap was published before the single final commit
+E   assert [2] == [10]
+E
+E     At index 0 diff: 2 != 10
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_context_capacity_atomicity.py::test_success_publishes_capacity_after_commit
+1 failed in 0.58s

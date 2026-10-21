@@ -1,0 +1,27 @@
+{
+  "initial_values": [
+    "存在优先",
+    "信任深化",
+    "结构完整"
+  ],
+  "local_after_failure": [
+    "retain local change"
+  ],
+  "disk_after_failure": [
+    "存在优先",
+    "信任深化",
+    "结构完整"
+  ],
+  "disk_after_successful_later_save": [
+    "存在优先",
+    "信任深化",
+    "结构完整"
+  ],
+  "reopened_values": [
+    "存在优先",
+    "信任深化",
+    "结构完整"
+  ],
+  "reopened_value_history": 0,
+  "later_goal": "successful later save"
+}

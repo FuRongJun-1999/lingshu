@@ -1,0 +1,129 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "40fceb69e79d0f481455f05ea8581b6f6f5e5816",
+  "guard_sha256": "a90dc20212ae7936f3e86f61a0e4faae418452a3036b0e30cea97a64df9ea8e0",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 9,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "9 passed, 73 warnings in 1.67s",
+      "source_sha256": {
+        "lingshu/core/core.py": "641df4b1edc90a77ff790ce8efbdb96217af897b5fd04090bc4a1cdfe48b43d4"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_pending_change_survives_rejected_save_and_later_recovery[goal-commit]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[goal-statement]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[trust-commit]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[trust-statement]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-commit]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-statement]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-statement]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-commit]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[trust-statement]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[trust-commit]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[goal-statement]",
+        "test_pending_change_survives_rejected_save_and_later_recovery[goal-commit]"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "6 failed, 3 passed, 73 warnings in 1.67s",
+      "source_sha256": {
+        "lingshu/core/core.py": "f764c4ac4c97daa778f623df59036bef11c8ddbdf4f1afd6862855d61e6a2719"
+      }
+    },
+    {
+      "case": "publish_baseline_before_snapshot_write",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-statement]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-statement]"
+      ],
+      "expected_assertion": "pending self-model change was dropped after recovery",
+      "pytest_summary": "1 failed, 9 warnings in 0.64s",
+      "source_sha256": {
+        "lingshu/core/core.py": "5c7e07373c32409984db3a5c81ce7c6a71f5ea1d865919dfc92a6a85557a75f2"
+      }
+    },
+    {
+      "case": "publish_baseline_before_commit",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-commit]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_pending_change_survives_rejected_save_and_later_recovery[values-commit]"
+      ],
+      "expected_assertion": "pending self-model change was dropped after recovery",
+      "pytest_summary": "1 failed, 9 warnings in 0.61s",
+      "source_sha256": {
+        "lingshu/core/core.py": "96dede4487b83caf895cee1cf3982853a5a297ad2dd988b95f24b015faa9b23f"
+      }
+    },
+    {
+      "case": "never_advance_successful_baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_successful_local_baseline_preserves_later_remote_values"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_successful_local_baseline_preserves_later_remote_values"
+      ],
+      "expected_assertion": "successful baseline was not advanced before a later remote update",
+      "pytest_summary": "1 failed, 9 warnings in 0.69s",
+      "source_sha256": {
+        "lingshu/core/core.py": "548b8c4a3cd92d85fb28f03da69fdeef444d041b015b468de253c0eae116d6d6"
+      }
+    },
+    {
+      "case": "advance_baseline_to_merged_disk_payload",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_adopted_disk_fields_do_not_become_local_baseline"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_adopted_disk_fields_do_not_become_local_baseline"
+      ],
+      "expected_assertion": "adopted disk values were overwritten on the next save",
+      "pytest_summary": "1 failed, 9 warnings in 0.67s",
+      "source_sha256": {
+        "lingshu/core/core.py": "18705451178cac9a618f59a52973d0804762482ee61ddcc1df10944b80c186fc"
+      }
+    }
+  ]
+}

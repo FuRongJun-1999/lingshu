@@ -1,0 +1,12 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________________ test_explicit_workdir_retains_diagnostic_files ________________
+<evidence-root>/current/linux/replay/guard-6ocipeaj/tests/test_rust_training_workspace.py:110: in test_explicit_workdir_retains_diagnostic_files
+    assert target.is_dir(), "explicit workdir files were not retained"
+E   AssertionError: explicit workdir files were not retained
+E   assert False
+E    +  where False = is_dir()
+E    +    where is_dir = PosixPath('<evidence-root>/current/linux/replay/guard-6ocipeaj/tmp/test_explicit_workdir_retains_0/explicit').is_dir
+=========================== short test summary info ============================
+FAILED tests/test_rust_training_workspace.py::test_explicit_workdir_retains_diagnostic_files
+1 failed in 0.56s

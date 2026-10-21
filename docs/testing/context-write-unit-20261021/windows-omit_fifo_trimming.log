@@ -1,0 +1,11 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_successful_context_call_can_be_rolled_back_by_caller __________
+tests\test_context_write_unit.py:150: in test_successful_context_call_can_be_rolled_back_by_caller
+    assert _count(engine) == 2, "successful context write did not trim FIFO inside caller transaction"
+E   AssertionError: successful context write did not trim FIFO inside caller transaction
+E   assert 3 == 2
+E    +  where 3 = _count(<lingshu.core.core.SpacetimeMemoryEngine object at 0x0000022322BCD6A0>)
+=========================== short test summary info ===========================
+FAILED tests/test_context_write_unit.py::test_successful_context_call_can_be_rolled_back_by_caller
+1 failed in 0.52s

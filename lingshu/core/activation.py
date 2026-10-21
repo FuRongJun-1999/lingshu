@@ -41,6 +41,7 @@
 不再以裸 `import numpy` 击穿整包导入;scipy 仍为可选稀疏后端(缺失降级 edge-list)。
 """
 from __future__ import annotations
+from contextlib import contextmanager
 import json
 import math
 import os
@@ -134,7 +135,8 @@ class _BorrowedConnection:
 
     引擎内部各处按「取连接 → 用完 close()」书写；`store=` / `conn=` 复用引擎连接
     （如 `:memory:`）时，真 `close()` 会把调用方的库一起关掉——本包装只让 `close()`
-    空转，不改变 `execute` / `commit` / `cursor` 的语义。
+    空转，不改变 `execute` / `commit` / `cursor` 的语义。事务由激活引擎的
+    `_transaction` 管理，借用已有事务时只操作自己的 SAVEPOINT。
     """
 
     def __init__(self, conn):
@@ -204,18 +206,53 @@ class ActivationEngine:
 
     # ---------------- 表结构(独立激活表,与内容记忆分离) ----------------
     def _ensure_tables(self):
-        con = self._con()
-        con.execute("""CREATE TABLE IF NOT EXISTS activation_nodes (
-            id TEXT PRIMARY KEY, workset TEXT NOT NULL, node_id TEXT NOT NULL,
-            activation REAL NOT NULL, source TEXT NOT NULL, hop INTEGER NOT NULL, ts REAL NOT NULL)""")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_act_ws ON activation_nodes(workset)")
-        con.commit(); con.close()
+        with self._transaction() as con:
+            con.execute("""CREATE TABLE IF NOT EXISTS activation_nodes (
+                id TEXT PRIMARY KEY, workset TEXT NOT NULL, node_id TEXT NOT NULL,
+                activation REAL NOT NULL, source TEXT NOT NULL, hop INTEGER NOT NULL, ts REAL NOT NULL)""")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_act_ws ON activation_nodes(workset)")
 
     def _con(self):
         """取连接：借用的共享连接优先（#293），否则按路径新开。"""
         if self._conn is not None:
             return self._conn
         return sqlite3.connect(self.db_path, timeout=30)
+
+    @contextmanager
+    def _transaction(self):
+        """Write atomically without committing a borrowed caller transaction.
+
+        Initialization participates in the same boundary. If its first schema
+        creation is rolled back by the caller, reconstruct the activation engine.
+        Commit/RELEASE failures use the same rollback path as statement failures.
+        """
+        con = self._con()
+        nested = con.in_transaction
+        savepoint = "activation_%s" % uuid.uuid4().hex
+        try:
+            if nested:
+                con.execute("SAVEPOINT %s" % savepoint)
+            else:
+                con.execute("BEGIN IMMEDIATE")
+            try:
+                yield con
+                if nested:
+                    con.execute("RELEASE SAVEPOINT %s" % savepoint)
+                else:
+                    con.commit()
+            except BaseException as error:
+                try:
+                    if con.in_transaction:
+                        if nested:
+                            con.execute("ROLLBACK TO SAVEPOINT %s" % savepoint)
+                            con.execute("RELEASE SAVEPOINT %s" % savepoint)
+                        else:
+                            con.rollback()
+                except sqlite3.Error as rollback_error:
+                    error.add_note("Activation rollback failed: %s" % rollback_error)
+                raise
+        finally:
+            con.close()
 
     def _warn_if_content_tables_absent(self):
         """#714：构造期给出一条明确 warning——`nodes` 表缺席时激活面是**空工作态**。
@@ -511,18 +548,17 @@ class ActivationEngine:
         #314：`hops` 给每个 node_id 的**首次激活跳号**（种子/自条件 = 0）；缺省仍写 0
         （签名向后兼容——不传即旧行为）。
         """
-        con = self._con()
-        con.execute("DELETE FROM activation_nodes WHERE workset=?", (workset,))
-        ts = time.time()
-        src_map = sources or {}
-        hop_map = hops or {}
-        for nid, a in members:
-            con.execute(
-                "INSERT OR REPLACE INTO activation_nodes VALUES (?,?,?,?,?,?,?)",
-                ("act_%s_%d" % (uuid.uuid4().hex[:8], int(ts * 1000)),
-                 workset, nid, a, src_map.get(nid, "propagate"),
-                 hop_map.get(nid, 0), ts))
-        con.commit(); con.close()
+        with self._transaction() as con:
+            con.execute("DELETE FROM activation_nodes WHERE workset=?", (workset,))
+            ts = time.time()
+            src_map = sources or {}
+            hop_map = hops or {}
+            for nid, a in members:
+                con.execute(
+                    "INSERT OR REPLACE INTO activation_nodes VALUES (?,?,?,?,?,?,?)",
+                    ("act_%s_%d" % (uuid.uuid4().hex[:8], int(ts * 1000)),
+                     workset, nid, a, src_map.get(nid, "propagate"),
+                     hop_map.get(nid, 0), ts))
 
     def _append_audit(self, audit: Dict):
         os.makedirs(os.path.dirname(self.audit_path) or ".", exist_ok=True)
@@ -604,45 +640,13 @@ class ActivationEngine:
         ws = workset or snapshot["workset"]
         # ① 写前物化（非可迭代 ⇒ 在任何 DELETE 之前抛出，目标零变更）。
         members = list(snapshot["members"])
-        con = self._con()
-        savepoint = None
-        try:
-            # ② 单事务：DELETE 与全部 INSERT 同生共死。
-            if con.in_transaction:
-                savepoint = "import_workset_%s" % uuid.uuid4().hex[:8]
-                con.execute("SAVEPOINT %s" % savepoint)
-            else:
-                con.execute("BEGIN IMMEDIATE")
+        with self._transaction() as con:
             ts = time.time()
             con.execute("DELETE FROM activation_nodes WHERE workset=?", (ws,))
             for m in members:
                 con.execute("INSERT OR REPLACE INTO activation_nodes VALUES (?,?,?,?,?,?,?)",
                             ("act_%s_%d" % (uuid.uuid4().hex[:8], int(ts * 1000)),
                              ws, m["node_id"], m["activation"], "restored", m.get("hop", 0), ts))
-        except BaseException:
-            # 回滚自己这一段（嵌套时只回滚到 SAVEPOINT，不动调用方既有事务），原样抛。
-            if savepoint is None:
-                con.rollback()
-            else:
-                try:
-                    con.execute("ROLLBACK TO SAVEPOINT %s" % savepoint)
-                    con.execute("RELEASE SAVEPOINT %s" % savepoint)
-                except sqlite3.Error as _sp_err:
-                    # 回滚段自身失败（SAVEPOINT 已被 SQLite 隐式释放等）**不静默**：
-                    # 出声记录后仍抛**原异常**——本方法不重定义错误类型（见 docstring
-                    # 边界③），此处只保证「回滚未成」可被调用方/日志面看见。
-                    warnings.warn(
-                        "ActivationEngine.import_workset: 回滚到 SAVEPOINT %s 失败"
-                        "（%s）；本次异常照原样抛出，调用方事务状态请自行复核"
-                        % (savepoint, _sp_err))
-            raise
-        else:
-            if savepoint is None:
-                con.commit()
-            else:
-                con.execute("RELEASE SAVEPOINT %s" % savepoint)
-        finally:
-            con.close()
         return {"status": "ok", "workset": ws, "restored": len(members)}
 
 

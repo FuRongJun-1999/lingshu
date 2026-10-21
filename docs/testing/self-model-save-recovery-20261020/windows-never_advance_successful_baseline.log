@@ -1,0 +1,13 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_successful_local_baseline_preserves_later_remote_values _________
+tests\test_self_model_save_recovery.py:89: in test_successful_local_baseline_preserves_later_remote_values
+    assert _reopened_model(engine)["values"] == ["new remote value"], (
+E   AssertionError: successful baseline was not advanced before a later remote update
+E   assert ['first local value'] == ['new remote value']
+E
+E     At index 0 diff: 'first local value' != 'new remote value'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_self_model_save_recovery.py::test_successful_local_baseline_preserves_later_remote_values
+1 failed, 9 warnings in 0.69s

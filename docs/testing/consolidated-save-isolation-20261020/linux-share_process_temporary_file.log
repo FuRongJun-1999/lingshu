@@ -1,0 +1,13 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________ test_parallel_saves_do_not_share_temporary_files[success] ___________
+tests/test_consolidated_save_isolation.py:62: in test_parallel_saves_do_not_share_temporary_files
+    assert outcomes["second"] == str(target), "concurrent valid save was rejected"
+E   AssertionError: concurrent valid save was rejected
+E   assert 'FileExistsError' == '/mnt/e/lings...a0/model.json'
+E
+E     - /mnt/e/lingshu/outputs/body-save-isolation-20261020/linux-replay/guard-xloaeqdu/tmp/test_parallel_saves_do_not_sha0/model.json
+E     + FileExistsError
+=========================== short test summary info ============================
+FAILED tests/test_consolidated_save_isolation.py::test_parallel_saves_do_not_share_temporary_files[success]
+1 failed in 0.46s

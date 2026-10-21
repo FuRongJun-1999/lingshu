@@ -1,0 +1,11 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_existing_instance_uses_current_database_capacity[decreased] _______
+tests/test_context_write_unit.py:52: in test_existing_instance_uses_current_database_capacity
+    assert _count(engine) == expected, "context write used a stale or default capacity"
+E   AssertionError: context write used a stale or default capacity
+E   assert 3 == 2
+E    +  where 3 = _count(<lingshu.core.core.SpacetimeMemoryEngine object at 0x72ab74485010>)
+=========================== short test summary info ============================
+FAILED tests/test_context_write_unit.py::test_existing_instance_uses_current_database_capacity[decreased]
+1 failed in 1.00s

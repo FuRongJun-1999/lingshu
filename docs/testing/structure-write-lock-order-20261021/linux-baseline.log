@@ -1,0 +1,22 @@
+FFF....                                                                  [100%]
+=================================== FAILURES ===================================
+____ test_structural_and_ordinary_writers_do_not_invert_locks[record_event] ____
+tests/test_structure_write_lock_order.py:100: in test_structural_and_ordinary_writers_do_not_invert_locks
+    assert result["ok"], "structural writer failed under concurrent ordinary write: " + str(result)
+E   AssertionError: structural writer failed under concurrent ordinary write: {'ok': False, 'error': 'OperationalError: database is locked'}
+E   assert False
+_____ test_structural_and_ordinary_writers_do_not_invert_locks[attention] ______
+tests/test_structure_write_lock_order.py:100: in test_structural_and_ordinary_writers_do_not_invert_locks
+    assert result["ok"], "structural writer failed under concurrent ordinary write: " + str(result)
+E   AssertionError: structural writer failed under concurrent ordinary write: {'ok': False, 'error': 'OperationalError: database is locked'}
+E   assert False
+______ test_structural_and_ordinary_writers_do_not_invert_locks[verifier] ______
+tests/test_structure_write_lock_order.py:100: in test_structural_and_ordinary_writers_do_not_invert_locks
+    assert result["ok"], "structural writer failed under concurrent ordinary write: " + str(result)
+E   AssertionError: structural writer failed under concurrent ordinary write: {'ok': False, 'error': 'OperationalError: database is locked'}
+E   assert False
+=========================== short test summary info ============================
+FAILED tests/test_structure_write_lock_order.py::test_structural_and_ordinary_writers_do_not_invert_locks[record_event]
+FAILED tests/test_structure_write_lock_order.py::test_structural_and_ordinary_writers_do_not_invert_locks[attention]
+FAILED tests/test_structure_write_lock_order.py::test_structural_and_ordinary_writers_do_not_invert_locks[verifier]
+3 failed, 4 passed in 2.77s

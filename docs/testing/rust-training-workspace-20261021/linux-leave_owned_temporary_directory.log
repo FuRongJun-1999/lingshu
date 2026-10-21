@@ -1,0 +1,13 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___________________ test_default_call_preserves_caller_files ___________________
+<evidence-root>/current/linux/replay/guard-jio7ocv2/tests/test_rust_training_workspace.py:86: in test_default_call_preserves_caller_files
+    assert not list(scratch.iterdir()), "owned training workspace was not cleaned"
+E   AssertionError: owned training workspace was not cleaned
+E   assert not [PosixPath('<evidence-root>/current/linux/replay/guard-jio7ocv2/tmp/test_default_call_preserves_ca0/scratch/lingshu_hex_ar_9ete2')]
+E    +  where [PosixPath('<evidence-root>/current/linux/replay/guard-jio7ocv2/tmp/test_default_call_preserves_ca0/scratch/lingshu_hex_ar_9ete2')] = list(<map object at 0x7cab081e2c20>)
+E    +    where <map object at 0x7cab081e2c20> = iterdir()
+E    +      where iterdir = PosixPath('<evidence-root>/current/linux/replay/guard-jio7ocv2/tmp/test_default_call_preserves_ca0/scratch').iterdir
+=========================== short test summary info ============================
+FAILED tests/test_rust_training_workspace.py::test_default_call_preserves_caller_files
+1 failed in 0.57s

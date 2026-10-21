@@ -1,0 +1,13 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_concurrent_default_calls_keep_their_own_inputs _____________
+<evidence-root>\current\windows\replay\guard-ygbycv1y\tests\test_rust_training_workspace.py:71: in test_concurrent_default_calls_keep_their_own_inputs
+    assert curve.tolist() == [float(n)] * 2, "training result belongs to another call"
+E   AssertionError: training result belongs to another call
+E   assert [3.0, 3.0] == [5.0, 5.0]
+E
+E     At index 0 diff: 3.0 != 5.0
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_rust_training_workspace.py::test_concurrent_default_calls_keep_their_own_inputs
+1 failed in 0.56s

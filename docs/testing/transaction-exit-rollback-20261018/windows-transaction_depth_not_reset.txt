@@ -1,0 +1,28 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______ test_body_failure_still_rolls_back_and_resets_depth[ValueError] _______
+
+database = (<lingshu.core.core.SpacetimeMemoryEngine object at 0x0000019CF21D3CB0>, <sqlite3.Connection object at 0x0000019CF45AE020>)
+error = <class 'ValueError'>
+
+    @pytest.mark.parametrize("error", [ValueError, KeyboardInterrupt])
+    def test_body_failure_still_rolls_back_and_resets_depth(database, error):
+        """G4: preserve the pre-existing Exception and BaseException recovery paths."""
+        engine, observer = database
+        store, conn = engine.store, engine.store.conn
+        before = _meta(observer)
+        with pytest.raises(error, match="synthetic body failure"):
+            with store._tx():
+                _write(conn, "rejected_body")
+                raise error("synthetic body failure")
+        assert not conn.in_transaction
+        assert _meta(conn) == _meta(observer) == before
+>       assert store._tx_depth == 0, "G4 transaction depth was not reset after a body failure"
+E       AssertionError: G4 transaction depth was not reset after a body failure
+E       assert 9 == 0
+E        +  where 9 = <lingshu.core.core.LayeredStore object at 0x0000019CF21D3DD0>._tx_depth
+
+tests\test_transaction_exit_rollback.py:150: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_transaction_exit_rollback.py::test_body_failure_still_rolls_back_and_resets_depth[ValueError]
+1 failed, 9 warnings in 0.57s

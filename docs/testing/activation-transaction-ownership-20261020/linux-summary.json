@@ -1,0 +1,158 @@
+{
+  "python": "3.13.12",
+  "platform": "Linux",
+  "sqlite": "3.46.1",
+  "baseline": "40fceb69e79d0f481455f05ea8581b6f6f5e5816",
+  "guard_sha256": "baed8aedb61eaa2d7623e6bd6e3bde125d5221fb935077a5e09865b5d0cb4cfc",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 14,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "14 passed in 3.44s",
+      "source_sha256": {
+        "lingshu/core/activation.py": "218c8ab92525e58651f8e09af4d3afaee51e0b64103ac3325723a38ec0e38ddd"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_activate_preserves_caller_rollback[conn]",
+        "test_activate_preserves_caller_rollback[store]",
+        "test_commit_failure_rolls_back_workset_and_trigger_rows[activate]",
+        "test_commit_failure_rolls_back_workset_and_trigger_rows[import]",
+        "test_constructor_preserves_caller_rollback[begin]",
+        "test_constructor_preserves_caller_rollback[savepoint]",
+        "test_failed_replacement_restores_previous_workset[activate-caller]",
+        "test_failed_replacement_restores_previous_workset[activate-standalone]",
+        "test_failed_schema_initialization_rolls_back_created_table",
+        "test_release_failure_undoes_only_activation_work[activate]",
+        "test_release_failure_undoes_only_activation_work[import]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_constructor_preserves_caller_rollback[begin]",
+        "test_constructor_preserves_caller_rollback[savepoint]",
+        "test_activate_preserves_caller_rollback[store]",
+        "test_activate_preserves_caller_rollback[conn]",
+        "test_failed_replacement_restores_previous_workset[activate-standalone]",
+        "test_failed_replacement_restores_previous_workset[activate-caller]",
+        "test_commit_failure_rolls_back_workset_and_trigger_rows[activate]",
+        "test_commit_failure_rolls_back_workset_and_trigger_rows[import]",
+        "test_release_failure_undoes_only_activation_work[activate]",
+        "test_release_failure_undoes_only_activation_work[import]",
+        "test_failed_schema_initialization_rolls_back_created_table"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "11 failed, 3 passed in 3.31s",
+      "source_sha256": {
+        "lingshu/core/activation.py": "a3a68c99a9de460e153b165cf942756ccee0bf046a22a07289bcf87f140f9f1a"
+      }
+    },
+    {
+      "case": "commit_borrowed_caller_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_activate_preserves_caller_rollback[store]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_activate_preserves_caller_rollback[store]"
+      ],
+      "expected_assertion": "activation committed caller deletion",
+      "pytest_summary": "1 failed in 0.86s",
+      "source_sha256": {
+        "lingshu/core/activation.py": "8fe5f4e448edbe10ba794a4f40a6e662513015bafc3c622b82bb2df728f7fdac"
+      }
+    },
+    {
+      "case": "leave_statement_failure_unrolled_back",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_failed_replacement_restores_previous_workset[activate-standalone]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_failed_replacement_restores_previous_workset[activate-standalone]"
+      ],
+      "expected_assertion": "failed activation discarded the previous workset",
+      "pytest_summary": "1 failed in 0.86s",
+      "source_sha256": {
+        "lingshu/core/activation.py": "5eed7c740462b9bbcf731febae7bcfb1171d381c080b4adad382265a10422af5"
+      }
+    },
+    {
+      "case": "commit_failure_bypasses_rollback",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_commit_failure_rolls_back_workset_and_trigger_rows[import]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_commit_failure_rolls_back_workset_and_trigger_rows[import]"
+      ],
+      "expected_assertion": "activation commit failure left staged changes",
+      "pytest_summary": "1 failed in 0.88s",
+      "source_sha256": {
+        "lingshu/core/activation.py": "4d761d69695fb49f732cb50a0b262779671d779f5c6e46a4dee7cb0967089570"
+      }
+    },
+    {
+      "case": "retain_failed_savepoint_replacement",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_release_failure_undoes_only_activation_work[import]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_release_failure_undoes_only_activation_work[import]"
+      ],
+      "expected_assertion": "failed activation release kept partial replacement",
+      "pytest_summary": "1 failed in 0.85s",
+      "source_sha256": {
+        "lingshu/core/activation.py": "b06c1b2e52df9639871c293689b167f80e46b27618e2d9ab405c6363cc24eba6"
+      }
+    },
+    {
+      "case": "initialize_without_atomic_schema",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_failed_schema_initialization_rolls_back_created_table"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_failed_schema_initialization_rolls_back_created_table"
+      ],
+      "expected_assertion": "failed activation initialization left a partial schema",
+      "pytest_summary": "1 failed in 0.86s",
+      "source_sha256": {
+        "lingshu/core/activation.py": "84c7a40a7344dd2a735ea1b409a60d89fd75d023f332994f4c8bc16d2578be86"
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+FFF.F                                                                    [100%]
+=================================== FAILURES ===================================
+__________ test_parallel_saves_do_not_share_temporary_files[success] ___________
+tests/test_consolidated_save_isolation.py:68: in test_parallel_saves_do_not_share_temporary_files
+    assert outcomes["first"] == str(target), "another save consumed the first save's temporary file"
+E   AssertionError: another save consumed the first save's temporary file
+E   assert 'FileNotFoundError' == '/mnt/e/lings...a0/model.json'
+E
+E     - /mnt/e/lingshu/outputs/body-save-isolation-20261020/linux-replay/guard-dhbe3tf2/tmp/test_parallel_saves_do_not_sha0/model.json
+E     + FileNotFoundError
+__________ test_parallel_saves_do_not_share_temporary_files[failure] ___________
+tests/test_consolidated_save_isolation.py:68: in test_parallel_saves_do_not_share_temporary_files
+    assert outcomes["first"] == str(target), "another save consumed the first save's temporary file"
+E   AssertionError: another save consumed the first save's temporary file
+E   assert 'FileNotFoundError' == '/mnt/e/lings...a1/model.json'
+E
+E     - /mnt/e/lingshu/outputs/body-save-isolation-20261020/linux-replay/guard-dhbe3tf2/tmp/test_parallel_saves_do_not_sha1/model.json
+E     + FileNotFoundError
+_______________ test_temporary_name_collision_keeps_unowned_file _______________
+tests/test_consolidated_save_isolation.py:88: in test_temporary_name_collision_keeps_unowned_file
+    assert error is not None, "temporary-name collision was not rejected"
+E   AssertionError: temporary-name collision was not rejected
+E   assert None is not None
+_____________ test_temporary_basename_is_independent_of_model_name _____________
+tests/test_consolidated_save_isolation.py:122: in test_temporary_basename_is_independent_of_model_name
+    assert len(names[0]) == len(names[1]), "temporary basename grew with model filename"
+E   AssertionError: temporary basename grew with model filename
+E   assert 18 == 239
+E    +  where 18 = len('short.json.tmp-395')
+E    +  and   239 = len('model_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.json.tmp-395')
+=========================== short test summary info ============================
+FAILED tests/test_consolidated_save_isolation.py::test_parallel_saves_do_not_share_temporary_files[success]
+FAILED tests/test_consolidated_save_isolation.py::test_parallel_saves_do_not_share_temporary_files[failure]
+FAILED tests/test_consolidated_save_isolation.py::test_temporary_name_collision_keeps_unowned_file
+FAILED tests/test_consolidated_save_isolation.py::test_temporary_basename_is_independent_of_model_name
+4 failed, 1 passed in 0.86s

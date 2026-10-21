@@ -13,7 +13,9 @@
   最小改动 —— 「对白名单名先用 safe_search_path() 找一遍，找不到再 return None」。
 
 修复：`find_spec` 把受控面查找**提到调用方判定之前**——受控面命中即返回受控实现
-  （不论调用方），受控面未命中才按 #275 交还后续 finder。
+（不论调用方）；受控面未命中时（**#750 残余修复 · EQRS #817 方向①**起）不再
+`return None` 交还后续 finder，而是同样按「组件缺失」失败——宿主帧白名单名的
+解析面自此**只剩受控面** `safe_search_path()`，A/D/E 三臂（#817 四臂矩阵）封死。
 
 断言组（回退 / 放宽即红）：
   G1 逃生口**开** + cwd 放毒 `vision.py` + 受控面有合法 `vision.py` ⇒ 宿主帧
@@ -21,8 +23,11 @@
   G2 逃生口**关**：同上，仍命中受控面实现。
   G3 **#275 不得被破坏**：宿主自有**非白名单**同名模块（`myhostmod`）在逃生口开
      时仍可被标准 `PathFinder` 解析（回归红线）。
-  G4 **#275 边界保留**：白名单名在受控面**无**实现时，宿主帧仍交还后续 finder
-     （宿主自有同名模块照旧可解析，不抛 ModuleNotFoundError）。
+  G4 **#750 残余收口后口径**：白名单名在受控面**无**实现时，宿主帧**不再**交还
+     后续 finder——`ModuleNotFoundError`、cwd 毒模块**不执行**（旧口径「交还
+     PathFinder、宿主自有同名模块照旧可解析」即 A 臂漏洞本体，已按 #817 方向①
+     收紧；宿主确需同名模块的支持径见 tests/test_issue750_residual_arms_guard.py
+     G5/G6/G9）。
   G5 引擎侧收口未坏：`LINGSHU_COMPONENT_ROOT` 显式根里的组件仍能被引擎装配。
   G6 定点变异自证：把宿主帧分支短路回「无条件 return None」（复刻旧实现）后
      G1 场景**必红**（毒模块被执行）。
@@ -137,15 +142,22 @@ def test_g3_host_own_non_whitelist_module_still_importable():
     assert "owner=host" in ln, "G3(#275): 宿主自有非白名单模块被接管\n%s" % r.stdout
 
 
-def test_g4_whitelist_miss_falls_back_to_host_module():
-    """受控面无该白名单名 ⇒ 仍交还后续 finder（#275 语义逐字保留）。"""
+def test_g4_whitelist_miss_no_fallback_to_cwd_poison():
+    """受控面无该白名单名 ⇒ 宿主帧不再交还后续 finder（#750 残余收口后口径）。
+
+    旧口径（#782 时代 G4）断言 `owner=poison` 可解析——那正是 #817 四臂矩阵的
+    A 臂（逃生口开 + cwd==脚本目录 + 受控面无实现 ⇒ 毒模块执行）本体；本 PR 按
+    EQRS #817 方向①收口后，该腿改钉「ModuleNotFoundError + 毒模块零执行」。
+    """
     empty_root = tempfile.mkdtemp(prefix="f750_empty_")
     _root, poison = _mk_roots()
     r = _run(poison, {"LINGSHU_ALLOW_CWD_IMPORTS": "1", "LINGSHU_COMPONENT_ROOT": empty_root})
     assert r.returncode == 0, r.stderr[-600:]
     ln = _line(r.stdout, WL_NAME)
-    assert "owner=poison" in ln, (
-        "G4(#275): 受控面未命中时宿主自有同名模块应仍可解析\n%s\n%s" % (ln, r.stdout))
+    assert "ModuleNotFoundError" in ln, (
+        "G4(#750 残余): 受控面未命中时宿主帧不应交还后续 finder\n%s\n%s" % (ln, r.stdout))
+    assert not os.path.exists(os.path.join(poison, "MARKER.txt")), (
+        "G4(#750 残余): cwd 毒模块被执行（MARKER.txt 存在）")
 
 
 # ------------------------------------------------------------------- G5

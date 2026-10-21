@@ -28,6 +28,8 @@
     [C] K1 轴线一致：同侧 ⇒ ACCEPT；异侧 ⇒ REJECT                抽掉侧向校验 ⇒ C 红
     [D] E1 卡点对齐：偏差 0 帧 ⇒ ACCEPT；挪 3 帧 ⇒ REJECT        抽掉容差校验 ⇒ D 红
     [E] 缺料一律 BLINDSPOT 且点名缺字段（不沉默通过）            缺料改判 ACCEPT ⇒ E 红
+        （#812 收口：K5 的「机位夹角不可算」也属缺料 —— 与 K4 同口径 BLINDSPOT，
+         reason 保留不可算原因、-1.0 哨兵退出 measured；抽掉该修复 ⇒ e9–e11 红）
     [F] gate_all 装配的 oracle 过契约校验；DEFER 登记齐全        登记表漏项 ⇒ F 红
     [G] B4 纯标准库（_det 不引入 bpy/numpy/PIL）                 误加重依赖 ⇒ G 红
 """
@@ -242,6 +244,66 @@ def test_e8_blindspot_never_silently_passes():
     assert v["K3"] == "BLINDSPOT"
     assert v["K5"] == "BLINDSPOT"
     assert "ACCEPT" not in (v["K1"], v["K2"], v["K3"], v["K5"])
+
+
+def test_e9_k5_blindspot_when_angle_uncomputable_missing_contract():
+    """#812 α：edit 引用 s2 但缺其镜头契约 ⇒ 夹角不可算 ⇒ K5 必须 BLINDSPOT。
+
+    修前缺陷：None 被并入「< 30°」分支判 REJECT、measured 第二位写 -1.0 哨兵、
+    reason 伪称「夹角 < 30°」。同一输入 K4 判 BLINDSPOT —— 两判据必须同口径。
+    两条路径都要钉死：rd ≤ 容差（修前 REJECT+哨兵）与 rd > 容差（修前 ACCEPT
+    +哨兵）—— 哨兵写入是无条件的，不得只收口一个分支。
+    """
+    for h_b in (700.0, 980.0):            # rd ≈ 0（微变）与 rd ≈ 0.286（跨级）
+        sc = S.build_scene(shots={"s1": _shot("shot_01", (0.0, -5.0, 1.6))},
+                           edit=_edit(), score=_SCORE, axis=_AXIS,
+                           truth=_truth(h_b=h_b))
+        c = [x for x in GA.build_oracle(sc, "o", "e", _D)["checks"]
+             if x["name"] == "K5"][0]
+        assert c["verdict"] == "BLINDSPOT"
+        assert "缺镜头契约：s2" in c["reason"]
+        assert "机位夹角不可算" in c["reason"]
+        assert -1.0 not in (c.get("measured") or [])
+
+
+def test_e10_k5_blindspot_when_angle_uncomputable_aim_offset():
+    """#812 β：两镜契约齐全但瞄准点相差 1.0 m > 0.5 m ⇒ 夹角基准不唯一。
+
+    `_pair_angle` 的不可算原因必须进 reason（修前被丢进未使用的 `_why`），
+    且 -1.0 哨兵不得充当实测夹角读数。rd ≤ / > 容差两分支同 test_e9。
+    """
+    s2 = _shot("shot_02", _POS_B_OK)
+    for kf in s2["camera"]["path"]:
+        kf["aim"] = [1.0, 0.0, 1.0]       # 与 s1 的瞄准点相差 1.0 m（> 0.5 m）
+    for h_b in (700.0, 980.0):
+        sc = S.build_scene(shots={"s1": _shot("shot_01", (0.0, -5.0, 1.6)),
+                                  "s2": s2},
+                           edit=_edit(), score=_SCORE, axis=_AXIS,
+                           truth=_truth(h_b=h_b))
+        c = [x for x in GA.build_oracle(sc, "o", "e", _D)["checks"]
+             if x["name"] == "K5"][0]
+        assert c["verdict"] == "BLINDSPOT"
+        assert "瞄准点相差" in c["reason"]
+        assert "机位夹角不可算" in c["reason"]
+        assert -1.0 not in (c.get("measured") or [])
+
+
+def test_e11_k5_computable_path_reads_real_angle():
+    """#812 回归：夹角可算时 K5 的判态与读数不得被本修复波及。
+
+    读数保持 [景别相对差, 机位夹角] 成对且为真实夹角 —— 跨级（cut-in）ACCEPT、
+    同机位同景别（真跳切）REJECT 两相都在。
+    """
+    acc = [x for x in GA.build_oracle(_scene(_POS_B_OK, h_b=980.0), "o", "e", _D)
+           ["checks"] if x["name"] == "K5"][0]
+    assert acc["verdict"] == "ACCEPT"
+    assert acc["measured"][1] == pytest.approx(44.8, abs=0.5)
+    rej = [x for x in GA.build_oracle(_scene(_POS_B_NEAR, h_b=700.0), "o", "e", _D)
+           ["checks"] if x["name"] == "K5"][0]
+    assert rej["verdict"] == "REJECT"
+    assert rej["measured"][1] == pytest.approx(11.3, abs=0.5)
+    for c in (acc, rej):
+        assert -1.0 not in c["measured"]
 
 
 # ══════════════════════════════════════════════════════ [F] gate_all / oracle

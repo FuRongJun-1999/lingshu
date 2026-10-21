@@ -1,0 +1,12 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_activate_preserves_caller_rollback[store] ________________
+tests\test_activation_transaction_ownership.py:79: in test_activate_preserves_caller_rollback
+    assert store.conn.in_transaction, "activation committed caller deletion"
+E   AssertionError: activation committed caller deletion
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x0000017DE200F970>.in_transaction
+E    +    where <sqlite3.Connection object at 0x0000017DE200F970> = <lingshu.core.core.LayeredStore object at 0x0000017DE1FBC230>.conn
+=========================== short test summary info ===========================
+FAILED tests/test_activation_transaction_ownership.py::test_activate_preserves_caller_rollback[store]
+1 failed in 0.69s

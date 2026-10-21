@@ -47,7 +47,7 @@ _ZONES = {  # 象限集合(3×3 编码 r{row*3+col})
     "top": {"r0", "r1", "r2"}, "bottom": {"r6", "r7", "r8"},
     "left": {"r0", "r3", "r6"}, "right": {"r2", "r5", "r8"},
     "top-right": {"r2", "r5"}, "top-left": {"r0", "r3"},
-    "bottom-left": {"r6", "r7"}, "bottom-right": {"r5", "r8"},
+    "bottom-left": {"r6", "r7"}, "bottom-right": {"r7", "r8"},
 }
 
 

@@ -1,0 +1,40 @@
+{
+  "guard": "tests/test_subtree_write_snapshot.py",
+  "total": 5,
+  "sources": ["lingshu/core/core.py"],
+  "baseline_failures": [
+    "test_new_protection_rejects_the_whole_replacement",
+    "test_moved_subtree_is_rechecked_before_deletion",
+    "test_descendants_are_collected_after_write_ownership"
+  ],
+  "mutations": [
+    {
+      "name": "skip_entry_transaction",
+      "test": "test_new_protection_rejects_the_whole_replacement",
+      "assertion": "subtree protection was checked before write ownership",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "_tx",
+        "old": "        with self.store._tx():", "new": "        if True:"}]
+    },
+    {
+      "name": "ignore_protected_subtree",
+      "test": "test_new_protection_rejects_the_whole_replacement",
+      "assertion": "subtree protection was checked before write ownership",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "subgraph_replace",
+        "old": "        if blocked:", "new": "        if False:"}]
+    },
+    {
+      "name": "ignore_current_parent_scope",
+      "test": "test_moved_subtree_is_rechecked_before_deletion",
+      "assertion": "subtree replacement deleted outside its current parent scope",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "subgraph_replace",
+        "old": "        if old_sub_root_id not in {r[\"node_id\"] for r in parent_desc}:", "new": "        if False:"}]
+    },
+    {
+      "name": "omit_current_descendants",
+      "test": "test_descendants_are_collected_after_write_ownership",
+      "assertion": "subtree replacement used stale descendants",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "subgraph_replace",
+        "old": "        removed = [old_sub_root_id] + [r[\"node_id\"] for r in old_desc]", "new": "        removed = [old_sub_root_id]"}]
+    }
+  ]
+}

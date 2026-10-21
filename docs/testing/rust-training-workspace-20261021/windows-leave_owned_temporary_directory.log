@@ -1,0 +1,13 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_default_call_preserves_caller_files ___________________
+<evidence-root>\current\windows\replay\guard-omhzhvbn\tests\test_rust_training_workspace.py:86: in test_default_call_preserves_caller_files
+    assert not list(scratch.iterdir()), "owned training workspace was not cleaned"
+E   AssertionError: owned training workspace was not cleaned
+E   assert not [WindowsPath('<evidence-root>/current/windows/replay/guard-omhzhvbn/tmp/test_default_call_preserves_ca0/scratch/lingshu_hex_ko325e7p')]
+E    +  where [WindowsPath('<evidence-root>/current/windows/replay/guard-omhzhvbn/tmp/test_default_call_preserves_ca0/scratch/lingshu_hex_ko325e7p')] = list(<generator object Path.iterdir at 0x00000293E0DDB510>)
+E    +    where <generator object Path.iterdir at 0x00000293E0DDB510> = iterdir()
+E    +      where iterdir = WindowsPath('<evidence-root>/current/windows/replay/guard-omhzhvbn/tmp/test_default_call_preserves_ca0/scratch').iterdir
+=========================== short test summary info ===========================
+FAILED tests/test_rust_training_workspace.py::test_default_call_preserves_caller_files
+1 failed in 0.55s

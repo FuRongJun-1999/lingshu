@@ -1,0 +1,93 @@
+{
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "sqlite": "3.49.1",
+  "baseline": "40fceb69e79d0f481455f05ea8581b6f6f5e5816",
+  "guard_sha256": "9fd74223e2686d64882eea79c9a3b1f48c4963d3b9cfd65dc6195d2060fb6a46",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 6,
+      "failed_tests": [],
+      "expected_failures": [],
+      "expected_assertion": "",
+      "core_sha256": "528198b0d0251edf87b24d3d80628dc93556e72643211781f6e42cb4ccc249b2"
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_commit_failure_restores_subtree_and_allows_durable_followup",
+        "test_release_failure_can_be_caught_inside_managed_outer_transaction",
+        "test_release_failure_rolls_back_only_its_caller_owned_savepoint"
+      ],
+      "expected_failures": [
+        "test_commit_failure_restores_subtree_and_allows_durable_followup",
+        "test_release_failure_rolls_back_only_its_caller_owned_savepoint",
+        "test_release_failure_can_be_caught_inside_managed_outer_transaction"
+      ],
+      "expected_assertion": "",
+      "core_sha256": "f764c4ac4c97daa778f623df59036bef11c8ddbdf4f1afd6862855d61e6a2719"
+    },
+    {
+      "case": "commit_outside_rollback_boundary",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_commit_failure_restores_subtree_and_allows_durable_followup"
+      ],
+      "expected_failures": [
+        "test_commit_failure_restores_subtree_and_allows_durable_followup"
+      ],
+      "expected_assertion": "G1 failed COMMIT left a transaction pending",
+      "core_sha256": "200fa61465ddd0b0cf5a7cc9301ce2e00d0d88f806948c08fe0679124431a3a6"
+    },
+    {
+      "case": "release_outside_rollback_boundary",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_release_failure_rolls_back_only_its_caller_owned_savepoint"
+      ],
+      "expected_failures": [
+        "test_release_failure_rolls_back_only_its_caller_owned_savepoint"
+      ],
+      "expected_assertion": "G2 failed RELEASE left its inner write pending",
+      "core_sha256": "394c281c3295fc86a4506bd2204b2c9ab0c540e538442fea7ef4f595c4d4ea16"
+    },
+    {
+      "case": "rollback_caller_instead_of_savepoint",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_release_failure_rolls_back_only_its_caller_owned_savepoint"
+      ],
+      "expected_failures": [
+        "test_release_failure_rolls_back_only_its_caller_owned_savepoint"
+      ],
+      "expected_assertion": "G2 caller transaction was ended by inner recovery",
+      "core_sha256": "5a6235d93fe7e6f3bf5bfe0d8feb1b9d629543184f2039f71edd80f392ff828e"
+    },
+    {
+      "case": "transaction_depth_not_reset",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_body_failure_still_rolls_back_and_resets_depth[ValueError]"
+      ],
+      "expected_failures": [
+        "test_body_failure_still_rolls_back_and_resets_depth[ValueError]"
+      ],
+      "expected_assertion": "G4 transaction depth was not reset after a body failure",
+      "core_sha256": "71cd54319283b886b9c4580a29d2165215867cbc373c6ce84aebbcc2c80e4a36"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "guard": "tests/test_self_model_save_recovery.py",
+  "total": 9,
+  "sources": [
+    "lingshu/core/core.py"
+  ],
+  "baseline_failures": [
+    "test_pending_change_survives_rejected_save_and_later_recovery[values-statement]",
+    "test_pending_change_survives_rejected_save_and_later_recovery[values-commit]",
+    "test_pending_change_survives_rejected_save_and_later_recovery[trust-statement]",
+    "test_pending_change_survives_rejected_save_and_later_recovery[trust-commit]",
+    "test_pending_change_survives_rejected_save_and_later_recovery[goal-statement]",
+    "test_pending_change_survives_rejected_save_and_later_recovery[goal-commit]"
+  ],
+  "mutations": [
+    {
+      "name": "publish_baseline_before_snapshot_write",
+      "test": "test_pending_change_survives_rejected_save_and_later_recovery[values-statement]",
+      "assertion": "pending self-model change was dropped after recovery",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "_save_self_model",
+          "old": "                self.store.merge_meta(\n                    self.SELF_MODEL_META_KEY,\n                    lambda raw: self._merge_self_model_value(raw, local))\n                self._commit_locked()\n                self._self_model_baseline = local",
+          "new": "                self._self_model_baseline = local\n                self.store.merge_meta(\n                    self.SELF_MODEL_META_KEY,\n                    lambda raw: self._merge_self_model_value(raw, local))\n                self._commit_locked()"
+        }
+      ]
+    },
+    {
+      "name": "publish_baseline_before_commit",
+      "test": "test_pending_change_survives_rejected_save_and_later_recovery[values-commit]",
+      "assertion": "pending self-model change was dropped after recovery",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "_save_self_model",
+          "old": "                self._commit_locked()\n                self._self_model_baseline = local",
+          "new": "                self._self_model_baseline = local\n                self._commit_locked()"
+        }
+      ]
+    },
+    {
+      "name": "never_advance_successful_baseline",
+      "test": "test_successful_local_baseline_preserves_later_remote_values",
+      "assertion": "successful baseline was not advanced before a later remote update",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "_save_self_model",
+          "old": "                self._self_model_baseline = local",
+          "new": "                pass"
+        }
+      ]
+    },
+    {
+      "name": "advance_baseline_to_merged_disk_payload",
+      "test": "test_adopted_disk_fields_do_not_become_local_baseline",
+      "assertion": "adopted disk values were overwritten on the next save",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "_save_self_model",
+          "old": "                self._self_model_baseline = local",
+          "new": "                self._self_model_baseline = json.loads(self.store.get_meta(self.SELF_MODEL_META_KEY)[self.SELF_MODEL_META_KEY])"
+        }
+      ]
+    }
+  ]
+}

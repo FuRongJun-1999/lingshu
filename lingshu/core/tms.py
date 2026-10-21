@@ -42,14 +42,17 @@ _DDL = (
 
 
 class TruthMaintenance:
+    """首次初始化需独立事务；依据登记与传播保留调用方提交权。"""
+
     def __init__(self, store, ledger):
         self.store = store
         self.ledger = ledger
         with store._lock:
-            c = store.conn
-            for sql in _DDL:
-                c.execute(sql)
-            c.commit()
+            if store.conn.in_transaction:
+                raise RuntimeError("首次启用真值维护需要独立事务；请先结束调用方事务")
+            with store._structure_event_transaction() as c:
+                for sql in _DDL:
+                    c.execute(sql)
 
     # ------------------------------------------------------------ 写权限闸
     def _assert_nodes_writable(self, node_ids, action: str) -> None:
@@ -86,21 +89,19 @@ class TruthMaintenance:
             raise ValueError("依据至少需要一个前提")
         if conclusion in prem:
             raise ValueError("结论不能作为自己的前提")
-        for nid in [conclusion] + prem:
-            if self.store.get_node(nid) is None:
-                raise KeyError(f"节点不存在：{nid!r}")
-        # #769 ①：闸落在 INSERT **之前**（被拒时零落库、不留孤儿依据行）。
-        self._assert_nodes_writable(
-            [conclusion], "经 TMS 依据登记写入共享层节点的 confidence")
         jid = uuid.uuid4().hex
-        with self.store._lock:
-            c = self.store.conn
+        with self.store._structure_event_transaction() as c:
+            for nid in [conclusion] + prem:
+                if self.store.get_node(nid) is None:
+                    raise KeyError(f"节点不存在：{nid!r}")
+            # #769 ①：闸落在 INSERT **之前**（被拒时零落库、不留孤儿依据行）。
+            self._assert_nodes_writable(
+                [conclusion], "经 TMS 依据登记写入共享层节点的 confidence")
             c.execute("INSERT INTO justifications VALUES (?,?,?,?)",
                       (jid, conclusion, source or "", time.time()))
             c.executemany("INSERT INTO justification_premises VALUES (?,?)",
                           [(jid, p) for p in prem])
-            c.commit()
-        self.propagate([conclusion])
+            self.propagate([conclusion])
         return jid
 
     # ------------------------------------------------------------ 读
@@ -149,32 +150,32 @@ class TruthMaintenance:
     # ------------------------------------------------------------ 传播
     def propagate(self, roots: Iterable[str]) -> Dict[str, float]:
         """重算 roots 及其下游闭包的信念并写回 nodes.confidence；返回 {节点: 新信念}。"""
-        nodes = self._closure(roots)
-        if not nodes:
-            return {}
-        own = {n: self.ledger.assess(n) for n in nodes}
-        self._just_cache = {n: self.justifications_of(n) for n in nodes}
-        belief = {n: own[n]["confidence"] for n in nodes}
-        for _ in range(len(nodes) + 1):
-            changed = False
-            for n in nodes:
-                b = self._belief(n, own, belief)
-                if abs(b - belief[n]) > 1e-12:
-                    belief[n] = b
-                    changed = True
-            if not changed:
-                break
-        # #769 ①（先判后写）：写回**整个闭包**之前做一次整体预判——闭包内若含
-        # 共享层行，旧形态下 `executemany` 会连同该行一起改写（且一旦中途抛错，
-        # 前半批已提交）。整体预判 ⇒ 被拒时零落库。
-        self._assert_nodes_writable(
-            list(belief), "经 TMS 信念传播写入共享层节点的 confidence")
-        with self.store._lock:
-            c = self.store.conn
-            c.executemany("UPDATE nodes SET confidence=? WHERE id=?",
-                          [(round(b, 6), n) for n, b in belief.items()])
-            c.commit()
-        self._just_cache = {}
+        with self.store._structure_event_transaction() as c:
+            nodes = self._closure(roots)
+            if not nodes:
+                return {}
+            own = {n: self.ledger.assess(n) for n in nodes}
+            self._just_cache = {n: self.justifications_of(n) for n in nodes}
+            try:
+                belief = {n: own[n]["confidence"] for n in nodes}
+                for _ in range(len(nodes) + 1):
+                    changed = False
+                    for n in nodes:
+                        b = self._belief(n, own, belief)
+                        if abs(b - belief[n]) > 1e-12:
+                            belief[n] = b
+                            changed = True
+                    if not changed:
+                        break
+                # #769 ①（先判后写）：写回**整个闭包**之前做一次整体预判——闭包内若含
+                # 共享层行，旧形态下 `executemany` 会连同该行一起改写（且一旦中途抛错，
+                # 前半批已提交）。整体预判 ⇒ 被拒时零落库。
+                self._assert_nodes_writable(
+                    list(belief), "经 TMS 信念传播写入共享层节点的 confidence")
+                c.executemany("UPDATE nodes SET confidence=? WHERE id=?",
+                              [(round(b, 6), n) for n, b in belief.items()])
+            finally:
+                self._just_cache = {}
         return belief
 
     def assess(self, node_id: str) -> Dict:

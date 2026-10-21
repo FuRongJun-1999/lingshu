@@ -1,0 +1,53 @@
+FFFFFF.                                                                  [100%]
+=================================== FAILURES ===================================
+___________ test_write_lock_failure_does_not_apply_cap_to_next_write ___________
+tests/test_context_capacity_atomicity.py:50: in test_write_lock_failure_does_not_apply_cap_to_next_write
+    _assert_original_state(engine, original)
+tests/test_context_capacity_atomicity.py:29: in _assert_original_state
+    assert engine._context_max == 10, "failed capacity change changed the runtime cap"
+E   AssertionError: failed capacity change changed the runtime cap
+E   assert 1 == 10
+E    +  where 1 = <lingshu.core.core.SpacetimeMemoryEngine object at 0x7dfd84bc5010>._context_max
+_______ test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes ________
+tests/test_context_capacity_atomicity.py:64: in test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes
+    _assert_original_state(engine, original)
+tests/test_context_capacity_atomicity.py:29: in _assert_original_state
+    assert engine._context_max == 10, "failed capacity change changed the runtime cap"
+E   AssertionError: failed capacity change changed the runtime cap
+E   assert 1 == 10
+E    +  where 1 = <lingshu.core.core.SpacetimeMemoryEngine object at 0x7dfd84a55450>._context_max
+________ test_commit_failure_rolls_back_fifo_and_preserves_runtime_cap _________
+tests/test_context_capacity_atomicity.py:89: in test_commit_failure_rolls_back_fifo_and_preserves_runtime_cap
+    _assert_original_state(engine, original)
+tests/test_context_capacity_atomicity.py:29: in _assert_original_state
+    assert engine._context_max == 10, "failed capacity change changed the runtime cap"
+E   AssertionError: failed capacity change changed the runtime cap
+E   assert 1 == 10
+E    +  where 1 = <lingshu.core.core.SpacetimeMemoryEngine object at 0x7dfd84a55f90>._context_max
+_ test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE] _
+tests/test_context_capacity_atomicity.py:97: in test_caller_transaction_is_rejected_without_changing_or_ending_it
+    with pytest.raises(RuntimeError, match="独立事务"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'RuntimeError'>
+_ test_caller_transaction_is_rejected_without_changing_or_ending_it[SAVEPOINT caller] _
+tests/test_context_capacity_atomicity.py:97: in test_caller_transaction_is_rejected_without_changing_or_ending_it
+    with pytest.raises(RuntimeError, match="独立事务"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'RuntimeError'>
+_________________ test_success_publishes_capacity_after_commit _________________
+tests/test_context_capacity_atomicity.py:123: in test_success_publishes_capacity_after_commit
+    assert observed == [10], "runtime cap was published before the single final commit"
+E   AssertionError: runtime cap was published before the single final commit
+E   assert [2, 2] == [10]
+E
+E     At index 0 diff: 2 != 10
+E     Left contains one more item: 2
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_context_capacity_atomicity.py::test_write_lock_failure_does_not_apply_cap_to_next_write
+FAILED tests/test_context_capacity_atomicity.py::test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes
+FAILED tests/test_context_capacity_atomicity.py::test_commit_failure_rolls_back_fifo_and_preserves_runtime_cap
+FAILED tests/test_context_capacity_atomicity.py::test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]
+FAILED tests/test_context_capacity_atomicity.py::test_caller_transaction_is_rejected_without_changing_or_ending_it[SAVEPOINT caller]
+FAILED tests/test_context_capacity_atomicity.py::test_success_publishes_capacity_after_commit
+6 failed, 1 passed in 2.91s

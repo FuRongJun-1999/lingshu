@@ -1,0 +1,211 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "40fceb69e79d0f481455f05ea8581b6f6f5e5816",
+  "guard_sha256": "791a39041ce012a96237c5ed06aa78e035e70ede7d2801149b072cd1bf46c438",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 15,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "15 passed in 1.54s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "7866d7fc58c82620fba2d7f401efd2c3d6059f63f4be6b50c405eae526daeab6",
+        "lingshu/core/tms.py": "e7d0f5e0a86189b2dbd5c83d5b1eabc360d890cdb063996ec96a7e1544f21cee"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 1,
+      "failed_tests": [
+        "test_commit_failure_rolls_back_extension_write[ledger]",
+        "test_commit_failure_rolls_back_extension_write[tms]",
+        "test_failed_subgraph_replace_leaves_no_partial_nodes[True]",
+        "test_first_enable_rejects_caller_transaction_without_committing_it[ledger]",
+        "test_first_enable_rejects_caller_transaction_without_committing_it[tms]",
+        "test_initialization_failure_can_be_retried_without_partial_schema[ledger]",
+        "test_initialization_failure_can_be_retried_without_partial_schema[tms]",
+        "test_justification_failure_rolls_back_registration",
+        "test_ledger_write_preserves_caller_rollback[perception]",
+        "test_ledger_write_preserves_caller_rollback[record]",
+        "test_ledger_write_preserves_caller_rollback[sync]",
+        "test_record_failure_rolls_back_evidence_confidence_and_propagation",
+        "test_tms_write_preserves_caller_rollback[propagate]",
+        "test_tms_write_preserves_caller_rollback[register]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_commit_failure_rolls_back_extension_write[ledger]",
+        "test_commit_failure_rolls_back_extension_write[tms]",
+        "test_failed_subgraph_replace_leaves_no_partial_nodes[True]",
+        "test_first_enable_rejects_caller_transaction_without_committing_it[ledger]",
+        "test_first_enable_rejects_caller_transaction_without_committing_it[tms]",
+        "test_initialization_failure_can_be_retried_without_partial_schema[ledger]",
+        "test_initialization_failure_can_be_retried_without_partial_schema[tms]",
+        "test_justification_failure_rolls_back_registration",
+        "test_ledger_write_preserves_caller_rollback[perception]",
+        "test_ledger_write_preserves_caller_rollback[record]",
+        "test_ledger_write_preserves_caller_rollback[sync]",
+        "test_record_failure_rolls_back_evidence_confidence_and_propagation",
+        "test_tms_write_preserves_caller_rollback[propagate]",
+        "test_tms_write_preserves_caller_rollback[register]"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "14 failed, 1 passed in 1.62s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "f54c9d503ef990931b89050dbf21312a6a8abf6b2051cac822df95c52ce92f0b",
+        "lingshu/core/tms.py": "1ea37920861e11bb7cf6a15b9308c62bd97e0489a48b08ade5075f13e7a34b1f"
+      }
+    },
+    {
+      "case": "ledger_record_owns_caller_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_ledger_write_preserves_caller_rollback[record]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_ledger_write_preserves_caller_rollback[record]"
+      ],
+      "expected_assertion": "extension committed the caller transaction",
+      "pytest_summary": "1 failed in 0.62s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "2407c374bf9ebaa53ce0229dd5f855548d65720ed507d67f2388adace454f42f",
+        "lingshu/core/tms.py": "e7d0f5e0a86189b2dbd5c83d5b1eabc360d890cdb063996ec96a7e1544f21cee"
+      }
+    },
+    {
+      "case": "ledger_sync_owns_caller_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_ledger_write_preserves_caller_rollback[sync]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_ledger_write_preserves_caller_rollback[sync]"
+      ],
+      "expected_assertion": "extension committed the caller transaction",
+      "pytest_summary": "1 failed in 0.59s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "5e765ab91ee62a5ad0ee68c4f8955b2b12f42c5b5a738f8b3b80ee020c4ed135",
+        "lingshu/core/tms.py": "e7d0f5e0a86189b2dbd5c83d5b1eabc360d890cdb063996ec96a7e1544f21cee"
+      }
+    },
+    {
+      "case": "tms_registration_owns_caller_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_tms_write_preserves_caller_rollback[register]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_tms_write_preserves_caller_rollback[register]"
+      ],
+      "expected_assertion": "TMS committed the caller transaction",
+      "pytest_summary": "1 failed in 0.60s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "7866d7fc58c82620fba2d7f401efd2c3d6059f63f4be6b50c405eae526daeab6",
+        "lingshu/core/tms.py": "7e900c23eb5456259a32b0018af47b362b9d7803f4aa25fb725c547de768c488"
+      }
+    },
+    {
+      "case": "tms_propagation_owns_caller_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_tms_write_preserves_caller_rollback[propagate]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_tms_write_preserves_caller_rollback[propagate]"
+      ],
+      "expected_assertion": "TMS committed the caller transaction",
+      "pytest_summary": "1 failed in 0.59s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "7866d7fc58c82620fba2d7f401efd2c3d6059f63f4be6b50c405eae526daeab6",
+        "lingshu/core/tms.py": "3c7d947fec54b3e543022004899ef464c778a84f03707161c1bf33f5ffd4fb10"
+      }
+    },
+    {
+      "case": "synchronize_after_record_commit",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_record_failure_rolls_back_evidence_confidence_and_propagation"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_record_failure_rolls_back_evidence_confidence_and_propagation"
+      ],
+      "expected_assertion": "failed record committed evidence",
+      "pytest_summary": "1 failed in 0.60s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "a3cf435fe4705092ba7d37f7d2383a24836a78536a28ad3ff275f0a9d7c71db5",
+        "lingshu/core/tms.py": "e7d0f5e0a86189b2dbd5c83d5b1eabc360d890cdb063996ec96a7e1544f21cee"
+      }
+    },
+    {
+      "case": "allow_first_enable_inside_caller_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_first_enable_rejects_caller_transaction_without_committing_it[ledger]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_first_enable_rejects_caller_transaction_without_committing_it[ledger]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.58s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "059719aa5c93842d3e4ac1ebc61660cdcafcecb68837731fa5162ac091b00636",
+        "lingshu/core/tms.py": "e7d0f5e0a86189b2dbd5c83d5b1eabc360d890cdb063996ec96a7e1544f21cee"
+      }
+    },
+    {
+      "case": "retain_tms_cache_after_failure",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_record_failure_rolls_back_evidence_confidence_and_propagation"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_record_failure_rolls_back_evidence_confidence_and_propagation"
+      ],
+      "expected_assertion": "failed propagation left a stale runtime cache",
+      "pytest_summary": "1 failed in 0.63s",
+      "source_sha256": {
+        "lingshu/core/evidence.py": "7866d7fc58c82620fba2d7f401efd2c3d6059f63f4be6b50c405eae526daeab6",
+        "lingshu/core/tms.py": "c4ef5508fd0ccc66513c0c643a38baea5cf91d6409b334327b52bd11523303dd"
+      }
+    }
+  ]
+}

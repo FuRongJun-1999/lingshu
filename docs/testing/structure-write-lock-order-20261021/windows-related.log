@@ -1,0 +1,150 @@
+.s...................................................................... [ 60%]
+...............................................                          [100%]
+============================== warnings summary ===============================
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6679: ComponentDiscoveryWarning: [issue156] 组件 'entity_registry' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from entity_registry import EntityRegistry
+
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6666: ComponentDiscoveryWarning: [issue156] 组件 'semantic_space' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from semantic_space import SemanticSpaceProvider
+
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6657: ComponentDiscoveryWarning: [issue156] 组件 'attention_policy' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from attention_policy import AttentionPolicy
+
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6635: ComponentDiscoveryWarning: [issue156] 组件 'prediction_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from prediction_engine import PredictionEngine
+
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6611: ComponentDiscoveryWarning: [issue156] 组件 'lifecycle_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from lifecycle_engine import LifecycleEngine
+
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6582: ComponentDiscoveryWarning: [issue156] 组件 'flywheel_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from flywheel_engine import FlywheelEngine
+
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6591: ComponentDiscoveryWarning: [issue156] 组件 'self_cognition_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from self_cognition_engine import SelfCognitionEngine
+
+tests/test_structure_record_extra_tags.py: 7 warnings
+tests/test_issue153_verifier_standard_replay_guard.py: 6 warnings
+tests/test_issue768_engine_meta_governance_guard.py: 12 warnings
+tests/test_adjudicate_identity_guard.py: 7 warnings
+tests/test_issue118_governance_state_identity_guard.py: 7 warnings
+tests/test_issue317_import_tx_ownership_guard.py: 8 warnings
+tests/test_core_thread_safety.py: 9 warnings
+  <repo-root>\lingshu\core\core.py:6572: ComponentDiscoveryWarning: [issue156] 组件 'body' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from body import build_default_registry
+
+tests/test_core_thread_safety.py::test_two_writers_two_readers_raise_nothing
+tests/test_core_thread_safety.py::test_four_writers_four_readers_raise_nothing
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 1 次；该批已放弃，不阻断检索）：OperationalError: database is locked
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_two_writers_two_readers_raise_nothing
+tests/test_core_thread_safety.py::test_four_writers_four_readers_raise_nothing
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 2 次；该批已放弃，不阻断检索）：OperationalError: database is locked
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_four_writers_four_readers_raise_nothing
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 3 次；该批已放弃，不阻断检索）：OperationalError: database is locked
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_four_writers_four_readers_raise_nothing
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 4 次；该批已放弃，不阻断检索）：OperationalError: database is locked
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_four_writers_four_readers_raise_nothing
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 5 次；该批已放弃，不阻断检索）：OperationalError: database is locked
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+tests/test_core_thread_safety.py::test_memory_backend_survives_creating_thread_exit
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 1 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 2 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 3 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 4 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 5 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 6 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 7 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 8 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 9 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+tests/test_core_thread_safety.py::test_memory_backend_shares_data_across_threads_repeated
+  <repo-root>\lingshu\core\core.py:4187: RuntimeWarning: #775 访问计数写入失败（第 10 次；该批已放弃，不阻断检索）：OperationalError: no such table: nodes
+    self.increment_access_many([node.id for node, _ in results], touch=touch)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+118 passed, 1 skipped, 468 warnings in 22.15s

@@ -255,7 +255,7 @@
     {
      "file": "world3d.py",
      "src": "aeis.world3d",
-     "sha256": "257e619f44186ea9",
+     "sha256": "96415a9439faffcf",
      "rewrites": 16,
      "sanitized": 0,
      "patches": 0,
@@ -307,7 +307,7 @@
     {
      "file": "activation.py",
      "src": "aeis.activation",
-     "sha256": "a3a68c99a9de460e",
+     "sha256": "218c8ab92525e586",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 1,
@@ -329,7 +329,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "23f1136675221870",
+"sha256": "c904f90e37284a90",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,
@@ -360,7 +360,7 @@
     {
      "file": "longterm_gate.py",
      "src": "aeis.longterm_gate",
-     "sha256": "bc4111378c274ec2c6922be908277fb3b340c53a4a0615296858b312db616c5c",
+     "sha256": "93678fb975ac7bda5918e6818aa49cbbe93c8d88da43bb8a35af7ac8df9e32b8",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -409,7 +409,7 @@
     {
      "file": "hex_cnn.py",
      "src": "aeis.hex_cnn",
-     "sha256": "c0d9639796fc8525",
+     "sha256": "f94d2cbfdd88781c",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -420,7 +420,7 @@
     {
      "file": "hex_composite.py",
      "src": "aeis.hex_composite",
-     "sha256": "111796661833fe52",
+     "sha256": "a538e0340874fab4",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -519,7 +519,7 @@
     {
      "file": "hex_train.py",
      "src": "aeis.hex_train",
-     "sha256": "64e66db2c19d0f7f",
+     "sha256": "15edb7e6e56ae0c6",
      "rewrites": 2,
      "sanitized": 1,
      "patches": 0,
@@ -541,7 +541,7 @@
     {
      "file": "rust_bridge.py",
      "src": "aeis.rust_bridge",
-     "sha256": "20b8a3811f7271c7",
+     "sha256": "6eb2b48cd4f4bc22",
      "rewrites": 0,
      "sanitized": 4,
      "patches": 0,
@@ -552,7 +552,7 @@
     {
      "file": "stcnn.py",
      "src": "wisdom.stcnn",
-     "sha256": "46e27027871e3d42",
+     "sha256": "ac142fde843d02d8",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -568,7 +568,7 @@
     {
      "file": "hex_composite.py",
      "src": "aeis.hex_composite",
-     "sha256": "111796661833fe52",
+     "sha256": "a538e0340874fab4",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -672,14 +672,21 @@
    "kind": "local_fork_modification",
    "base_commit": "eb497f2ab2d067bc97fcca32281bab5a93e5c7e8",
    "note": "重建于最新 main（S3 公开面整改 + CI 首跑三红处置后续）；sha256 核验 LF 归一后的工作树文件。",
-   "previous_sha256": {"scene_model.py": "0cce56055028e004", "world_learner.py": "80943255192950d9", "world_model.py": "690041d299ed421c", "core.py": "af7c93c0842ca661"}
+   "previous_sha256": {
+    "scene_model.py": "0cce56055028e004",
+    "world_learner.py": "80943255192950d9",
+    "world_model.py": "690041d299ed421c",
+    "core.py": "af7c93c0842ca661"
+   }
   },
   "issues_20261016_physics_collision": {
    "date": "2026-10-16",
    "kind": "local_fork_modification",
    "base_commit": "d7b112c8f8248795948aacd443af6c8f577a37ba",
    "note": "物理仿真深化（drag2/slope_friction/rolling/collision + Environment/simulate + 环境层 + 环境感知预测）+ 碰撞箱（AABB/OBB-SAT/MTV/CCD）与防穿模接线；sha256 核验 LF 归一后的工作树文件。",
-   "previous_sha256": {"scene_simulator.py": "f1fc508797ab3848"}
+   "previous_sha256": {
+    "scene_simulator.py": "f1fc508797ab3848"
+   }
   },
   "inference_window_update": {
    "date": "2026-10-12",

@@ -1,0 +1,78 @@
+{
+  "baseline": "f5dcd58165cbf64393d1f2d4dfc61f781485ec29",
+  "sha256_lf": {
+    "lingshu/core/core.py": "5905856d349a237e04fdf4e8f142e16e7ed5364c411c5d1a245b71005a5d3ebb",
+    "tests/test_subtree_write_snapshot.py": "e7a126d41f58a15b14e0f818876910a0e1581c8e3b9098089150597df12d04ef",
+    "tests/fixtures/subtree_write_snapshot_mutations.json": "a437f8d73d4981d01f997d3b7720a0246692d97bffc93851ad85252b3f360e51"
+  },
+  "runs": {
+    "windows": {
+      "platform": "Windows",
+      "python": "3.12.10",
+      "sqlite": "3.49.1",
+      "baseline": "f5dcd58165cbf64393d1f2d4dfc61f781485ec29",
+      "validated_commit": "657cbd982a19da5f8b6256b2f18ed365056b6828",
+      "sha256_lf": {
+        "lingshu/core/core.py": "5905856d349a237e04fdf4e8f142e16e7ed5364c411c5d1a245b71005a5d3ebb",
+        "tests/test_subtree_write_snapshot.py": "e7a126d41f58a15b14e0f818876910a0e1581c8e3b9098089150597df12d04ef",
+        "tests/fixtures/subtree_write_snapshot_mutations.json": "a437f8d73d4981d01f997d3b7720a0246692d97bffc93851ad85252b3f360e51"
+      },
+      "commands": [
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 25,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": []
+    },
+    "linux": {
+      "platform": "Linux",
+      "python": "3.13.12",
+      "sqlite": "3.46.1",
+      "baseline": "f5dcd58165cbf64393d1f2d4dfc61f781485ec29",
+      "validated_commit": "657cbd982a19da5f8b6256b2f18ed365056b6828",
+      "sha256_lf": {
+        "lingshu/core/core.py": "5905856d349a237e04fdf4e8f142e16e7ed5364c411c5d1a245b71005a5d3ebb",
+        "tests/test_subtree_write_snapshot.py": "e7a126d41f58a15b14e0f818876910a0e1581c8e3b9098089150597df12d04ef",
+        "tests/fixtures/subtree_write_snapshot_mutations.json": "a437f8d73d4981d01f997d3b7720a0246692d97bffc93851ad85252b3f360e51"
+      },
+      "commands": [
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 25,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": []
+    }
+  }
+}

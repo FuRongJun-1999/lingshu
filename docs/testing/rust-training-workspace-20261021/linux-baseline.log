@@ -1,0 +1,45 @@
+FFFFF..                                                                  [100%]
+=================================== FAILURES ===================================
+_____________ test_concurrent_default_calls_keep_their_own_inputs ______________
+<evidence-root>/current/linux/replay/guard-gvheixj0/tests/test_rust_training_workspace.py:71: in test_concurrent_default_calls_keep_their_own_inputs
+    assert curve.tolist() == [float(n)] * 2, "training result belongs to another call"
+E   AssertionError: training result belongs to another call
+E   assert [5.0, 5.0] == [3.0, 3.0]
+E
+E     At index 0 diff: 5.0 != 3.0
+E     Use -v to get more diff
+___________________ test_default_call_preserves_caller_files ___________________
+<evidence-root>/current/linux/replay/guard-gvheixj0/tests/test_rust_training_workspace.py:85: in test_default_call_preserves_caller_files
+    assert {p.name: p.read_bytes() for p in existing.iterdir()} == before, "default call overwrote caller files"
+E   AssertionError: default call overwrote caller files
+E   assert {'data.bin': ...00\x00\x00&@'} == {'data.bin': ...wned-vec.bin'}
+E
+E     Differing items:
+E     {'vec.bin': b'\x06\x00\x00\x00\x00\x00\x00\x00\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&@\x00\x00\x00\x...x00\x00\x00&@\x00\x00\x00\x00\x00\x00&@\x00\x00\x00\x00\x00\x00&@\x00\x00\x00\x00\x00\x00&@\x00\x00\x00\x00\x00\x00&@'} != {'vec.bin': b'caller-owned-vec.bin'}
+E     {'data.bin': b'1ATADXEH\x03\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x0...0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'} != {'data.bin': b'caller-owned-data.bin...
+E
+E     ...Full output truncated (4 lines hidden), use '-vv' to show
+_____________ test_failed_child_cleans_only_its_default_workspace ______________
+<evidence-root>/current/linux/replay/guard-gvheixj0/tests/test_rust_training_workspace.py:93: in test_failed_child_cleans_only_its_default_workspace
+    assert not (work / "data").exists(), "failed default call left files in caller cwd"
+E   AssertionError: failed default call left files in caller cwd
+E   assert not True
+E    +  where True = exists()
+E    +    where exists = (PosixPath('<evidence-root>/current/linux/replay/guard-gvheixj0/tmp/test_failed_child_cleans_only_0/caller') / 'data').exists
+___________ test_output_must_match_this_call_dimensions[short_curve] ___________
+<evidence-root>/current/linux/replay/guard-gvheixj0/tests/test_rust_training_workspace.py:100: in test_output_must_match_this_call_dimensions
+    with pytest.raises(ValueError, match="本次输入"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'ValueError'>
+__________ test_output_must_match_this_call_dimensions[short_vector] ___________
+<evidence-root>/current/linux/replay/guard-gvheixj0/tests/test_rust_training_workspace.py:100: in test_output_must_match_this_call_dimensions
+    with pytest.raises(ValueError, match="本次输入"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'ValueError'>
+=========================== short test summary info ============================
+FAILED tests/test_rust_training_workspace.py::test_concurrent_default_calls_keep_their_own_inputs
+FAILED tests/test_rust_training_workspace.py::test_default_call_preserves_caller_files
+FAILED tests/test_rust_training_workspace.py::test_failed_child_cleans_only_its_default_workspace
+FAILED tests/test_rust_training_workspace.py::test_output_must_match_this_call_dimensions[short_curve]
+FAILED tests/test_rust_training_workspace.py::test_output_must_match_this_call_dimensions[short_vector]
+5 failed, 2 passed in 1.37s

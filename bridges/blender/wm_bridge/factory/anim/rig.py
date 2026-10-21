@@ -26,9 +26,11 @@
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import math
+import types
 
 from ..geo import spec as _spec
 from . import eval as _eval
@@ -138,25 +140,74 @@ def morph_value_expr(morph):
         _f(2.0 * math.pi), _f(fps), _f(p), _f(ph))
 
 
+#: 驱动器表达式允许的 AST 节点（算术/比较/条件；**不含**属性访问、lambda、推导式、f-string）。
+_DRIVER_AST_ALLOWED = (
+    ast.Expression, ast.BinOp, ast.UnaryOp, ast.Call, ast.Name, ast.Constant,
+    ast.Load, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
+    ast.USub, ast.UAdd, ast.IfExp, ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE,
+    ast.Gt, ast.GtE, ast.And, ast.Or, ast.Not,
+)
+
+
+def _check_driver_ast(tree, ns, expr):
+    """驱动器表达式 AST 白名单校验（**拒绝**属性访问 / lambda / 推导式 / f-string）。
+
+    只查顶层 code object 的 `co_names` 不够：lambda 与推导式会生成**嵌套 code
+    object**，它们内部的名字不在外层 co_names 里 —— `(lambda: ().__class__...)` 这类
+    表达式能穿过旧的白名单执行任意代码（2026-10-18 外部审计 R13-O02）。因此以 AST 为准：
+    只允许算术/比较/条件表达式与**白名单名字的函数调用**；属性访问（`__class__` /
+    `__globals__` 之类）一律拒绝。
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, _DRIVER_AST_ALLOWED):
+            raise RigError("驱动器表达式含不允许的语法 %s：%r"
+                           % (type(node).__name__, expr))
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name) or node.func.id not in ns:
+                raise RigError("驱动器表达式调用了未登记的函数：%r" % (expr,))
+            if node.keywords:
+                raise RigError("驱动器表达式不接受关键字实参：%r" % (expr,))
+        elif isinstance(node, ast.Name):
+            if node.id not in ns:
+                raise RigError("驱动器表达式用了未登记的名字 %r：%r" % (node.id, expr))
+        elif isinstance(node, ast.Constant):
+            if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                raise RigError("驱动器表达式只接受数值常量：%r" % (expr,))
+
+
+def _check_driver_code_names(code, ns, expr):
+    """纵深防御：递归检查 code object 图里的全部名字（含嵌套 code object）。"""
+    bad = sorted(n for n in code.co_names if n not in ns)
+    if bad:
+        raise RigError("驱动器表达式用了未登记的名字 %s：%r" % (bad, expr))
+    for const in code.co_consts:
+        if isinstance(const, types.CodeType):
+            _check_driver_code_names(const, ns, expr)
+
+
 def eval_driver_expr(expr, frame, extra=None):
     """在**受限命名空间**里求值表达式（纯 Python 复算 Blender 驱动器的那条式子）。
 
     这是"驱动器表达式 = 求值器"这条论断的离线证据：没有 Blender 也能证明两者同值。
-    生效条件：表达式里出现未登记的名字 ⇒ `RigError`（不给 `__builtins__`，不静默）。
+    生效条件：表达式只含算术/比较/条件与**白名单名字**（含 `frame` 与 `extra` 里的名字），
+    其余一律 `RigError`（AST 白名单 + 递归名字检查 + 无 `__builtins__`，不静默降级）。
     """
+    if not isinstance(expr, str):
+        raise RigError("驱动器表达式须为字符串，得到 %r" % (type(expr).__name__,))
     ns = dict(EXPR_NAMESPACE)
     ns["frame"] = frame
     if extra:
         ns.update(extra)
     try:
-        code = compile(expr, "<driver>", "eval")
+        tree = ast.parse(expr, mode="eval")
     except SyntaxError as exc:
         raise RigError("驱动器表达式语法错误：%r（%s）" % (expr, exc)) from exc
-    names = set(code.co_names)
-    bad = sorted(n for n in names if n not in ns)
-    if bad:
-        raise RigError("驱动器表达式用了未登记的名字 %s：%r" % (bad, expr))
-    return eval(code, {"__builtins__": {}}, ns)  # noqa: S307 —— 名字白名单已在上方强制
+    _check_driver_ast(tree, ns, expr)
+    code = compile(tree, "<driver>", "eval")
+    # 纵深防御：AST 白名单已排除嵌套 code object 的产生源，这里仍递归检查一遍名字，
+    # 防未来有人放松 AST 白名单时把「只查顶层」的旧病带回来。
+    _check_driver_code_names(code, ns, expr)
+    return eval(code, {"__builtins__": {}}, ns)  # noqa: S307 —— AST 白名单 + 名字白名单双重强制
 
 
 # ------------------------------------------------------------------- 形态键形变

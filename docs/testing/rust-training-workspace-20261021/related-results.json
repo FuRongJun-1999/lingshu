@@ -1,0 +1,20 @@
+{
+  "windows": {
+    "related_total": 42,
+    "related_passed": 42,
+    "related_skips": [],
+    "related_failures": [],
+    "related_errors": [],
+    "native_posix_temp": false,
+    "related_temp_cleaned": true
+  },
+  "linux": {
+    "related_total": 42,
+    "related_passed": 42,
+    "related_skips": [],
+    "related_failures": [],
+    "related_errors": [],
+    "native_posix_temp": false,
+    "related_temp_cleaned": true
+  }
+}

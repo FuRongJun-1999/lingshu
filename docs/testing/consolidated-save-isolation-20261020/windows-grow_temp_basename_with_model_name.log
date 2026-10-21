@@ -1,0 +1,12 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_temporary_basename_is_independent_of_model_name _____________
+tests\test_consolidated_save_isolation.py:122: in test_temporary_basename_is_independent_of_model_name
+    assert len(names[0]) == len(names[1]), "temporary basename grew with model filename"
+E   AssertionError: temporary basename grew with model filename
+E   assert 53 == 274
+E    +  where 53 = len('short.json.tmp-32468-d8a6714369e945f7bfc9b68cddc298ce')
+E    +  and   274 = len('model_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.json.tmp-32468-b24335036f4c4d58a53f6aa67a85705f')
+=========================== short test summary info ===========================
+FAILED tests/test_consolidated_save_isolation.py::test_temporary_basename_is_independent_of_model_name
+1 failed in 0.44s

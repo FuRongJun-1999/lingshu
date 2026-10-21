@@ -73,7 +73,8 @@ def normalize_text(tx):
     补全的默认值：
       aspect_ratio  -> 16/9（已裁 D4）
       safe_area     -> {"title_safe": 0.80, "action_safe": 0.90}   （EBU R95）
-      limits        -> LATIN_LIMITS（附录已录的拉丁口径）
+      limits        -> LATIN_LIMITS（附录已录的拉丁口径；script="cjk" 时三项
+                       必须显式给出，不兜拉丁默认值——issue #825）
       cue.script    -> "latin"
       cue.lines     -> 由 text 按换行切分
 
@@ -147,6 +148,16 @@ def normalize_text(tx):
             if not isinstance(ln, str) or not ln.strip():
                 raise TextError("%s.lines[%d] 须为非空字符串，实为 %r" % (w, j, ln))
             clean.append(ln.strip())
+        # issue #825：lines 若显式给出，必须是 text 的**等价分片**——
+        # 三项可读性硬门读 text（见下），否则 lines=["ok"] 就能让 47 字符的
+        # 上屏正文绕过行宽/行数/CPS 判据。
+        if c.get("lines") is not None:
+            body_lines = [ln.strip() for ln in body.split("\n")]
+            if clean != body_lines:
+                raise TextError(
+                    "%s.lines 与 text 不一致（lines=%r；text 按换行=%r）——"
+                    "lines 只能是 text 的等价分片，可读性硬门以 text 为准"
+                    % (w, clean, body_lines))
         if len(clean) > lim["max_lines"]:
             raise TextError(
                 "%s 有 %d 行，超过 limits.max_lines=%d（附录已录：同屏 <= 2 行）"
@@ -159,12 +170,19 @@ def normalize_text(tx):
                     % (w, j, len(ln), lim["max_chars_per_line"]))
 
         script = C.opt_enum(c, "script", "latin", w, SCRIPTS)
-        if script == "cjk" and "limits" not in tx:
-            raise TextError(
-                "%s.script=\"cjk\" 但未显式声明 text.limits —— "
-                "CJK 的 CPS/行宽口径**附录未录**，本版不给默认值（不编造标准）；"
-                "请按你的平台规范显式给出 max_cps / max_chars_per_line / max_lines"
-                % w)
+        if script == "cjk":
+            # issue #825：CJK 的「显式声明」必须落在三项上限的**值**上——
+            # 旧实现只查顶层「limits 键是否存在」，{} / null / 只给 1 项都能
+            # 过闸，随后被 LATIN_LIMITS 兜成拉丁口径（模块头明说不给默认值）。
+            missing = [k for k in _KEYS_LIMITS
+                       if k not in lm or lm.get(k) is None]
+            if missing:
+                raise TextError(
+                    "%s.script=\"cjk\" 但 text.limits 未显式给出 %s —— "
+                    "CJK 的 CPS/行宽口径**附录未录**，本版不给默认值（不采拉丁"
+                    "默认值兜底）；请按你的平台规范显式给出 max_cps / "
+                    "max_chars_per_line / max_lines"
+                    % (w, " / ".join(missing)))
 
         cues.append({"kind": kind, "start_frame": st, "end_frame": en,
                      "text": body, "lines": clean, "script": script})
@@ -197,7 +215,14 @@ def cps_of(cue, fps):
     dur_s = (cue["end_frame"] - cue["start_frame"] + 1) / float(fps)
     if dur_s <= 0.0:
         raise TextError("cps_of 的时长须为正，实为 %r" % (dur_s,))
-    n = sum(len(ln) for ln in cue["lines"])
+    # issue #825：docstring 声明「字符数按所有行合计」——按上屏正文 text 的
+    # 换行拆分合计，而不是可被独立给出的 lines（旧实现因此把 47 字符/3 帧
+    # 报成 16.0，而真实 CPS=376.0）。
+    body = cue.get("text")
+    if isinstance(body, str):
+        n = sum(len(ln) for ln in body.split("\n"))
+    else:
+        n = sum(len(ln) for ln in cue["lines"])
     return n / dur_s
 
 

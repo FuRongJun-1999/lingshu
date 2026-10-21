@@ -1,0 +1,125 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "40fceb69e79d0f481455f05ea8581b6f6f5e5816",
+  "guard_sha256": "51baea99475a34b701eb98729ff6247ee4a9d1d3ff054cb4e0d26115cee6823d",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 5,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "5 passed in 0.36s",
+      "source_sha256": {
+        "lingshu/nn/hex_cnn.py": "f94d2cbfdd88781c879b1412810ab8a9b40cbff4a0180f4cb7b62c8a61e72926"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 1,
+      "failed_tests": [
+        "test_parallel_saves_do_not_share_temporary_files[failure]",
+        "test_parallel_saves_do_not_share_temporary_files[success]",
+        "test_temporary_basename_is_independent_of_model_name",
+        "test_temporary_name_collision_keeps_unowned_file"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_parallel_saves_do_not_share_temporary_files[success]",
+        "test_parallel_saves_do_not_share_temporary_files[failure]",
+        "test_temporary_name_collision_keeps_unowned_file",
+        "test_temporary_basename_is_independent_of_model_name"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "4 failed, 1 passed in 0.52s",
+      "source_sha256": {
+        "lingshu/nn/hex_cnn.py": "c0d9639796fc8525fee203307f017ea097f9b411d0b0e916491f0f028a3973a0"
+      }
+    },
+    {
+      "case": "share_process_temporary_file",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_parallel_saves_do_not_share_temporary_files[success]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_parallel_saves_do_not_share_temporary_files[success]"
+      ],
+      "expected_assertion": "concurrent valid save was rejected",
+      "pytest_summary": "1 failed in 0.43s",
+      "source_sha256": {
+        "lingshu/nn/hex_cnn.py": "353bd4d3221daade13fa2e1c6b506d4b098c19980aa7f01eea3d40624b302606"
+      }
+    },
+    {
+      "case": "truncate_existing_temporary_file",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_temporary_name_collision_keeps_unowned_file"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_temporary_name_collision_keeps_unowned_file"
+      ],
+      "expected_assertion": "temporary-name collision was not rejected",
+      "pytest_summary": "1 failed in 0.41s",
+      "source_sha256": {
+        "lingshu/nn/hex_cnn.py": "9af91cd6dc03d47a57f3e37884f0cd9d31c724376358a2fbb14649c7e4e8b6d0"
+      }
+    },
+    {
+      "case": "unlink_unowned_temporary_file",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_temporary_name_collision_keeps_unowned_file"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_temporary_name_collision_keeps_unowned_file"
+      ],
+      "expected_assertion": "another save's temporary file was removed",
+      "pytest_summary": "1 failed in 0.43s",
+      "source_sha256": {
+        "lingshu/nn/hex_cnn.py": "a750966a4d63f7e3e73fa5ae701abb8ea5c8bdd3917031d9122f82692be2a1ad"
+      }
+    },
+    {
+      "case": "grow_temp_basename_with_model_name",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_temporary_basename_is_independent_of_model_name"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_temporary_basename_is_independent_of_model_name"
+      ],
+      "expected_assertion": "temporary basename grew with model filename",
+      "pytest_summary": "1 failed in 0.44s",
+      "source_sha256": {
+        "lingshu/nn/hex_cnn.py": "3b1c09df76661956416d5af135bb01c84d3861ded79407fad48f0e01a2ae0886"
+      }
+    }
+  ]
+}

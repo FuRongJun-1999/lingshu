@@ -1,0 +1,15 @@
+{
+  "heads": {
+    "activation": "4abfd3bf207a21e3393fd703814b7aafa302b53b",
+    "self_model": "37c420b6b00f72b217b30f9706ff056e66285519"
+  },
+  "source_sha256": {
+    "lingshu/core/activation.py": "218c8ab92525e58651f8e09af4d3afaee51e0b64103ac3325723a38ec0e38ddd",
+    "tests/test_activation_transaction_ownership.py": "baed8aedb61eaa2d7623e6bd6e3bde125d5221fb935077a5e09865b5d0cb4cfc",
+    "lingshu/core/core.py": "641df4b1edc90a77ff790ce8efbdb96217af897b5fd04090bc4a1cdfe48b43d4",
+    "tests/test_self_model_save_recovery.py": "a90dc20212ae7936f3e86f61a0e4faae418452a3036b0e30cea97a64df9ea8e0"
+  },
+  "exit_code": 0,
+  "output": ".......................                                                  [100%]\r\n23 passed, 73 warnings in 1.97s\r\n",
+  "scope": "real native APIs and synthetic SQLite; no DSH host"
+}

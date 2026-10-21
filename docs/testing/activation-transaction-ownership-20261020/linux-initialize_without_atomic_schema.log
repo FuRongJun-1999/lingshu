@@ -1,0 +1,10 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________ test_failed_schema_initialization_rolls_back_created_table __________
+tests/test_activation_transaction_ownership.py:173: in test_failed_schema_initialization_rolls_back_created_table
+    assert store.conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='activation_nodes'").fetchone()[0] == 0, (
+E   AssertionError: failed activation initialization left a partial schema
+E   assert 1 == 0
+=========================== short test summary info ============================
+FAILED tests/test_activation_transaction_ownership.py::test_failed_schema_initialization_rolls_back_created_table
+1 failed in 0.86s

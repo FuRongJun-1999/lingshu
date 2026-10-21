@@ -1,0 +1,176 @@
+{
+  "python": "3.13.12 (main, Feb  4 2026, 15:06:39) [GCC 15.2.0]",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.42",
+  "sqlite": "3.46.1",
+  "baseline": "40fceb69e79d0f481455f05ea8581b6f6f5e5816",
+  "guard_sha256": "b9ef964e3641293adcb8570d5d76e2c9ccd99bc6690425a1e2cbfab7d090041b",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 17,
+      "failed_tests": [],
+      "expected_failures": [],
+      "expected_assertion": "",
+      "core_sha256": "13aa823aa4553ae5d3b58c10068e987fc84e72f78568e961a487cce16bdbf76d",
+      "readings": [
+        {
+          "entry": "all",
+          "before_header_hex": "53514c69746520666f726d6174203300",
+          "returned_success": false,
+          "error": "ValueError: export 目标不可覆盖正在使用的 SQLite 数据库或辅助文件",
+          "after_header_hex": "53514c69746520666f726d6174203300",
+          "integrity": "ok",
+          "fact_survived": true,
+          "reopen_error": null
+        },
+        {
+          "entry": "trajectory",
+          "before_header_hex": "53514c69746520666f726d6174203300",
+          "returned_success": false,
+          "error": "ValueError: export 目标不可覆盖正在使用的 SQLite 数据库或辅助文件",
+          "after_header_hex": "53514c69746520666f726d6174203300",
+          "integrity": "ok",
+          "fact_survived": true,
+          "reopen_error": null
+        }
+      ]
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_attached_database_is_protected",
+        "test_connection_path_survives_working_directory_change",
+        "test_source_database_rejected_before_write[all]",
+        "test_source_database_rejected_before_write[structured]",
+        "test_source_database_rejected_before_write[trajectory]",
+        "test_source_hardlink_alias_is_rejected",
+        "test_source_inside_allowed_root_is_still_rejected",
+        "test_source_sidecars_rejected_even_if_absent[-journal-all]",
+        "test_source_sidecars_rejected_even_if_absent[-journal-trajectory]",
+        "test_source_sidecars_rejected_even_if_absent[-shm-all]",
+        "test_source_sidecars_rejected_even_if_absent[-shm-trajectory]",
+        "test_source_sidecars_rejected_even_if_absent[-wal-all]",
+        "test_source_sidecars_rejected_even_if_absent[-wal-trajectory]",
+        "test_source_symlink_alias_is_rejected"
+      ],
+      "expected_failures": [
+        "test_source_database_rejected_before_write[all]",
+        "test_source_database_rejected_before_write[trajectory]",
+        "test_source_database_rejected_before_write[structured]",
+        "test_source_sidecars_rejected_even_if_absent[-wal-all]",
+        "test_source_sidecars_rejected_even_if_absent[-wal-trajectory]",
+        "test_source_sidecars_rejected_even_if_absent[-shm-all]",
+        "test_source_sidecars_rejected_even_if_absent[-shm-trajectory]",
+        "test_source_sidecars_rejected_even_if_absent[-journal-all]",
+        "test_source_sidecars_rejected_even_if_absent[-journal-trajectory]",
+        "test_source_inside_allowed_root_is_still_rejected",
+        "test_source_hardlink_alias_is_rejected",
+        "test_source_symlink_alias_is_rejected",
+        "test_connection_path_survives_working_directory_change",
+        "test_attached_database_is_protected"
+      ],
+      "expected_assertion": "",
+      "core_sha256": "f764c4ac4c97daa778f623df59036bef11c8ddbdf4f1afd6862855d61e6a2719",
+      "readings": [
+        {
+          "entry": "all",
+          "before_header_hex": "53514c69746520666f726d6174203300",
+          "returned_success": true,
+          "error": null,
+          "after_header_hex": "7b0a2020226d657461223a207b0a2020",
+          "reopen_error": "DatabaseError: file is not a database",
+          "fact_survived": false
+        },
+        {
+          "entry": "trajectory",
+          "before_header_hex": "53514c69746520666f726d6174203300",
+          "returned_success": true,
+          "error": null,
+          "after_header_hex": "7b0a2020226379636c6573223a205b5d",
+          "reopen_error": "DatabaseError: file is not a database",
+          "fact_survived": false
+        }
+      ]
+    },
+    {
+      "case": "export_all_not_wired",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_source_database_rejected_before_write[all]"
+      ],
+      "expected_failures": [
+        "test_source_database_rejected_before_write[all]"
+      ],
+      "expected_assertion": "G1 source path was not rejected before filesystem write",
+      "core_sha256": "b07eff9e4e322cf0b43a34cfd60595f218aa5223b1be92538a87c4937b6a54d4",
+      "readings": null
+    },
+    {
+      "case": "trajectory_not_wired",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_source_database_rejected_before_write[trajectory]"
+      ],
+      "expected_failures": [
+        "test_source_database_rejected_before_write[trajectory]"
+      ],
+      "expected_assertion": "G1 source path was not rejected before filesystem write",
+      "core_sha256": "d7c6ad2b9586e1579086ba7f985f818fad0da3a72c1d129473111f4bf1841883",
+      "readings": null
+    },
+    {
+      "case": "sidecars_not_protected",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_source_sidecars_rejected_even_if_absent[-journal-all]"
+      ],
+      "expected_failures": [
+        "test_source_sidecars_rejected_even_if_absent[-journal-all]"
+      ],
+      "expected_assertion": "G2 source path was not rejected before filesystem write",
+      "core_sha256": "596bbee80e981d26ff427472f6dcd65f1dd31d51b00c24e18e110112222ae3ad",
+      "readings": null
+    },
+    {
+      "case": "hardlink_identity_not_checked",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_source_hardlink_alias_is_rejected"
+      ],
+      "expected_failures": [
+        "test_source_hardlink_alias_is_rejected"
+      ],
+      "expected_assertion": "G4 source path was not rejected before filesystem write",
+      "core_sha256": "7cd8ed6069dfd38b8a6fb44c56397ff77901fe2fdd7c3b2c7e886dc0a3a508c6",
+      "readings": null
+    },
+    {
+      "case": "attached_database_not_enumerated",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_attached_database_is_protected"
+      ],
+      "expected_failures": [
+        "test_attached_database_is_protected"
+      ],
+      "expected_assertion": "G7 source path was not rejected before filesystem write",
+      "core_sha256": "a9541c53287fd22b83921c2f1b8772a5159aa7e6b31663e35c1a271253b2469b",
+      "readings": null
+    }
+  ]
+}

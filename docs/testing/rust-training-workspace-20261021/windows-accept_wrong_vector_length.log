@@ -1,0 +1,10 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_output_must_match_this_call_dimensions[short_vector] __________
+<evidence-root>\current\windows\replay\guard-gh5x3mq4\tests\test_rust_training_workspace.py:100: in test_output_must_match_this_call_dimensions
+    with pytest.raises(ValueError, match="本次输入"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/test_rust_training_workspace.py::test_output_must_match_this_call_dimensions[short_vector]
+1 failed in 0.56s

@@ -1,0 +1,13 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______________ test_ledger_write_preserves_caller_rollback[sync] _______________
+tests/test_extension_transaction_ownership.py:64: in test_ledger_write_preserves_caller_rollback
+    assert engine.store.conn.in_transaction, "extension committed the caller transaction"
+E   AssertionError: extension committed the caller transaction
+E   assert False
+E    +  where False = <sqlite3.Connection object at 0x7f6ba922ba60>.in_transaction
+E    +    where <sqlite3.Connection object at 0x7f6ba922ba60> = <lingshu.core.core.LayeredStore object at 0x7f6ba9287770>.conn
+E    +      where <lingshu.core.core.LayeredStore object at 0x7f6ba9287770> = <lingshu.core.core.SpacetimeMemoryEngine object at 0x7f6ba9285010>.store
+=========================== short test summary info ============================
+FAILED tests/test_extension_transaction_ownership.py::test_ledger_write_preserves_caller_rollback[sync]
+1 failed in 0.96s

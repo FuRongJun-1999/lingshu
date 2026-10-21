@@ -1,0 +1,14 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________ test_adopted_disk_fields_do_not_become_local_baseline _____________
+tests/test_self_model_save_recovery.py:101: in test_adopted_disk_fields_do_not_become_local_baseline
+    assert _reopened_model(engine)["values"] == ["remote retained value"], (
+E   AssertionError: adopted disk values were overwritten on the next save
+E   assert ['存在优先', '信任深化', '结构完整'] == ['remote retained value']
+E
+E     At index 0 diff: '存在优先' != 'remote retained value'
+E     Left contains 2 more items, first extra item: '信任深化'
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_self_model_save_recovery.py::test_adopted_disk_fields_do_not_become_local_baseline
+1 failed, 9 warnings in 1.09s

@@ -1,0 +1,11 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_temporary_name_collision_keeps_unowned_file _______________
+tests/test_consolidated_save_isolation.py:89: in test_temporary_name_collision_keeps_unowned_file
+    assert all(p.exists() for p in candidates), "another save's temporary file was removed"
+E   AssertionError: another save's temporary file was removed
+E   assert False
+E    +  where False = all(<generator object test_temporary_name_collision_keeps_unowned_file.<locals>.<genexpr> at 0x72e729cef440>)
+=========================== short test summary info ============================
+FAILED tests/test_consolidated_save_isolation.py::test_temporary_name_collision_keeps_unowned_file
+1 failed in 0.42s

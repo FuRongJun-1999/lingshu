@@ -1,0 +1,14 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ test_pending_change_survives_rejected_save_and_later_recovery[values-statement] _
+tests/test_self_model_save_recovery.py:77: in test_pending_change_survives_rejected_save_and_later_recovery
+    assert saved[key] == pending[key], "pending self-model change was dropped after recovery"
+E   AssertionError: pending self-model change was dropped after recovery
+E   assert ['存在优先', '信任深化', '结构完整'] == ['retain local correction']
+E
+E     At index 0 diff: '存在优先' != 'retain local correction'
+E     Left contains 2 more items, first extra item: '信任深化'
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_self_model_save_recovery.py::test_pending_change_survives_rejected_save_and_later_recovery[values-statement]
+1 failed, 9 warnings in 0.93s

@@ -101,16 +101,21 @@ def _check_weight(weight) -> float:
 
 
 class EvidenceLedger:
-    """挂在 LayeredStore 上的证据账本。复用 store 的连接与写锁。"""
+    """挂在 LayeredStore 上的证据账本。复用 store 的连接与事务边界。
+
+    首次初始化需在调用方事务之外完成；建表成功后才由引擎缓存本对象。
+    后续写入可参与调用方事务，证据、置信度同步与传播共同提交或回滚。
+    """
 
     def __init__(self, store):
         self.store = store
         self.on_change = None  # 证据变化回调（TMS 用于下游传播；None = 无）
         with store._lock:
-            c = store.conn
-            c.execute(_DDL)
-            c.execute(_IDX)
-            c.commit()
+            if store.conn.in_transaction:
+                raise RuntimeError("首次启用证据账本需要独立事务；请先结束调用方事务")
+            with store._structure_event_transaction() as c:
+                c.execute(_DDL)
+                c.execute(_IDX)
 
     # ------------------------------------------------------------ 写权限闸
     def _assert_shared_layer_writable(self, node_id: str) -> None:
@@ -175,23 +180,21 @@ class EvidenceLedger:
         if polarity not in (SUPPORT, CONTRADICT):
             raise ValueError(f"polarity 只能是 SUPPORT(1) / CONTRADICT(-1)，收到 {polarity!r}")
         w = _check_weight(weight)
-        if not node_id or self.store.get_node(node_id) is None:
-            raise KeyError(f"节点不存在：{node_id!r}")
-        # #774：闸必须在 INSERT **之前**——只在 `sync` 落闸会留下孤儿证据行
-        # （record 先 INSERT 再调 sync；SUB 被拒时 evidence 表已多一行）。
-        self._assert_shared_layer_writable(node_id)
         eid = uuid.uuid4().hex
-        with self.store._lock:
-            c = self.store.conn
+        with self.store._structure_event_transaction() as c:
+            if not node_id or self.store.get_node(node_id) is None:
+                raise KeyError(f"节点不存在：{node_id!r}")
+            # #774：闸必须在 INSERT **之前**——只在 `sync` 落闸会留下孤儿证据行
+            # （record 先 INSERT 再调 sync；SUB 被拒时 evidence 表已多一行）。
+            self._assert_shared_layer_writable(node_id)
             c.execute(
                 "INSERT INTO evidence (id, node_id, source, polarity, weight, "
                 "self_generated, note, created_at) VALUES (?,?,?,?,?,?,?,?)",
                 (eid, node_id, normalize_source(source), int(polarity), w,
                  1 if self_generated else 0, (note or "")[:500], time.time()))
-            c.commit()
-        self.sync(node_id)
-        if self.on_change is not None:
-            self.on_change(node_id)
+            self.sync(node_id)
+            if self.on_change is not None:
+                self.on_change(node_id)
         return eid
 
     def sync(self, node_id: str) -> float:
@@ -201,12 +204,10 @@ class EvidenceLedger:
         故同样要先过 `_assert_shared_layer_writable`——闸落在 UPDATE 之前，
         被拒时零状态变更。
         """
-        self._assert_shared_layer_writable(node_id)
-        conf = self.assess(node_id)["confidence"]
-        with self.store._lock:
-            c = self.store.conn
+        with self.store._structure_event_transaction() as c:
+            self._assert_shared_layer_writable(node_id)
+            conf = self.assess(node_id)["confidence"]
             c.execute("UPDATE nodes SET confidence=? WHERE id=?", (conf, node_id))
-            c.commit()
         return conf
 
     # ------------------------------------------------------------ 读

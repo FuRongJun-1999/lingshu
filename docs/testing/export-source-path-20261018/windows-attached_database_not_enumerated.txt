@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_attached_database_is_protected _____________________
+tests\test_export_source_path_guard.py:46: in _reject
+    _export(engine, method, target)
+tests\test_export_source_path_guard.py:38: in _export
+    return engine.export_all(str(target))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\core.py:11924: in export_all
+    os.replace(tmp_path, target_path)
+E   PermissionError: [WinError 5] 拒绝访问。: 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-2b31w9z8\\tmp\\test_attached_database_is_prot0\\attached.db.tmp-6c6898f8' -> 'E:\\lingshu\\outputs\\p0-fixes-20261018\\export-replay-windows-public\\export-source-2b31w9z8\\tmp\\test_attached_database_is_prot0\\attached.db'
+
+The above exception was the direct cause of the following exception:
+tests\test_export_source_path_guard.py:138: in test_attached_database_is_protected
+    _reject(engine, "all", attached, "G7")
+tests\test_export_source_path_guard.py:50: in _reject
+    raise AssertionError(f"{label} source path was not rejected before filesystem write") from exc
+E   AssertionError: G7 source path was not rejected before filesystem write
+=========================== short test summary info ===========================
+FAILED tests/test_export_source_path_guard.py::test_attached_database_is_protected
+1 failed, 9 warnings in 0.92s

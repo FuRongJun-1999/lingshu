@@ -53,8 +53,9 @@ except ImportError:  # 直跑 fallback（裸名互导）
 # 经 sys.path 的裸名导入，含标准库——上一版只封白名单组件名，json.py 等仍被劫持）
 # ——「消除」取**解析期拒绝**义（#273 路 B）：条目不被删除，宿主 `sys.path` 零改写；
 # ② 白名单组件另由本守卫收口（含排除脚本目录）；③ 仍不覆盖：进程已被预置投毒
-# （sys.modules 预置 / 进程内 sys.path.insert）、逃生口 LINGSHU_ALLOW_CWD_IMPORTS 被
-# 显式打开的情形。
+# （sys.modules 预置 / 进程内 sys.path.insert）。逃生口 LINGSHU_ALLOW_CWD_IMPORTS
+# 只放开 ① 层（非白名单名的 cwd 解析面）；② 层自 #750 残余修复起不随逃生口
+# 放开——白名单名受控面未命中即失败，不再交还标准 PathFinder（A/D/E 臂封死）。
 from . import contradiction as _contradiction
 
 from .component_resolver import (
@@ -189,6 +190,70 @@ def _dumps_tags(tags, ensure_ascii: bool = False) -> str:
                 "#378 拒绝含 UTF-16 代理码点的标签（无法 UTF-8 编码，会毒化检索/导出）: "
                 "%r" % (t,))
     return json.dumps(tags, ensure_ascii=ensure_ascii)
+
+
+# =============================================================================
+# add_perception 入参验证闸（tags/entities/modality · issue #805）
+# =============================================================================
+
+# #805：modality 白名单——感知通道（add_perception）的合法模态。取值锚点：
+# ① `STNode.modality` 字段注释「模态：text, image, code, etc.」枚举出的三个
+#   非 text 值中的 image/code（"etc." 是开放词，只取已实证项）；
+# ② `add_perception` 去重判据 #223 的 audio（候选集按 modality 过滤的显式
+#   测试值，tests/test_issue223_dedup_merge_fields_guard.py）；
+# ③ `provenance.from_legacy` 的 image（vision_pipeline 感知通道）；
+# ④ `subgraph_replace._attach` 的 visual（core.py 子树挂载的缺省 modality，
+#    tests/test_issue139_subgraph_replace_*.py 的 g5/g6 正对照在用）。
+# structure/protocol/self_state/trust_state 等模态是**写入路径内部值**——它们
+# 全部直构 `STNode(...)` 走 `add_node`（core.py 结构事件/锚点/自我快照等），
+# 不经 `add_perception` 感知入口，故不在本白名单内。扩展白名单是一行改动。
+_PERCEPTION_MODALITIES = frozenset({"text", "audio", "image", "code", "visual"})
+
+
+def _validated_str_items(name: str, value):
+    """#805：`add_perception` 的 tags/entities 入参校验+规范化（唯一真源）。
+
+    返回规范化后的 `list[str]`：
+      · `value is None` → `[]`（None＝「未提供」，与签名默认 `List[str] = None`
+        同义；仓内既有合法用法：longterm_gate.py 两处 `entities or None` 显式
+        传 None 表空）；
+      · 容器须为 list/tuple/set/frozenset——裸 str/bytes 拒（旧形态：裸字符串
+        被当可迭代，`'tag1'` 落库成 `['t','a','g','1']` 四个单字符 tag），
+        其余非容器类型拒（旧形态：int 在去重路径的极性闸 `set()` 处抛无说明
+        TypeError 且 `_interaction_count` 副作用已发生）；
+      · 逐项：**None 项跳过**（issue #805 判据原文「None 项跳过」——None 是
+        「无」不是值，不字符串化）；非 str 项 `TypeError`（旧形态：数字被
+        `f"ent:{eid}"` / JSON 静默字符串化，正是 issue 点名的「数字变字符串」）；
+        空串项 `ValueError`（issue 表格点名「空 tag 无意义但被接受」）。
+
+    与 #331/#588 的 content 闸同口径：fail-closed，**不做 `str()` 静默强转**——
+    那会把编程错误洗成合法数据（「静默篡改语义」，比拒绝更坏）。
+    判据来源：公开 issue #805「tags 每项须为非空 str，None 项跳过；
+    modality 白名单校验」。
+    """
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)) or not isinstance(
+            value, (list, tuple, set, frozenset)):
+        raise TypeError(
+            "#805 add_perception 拒绝 %s 的容器类型 %s：须为 list/tuple/set"
+            "（裸字符串会被逐字符炸成单字符 tag；非容器不可迭代）"
+            % (name, type(value).__name__))
+    out = []
+    for item in value:
+        if item is None:
+            continue  # issue 判据：「None 项跳过」
+        if not isinstance(item, str):
+            raise TypeError(
+                "#805 add_perception 拒绝 %s 中的非字符串项 %r（%s）："
+                "数字/对象会被静默字符串化混进 tags 列，按 tag 过滤永远漏"
+                % (name, item, type(item).__name__))
+        if item == "":
+            raise ValueError(
+                "#805 add_perception 拒绝 %s 中的空字符串项：空 tag 无意义"
+                "（占据 get_nodes_by_tag 匹配空间与去重极性比对）" % name)
+        out.append(item)
+    return out
 
 
 # =============================================================================
@@ -1686,6 +1751,12 @@ class LayeredStore:
             self._tx_owns_txn = not nested
         try:
             yield conn
+            # COMMIT / RELEASE 自身也可能失败；须与方法体异常共用回滚边界，
+            # 否则连接会遗留失败写入和写锁，后续写入虽返回成功却仍未提交。
+            if nested:
+                conn.execute("RELEASE SAVEPOINT %s" % savepoint)
+            else:
+                conn.commit()
         except BaseException:
             try:
                 if nested:
@@ -1696,11 +1767,6 @@ class LayeredStore:
             except Exception:
                 pass
             raise
-        else:
-            if nested:
-                conn.execute("RELEASE SAVEPOINT %s" % savepoint)
-            else:
-                conn.commit()
         finally:
             self._tx_depth -= 1
             if self._tx_depth == 0:
@@ -2221,30 +2287,32 @@ class LayeredStore:
     @contextmanager
     def _structure_event_transaction(self):
         """结构事件工作单元；已有调用方事务时只释放自己的 savepoint。"""
-        with self._lock:
-            conn = self.conn
-            nested = conn.in_transaction
-            savepoint = f"structure_event_{uuid.uuid4().hex}"
-            # ★ #665：`nested` 必须同时把「已被 @_transactional 包裹」算进来。
-            # 单看 `conn.in_transaction` 不够——最外层 `_tx` 就是用它 BEGIN 的，
-            # 但**裸 `BEGIN IMMEDIATE` 在已开事务里会抛 `cannot start a transaction
-            # within a transaction`**；此处历史上只按 in_transaction 判，故凡是
-            # 走 `_tx` 进入的调用方都会踩到。用 `_tx_depth` 兜住这一层。
-            nested = nested or bool(getattr(self, "_tx_depth", 0))
-            conn.execute(f"SAVEPOINT {savepoint}" if nested else "BEGIN IMMEDIATE")
-            try:
+        conn = self.conn
+        nested = conn.in_transaction
+        savepoint = f"structure_event_{uuid.uuid4().hex}"
+        # ★ #665：`nested` 必须同时把「已被 @_transactional 包裹」算进来。
+        # 单看 `conn.in_transaction` 不够——最外层 `_tx` 就是用它 BEGIN 的，
+        # 但**裸 `BEGIN IMMEDIATE` 在已开事务里会抛 `cannot start a transaction
+        # within a transaction`**；此处历史上只按 in_transaction 判，故凡是
+        # 走 `_tx` 进入的调用方都会踩到。用 `_tx_depth` 兜住这一层。
+        nested = nested or bool(getattr(self, "_tx_depth", 0))
+        # 与普通写入同序：先取得 SQLite 写事务，再进入 Python 临界区。
+        # 持 Python 锁等 SQLite，会与已占 SQLite、正等 Python 锁的写入互锁。
+        conn.execute(f"SAVEPOINT {savepoint}" if nested else "BEGIN IMMEDIATE")
+        try:
+            with self._lock:
                 yield conn.cursor()
                 if nested:
                     conn.execute(f"RELEASE SAVEPOINT {savepoint}")
                 else:
                     conn.commit()
-            except BaseException:
-                if nested:
-                    conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
-                    conn.execute(f"RELEASE SAVEPOINT {savepoint}")
-                else:
-                    conn.rollback()
-                raise
+        except BaseException:
+            if nested:
+                conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            else:
+                conn.rollback()
+            raise
 
     def _insert_structure_event(self, node: STNode, cursor):
         """内部追加：正文、类型、来源、同步标记和操作留痕共用一次提交。"""
@@ -2903,9 +2971,27 @@ class LayeredStore:
     def verify_edge(self, edge_id: str, new_confidence: float = None):
         """验证单元复核后标记边为已验证
 
-        #185：`new_confidence` 经 `_finite_clamp` 归一（非有限 → 0.0、有限值钳到
-        [0,1]）——旧实现原样落库，NaN 存成 NULL 后 `decay_cycle` 的
-        `cred_step(None, f)` 抛 TypeError、整轮衰减中断。
+        #185：`new_confidence` 经 `_finite_clamp` 归一（有限值钳到 [0,1]）——旧实现
+        原样落库，NaN 存成 NULL 后 `decay_cycle` 的 `cred_step(None, f)` 抛
+        TypeError、整轮衰减中断。
+
+        #790（本件，收口 #185 留下的「静默归一」面）：`new_confidence` 的非有限值
+        （NaN/±inf）改经 `_require_finite` **fail-closed 拒收**（`ValueError`），
+        不再被 `_finite_clamp` 静默归到 0.0。修前实测（main @ 5c530ff）：
+        `verify_edge(id, new_confidence=NaN/inf/-inf)` 一律**照常成功**——边被
+        标 `verified=1`、`confidence` 被写成凭空的 0.0，调用方拿不到任何「复核值
+        是坏值」的信号（这与「复核」语义相反：复核入口把垃圾读数盖成合法值并
+        盖章）。取 `_require_finite`（#206 同款闸）而非新写 `math.isfinite` 判断，
+        保持数值入参闸单一真源；拒收发生在**任何写语句之前**（先判后写），
+        `verified` / `confidence` / `last_verified` 均不被改动。
+        边界（如实标注）：①**有限越界值**（如 42.0 / -1.0）仍走 `_finite_clamp`
+        钳到 [0,1]（#185 既有口径，本件不动）；② `new_confidence is None`
+        （只标 verified、不改进制度）的既有分支不受影响；③坏值拒绝不落
+        `action_logs`——本方法无审计配套（与 #206 的 `update_trust_state` 同口径，
+        拒绝即回滚、零写入）。
+        判据来源：公开 issue #790（「`verify_edge` 的 `new_confidence` 参数应加
+        `math.isfinite` 校验，NaN/±inf ⇒ `ValueError`」）＋ #206 `_require_finite`
+        先例（数值入参闸从「归一」到「拒绝」的同一升级路径）。
 
         #234：非 PRIMARY 不得 verify 任一端为共享层的边（旧实现无角色检查）——
         SUB 可自行把结构层间的边置为 `verified=1`、`confidence=1.0`。
@@ -2919,6 +3005,9 @@ class LayeredStore:
             c = self.conn.cursor()
             now = time.time()
             if new_confidence is not None:
+                # #790：非有限值先拒（fail-closed，任何写语句之前抛出）；
+                # 有限值再走 #185 的 [0,1] 钳制（值域归一口径不动）。
+                new_confidence = _require_finite("new_confidence", new_confidence)
                 new_confidence = _finite_clamp(new_confidence, 0.0, 1.0)
                 c.execute('''
                     UPDATE edges SET verified=1, last_verified=?, confidence=?
@@ -4049,8 +4138,15 @@ class LayeredStore:
         return list(dict.fromkeys(frags))
 
     def search_content(self, query: str, layers: List[MemoryLayer] = None,
-                       limit: int = 20) -> List[Tuple[STNode, float]]:
-        """内容检索：多词 OR 预筛（含同义词扩展）+ 原查询二元组 Jaccard 相似度排序"""
+                       limit: int = 20, touch: bool = None) -> List[Tuple[STNode, float]]:
+        """内容检索：多词 OR 预筛（含同义词扩展）+ 原查询二元组 Jaccard 相似度排序
+
+        #787：`touch` 形参（缺省 None → `_retrieval_touches_recency()` 开关，既有
+        调用行为逐位不变）。显式传 False 的唯一调用方是 `recall`——它的打分公式
+        （0.5·sim + 0.3·importance + 0.2·recency）读的正是 `last_access`，而本方法
+        返回前会把命中节点的 `last_access` 刷成「现在」⇒ 同一节点的分数在两次调用
+        间漂移（issue 实测 ~1.9e-08），主排序键不稳定 ⇒ 排序翻转。打分路径不写回
+        打分输入（检索只计数、不刷新近因），分数即成为固定输入的纯函数。"""
         q = query.strip()
         if not q:
             return []
@@ -4058,7 +4154,7 @@ class LayeredStore:
         if getattr(self, "_fts", None) is not None:
             # #201：与 LIKE 路径同口径——未指定层时默认排除自我层
             fts_layers = layers or [l for l in MemoryLayer if l != MemoryLayer.SELF]
-            fts_hits = self._search_content_fts(q, terms, fts_layers, limit)
+            fts_hits = self._search_content_fts(q, terms, fts_layers, limit, touch=touch)
             if fts_hits is not None:
                 return fts_hits
         conds, params = [], []
@@ -4157,10 +4253,12 @@ class LayeredStore:
         # `executemany` 逐条语句各计一次（与旧逐调用一致）。
         # ★本笔合成：`touch` 由开关决定——批量口径与「不刷新近因」并存（见
         # `increment_access_many` 的 `touch` 形参）。
+        # ★本笔合成（#787）：调用方显式传 `touch`（唯一现例：`recall` 传 False）时
+        # 从其值，否则回落开关缺省——直接检索（本方法）行为逐位不变。
         # ★本笔合成（#473）：`_anchor_rerank` 只重排/截断最终 `results` 的顺序与组成，
         # 批量计数口径不变（仍对最终返回的 `results` 计数）。
         results = self._anchor_rerank(q, scored[:limit], layers, limit)
-        touch = self._retrieval_touches_recency()
+        touch = self._retrieval_touches_recency() if touch is None else touch
         self.increment_access_many([node.id for node, _ in results], touch=touch)
         return results
 
@@ -4220,11 +4318,14 @@ class LayeredStore:
                 seen.add(n.id)
         return out
 
-    def _search_content_fts(self, q: str, terms, layers, limit: int):
+    def _search_content_fts(self, q: str, terms, layers, limit: int, touch: bool = None):
         """FTS5+BM25 候选生成（retrieval.py）。返回 None 表示交回原 LIKE 路径。
 
         候选按 BM25 从全库取（不再受插入顺序与 LIMIT 300/500 截断影响）；
-        分数 = max(原 Jaccard+tag 加成, 0.9·s/(s+K))，≥0.95 判重语义只来自 Jaccard。"""
+        分数 = max(原 Jaccard+tag 加成, 0.9·s/(s+K))，≥0.95 判重语义只来自 Jaccard。
+
+        #787：`touch` 形参与 LIKE 路径同语义（None → 开关缺省；`recall` 显式传
+        False——见 `search_content` docstring），FTS/LIKE 两条检索腿同一口径。"""
         from lingshu.core import retrieval as _rt
         FTSIndex = _rt.FTSIndex
         ctx = _rt.context_enabled()
@@ -4275,9 +4376,11 @@ class LayeredStore:
         # ★本笔合成：FTS 路径同样收进批量单点（#571 禁「循环内 increment_access」），
         # 并以 `touch` 形参落实本件「不刷新近因」——两套语义并存（见
         # `increment_access_many` 的 `touch` 形参）。
+        # ★本笔合成（#787）：调用方显式 `touch` 从其值，否则回落开关缺省（与 LIKE 腿
+        # 同一 `search_content` 入口的口径）。
         # ★本笔合成（#473）：`_anchor_rerank` 只重排最终 results 的顺序/组成，计数口径不变。
         results = self._anchor_rerank(q, [(n, s) for n, s, _ in scored[:limit]], layers, limit)
-        touch = self._retrieval_touches_recency()
+        touch = self._retrieval_touches_recency() if touch is None else touch
         self.increment_access_many([n.id for n, _ in results], touch=touch)
         return results
 
@@ -6370,6 +6473,21 @@ class SpacetimeMemoryEngine:
         self._dedup_static = 0.85          # M5 去重静态基准（2.7.2 动态死区）
         self._dedup_window = 30
         self._dedup_history: List[float] = []
+        # #800：M5 去重「查→插」原子化锁。`add_perception` 的去重判定（全层
+        # 候选扫描 + Jaccard 阈值）与后续 `add_node` INSERT 之间原本无引擎级
+        # 互斥——store 的 `RLock`（`LayeredStore._lock`）只覆盖**单次**读写
+        # 调用，两线程的 SELECT 都可跑在对方 INSERT 之前 ⇒ 同内容并发写产出
+        # 多个重复节点（TOCTOU；实测 3 线程 × 20 次同内容 = 3 个不同 id）。
+        # 取 `RLock` 而非 `Lock`：跨度内含 provider/证据钩子调用面
+        # （`to_semantic_coordinates` / `_evidence.record`），若钩子再入
+        # `add_perception`（同线程）`Lock` 会自死锁；`RLock` 同线程可重入、
+        # 跨线程互斥语义不变。边界（如实标注）：①只护**单引擎实例内**的线程
+        # 并发——多进程共享同一库文件不在本件面（那是 sqlite 事务层职责）；
+        # ②`skip_dedup=True` 的写入不经判同键，本就不产生该竞态，锁对其
+        # 透传无害；③跨引擎实例（两个 `SpacetimeMemoryEngine` 指同一 db）
+        # 各持各的锁，竞态面仍在——issue 口径是「同一引擎实例多线程」
+        # （复现即此形态），多实例属另一件。
+        self._m5_dedup_lock = threading.RLock()
         self._context_max = self._load_context_max()  # M4 情境层 FIFO 上限（参照 AEIS）
                                                       # #246：跨进程持久化（见 _load_context_max）
         self._embedding_provider = None    # M1 语义检索提供者（duck-typed 注入，D-005）
@@ -6680,6 +6798,33 @@ class SpacetimeMemoryEngine:
     # 等属未定项，不擅定；见 `add_perception` 内 #225 段「边界」）。
     _POLARITY_TAGS = frozenset({"success", "failure"})
 
+    # ---- #803：M5 去重键的零宽字符剥除 ----
+    # 零宽字符（ZWSP U+200B / ZWNJ U+200C / ZWJ U+200D / BOM U+FEFF / WJ U+2060）
+    # 视觉不可见但**字节不同** ⇒ `char_bigram_jaccard` 的二元组集合被打散，
+    # `important\u200dsecurity\u200dnotice` 与 `important security notice` 判不同源，
+    # M5 内容去重被绕过——同视觉内容可造 2^n 个「隐形变体」节点（内容污染 /
+    # 存储膨胀 / importance 分散）。修法：**去重键**（Jaccard 与分歧/矛盾判据的
+    # 输入）先剥除零宽字符；**落库正文不动**（用户字节原样保留，只正规化判同键）。
+    # 判据来源：公开 issue #803（复现 `'important security notice'` vs 插 2 个
+    # U+200D 变体 id 不同；建议「去重前做 Unicode 正规化」）。
+    # 边界（如实标注）：①只剥**零宽字符**（视觉同义面），不做 NFKC 全量
+    # 正规化——NFKC 还会折叠全/半角、连字等**语义可见**的差异（如 `①`→`1`、
+    # `ﬁ`→`fi`），把「用户故意的字形变体」也判同，超出本件攻击面，不擅扩；
+    # ②`skip_dedup=True` 的主动沉淀路径不经判同键，不受影响；③剥除只作用于
+    # **新写入与候选的比对两侧**——库里既存的含零宽节点与新写入的干净内容
+    # 也能互相判同（候选侧同样剥除）。
+    _ZERO_WIDTH_RE = None  # 惰性编译（模块顶部不 import re，与 _assertion_divergence 同款）
+
+    @staticmethod
+    def _strip_zero_width(s: str) -> str:
+        """#803：剥除零宽字符（U+200B-U+200D / U+FEFF / U+2060）——M5 判同键的正规化。"""
+        import re as _re
+        cls = SpacetimeMemoryEngine
+        if cls._ZERO_WIDTH_RE is None:
+            cls._ZERO_WIDTH_RE = _re.compile("[\u200b-\u200d\ufeff\u2060]")
+        return cls._ZERO_WIDTH_RE.sub("", s)
+
+
     # ---- M5 去重的「条件空间」判同（lingshu #268） ----
     @staticmethod
     def _conditions_mergeable(a: ConditionSpace, b: ConditionSpace) -> bool:
@@ -6803,12 +6948,56 @@ class SpacetimeMemoryEngine:
         仓内无规定 `add_perception` 入参类型的理论章节，追不到更早出处。
         边界（如实标注）：本闸只覆盖 `add_perception`；`store.add_node` /
         `import_all` 等其它写入面不在本件范围内。
+
+        issue #805（tags/entities/modality 零验证）：三参数此前**全无校验**，
+        旧形态（实测 main@40fceb6）：裸字符串 `tags="tag1"` 被当可迭代，落库成
+        `['t','a','g','1']` 四个单字符 tag（字符爆炸）；`entities=[1,2]` 经
+        `f"ent:{eid}"` 静默字符串化成 `ent:1`/`ent:2`（issue 点名的「数字变
+        字符串」）；`tags=["ok",123]` / `["ok",None]` 把 JSON 数字/null 混进
+        tags 列（`get_nodes_by_tag` 按字符串匹配永远漏）；`tags=12345` 走去重
+        路径时在极性闸 `set()` 处抛无说明的 TypeError 且 `_interaction_count` /
+        `_note_action` 副作用已发生（半截副作用）；`modality` 任意值放行——
+        `123` 落 TEXT 列被 SQLite 亲和转 `'123'`（内存对象 ≠ 库内值，回报≠事实），
+        `None` 落 NULL 且使去重候选过滤失效，拼错的 `'invalid_modal'` 无声入库
+        造成下游按 modality 过滤出现意外分组。
+        修法（fail-closed，先判后写、零副作用，与 #331 同款口径）：tags/entities
+        经 `_validated_str_items` 校验+规范化——容器须为 list/tuple/set，**每项
+        须为非空 str**，None 项跳过（判据原文）；modality 白名单校验
+        （`_PERCEPTION_MODALITIES`）。调用方编程错误响亮报错（TypeError/
+        ValueError），**不做静默字符串化**。
+        判据来源：公开 issue #805「tags 每项须为非空 str，None 项跳过；
+        modality 白名单校验」（issue 正文表格点名 tags=None→'None'、tags=数字→
+        字符串、tags=''、modality 任意值四形态）。
+        边界（如实标注）：①容器 `None`（含显式传 None）规范化为空而非报错——
+        签名默认即 `List[str] = None`（None＝未提供），且仓内 longterm_gate.py
+        两处 `entities or None` 是显式传 None 的既有合法用法；②modality 白名单
+        只取仓内已实证的感知通道模态（text/audio/image/code），structure/
+        protocol/self_state/trust_state 等写入路径内部模态直构 STNode 走
+        `add_node`，不经本入口；③本闸只覆盖 `add_perception`，`store.add_node` /
+        `import_all` 的 tags 列写入不在本件范围（与 #331 边界同款）。
         """
         if not isinstance(content, str):
             raise TypeError(
                 "#331 add_perception 拒绝非字符串 content（收到 %s）：非 str 会绕过"
                 "去重、并以 BLOB/NULL 静默落库，进而毒化检索面"
                 % type(content).__name__)
+        # ---- #805：tags/entities/modality 入参验证（fail-closed，先判后写）----
+        # 在 `_interaction_count` / `_note_action` / 任何 SQL 之前（与 #331 同款
+        # 「零副作用」理由）：旧形态 tags=12345 的报错发生在副作用之后（半截写入面）。
+        # 校验后 tags/entities 已是纯 list[str]，下游 `tags or []` / 极性闸
+        # `set(tags or [])` / 合并路径 `for t in (tags or [])` 均按原语义工作。
+        tags = _validated_str_items("tags", tags)
+        entities = _validated_str_items("entities", entities)
+        if not isinstance(modality, str):
+            raise TypeError(
+                "#805 add_perception 拒绝非字符串 modality（收到 %s）：int 会被 "
+                "SQLite TEXT 亲和静默转 '123'（内存对象 ≠ 库内值），None 落 NULL "
+                "且使去重候选的模态过滤失效" % type(modality).__name__)
+        if modality not in _PERCEPTION_MODALITIES:
+            raise ValueError(
+                "#805 add_perception 拒绝非白名单 modality %r：合法值 "
+                "text/audio/image/code（感知通道模态，防下游按 modality 过滤出现"
+                "意外分组；白名单定义见 _PERCEPTION_MODALITIES 注释）" % (modality,))
         self._interaction_count += 1
         self._note_action("perception", content, None,
                           {"importance": importance, "modality": modality})
@@ -6861,111 +7050,126 @@ class SpacetimeMemoryEngine:
         # 才再跑更宽的 `contradiction.conflict`（差异片段上的极性 / 含中文数字的数值 / 反义）。
         conflict_reason = ""
         merged = False
-        if not skip_dedup and isinstance(content, str) and content.strip():
-            threshold = self._effective_dedup_threshold()
-            # #223：候选集限同模态——modality 不同的不参与去重
-            # #297：候选集**不再按 importance/last_access 截断前 200 条**——旧实现
-            # `query_nodes(layer=KNOWLEDGE, limit=200)` 的排序是
-            # `ORDER BY importance DESC, last_access DESC`（为检索服务），知识层超过
-            # 200 条后，较早写入、未被访问的内容**对去重不可见** ⇒ 逐字相同的感知被
-            # 重复入库（同一事实拆成多份节点，增信/实体标签/访问计数分散在副本上，
-            # recall 被重复项占位）。改为**全层同模态候选**（`limit=-1`，SQLite
-            # LIMIT -1 = 不限条数，与同文件 `get_layer_nodes` 同款口径）。
-            # 判据来源：公开 issue #297（「去重视野只有 importance/last_access 前 200
-            # 条……较早写入的内容对去重不可见」）＋ 该 issue「修复建议 2：全层扫描」
-            # （经验标定；仓内理论章节未规定 M5 候选视野口径，追不到更早出处）。
-            # 边界（削掉的判别力/代价，如实标注）：①本修法取 issue 建议 2（全层扫描）
-            # ——写入代价随知识层规模**线性增长**（实测本机 2000 行候选装载 + 比对
-            # 约 0.03s）；②issue 建议 1 的「低频二元组 `content LIKE` 预筛」在本仓
-            # **无收益**——`nodes.content` 无索引，`content LIKE '%…%'` 同样是全表扫描
-            # （本仓索引只有 `idx_nodes_layer/idx_edges_source/idx_edges_target`，
-            # core.py:988-990），故不引入；③issue 建议 3（维持 200 并显式声明）**不**
-            # 采纳——那只是把漏去重写进文档，缺陷仍在；④仍按 `modality` 过滤（#223）。
-            candidates = self.store.query_nodes(layer=MemoryLayer.KNOWLEDGE,
-                                                modality=modality, limit=-1)
-            best, best_sim = None, 0.0
-            # #225：极性闸——**成败极性不同的节点不得合并**。旧实现只比正文二元组，
-            # 而 `record_action_sequence` 把成败写成正文前缀（`成功：`/`失败：`，且
-            # outcome 截到 `[:40]`）＋ `success`/`failure` 标签；动作序列越长，
-            # 「成功/失败」二字占的二元组比例越小 ⇒ 相似度越过阈值，失败经验被
-            # 并进「成功」节点（反之亦然）——对立结论在节点层**消失**，且以对方
-            # 身份留在图里（`recall`/`ActivationEngine` 只读 nodes）。
-            # 判据：候选与新写入的极性标签集必须**相等**（同为空亦相等）；「一侧有
-            # 极性、另一侧无」同样判不同（宁另立节点，不静默合并）。
-            # 判据来源：公开 issue #225「建议修复 1：M5 去重的候选必须极性一致：
-            # `success`/`failure` 不同的节点不得合并（最小改法：候选与新写入的极性
-            # 标签不一致时跳过该候选）」＋ issue #225 标题/复现（经验标定；仓内
-            # 理论章节未规定 M5 判同键的极性口径，追不到更早出处）。
-            # 边界（削掉的判别力，如实标注）：①极性词表只取 `success`/`failure`
-            # 两个既有标签，不引入 `negative`/`conflict` 等**尚不存在**的极性标签
-            # （issue 括注「以及将来的…」属未定项，不擅定）；②本闸只挡「合并」，
-            # 不改 `record_action_sequence` 的 outcome 截断口径（issue 建议 3 的
-            # 「保留末尾退出码」是另一条独立面）；③极性不同的两条写入**不**自动建
-            # `OPPOSITE` 边/落冲突（issue 建议 4 的 fail-loud 属策略取舍，本件只做
-            # 「不合并」这一最小面）。
-            new_polarity = set(tags or []) & self._POLARITY_TAGS
-            for n in candidates:
-                if (set(n.tags or []) & self._POLARITY_TAGS) != new_polarity:
-                    continue
-                # #268：条件空间也是判同键——条件不同即不同知识（见 docstring）
-                if not self._conditions_mergeable(cs, n.condition_space):
-                    continue
-                sim = LayeredStore.char_bigram_jaccard(content, n.content)
-                self._dedup_history.append(sim)
-                if len(self._dedup_history) > self._dedup_window:
-                    self._dedup_history = self._dedup_history[-self._dedup_window:]
-                if sim > best_sim:
-                    best_sim, best = sim, n
-            if best and best_sim >= threshold:
-                divergence = self._assertion_divergence(content, best.content)
-                if _contradiction.enabled():
-                    conflict_reason = (_contradiction.conflict(content, best.content)
-                                       or _MAIN_DIVERGENCE_REASON.get(divergence, ""))
-                    divergence = divergence or conflict_reason
-                if not divergence:
-                    self.store.increment_access(best.id)
-                    if getattr(self, "_evidence", None) is not None:
-                        # 证据账本开启时记一条证据（同源重复不增信由账本保证，见 core/evidence.py）
-                        self._evidence.record(best.id, source, self_generated=self_generated,
-                                              note="M5 去重命中")
-                    self.store.tag_node(best.id, "duplicate")
-                    # #223②：新输入的 tags / entities 取并集并入（旧实现全丢）
-                    for t in (tags or []):
-                        self.store.tag_node(best.id, t)
-                    for eid in (entities or []):
-                        self.store.tag_node(best.id, f"ent:{eid}")
-                    # #223②：importance 取两者较大值（旧实现：以 0.95 重复写入，
-                    # 原节点仍是 0.3）
-                    merged_node = self.store.get_node(best.id) or best
-                    if importance > merged_node.importance:
-                        self.store.update_node_importance(
-                            best.id, importance - merged_node.importance)
-                    merged_node = self.store.get_node(best.id) or merged_node
-                    merged_node.merged = True   # #223③：区分「已合并」
-                    return merged_node
-                divergent_with = best.id
-        semantic_coords = {}
-        if self._semantic_provider is not None:
-            # v1.7：结构化语义坐标（D-003 字段分离；文本节点写入 concept/radical/neural）
-            semantic_coords = self._semantic_provider.to_semantic_coordinates(content)
-        node = STNode(
-            id=f"node_{uuid.uuid4().hex[:8]}_{int(time.time()*1000)}",
-            content=content,
-            modality=modality,
-            spatial_coordinates=spatial_coordinates or {},
-            temporal_coordinate=time.time(),
-            condition_space=cs,
-            importance=importance,
-            confidence=0.5,
-            layer=MemoryLayer.KNOWLEDGE,
-            tags=tags or [],
-            semantic_coordinates=semantic_coords
-        )
-        self.store.add_node(node)
-        if divergent_with:
-            # 矛盾落账（#29②）：更正语句与原命题建 OPPOSITE 边 + 双方 conflict 标签，
-            # 待验证单元复核——不再静默「入库即一致」。
-            self.store.register_conflict(node.id, divergent_with)
+        # #800：M5 去重「查→插」原子化——去重判定（候选扫描+阈值+分歧）与
+        # `add_node` INSERT 收进同一把 `_m5_dedup_lock`（引擎级）。旧实现两段
+        # 之间无互斥：并发线程的 SELECT 都跑在对方 INSERT 之前，各自判「不存在」
+        # 后各自 INSERT ⇒ 同内容产出多个重复节点（TOCTOU；见 `__init__` 处
+        # #800 注释的判据来源与边界）。锁内含合并路径的整段副作用与新建路径的
+        # `register_conflict`（分歧账与判同决策同临界区）；锁外的实体标签/证据
+        # 记账只作用于已定 id，不参与判同，留在临界区外。
+        with self._m5_dedup_lock:
+            if not skip_dedup and isinstance(content, str) and content.strip():
+                threshold = self._effective_dedup_threshold()
+                # #223：候选集限同模态——modality 不同的不参与去重
+                # #297：候选集**不再按 importance/last_access 截断前 200 条**——旧实现
+                # `query_nodes(layer=KNOWLEDGE, limit=200)` 的排序是
+                # `ORDER BY importance DESC, last_access DESC`（为检索服务），知识层超过
+                # 200 条后，较早写入、未被访问的内容**对去重不可见** ⇒ 逐字相同的感知被
+                # 重复入库（同一事实拆成多份节点，增信/实体标签/访问计数分散在副本上，
+                # recall 被重复项占位）。改为**全层同模态候选**（`limit=-1`，SQLite
+                # LIMIT -1 = 不限条数，与同文件 `get_layer_nodes` 同款口径）。
+                # 判据来源：公开 issue #297（「去重视野只有 importance/last_access 前 200
+                # 条……较早写入的内容对去重不可见」）＋ 该 issue「修复建议 2：全层扫描」
+                # （经验标定；仓内理论章节未规定 M5 候选视野口径，追不到更早出处）。
+                # 边界（削掉的判别力/代价，如实标注）：①本修法取 issue 建议 2（全层扫描）
+                # ——写入代价随知识层规模**线性增长**（实测本机 2000 行候选装载 + 比对
+                # 约 0.03s）；②issue 建议 1 的「低频二元组 `content LIKE` 预筛」在本仓
+                # **无收益**——`nodes.content` 无索引，`content LIKE '%…%'` 同样是全表扫描
+                # （本仓索引只有 `idx_nodes_layer/idx_edges_source/idx_edges_target`，
+                # core.py:988-990），故不引入；③issue 建议 3（维持 200 并显式声明）**不**
+                # 采纳——那只是把漏去重写进文档，缺陷仍在；④仍按 `modality` 过滤（#223）。
+                candidates = self.store.query_nodes(layer=MemoryLayer.KNOWLEDGE,
+                                                    modality=modality, limit=-1)
+                best, best_sim = None, 0.0
+                # #225：极性闸——**成败极性不同的节点不得合并**。旧实现只比正文二元组，
+                # 而 `record_action_sequence` 把成败写成正文前缀（`成功：`/`失败：`，且
+                # outcome 截到 `[:40]`）＋ `success`/`failure` 标签；动作序列越长，
+                # 「成功/失败」二字占的二元组比例越小 ⇒ 相似度越过阈值，失败经验被
+                # 并进「成功」节点（反之亦然）——对立结论在节点层**消失**，且以对方
+                # 身份留在图里（`recall`/`ActivationEngine` 只读 nodes）。
+                # 判据：候选与新写入的极性标签集必须**相等**（同为空亦相等）；「一侧有
+                # 极性、另一侧无」同样判不同（宁另立节点，不静默合并）。
+                # 判据来源：公开 issue #225「建议修复 1：M5 去重的候选必须极性一致：
+                # `success`/`failure` 不同的节点不得合并（最小改法：候选与新写入的极性
+                # 标签不一致时跳过该候选）」＋ issue #225 标题/复现（经验标定；仓内
+                # 理论章节未规定 M5 判同键的极性口径，追不到更早出处）。
+                # 边界（削掉的判别力，如实标注）：①极性词表只取 `success`/`failure`
+                # 两个既有标签，不引入 `negative`/`conflict` 等**尚不存在**的极性标签
+                # （issue 括注「以及将来的…」属未定项，不擅定）；②本闸只挡「合并」，
+                # 不改 `record_action_sequence` 的 outcome 截断口径（issue 建议 3 的
+                # 「保留末尾退出码」是另一条独立面）；③极性不同的两条写入**不**自动建
+                # `OPPOSITE` 边/落冲突（issue 建议 4 的 fail-loud 属策略取舍，本件只做
+                # 「不合并」这一最小面）。
+                new_polarity = set(tags or []) & self._POLARITY_TAGS
+                # #803：判同键先剥零宽字符——零宽变体（ZWJ/ZWNJ/ZWSP/BOM/WJ）视觉相同
+                # 但字节不同，旧键直接比原始 content ⇒ 变体绕过 M5 去重各自成节点。
+                # 比对两侧都剥除：新写入侧与候选（库中既存节点）侧。
+                norm_new = self._strip_zero_width(content)
+                for n in candidates:
+                    if (set(n.tags or []) & self._POLARITY_TAGS) != new_polarity:
+                        continue
+                    # #268：条件空间也是判同键——条件不同即不同知识（见 docstring）
+                    if not self._conditions_mergeable(cs, n.condition_space):
+                        continue
+                    sim = LayeredStore.char_bigram_jaccard(
+                        norm_new, self._strip_zero_width(n.content))
+                    self._dedup_history.append(sim)
+                    if len(self._dedup_history) > self._dedup_window:
+                        self._dedup_history = self._dedup_history[-self._dedup_window:]
+                    if sim > best_sim:
+                        best_sim, best = sim, n
+                if best and best_sim >= threshold:
+                    # #803：分歧/矛盾判据同口径（两侧剥零宽）。
+                    norm_best = self._strip_zero_width(best.content)
+                    divergence = self._assertion_divergence(norm_new, norm_best)
+                    if _contradiction.enabled():
+                        conflict_reason = (_contradiction.conflict(norm_new, norm_best)
+                                           or _MAIN_DIVERGENCE_REASON.get(divergence, ""))
+                        divergence = divergence or conflict_reason
+                    if not divergence:
+                        self.store.increment_access(best.id)
+                        if getattr(self, "_evidence", None) is not None:
+                            # 证据账本开启时记一条证据（同源重复不增信由账本保证，见 core/evidence.py）
+                            self._evidence.record(best.id, source, self_generated=self_generated,
+                                                  note="M5 去重命中")
+                        self.store.tag_node(best.id, "duplicate")
+                        # #223②：新输入的 tags / entities 取并集并入（旧实现全丢）
+                        for t in (tags or []):
+                            self.store.tag_node(best.id, t)
+                        for eid in (entities or []):
+                            self.store.tag_node(best.id, f"ent:{eid}")
+                        # #223②：importance 取两者较大值（旧实现：以 0.95 重复写入，
+                        # 原节点仍是 0.3）
+                        merged_node = self.store.get_node(best.id) or best
+                        if importance > merged_node.importance:
+                            self.store.update_node_importance(
+                                best.id, importance - merged_node.importance)
+                        merged_node = self.store.get_node(best.id) or merged_node
+                        merged_node.merged = True   # #223③：区分「已合并」
+                        return merged_node
+                    divergent_with = best.id
+            semantic_coords = {}
+            if self._semantic_provider is not None:
+                # v1.7：结构化语义坐标（D-003 字段分离；文本节点写入 concept/radical/neural）
+                semantic_coords = self._semantic_provider.to_semantic_coordinates(content)
+            node = STNode(
+                id=f"node_{uuid.uuid4().hex[:8]}_{int(time.time()*1000)}",
+                content=content,
+                modality=modality,
+                spatial_coordinates=spatial_coordinates or {},
+                temporal_coordinate=time.time(),
+                condition_space=cs,
+                importance=importance,
+                confidence=0.5,
+                layer=MemoryLayer.KNOWLEDGE,
+                tags=tags or [],
+                semantic_coordinates=semantic_coords
+            )
+            self.store.add_node(node)
+            if divergent_with:
+                # 矛盾落账（#29②）：更正语句与原命题建 OPPOSITE 边 + 双方 conflict 标签，
+                # 待验证单元复核——不再静默「入库即一致」。
+                self.store.register_conflict(node.id, divergent_with)
         if entities:
             for eid in entities:
                 self.store.tag_node(node.id, f"ent:{eid}")
@@ -7160,6 +7364,17 @@ class SpacetimeMemoryEngine:
             time_window=(time.time(), time.time()+3600),
             existence_constraint="协议实例运行中"
         )
+        # #796（fail-closed，任何写语句之前抛出）：`confidence` 的非有限值
+        # （NaN/±inf）经 `_require_finite` 拒收（`ValueError`），不再被
+        # `STEdge.to_row` 的 `_finite_clamp` 静默归一为 0.0——修前实测（main @
+        # 40fceb6）：NaN/+inf/-inf 一律 ACCEPTED、库内落 0.0，且返回的内存对象
+        # 仍带原始坏值（对象与库行不一致），调用方编程错误被无信号掩盖。与 #790
+        # `verify_edge` 的 `new_confidence` 同款闸（#206 `_require_finite`
+        # 单一真源——创建路径与更新路径同一缺口收口）。有限值口径不动：[0,1] 外
+        # 的有限值（如 1.5）仍走 #185 的 `_finite_clamp` 钳制（值域归一不属
+        # 本件收口面）；本入口无 `weight` 形参（STEdge 缺省 1.0，直写面
+        # `LayeredStore.add_edge(STEdge)` 的归一口径不变）。
+        confidence = _require_finite("confidence", confidence)
         edge = STEdge(
             id=f"edge_{uuid.uuid4().hex[:8]}_{int(time.time()*1000)}",
             source_id=source_id,
@@ -7179,7 +7394,8 @@ class SpacetimeMemoryEngine:
         return edge
 
     def verify_edge(self, edge_id: str, new_confidence: float = None):
-        """验证单元复核后调用"""
+        """验证单元复核后调用（转发 store 层；#790：`new_confidence` 非有限值
+        （NaN/±inf）在 store 层被 `_require_finite` 拒收，`ValueError` 原样上抛）。"""
         self.store.verify_edge(edge_id, new_confidence)
 
     # ==================== 时空联想查询 ====================
@@ -7480,17 +7696,32 @@ class SpacetimeMemoryEngine:
         改写时仍后写者胜（不对 `trust_history` / `value_evolution` 做逐条归并，那属
         语义裁定面）；且合并**不回填内存**（本实例内存保持原样，只是落库值不再抹掉
         他方字段）。跨写者的同字段语义合并留设计者裁。
-        """
-        self.store.merge_meta(self.SELF_MODEL_META_KEY, self._merge_self_model_value)
 
-    def _merge_self_model_value(self, raw: Optional[str]) -> str:
+        保存失败时不推进本地合并基线：待保存改动继续被视为本地改动，可随下一次
+        正常保存一起重试。先取得 SQLite 写事务，再进入原有 store 锁，保持锁顺序。
+        调用方已有事务时仍参与该事务；不新增对调用方稍后回滚的运行态同步保证。
+        """
+        # Reserve the SQLite write transaction before the existing store lock,
+        # matching merge_meta's lock order. Publish only the exact local input
+        # whose write succeeded; a rejected save must leave it dirty for retry.
+        with self.store._tx():
+            with self.store._lock:
+                local = self.self_model.to_dict()
+                self.store.merge_meta(
+                    self.SELF_MODEL_META_KEY,
+                    lambda raw: self._merge_self_model_value(raw, local))
+                self._commit_locked()
+                self._self_model_baseline = local
+
+    def _merge_self_model_value(self, raw: Optional[str], local: Optional[Dict] = None) -> str:
         """`LayeredStore.merge_meta` 的取值回调：读回库内快照，按字段判归属（#483）。
 
         三方合并：基线（`_self_model_baseline`，本实例上次同步时的内存快照）／本实例
         现值（local）／库内现值（disk）。字段归属判据＝**本实例是否改过**：
           · `local[k] == base[k]` ⇒ 本实例未改过 ⇒ 采纳 `disk[k]`（他方更新不丢）；
           · `local[k] != base[k]` ⇒ 本实例改过 ⇒ 保留 `local[k]`（本实例的变更不丢）。
-        基线在返回前更新为 `local`（**不是** merged）——内存未回填，故该字段仍处
+        本回调只计算载荷；基线由 `_save_self_model` 在写入成功后更新为 `local`
+        （**不是** merged）——内存未回填，故该字段仍处
         「本实例未改动」态；若把基线置成 merged，下一笔写入就会把刚采纳的他方值
         当成「本地改动」再覆写回去（第二笔写复活丢更新）。
 
@@ -7503,14 +7734,14 @@ class SpacetimeMemoryEngine:
                 disk = json.loads(raw)
             except (TypeError, ValueError):  # 坏快照：按「无他方更新」处置，不阻断写入
                 disk = None
-        local = self.self_model.to_dict()
+        if local is None:
+            local = self.self_model.to_dict()
         base = getattr(self, "_self_model_baseline", None)
         merged = dict(local)
         if isinstance(disk, dict) and isinstance(base, dict):
             for k, v in disk.items():
                 if k in merged and merged[k] == base.get(k):
                     merged[k] = v
-        self._self_model_baseline = local
         return json.dumps(merged, ensure_ascii=False)
 
     def _load_self_snapshot(self) -> Optional[Tuple[Dict, str]]:
@@ -7662,6 +7893,18 @@ class SpacetimeMemoryEngine:
         #29④：终排与 search_content 同口径，同分再按置信度降序（confidence 与
         importance 一起进排序键；未验证/被矛盾标记的低置信节点不再压过高置信节点）。
 
+#787（主键漂移）：近因分量读 `last_access`，而检索路径（search_content）
+        返回前会把命中节点的 `last_access` 刷成「现在」⇒ 同一节点的分数在两次
+        recall 之间漂移（issue 实测 ~1.9e-08，随两次调用间隔增长），主排序键
+        不稳定 ⇒ sim 并列组的次序翻转。#613 的末位确定性键 `id` 在 recall 这里
+        **从未生效**——它只救「精确同分」，救不了「分数自身在漂移」。修法（根修）：
+        recall 的检索腿显式 `touch=False`（见 `search_content` 的 `touch` 形参）
+        ——打分路径不写回打分输入，`last_access` 只由写入、M5 重复观测、置信度
+        复核、巩固复述等真实强化事件刷新（与《检索不刷新近因》设计文档「检索 ≠
+        使用 ≠ 强化」同则；`LINGSHU_RETRIEVAL_NO_TOUCH` 开关仍只管直接检索路径）。
+        access_count 仍在 recall 命中时计数（统计语义不变）。
+        分数随 wall-clock 仍会**整体**微降（recency 对固定 la 单调衰减），但组内
+        两两差值的符号不变 ⇒ 次序跨调用逐位稳定。
         #795：min_score 为**返回面阈值**——低于阈值的结果不返回（只截断返回面，
         检索候选池/终排/记账口径不动）；默认 0.0 完全兼容（等价于不过滤），
         min_score<=0 即关闭。分数语义：组合分里 importance 与近因两项与查询无关，
@@ -7669,7 +7912,9 @@ class SpacetimeMemoryEngine:
         score≈0.38-0.41，相关查询≈0.51）——调用方应按自身语料标定 min_score
         （可取无关地板与相关带之间），仓内不硬编码推荐值。
         """
-        results = self.store.search_content(context_content, limit=50)
+        # #787：touch=False——recall 的打分输入（last_access）不得被自己的检索腿
+        # 写回（根修「分数漂移」）；候选池/排序其余口径逐位不变。
+        results = self.store.search_content(context_content, limit=50, touch=False)
         if not results:
             return []
         now = time.time()
@@ -7679,7 +7924,11 @@ class SpacetimeMemoryEngine:
             recency = 1.0 / (1.0 + max(0.0, now - la) / 86400.0)
             score = 0.5 * sim + 0.3 * (node.importance or 0.0) + 0.2 * recency
             scored.append((node, score))
-        scored.sort(key=lambda x: (-x[1], -x[0].confidence))
+        # #613：末位补 `id`——#613 当年只落在 search_content 的三处排序，recall
+        # 自己的终排从未补上；本处补齐同款末位键（库内唯一、跨平台稳定），在
+        # `last_access` 精确并列（如 Windows 时钟粒度下的同桶创建）⇒ 分数精确
+        # 相等时给出唯一确定序。非并列情形逐位不变。
+        scored.sort(key=lambda x: (-x[1], -x[0].confidence, x[0].id))
         if _contradiction.enabled():
             scored = self._with_opposites(scored, limit)
             limit = max(limit, len(scored))  # 矛盾对不拆开（见 _with_opposites）
@@ -7758,7 +8007,11 @@ class SpacetimeMemoryEngine:
 
     def add_context(self, content: str, importance: float = 0.4,
                     condition_space: ConditionSpace = None, tags: List[str] = None) -> STNode:
-        """写入情境层节点（短期记忆，importance 默认 0.4，随 decay 淡出）。"""
+        """写入情境层节点，按同一写事务内的持久化容量执行 FIFO。
+
+        容量是全库设置；已有实例的缓存不能覆盖另一实例已提交的新值。
+        插入和淘汰共同成功或撤回，调用方已有事务时只撤回本次工作。
+        """
         cs = condition_space or ConditionSpace(
             "情境感知", "会话摄入", (time.time(), time.time()+3600), "协议实例运行中")
         node = STNode(
@@ -7767,8 +8020,9 @@ class SpacetimeMemoryEngine:
             temporal_coordinate=time.time(), condition_space=cs,
             importance=importance, confidence=0.5,
             layer=MemoryLayer.CONTEXT, tags=(tags or []) + ["context"])
-        self.store.add_node(node)
-        self.store.enforce_context_cap(self._context_max)
+        with self.store._tx():
+            self.store.add_node(node)
+            self.store.enforce_context_cap(self._load_context_max())
         return node
 
     def get_recent_context(self, limit: int = 20) -> List[STNode]:
@@ -7807,11 +8061,21 @@ class SpacetimeMemoryEngine:
         见 `_assert_meta_key_writable`）。为什么闸位必须在赋值之前：旧形态若
         先改 `self._context_max` 再在落库处抛，内存已改而盘面未写 ⇒ 静默分叉
         （与 `#191` 的 `update_self` 同款病：调用方看到异常，运行态却已变）。
+
+        容量保存和 FIFO 裁剪共用一条事务，提交成功后才发布运行值。否则保存失败
+        仍会使下一次正常写入按新容量误删记忆，或裁剪失败留下部分删除。与配置终裁
+        一样要求独立事务：调用方后续的 rollback 无法撤回 Python 属性，故已有事务
+        时在任何改动前显式拒绝。
         """
-        self.store._assert_meta_key_writable("context_max")
-        self._context_max = _to_int_or(max_size, self.DEFAULT_CONTEXT_MAX)
-        self.store.set_meta("context_max", str(self._context_max))
-        self.store.enforce_context_cap(self._context_max)
+        with self.store._lock:
+            self.store._assert_meta_key_writable("context_max")
+            if self.store.conn.in_transaction:
+                raise RuntimeError("容量设置需要独立事务；请先结束调用方事务")
+            capacity = _to_int_or(max_size, self.DEFAULT_CONTEXT_MAX)
+            with self.store._structure_event_transaction():
+                self.store.set_meta("context_max", str(capacity))
+                self.store.enforce_context_cap(capacity)
+            self._context_max = capacity
 
     # ==================== 去重配置（M5 · D-004 动态阈值） ====================
 
@@ -8547,6 +8811,26 @@ class SpacetimeMemoryEngine:
         raise ValueError(
             "export 落点越界（%s）：须在 %s 任一白名单根内"
             % (out_path, roots))
+
+    def _guard_export_source_path(self, out_path: str):
+        """导出可覆盖旧备份，但不可覆盖本连接的数据库及事务辅助文件。"""
+        target = os.path.normcase(os.path.realpath(out_path))
+        # 使用连接报告的实际文件集合，而非只查初始化时的 db_path。
+        # 内存库的 file 为空；通过 ATTACH 增加的库也是正在使用的真源。
+        for _, _, database_path in self.store.conn.execute("PRAGMA database_list"):
+            if not database_path:
+                continue
+            for suffix in ("", "-wal", "-shm", "-journal"):
+                source = database_path + suffix
+                aliases_source = target == os.path.normcase(os.path.realpath(source))
+                if not aliases_source:
+                    try:
+                        # realpath 不合并硬链接；轨迹直写会经硬链接截断真源。
+                        aliases_source = os.path.samefile(out_path, source)
+                    except FileNotFoundError:
+                        pass
+                if aliases_source:
+                    raise ValueError("export 目标不可覆盖正在使用的 SQLite 数据库或辅助文件")
 
     WORLD3D_OUT_ROOT_ENV = "LINGSHU_WORLD3D_OUT_ROOT"
 
@@ -11014,9 +11298,9 @@ class SpacetimeMemoryEngine:
         if not policy or key not in policy.preference_weights:
             return False
         self.store._assert_meta_key_writable("attention_weights")
-        with self.store._lock:
-            if self.store.conn.in_transaction:
-                raise RuntimeError("配置调整需要独立事务；请先结束调用方事务")
+        if self.store.conn.in_transaction:
+            raise RuntimeError("配置调整需要独立事务；请先结束调用方事务")
+        with self.store._tx(), self.store._lock:
             previous = dict(policy.preference_weights)
             try:
                 with self.store._structure_event_transaction() as cursor:
@@ -11029,6 +11313,8 @@ class SpacetimeMemoryEngine:
                         f"{key}={weights[key]}（{role} · {source}）{reason}", "attention_weight",
                         source=source, metadata={"key": key, "value": weights[key],
                                                  "role": role, "reason": reason}, _cursor=cursor)
+                # 真提交仍在锁内与补偿 try 内；提交失败必须恢复运行态。
+                self.store._commit_locked()
             except BaseException:
                 policy.preference_weights.clear()
                 policy.preference_weights.update(previous)
@@ -11806,6 +12092,61 @@ class SpacetimeMemoryEngine:
         return {r[1] for r in self.store.conn.execute(
             f"PRAGMA table_info({table})")}
 
+    # ---- #802：导出面（落盘 JSON）的 BiDi 控制/零宽字符剥除 ----
+    # BiDi 控制字符（嵌入/覆写 U+202A-U+202E、隔离 U+2066-U+2069、方向标记
+    # U+200E/U+200F）与零宽族（U+200B-U+200D / U+FEFF / U+2060）视觉不可见
+    # 但会被 BiDi 渲染器（VS Code / Notepad++ / 终端 cat / web UI / 日志查看
+    # 器）解释——RTLO（U+202E）使后续文本**反向显示**：`file\u202etxt` 落盘后
+    # 显示成 `txt.exe`，属视觉欺骗/钓鱼向量（CWE-176）。`json.dump` 只转义
+    # ASCII 控制符（< U+0020），非 ASCII 的 U+202E 原样落盘 ⇒ 导出 JSON 在
+    # 下游渲染面存在反转文本（spoofing 面）。
+    # 修法（最小 · 仅导出序列化面）：`export_all` / `export_trajectory`
+    # **写出前**对整棵导出树（表行的所有字符串值与键）剥除上述控制符。判据
+    # 来源：公开 issue #802 修复建议 1/2（「剥离或转义 BiDi 控制字符」「剥离或
+    # 标记零宽字符」）——两可之中取**剥除**：与 #803/PR #807 的 world 侧
+    # `_strip_zero_width`（判同键剥除）同款风格，且保证任意渲染器下「落盘
+    # JSON 渲染无反转」不依赖渲染器是否转义。
+    # 边界（如实标注）：①只剥**格式控制符**，不剥真正的 RTL 文字（阿拉伯/
+    # 希伯来字母、CJK、emoji、组合附加号均不在剥除集——正常双向文本照旧）；
+    # ②只动**导出序列化面**——落库正文（DB 字节）与 `import_all` 回读面不动
+    # （判据只管导出面；剥除后正文长度变短，实测回读无长度断言、不炸）；
+    # ③剥除是不可逆的（原字节不保留）——与「剥除」口径一致，导出面宁可丢
+    # 格式控制符也不落反转文本；④`export_trajectory` 只在**落盘分支**剥除，
+    # 批量模式（`output_path is None`，不落盘）返回体保持原样。
+    _EXPORT_CTRL_RE = None  # 惰性编译（模块顶部不 import re，与 #803 同款）
+
+    @staticmethod
+    def _strip_export_controls(s: str) -> str:
+        """#802：剥除 BiDi 控制/零宽字符——导出落盘 JSON 的渲染无反转保证。"""
+        import re as _re
+        cls = SpacetimeMemoryEngine
+        if cls._EXPORT_CTRL_RE is None:
+            # U+200E/U+200F LRM/RLM · U+202A-U+202E LRE/RLE/PDF/LRO/RTO(RTLO)
+            # · U+2066-U+2069 LRI/RLI/FSI/PDI · U+200B-U+200D ZWSP/ZWNJ/ZWJ
+            # · U+2060 WJ · U+FEFF BOM（零宽集与 #803 的 `_strip_zero_width`
+            # 同集，本面另收 BiDi 集）。
+            cls._EXPORT_CTRL_RE = _re.compile(
+                "[\u200e\u200f\u202a-\u202e\u2066-\u2069\u200b-\u200d\u2060\ufeff]")
+        return cls._EXPORT_CTRL_RE.sub("", s)
+
+    @classmethod
+    def _sanitize_export_obj(cls, obj):
+        """#802：对导出树做深剥除——所有字符串值与键过 `_strip_export_controls`。
+
+        面取**整棵树**而非仅 `nodes.content`：RTLO 可藏在任意人读字段（tags、
+        轨迹 JSON 的键/值——`export_trajectory` 的键来自用户内容的
+        `json.loads`），判据是「落盘 JSON 渲染无反转」而非「content 无反转」。
+        dict/list 递归，非字符串原样返回（数值/None/字节不动）。
+        """
+        if isinstance(obj, str):
+            return cls._strip_export_controls(obj)
+        if isinstance(obj, dict):
+            return {cls._strip_export_controls(k) if isinstance(k, str) else k:
+                    cls._sanitize_export_obj(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [cls._sanitize_export_obj(v) for v in obj]
+        return obj
+
     def export_all(self, output_path: str) -> Dict:
         """M13：全库导出（JSON · 6.5 摘要交换/灾备基础）
 
@@ -11842,7 +12183,13 @@ class SpacetimeMemoryEngine:
         边界（如实标注）：`overwrote_existing` 是**判定—替换之间**的一次
         `os.path.exists` 读数，只要求「上报」，**不**提供排他创建/并发排他
         （判定与 `os.replace` 之间存在竞态窗口；本件不引入先查后建语义）。
+        源库保护：当前连接的 SQLite 数据库及 WAL/SHM/journal 不可作为导出目标，
+        即使位于配置的白名单根内也拒绝；普通备份覆盖语义不变。
         """
+        # 旧备份仍可覆盖（#698）；源库及 WAL/SHM/journal 即使落在白名单根内也须拒绝。
+        output_path = self._confine_export_out_path(output_path)
+        target_path = os.path.realpath(output_path)
+        self._guard_export_source_path(target_path)
         c = self.store.conn.cursor()
         # #383：整趟导出必须**共用一个读快照**。旧实现逐表各发一条
         # `SELECT * FROM <t>`，Python sqlite3 对 SELECT 不隐式开事务 ⇒ 每条语句
@@ -11886,6 +12233,10 @@ class SpacetimeMemoryEngine:
         finally:
             if own_tx:
                 self.store.conn.commit()
+        # #802：写出前对整棵导出树剥除 BiDi 控制/零宽字符（见
+        # `_strip_export_controls` 处注释）——落盘 JSON 渲染无反转。计数键
+        # （`exported_nodes` / `tables`）只数行数与表数，剥除不动行列数。
+        data = self._sanitize_export_obj(data)
         # #498（#330 修复的副作用）：`os.replace` 把目标换成**新 inode** ⇒
         # ①新档权限取 `0o666 & ~umask`，**不继承**旧档权限——运维刻意对备份设的
         #   `0600` 被静默放宽成 `0644`（全库导出含 `sensitivity=private` 条目、
@@ -11905,9 +12256,6 @@ class SpacetimeMemoryEngine:
         # 边界（如实标注）：只搬**权限位**，不搬属主/属组（`chown` 需特权，未做）；
         # 目标不存在时行为与改前逐字一致（umask 默认）；不引入目录 fsync（#330
         # 面边界不变）；返回值 `path` 仍是**调用方给的**路径（对外契约不变）。
-        # #746：落点根闸（越界 fail-closed）。
-        output_path = self._confine_export_out_path(output_path)
-        target_path = os.path.realpath(output_path)
         tmp_path = "%s.tmp-%s" % (target_path, uuid.uuid4().hex[:8])
         # #698：覆盖已存在目标 ⇒ 显式上报（不改覆盖语义，只让「静默」消失）。
         # 读数取在 `os.replace` **之前**——replace 之后目标必在，届时再查恒为 True。
@@ -12017,6 +12365,13 @@ class SpacetimeMemoryEngine:
         keep/orphan）⇒ O(E)；判据与返回体逐字不变（`orphan_edges` /
         `orphan_edges_sample` / `integrity_ok` 的语义与顺序均不动）。
 
+        #789（BOM 备份读不进）：备份文件读取改 `encoding="utf-8-sig"`——旧实现
+        `encoding="utf-8"` 把带 UTF-8 BOM 的备份（Windows 记事本 / PowerShell `>`
+        重定向的常见产物；#412 族语料同源）读出首字符 `\ufeff`，`json.load` 当场抛
+        `JSONDecodeError: Unexpected UTF-8 BOM` ⇒ **整次导入零落库**。`utf-8-sig`
+        对无 BOM 文件逐字节等价（#600 已证的同族口径），BOM 在场时剥掉。
+        判据来源：issue #789 ＋ #437/#600 同族先例（BOM 使读取面把合法件当坏件）。
+
         返回值指标口径（**勿与 `verify_integrity()` 的 `orphan_edges` 混用**）：
         `dangling_rows` 是**按「违规行」去重**的计数——导入后跑 `PRAGMA
         foreign_key_check`，该指令对**每一条**被违反的外键约束各回一行；同一行若
@@ -12110,7 +12465,8 @@ class SpacetimeMemoryEngine:
         本库既有存量毒行（`_dumps_tags` 边界①不变）；⑥含毒行的老备份回灌**整批失败**
         （与 #586/#478/#771 的「整批拒」取舍逐字一致，不提供自动清洗）。
         """
-        with open(input_path, "r", encoding="utf-8") as f:
+        # #789：utf-8-sig 对无 BOM 备份逐字节等价、BOM 在场时剥掉（见 docstring）。
+        with open(input_path, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         # ① 不可变层覆盖闸（先判后写，fail-closed）。
         # #478：闸判据从「备份声明层」扩为**双列**——声明层或库内旧行 layer 任一属
@@ -12671,6 +13027,7 @@ class SpacetimeMemoryEngine:
         return self.store.subgraph(root_id, max_depth=max_depth,
                                    relation_types=relation_types)
 
+    @_transactional
     def subgraph_replace(self, parent_id: str, old_sub_root_id: str,
                          new_subtree: Dict) -> Dict:
         """子图替换（可嵌套认知图 · 子部件生成基底）。
@@ -12732,6 +13089,9 @@ class SpacetimeMemoryEngine:
         （既有语义，非本件引入；本件只消「半截落库」）。② 旧子树 `traverse` 的
         `max_nodes=500` 截断（#139-G）仍不收口。
         """
+        # 范围、后代集合与保护判定也须处于同一写快照。只包住挂入/删除时，
+        # 另一实例可在预检后保护或移走旧子树，导致部分替换或删除范围外节点。
+        # 入口事务先取写锁，再预检；已有调用方事务仍保留其提交/回滚权。
         import json as _json
         # ---- A 前置校验（先判后动）：任一条不满足即整体拒绝，零改动 ----
         if self.store.get_node(parent_id) is None:
@@ -12857,9 +13217,9 @@ class SpacetimeMemoryEngine:
         判定；终裁的返回契约与事务边界**逐字不变**。
         """
         # 提交与发布都持锁，后续终裁才能基于刚提交的配置继续修改。
-        with self.store._lock:
-            if self.store.conn.in_transaction:
-                raise RuntimeError("终裁配置需要独立事务；请先结束调用方事务")
+        if self.store.conn.in_transaction:
+            raise RuntimeError("终裁配置需要独立事务；请先结束调用方事务")
+        with self.store._tx(), self.store._lock:
             before_config = dict(self._verifier_config)
             before_dedup = self._dedup_static
             try:
@@ -12905,6 +13265,8 @@ class SpacetimeMemoryEngine:
                             record, "verifier_standard", source=adjudicator,
                             metadata=_meta,
                             _cursor=cursor)
+                # 真提交仍在锁内与补偿 try 内；提交失败必须恢复运行态。
+                self.store._commit_locked()
             except BaseException:
                 # 盘上已随工作单元回滚；内存配置必须一并回退（见 docstring）。
                 self._verifier_config.clear()
@@ -13193,6 +13555,8 @@ class SpacetimeMemoryEngine:
         边界（如实标注）：该键是「判定—写入」之间的一次 `os.path.exists` 读数，
         只要求「上报」，**不**提供排他创建（存在竞态窗口）；也不改本方法
         `open(..., "w")` 的直写原语（#330 面，本件未动）。
+        当前连接的 SQLite 数据库及 WAL/SHM/journal 不可作为输出路径；
+        源库保护同 `export_all`，普通轨迹文件仍可覆盖。
         """
         if cycle_id:
             nodes = self.store.get_nodes_by_tag(f"cycle:{cycle_id}", limit=20)
@@ -13232,9 +13596,14 @@ class SpacetimeMemoryEngine:
             # #746：与 `export_all` 同款白名单根闸（越界 fail-closed）。本方法
             # 此前不过根闸（#698 只把「静默覆盖」改为显式上报，未及根判定）。
             output_path = self._confine_export_out_path(output_path)
+            self._guard_export_source_path(output_path)
             # #698：覆盖已存在目标 ⇒ 显式上报。读数取在写入**之前**（写后目标必在）。
             # 只进返回值、不进文件：落盘内容形状与 #57 契约逐字不变。
             overwrote_existing = os.path.exists(output_path)
+            # #802：落盘分支写出前剥除 BiDi 控制/零宽字符（与 `export_all`
+            # 同款；批量模式不落盘、返回体不动——见 `_strip_export_controls`
+            # 处注释边界④）。`reported` 取剥除后的树，与文件内容同源。
+            trajectory = self._sanitize_export_obj(trajectory)
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(trajectory, f, ensure_ascii=False, indent=2)
             reported = dict(trajectory)

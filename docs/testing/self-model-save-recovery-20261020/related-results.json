@@ -1,0 +1,29 @@
+{
+  "windows": {
+    "passed": 74,
+    "failed": [],
+    "errors": [],
+    "skipped": 0,
+    "skip_reasons": {},
+    "skipped_tests": [],
+    "pytest_summary": "74 passed, 337 warnings in 20.08s"
+  },
+  "linux": {
+    "passed": 74,
+    "failed": [],
+    "errors": [],
+    "skipped": 0,
+    "skip_reasons": {},
+    "skipped_tests": [],
+    "pytest_summary": "74 passed, 345 warnings in 55.59s"
+  },
+  "manifest": {
+    "strict_exit_code": 0,
+    "match": 64,
+    "entries": 64
+  },
+  "component_ast": {
+    "passed": 6,
+    "failed": 0
+  }
+}

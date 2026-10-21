@@ -1,0 +1,37 @@
+FFFFF..                                                                  [100%]
+=================================== FAILURES ===================================
+_______ test_existing_instance_uses_current_database_capacity[increased] _______
+tests/test_context_write_unit.py:52: in test_existing_instance_uses_current_database_capacity
+    assert _count(engine) == expected, "context write used a stale or default capacity"
+E   AssertionError: context write used a stale or default capacity
+E   assert 2 == 5
+E    +  where 2 = _count(<lingshu.core.core.SpacetimeMemoryEngine object at 0x77f867e71010>)
+_______ test_existing_instance_uses_current_database_capacity[decreased] _______
+tests/test_context_write_unit.py:52: in test_existing_instance_uses_current_database_capacity
+    assert _count(engine) == expected, "context write used a stale or default capacity"
+E   AssertionError: context write used a stale or default capacity
+E   assert 3 == 2
+E    +  where 3 = _count(<lingshu.core.core.SpacetimeMemoryEngine object at 0x77f8675e96d0>)
+_________ test_existing_process_keeps_context_after_capacity_increase __________
+tests/test_context_write_unit.py:98: in test_existing_process_keeps_context_after_capacity_increase
+    assert result["count"] == 5, "already-open process erased context using its old capacity"
+E   AssertionError: already-open process erased context using its old capacity
+E   assert 2 == 5
+_______________ test_fifo_failure_undoes_the_new_context_on_disk _______________
+tests/test_context_write_unit.py:119: in test_fifo_failure_undoes_the_new_context_on_disk
+    assert count == 2, "failed context write was committed before FIFO failed"
+E   AssertionError: failed context write was committed before FIFO failed
+E   assert 3 == 2
+_______ test_fifo_failure_undoes_only_this_call_in_a_caller_transaction ________
+tests/test_context_write_unit.py:135: in test_fifo_failure_undoes_only_this_call_in_a_caller_transaction
+    assert _count(engine) == 2, "failed context call left a partial write in caller transaction"
+E   AssertionError: failed context call left a partial write in caller transaction
+E   assert 3 == 2
+E    +  where 3 = _count(<lingshu.core.core.SpacetimeMemoryEngine object at 0x77f8675eafd0>)
+=========================== short test summary info ============================
+FAILED tests/test_context_write_unit.py::test_existing_instance_uses_current_database_capacity[increased]
+FAILED tests/test_context_write_unit.py::test_existing_instance_uses_current_database_capacity[decreased]
+FAILED tests/test_context_write_unit.py::test_existing_process_keeps_context_after_capacity_increase
+FAILED tests/test_context_write_unit.py::test_fifo_failure_undoes_the_new_context_on_disk
+FAILED tests/test_context_write_unit.py::test_fifo_failure_undoes_only_this_call_in_a_caller_transaction
+5 failed, 2 passed in 3.76s

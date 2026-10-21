@@ -1,0 +1,44 @@
+{
+  "sources": ["lingshu/core/core.py"],
+  "guard": "tests/test_context_write_unit.py",
+  "total": 7,
+  "baseline_failures": [
+    "test_existing_instance_uses_current_database_capacity[increased]",
+    "test_existing_instance_uses_current_database_capacity[decreased]",
+    "test_existing_process_keeps_context_after_capacity_increase",
+    "test_fifo_failure_undoes_the_new_context_on_disk",
+    "test_fifo_failure_undoes_only_this_call_in_a_caller_transaction"
+  ],
+  "mutations": [
+    {
+      "name": "reuse_stale_instance_capacity",
+      "test": "test_existing_instance_uses_current_database_capacity[increased]",
+      "assertion": "context write used a stale or default capacity",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "add_context",
+        "old": "self.store.enforce_context_cap(self._load_context_max())",
+        "new": "self.store.enforce_context_cap(self._context_max)"}]
+    },
+    {
+      "name": "ignore_smaller_persisted_capacity",
+      "test": "test_existing_instance_uses_current_database_capacity[decreased]",
+      "assertion": "context write used a stale or default capacity",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "add_context",
+        "old": "self.store.enforce_context_cap(self._load_context_max())",
+        "new": "self.store.enforce_context_cap(self.DEFAULT_CONTEXT_MAX)"}]
+    },
+    {
+      "name": "commit_insert_before_fifo",
+      "test": "test_fifo_failure_undoes_the_new_context_on_disk",
+      "assertion": "failed context write was committed before FIFO failed",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "add_context",
+        "old": "with self.store._tx():", "new": "with self.store._lock:"}]
+    },
+    {
+      "name": "omit_fifo_trimming",
+      "test": "test_successful_context_call_can_be_rolled_back_by_caller",
+      "assertion": "successful context write did not trim FIFO inside caller transaction",
+      "changes": [{"file": "lingshu/core/core.py", "class": "SpacetimeMemoryEngine", "method": "add_context",
+        "old": "self.store.enforce_context_cap(self._load_context_max())", "new": "pass"}]
+    }
+  ]
+}

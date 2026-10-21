@@ -1,0 +1,129 @@
+{
+  "python": "3.13.12",
+  "platform": "Linux",
+  "sqlite": "3.46.1",
+  "baseline": "40fceb69e79d0f481455f05ea8581b6f6f5e5816",
+  "guard_sha256": "a009253ecdc8bd7b85c63bf9c0865a8ef0679c99fbefe3883afb113df0e2b502",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 7,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "7 passed in 2.50s",
+      "source_sha256": {
+        "lingshu/core/core.py": "c3c0bfaa742dbb757ae41655bcf72c27bed572db6ef90fb13506de98b276791d"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 1,
+      "failed_tests": [
+        "test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]",
+        "test_caller_transaction_is_rejected_without_changing_or_ending_it[SAVEPOINT caller]",
+        "test_commit_failure_rolls_back_fifo_and_preserves_runtime_cap",
+        "test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes",
+        "test_success_publishes_capacity_after_commit",
+        "test_write_lock_failure_does_not_apply_cap_to_next_write"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]",
+        "test_caller_transaction_is_rejected_without_changing_or_ending_it[SAVEPOINT caller]",
+        "test_commit_failure_rolls_back_fifo_and_preserves_runtime_cap",
+        "test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes",
+        "test_success_publishes_capacity_after_commit",
+        "test_write_lock_failure_does_not_apply_cap_to_next_write"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "6 failed, 1 passed in 2.91s",
+      "source_sha256": {
+        "lingshu/core/core.py": "f764c4ac4c97daa778f623df59036bef11c8ddbdf4f1afd6862855d61e6a2719"
+      }
+    },
+    {
+      "case": "publish_runtime_before_commit",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_success_publishes_capacity_after_commit"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_success_publishes_capacity_after_commit"
+      ],
+      "expected_assertion": "runtime cap was published before the single final commit",
+      "pytest_summary": "1 failed in 0.89s",
+      "source_sha256": {
+        "lingshu/core/core.py": "a367b09e88b04ef88d99d6cbe648e93c65862cdf3fb2c946a88917ffac11e68a"
+      }
+    },
+    {
+      "case": "save_metadata_outside_fifo_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_fifo_failure_rolls_back_metadata_and_already_deleted_nodes"
+      ],
+      "expected_assertion": "failed capacity change changed stored metadata",
+      "pytest_summary": "1 failed in 0.86s",
+      "source_sha256": {
+        "lingshu/core/core.py": "ff25439a2dfe98e0da8e2105fa9dc8b43f19f220f043bd9c15e615bc0c0abb84"
+      }
+    },
+    {
+      "case": "allow_existing_caller_transaction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_caller_transaction_is_rejected_without_changing_or_ending_it[BEGIN IMMEDIATE]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.89s",
+      "source_sha256": {
+        "lingshu/core/core.py": "c7b1cd9412f682e48c5bd2c82a7cb49ef0fd4c2dd087962e433ac9c48d2240c9"
+      }
+    },
+    {
+      "case": "omit_fifo_trimming",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_success_publishes_capacity_after_commit"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_success_publishes_capacity_after_commit"
+      ],
+      "expected_assertion": "successful capacity change did not trim FIFO",
+      "pytest_summary": "1 failed in 0.93s",
+      "source_sha256": {
+        "lingshu/core/core.py": "ced49f1c846f3337e760b76d6821ca5b23143c3741e15e3a4b6b03caae2c827a"
+      }
+    }
+  ]
+}

@@ -433,6 +433,19 @@ class LongTermMemoryGate:
         if result.pop("_need_links", False):
             # 事务外建边（见边界④）；失败与改前同值（`links=0`），不抛出。
             result["links"] = self._snapshot_link(result.get("node_id"), content)
+        divergent_id = result.pop("_divergent_id", None)
+        if divergent_id:
+            # issue #481：与判为实质分歧的既有节点登记 OPPOSITE 边（未复核
+            # 0.3）——放在事务外，避免 `add_edge` 的 `_commit_locked()` 提前
+            # 终结外层写事务（与 `_snapshot_link` 同一原因，见边界④）。
+            try:
+                self.engine.register_conflict(result.get("node_id"), divergent_id)
+                result["conflict_registered"] = True
+            except Exception as exc:
+                result["conflict_registered"] = False
+                _log.warning(
+                    "write_snapshot 分歧边登记失败（更正节点已落库，冲突待复核"
+                    " 面缺失）：%s: %s", type(exc).__name__, exc)
         return result
 
     def _snapshot_probe(self, content: str, source: str, tags: list) -> dict:
@@ -443,16 +456,29 @@ class LongTermMemoryGate:
         复核其结论（见 `write_snapshot` 边界③）。
         """
         engine = self.engine
-        from .core import MemoryLayer
+        from .core import LayeredStore, MemoryLayer
         existing_id = None
+        divergent_id = None
         try:
             hits = engine.store.search_content(
                 content, layers=[MemoryLayer.KNOWLEDGE, MemoryLayer.CONTEXT], limit=1)
-            if hits and hits[0][1] >= 0.95:
-                existing_id = hits[0][0].id
+            if hits:
+                cand = hits[0][0]
+                # issue #481：存在性判据按**正文**（不计 tag_bonus）复核，且
+                # 要求无实质分歧（否定/数值）——旧实现只看 search_content 的
+                # 合成分 ≥0.95（含 0.05 tag_bonus）：差一个「不」或一个数字
+                # 即被判为同一内容 ⇒ 更正被丢弃、错误节点被提权到 0.9 并
+                # protect+no_forget（永久置顶召回）。有分歧另立节点并挂
+                # OPPOSITE 边待复核，而不是把更正并进错误节点。
+                sim = LayeredStore.char_bigram_jaccard(content, cand.content or "")
+                if sim >= 0.95:
+                    if engine._assertion_divergence(content, cand.content or ""):
+                        divergent_id = cand.id
+                    else:
+                        existing_id = cand.id
         except Exception:
             pass
-        return {"existing_id": existing_id,
+        return {"existing_id": existing_id, "divergent_id": divergent_id,
                 "ev": self.evaluate(content, source, tags, existing_id)}
 
     def _recheck_existing(self, candidate: str, content: str):
@@ -470,7 +496,10 @@ class LongTermMemoryGate:
             node = store.get_node(candidate)
             if node is not None and LayeredStore.char_bigram_jaccard(
                     content, node.content or "") >= 0.95:
-                return candidate
+                # issue #481：预判到事务之间候选可能被并发改写成实质分歧
+                # （否定/数值），此时不得沿用——否则更正仍会被并进错误节点。
+                if not self.engine._assertion_divergence(content, node.content or ""):
+                    return candidate
         row = store.conn.execute(
             "SELECT id FROM nodes WHERE content=? AND layer IN (?,?) "
             "ORDER BY rowid LIMIT 1",
@@ -615,6 +644,11 @@ class LongTermMemoryGate:
                   "layer": stored_layer, "evaluated_layer": decided,
                   "features": ev["features"],
                   "write_failed": write_failed, "write_error": write_error}
+        # issue #481：新建腿若预判到「实质分歧」的既有节点，把其 id 透传给
+        # `write_snapshot`，由事务**提交后**登记 OPPOSITE 边（add_edge 自带
+        # commit，不能留在本事务内，见 write_snapshot 边界④）。
+        if existing_id is None and probe.get("divergent_id"):
+            result["_divergent_id"] = probe["divergent_id"]
         if decided == "long_term":
             try:
                 engine.protect_node(node_id, f"LongTermMemoryGate:{source}")
