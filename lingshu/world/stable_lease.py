@@ -28,7 +28,7 @@ t_weak ≈ 2407.9s < TTL = 3600s（差 33%）。
 """
 from __future__ import annotations
 
-import math
+import copy, math
 import time
 from typing import Dict, Optional
 
@@ -65,9 +65,9 @@ class StableLease:
             "state": "stable" if self._acquire_ok(key, eff_ttl, confidence) else "weak",
             # issue #19：对外报的 expires_at 必须是**实际**失效时刻（TTL 与弱阈值
             # 触发取早），而非 TTL 名义到期；分项另给 ttl_expires_at / weak_at。
-            **self._expiry_fields(now, eff_ttl, confidence),
+            **self._expiry_fields(now, eff_ttl, confidence), **self._history_field(key, history),
         }
-        # 记录保留（不可遗忘——P1-003 边界）：历史由调用方持有，这里仅标记
+        # issue #859：history 已在上面并入记录（只增不删）；None/空不产生该键
         return self.state(key)
 
     def check(self, key: str) -> Dict:
@@ -132,7 +132,7 @@ class StableLease:
         lease = self._leases.get(key)
         if lease is None:
             return {"key": key, "state": "unknown"}
-        return {"key": key, "state": lease["state"],
+        return {"key": key, "state": lease["state"], **self._history_out(lease),
                 "t_verified": round(lease["t_verified"], 1),
                 "ttl": lease["ttl"], "confidence": lease["confidence"],
                 # issue #19：expires_at = **实际**失效时刻（min(TTL, 弱阈值触发)），
@@ -260,3 +260,40 @@ class StableLease:
             if not ok:
                 return False
         return self._params_ok(ttl, confidence)
+
+
+    # ---- 验证历史通道（issue #859）----
+    # 契约：`acquire` docstring「history：验证历史记录（不可遗忘，仅记录不删除）」+
+    # 模块头 P1-003「验证历史记录仍属 3.2 节不可遗忘记录范畴，降级 ≠ 删除」。
+    # 旧实现收下即弃（函数体零引用 history、state() 不报出）⇒ 参数静默空操作。
+    # 三个 helper 放在文件末尾：222 行之上不新增行 ⇒ `tools/time_core_lint_baseline.txt`
+    # 的 `:222:R1` 登记不位移，无需同步第 3 个文件（见 evidence/changes.md §2.1）。
+
+    def _history_field(self, key: str, history: Optional[list]) -> Dict:
+        """acquire 落库用的 history 片段（issue #859）：并入既有记录，**只增不删**。
+
+        · `history is None` ⇒ 不改动既有记录（新 key 则返回 `{}`，即**不产生该键**）；
+        · `history` 非 None（**含 `[]`**）⇒ 追加；`[]` 追加零条 ⇒ 仍是 no-op、不产生键；
+        · 条目深拷贝 ⇒ 调用方事后改自己的 list / 嵌套对象都不得污染库内；
+        · 既有记录先深拷贝再追加 ⇒ 「同 key 再 acquire」是**合并**，不是覆盖。
+        返回 `{}` 或 `{"history": [...]}`，供 `acquire()` 的记录字面量用 `**` 并入。
+        """
+        prior = self._leases.get(key) or {}
+        merged = self._copy_history(prior.get("history", []))
+        if history is not None:
+            merged.extend(self._copy_history(history))
+        return {"history": merged} if merged else {}
+
+    def _history_out(self, lease: Dict) -> Dict:
+        """state() 报数用的 history 片段（issue #859）：无记录时返回 `{}`（**不写该键**）。
+
+        每次返回**新的**列表与条目（深拷贝）⇒ 调用方改 `state()` 的返回值不污染库内。
+        """
+        if "history" not in lease:
+            return {}
+        return {"history": self._copy_history(lease["history"])}
+
+    @staticmethod
+    def _copy_history(items) -> list:
+        """history 条目的防御性拷贝（issue #859）：调用方与库内不共享可变对象。"""
+        return [copy.deepcopy(item) for item in items]
