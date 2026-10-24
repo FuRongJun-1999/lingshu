@@ -729,6 +729,25 @@ def _inline_code(text):
     return ticks + pad + text + pad + ticks
 
 
+_LANG_LABEL_SAFE = re.compile(r"^[A-Za-z0-9_+-]{1,20}$")
+
+
+def _safe_lang_label(lang):
+    """把「块语言」标签中和成可安全写进围栏外的形态（#363）。
+
+    为什么在**数据源头**掐，而不只靠 `_inline_code` 包一层：
+    报告里 info string 有**两处**调用点（块语言分布 tally、选中块 extract_info），
+    靠「每处都记得包」是脆的——历史上就漏过。这里让非白名单值**根本不出现在报告里**，
+    于是「围栏之外不得含粗体/外链/@提及」这条判据对「有没有包」不敏感。
+
+    白名单口径（issue #363 建议）：`^[A-Za-z0-9_+-]{1,20}$`。命中即原样返回（合法高亮
+    语言名都落在这条里：python / py / py3 / python3 / js / c++ / objective-c）；
+    不命中一律返回 `未知`——不做「转义后保留」，因为保留就还得保证渲染器不认它。
+    """
+    lang = lang or ""
+    return lang if _LANG_LABEL_SAFE.match(lang) else "未知"
+
+
 def _env_line():
     py = "Python %s（%s）" % (platform.python_version(), platform.python_implementation())
     osdesc = "%s %s" % (platform.system(), platform.release())
@@ -1038,8 +1057,11 @@ def main(argv):
     tally = {}
     for b in blocks:
         tally[b[0] or "(无标注)"] = tally.get(b[0] or "(无标注)", 0) + 1
-    # 块语言来自正文 info string（攻击者可控）⇒ 一律包进行内代码再入报告（#363）。
-    tally_line = " / ".join("%s×%d" % (_inline_code(k), v) for k, v in tally.items()) or "无"
+    # 块语言来自正文 info string（攻击者可控）：先在**数据源头**白名单中和（#363），
+    # 再包一层行内代码（双保险——源头已无危险字符，行内代码保证连「未知」也不会被误读）。
+    tally_line = " / ".join(
+        "%s×%d" % (_inline_code(_safe_lang_label(k) if k != "(无标注)" else k), v)
+        for k, v in tally.items()) or "无"
 
     def _fail_report(extract_info, note, stderr_txt=""):
         report = _render_report(source=source, extract_info=extract_info,
@@ -1058,8 +1080,7 @@ def main(argv):
                             "issue 正文里没有围栏代码块，无可执行内容；未执行任何代码。")
     chosen = _choose_python_block(blocks)
     if chosen is None:
-        return _fail_report("未抽取（正文无 python 围栏块；块语言：%s）" % tally_line,
-                            "issue 正文里没有 info 标注为 python/py/py3 的围栏代码块；"
+        return _fail_report("未抽取（正文无 python 围栏块；块语言：%s）" % tally_line,                            "issue 正文里没有 info 标注为 python/py/py3 的围栏代码块；"
                             "未执行任何代码。请报告人补充 python 复现脚本。")
     lang, first, last, code = chosen
     nlines = code.count("\n") + 1 if code else 0

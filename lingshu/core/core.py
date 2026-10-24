@@ -96,12 +96,7 @@ def verify_designer(designer_key) -> bool:
     expected = os.environ.get("AEIS_DESIGNER_KEY")
     if not expected or not designer_key:
         return False
-    # #51：`hmac.compare_digest` 对**非 ASCII str** 抛 TypeError（CPython 文档化
-    # 行为）⇒ 中文密钥下终裁门禁从「干净拒绝」变成「崩」（6 条终裁通路全部
-    # 不可用）。修法：统一 encode 成 bytes 再比较——时序安全语义不变、对任意
-    # Unicode 密钥成立；不匹配 ⇒ False（fail-closed 原样），不再抛。
-    return _hmac.compare_digest(str(designer_key).encode("utf-8"),
-                                str(expected).encode("utf-8"))
+    return _hmac.compare_digest(str(designer_key), str(expected))
 
 
 # main 侧 #29② 判据的原因名 → 矛盾感知（contradiction.py）的原因名，供 conflict:{reason} 标签统一口径
@@ -2875,30 +2870,16 @@ class LayeredStore:
         if not ids:
             return
         try:
-            # #52：`:memory:` 后端时 `self.db_path` 是 ":memory:" 字面量——
-            # `sqlite3.connect(":memory:")` 得到**另一个空库**（每连接一个独立库），
-            # UPDATE 落在 `no such table` 上被吞 ⇒ 访问计数静默失效（实测 3 次调用
-            # 后 access_count=0，文件库=3）。内存库实际载体是 shared-cache DSN
-            # （`_memory_dsn`，见 `__init__`），旁路连接必须带 `uri=True` 连它才看
-            # 得到同一份数据；`timeout=0` 的非阻塞设计保留不动。文件库路径原样。
-            dsn = self._memory_dsn or self.db_path
-            obs = sqlite3.connect(dsn, timeout=0,
-                                  uri=dsn.startswith("file:"))
+            obs = sqlite3.connect(self.db_path, timeout=0)
             try:
                 # #93：本连接独立于 `_connect`（访问计数为尽力而为的旁路写），
                 # 连接级外键开关必须逐连接重设，否则该连接上外键不生效。
                 obs.execute("PRAGMA foreign_keys=ON")
                 if touch:
-                    # #52：整批共用**一个**时间戳——此前逐行 time.time()，而 ids 是
-                    # 按检索得分序传入的（高分在前）⇒ 低分节点拿到更晚的
-                    # last_access，下一次 recall 的近因项反向偏向低分节点
-                    # （:memory: 上该刷新曾因 #52 静默丢失而从未生效，修复后暴露，
-                    # W6 在依赖下界档复现）。一次检索事件＝一个时刻。
-                    ts = time.time()
                     obs.executemany(
                         'UPDATE nodes SET access_count = access_count + 1,'
                         ' last_access = ? WHERE id=?',
-                        [(ts, nid) for nid in ids])
+                        [(time.time(), nid) for nid in ids])
                 else:
                     obs.executemany(
                         'UPDATE nodes SET access_count = access_count + 1 WHERE id=?',
@@ -5348,10 +5329,18 @@ class LayeredStore:
         # 不顺手扩大改动面）；受保护件既不计入 `doomed` 也不删其关联边。
         # 谓词直传入口（`node_id` + `tags`）与 `decay_cycle` 同款，判据本体同一段。
         c = self.conn.cursor()
-        c.execute("SELECT id, tags FROM nodes WHERE layer='self' AND tags LIKE ? "
-                  "ORDER BY rowid DESC", ("%self_snapshot%",))
-        rows = c.fetchall()
-        if len(rows) <= keep:
+        # #201 残留③：选面从**单标签**扩到**两类自动快照**——旧实现只选
+        # `self_snapshot`，而 `update_trust_state` 落的 `trust_snapshot` 永不入选
+        # （实测 prune(5) 后 trust_snapshot 恒 50 条不动）。keep 按**各标签分别**
+        # 生效（不是两类合计），故 self_snapshot 的既有上界语义按条数不变。
+        rows = []
+        for _tag in ("self_snapshot", "trust_snapshot"):
+            c.execute("SELECT id, tags FROM nodes WHERE layer='self' AND tags LIKE ? "
+                      "ORDER BY rowid DESC", ("%" + _tag + "%",))
+            _r = c.fetchall()
+            if len(_r) > keep:
+                rows.extend(_r[keep:])
+        if not rows:
             return 0
         # #769 ②（治理列写面补角色闸）：SELF 层在 `IMMUTABLE_LAYERS` 内——`delete_node`
         # 对 SELF 行一律返回 `False`，而本方法此前**零角色判据**直接 `DELETE` ⇒
@@ -5372,13 +5361,16 @@ class LayeredStore:
                 "#769 prune_self_snapshots 拒绝：role=%s 无权回收自我层快照"
                 "（SELF 属不可遗忘层，与 delete_node 同判据）——本次跳过 %d 条候选，"
                 "零删除；如需回收请以 PRIMARY 身份执行。"
-                % (self.role.value, len(rows) - keep),
+                % (self.role.value, len(rows)),
                 RuntimeWarning, stacklevel=2)
             return 0
         protected = set(self.get_protected_nodes())
         # keep 保留的是**最近** keep 条（rowid 降序前缀）；保护件在淘汰候选里跳过。
         doomed = []
-        for nid, tags_json in rows[keep:]:
+        # #201 残留③：`rows` 此时已是**各标签超出 keep 的候选**（选面处已按标签
+        # 各切 `[keep:]`）——此处**不得再切** `[keep:]`。旧实现 `rows` 是全量
+        # 有序列表，故原写法正确；选面改动后若沿用原写法会二次切片、几乎不删。
+        for nid, tags_json in rows:
             try:
                 _tags = json.loads(tags_json) if tags_json else []
             except (ValueError, TypeError):
@@ -8199,6 +8191,12 @@ class SpacetimeMemoryEngine:
     #: （同类的状态变更历史钳制）同族；经验标定（#201 修复轮；理论章节追不到）。
     SELF_SNAPSHOT_MAX = 200
 
+    #: 信任状态快照有界保留上界（lingshu #201 残留②）。`update_trust_state` 每次
+    #: 调用新建一条 `trust_snapshot`（importance=0.85）——修前只有 `add_node`、
+    #: **无任何回收面**（实测 400 轮 → 400 条，无上界）。取值与同族
+    #: `SELF_SNAPSHOT_MAX` 同档；经验标定（#201 修复轮；理论章节追不到）。
+    TRUST_SNAPSHOT_MAX = 200
+
     #: `self_check` 的环枚举上限（lingshu #252）。`cycle_details` 只取 `cycles[:5]`，
     #: 故枚举到 5 条即可满足自检；旧实现无上限，稠密 SCC 使枚举耗时/内存随环数
     #: 指数增长（issue 实测 11 节点 13.69s / 335 万条 / 3 GB）。经验标定（#252 修复
@@ -8562,6 +8560,10 @@ class SpacetimeMemoryEngine:
                 "自我认知", "信任状态观测", (time.time(), time.time()+3600), "协议实例运行中"),
             importance=0.85, confidence=1.0, layer=MemoryLayer.SELF, tags=["trust_snapshot"])
         self.store.add_node(snapshot)
+        # #201 残留②：信任状态快照同样**有界保留**——旧实现只有 add_node、
+        # 无任何回收面（实测 400 轮后 trust_snapshot 400 条，无上界；对照
+        # self_snapshot 被 SELF_SNAPSHOT_MAX 钳住）。上界取同族 TRUST_SNAPSHOT_MAX。
+        self.store.prune_self_snapshots(self.TRUST_SNAPSHOT_MAX)
         return snapshot
 
     # ==================== v1.11 知识飞轮（FLYWHEEL-REV1） ====================

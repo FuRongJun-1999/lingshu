@@ -106,9 +106,13 @@ def test_inline_code_wraps_and_escapes_backticks():
 
 
 def test_363_info_string_is_inert_in_report():
-    """#363：正文 info string 里的 markdown/提及/HTML 必须只作字面量入报告。
+    """#363：正文 info string 里的 markdown/提及/HTML 不得进入报告。
 
-    变异点：把 `_inline_code(k)` 改回裸 `k` ⇒ 本断言红（注入串不带反引号出现）。
+    口径演进（#363 修复）：旧实现把原串包进行内代码，断言「注入串带反引号出现」。
+    修复改为**白名单源头中和**（`_safe_lang_label`）——非白名单 info 一律落成 `未知`，
+    注入串在报告里**根本不出现**（比「包起来」更强：不依赖每一处调用点都记得包）。
+
+    变异点：把 `_safe_lang_label` 改回直接返回 `lang` ⇒ 注入串重新出现，本断言红。
     """
     payloads = {
         "link": "[click](https://evil.example)",
@@ -123,12 +127,13 @@ def test_363_info_string_is_inert_in_report():
     line = _extract_line(report)
     assert rc == 2, "无 python 块应显式失败（退出码 2），实得 %r\n%s" % (rc, report)
     for name, pl in payloads.items():
-        assert ("`%s`" % pl) in line, (
-            "#363：%s 注入串未以行内代码入报告（可被渲染）⇒ 判据失守\n抽取行：%r"
+        # 正向：注入串不得以任何形态（裸的或包起来的）出现在抽取行
+        assert pl not in line, (
+            "#363：%s 注入串仍出现在报告里（可被渲染）⇒ 判据失守\n抽取行：%r"
             % (name, line))
-        # 反向：不得存在**未**被反引号包住的裸形态
-        assert ("：%s×" % pl) not in line and ("/ %s×" % pl) not in line, (
-            "#363：%s 出现了未包反引号的裸形态\n抽取行：%r" % (name, line))
+    # 反向：非白名单 info 一律中和为「未知」，且计数确实保留（不是被整行吞掉）
+    assert line.count("`未知`") == 3, (
+        "#363：三个非白名单 info 未全部落成 `未知`（白名单失效或计数丢失）\n抽取行：%r" % line)
 
 
 # ── #235 ────────────────────────────────────────────────────────────────────
