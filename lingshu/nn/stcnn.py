@@ -9,7 +9,6 @@ import sys
 from copy import deepcopy
 
 import numpy as np
-sys.stdout.reconfigure(encoding='utf-8')
 
 
 # ============ 一、时空体素化（连续帧 → 3D 体素） ============
@@ -390,6 +389,13 @@ def synth_blinking(frames=12, size=32, period=3):
 
 # ============ 六、主演示 ============
 if __name__ == "__main__":
+    # issue #147：编码钉法只在直跑时生效。模块顶层裸调会在导入期改写全局
+    # stdout 编码（使 PYTHONIOENCODING 失效），且 stdout 被重定向时
+    # （_io.StringIO 无 reconfigure 属性）直接 AttributeError ⇒ 导入即崩。
+    # 守卫形态与 lingshu/world/scenario_cli.py:150-152 同源。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8")
     print("=== 白箱自举·多模态主线：3D 时空 CNN × 时空记忆图（零 LLM） ===\n")
     mem = SpatiotemporalMemory()
 
