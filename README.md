@@ -47,7 +47,7 @@
 ## 代码主体
 
 身的模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 15 件 ·
-world 世界模型 41 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件）：
+world 世界模型 42 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件）：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑

@@ -1,0 +1,510 @@
+{
+  "windows": {
+    "new": {
+      "python": "3.12.10",
+      "platform": "Windows",
+      "sqlite": "3.49.1",
+      "baseline": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+      "guard_sha256": "a0036ff5acef586071575e116c2883607ffd654e6576f649f9bff95ff1fed593",
+      "records": [
+        {
+          "case": "fixed",
+          "ok": true,
+          "returncode": 0,
+          "passed": 22,
+          "failed_tests": [],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [],
+          "expected_assertion": "",
+          "pytest_summary": "22 passed, 17 warnings in 0.94s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        },
+        {
+          "case": "baseline",
+          "ok": true,
+          "returncode": 1,
+          "passed": 1,
+          "failed_tests": [
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error",
+            "test_clear_evidence_resumes_after_ambiguity_and_occlusion",
+            "test_core_policy_and_readonly_actions_do_not_lazy_create_a_model",
+            "test_duplicate_explicit_ids_reject_both_measurements",
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only",
+            "test_invalid_frame_rejected_before_graph_updates[True]",
+            "test_invalid_frame_rejected_before_graph_updates[bad]",
+            "test_invalid_frame_rejected_before_graph_updates[inf]",
+            "test_invalid_frame_rejected_before_graph_updates[nan]",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[policy]",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[promoted_pending]",
+            "test_old_v1_payload_restores_legacy_even_into_a_conservative_model",
+            "test_preview_uses_only_a_prediction_for_the_observation_target_tick",
+            "test_readonly_preview_has_detached_candidates_and_does_not_consume_rng",
+            "test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[confirmed]",
+            "test_truncated_prior_can_be_exported_and_restored_again",
+            "test_two_observations_competing_for_one_track_defer_in_both_orders",
+            "test_visual_writeback_uses_original_measurement_index",
+            "test_whole_frame_explicit_reservation_and_new_tracks_are_distinct"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross",
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error",
+            "test_two_observations_competing_for_one_track_defer_in_both_orders",
+            "test_whole_frame_explicit_reservation_and_new_tracks_are_distinct",
+            "test_duplicate_explicit_ids_reject_both_measurements",
+            "test_readonly_preview_has_detached_candidates_and_does_not_consume_rng",
+            "test_preview_uses_only_a_prediction_for_the_observation_target_tick",
+            "test_invalid_frame_rejected_before_graph_updates[nan]",
+            "test_invalid_frame_rejected_before_graph_updates[inf]",
+            "test_invalid_frame_rejected_before_graph_updates[True]",
+            "test_invalid_frame_rejected_before_graph_updates[bad]",
+            "test_clear_evidence_resumes_after_ambiguity_and_occlusion",
+            "test_core_policy_and_readonly_actions_do_not_lazy_create_a_model",
+            "test_visual_writeback_uses_original_measurement_index",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[confirmed]",
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only",
+            "test_old_v1_payload_restores_legacy_even_into_a_conservative_model",
+            "test_truncated_prior_can_be_exported_and_restored_again",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[policy]",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[promoted_pending]"
+          ],
+          "expected_assertion": "",
+          "pytest_summary": "21 failed, 1 passed in 1.12s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "f328599573397309fe88a7b29a404840647c6604467aa22854500ebb319b19d1",
+            "lingshu/world/wm_simloop.py": "7d33f88cf2ebcb2d24f786d2e4690490d930372b1857b9401d731e1beffd227c",
+            "lingshu/core/core.py": "c192b9c3207adb7f1e62874a8416281582952e8de813cbfec198c0201cf6f1d4"
+          }
+        },
+        {
+          "case": "commit_unresolved_measurement",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error"
+          ],
+          "expected_assertion": "unresolved measurement entered confirmed observations",
+          "pytest_summary": "1 failed in 0.48s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "cc3606e3da4b4f54e154c8c09ce3c77596ecf4f66c8554f8e1b1cadd08c595c7",
+            "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        },
+        {
+          "case": "zip_shortened_visual_observations",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_visual_writeback_uses_original_measurement_index"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_visual_writeback_uses_original_measurement_index"
+          ],
+          "expected_assertion": "visual ID was assigned to an unresolved measurement",
+          "pytest_summary": "1 failed, 9 warnings in 0.93s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+            "lingshu/core/core.py": "1cee99671cd93de280912dc2af5fe20bed6ec6e4844f536cba0c7713c9a3bb37"
+          }
+        },
+        {
+          "case": "restore_with_legacy_association",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only"
+          ],
+          "expected_assertion": "recovery silently changed identity policy",
+          "pytest_summary": "1 failed in 0.51s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "afaf0e25af1292f7f588c68858f6004b690d3a69b9df83a86666261b8f0a0339",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        },
+        {
+          "case": "advance_unresolved_hypothesis",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]"
+          ],
+          "expected_assertion": "unresolved subject advanced hypothesis verification",
+          "pytest_summary": "1 failed in 0.47s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "96c7c898f5a79ccfb666de13cf184e972b006a68d085a66f567074b6fcf8c957",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        }
+      ]
+    },
+    "old_ids": {
+      "python": "3.12.10",
+      "platform": "Windows",
+      "sqlite": "3.49.1",
+      "baseline": null,
+      "guard_sha256": "a12e0e877f02d2f7133f3d0f740c8ce2d121d51d0390066b0b473172eb2e3ff7",
+      "records": [
+        {
+          "case": "fixed",
+          "ok": true,
+          "returncode": 0,
+          "passed": 6,
+          "failed_tests": [],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [],
+          "expected_assertion": "",
+          "pytest_summary": "6 passed in 0.26s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d"
+          }
+        },
+        {
+          "case": "ignore_reserved_short_ids",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_anonymous_allocation_cannot_consume_a_later_explicit_id"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_anonymous_allocation_cannot_consume_a_later_explicit_id"
+          ],
+          "expected_assertion": "anonymous allocation consumed a reserved explicit ID",
+          "pytest_summary": "1 failed in 0.40s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "84be4785332db2db282aa57dc621c5b03a716b6a5d760d736d60bad010c215c3"
+          }
+        },
+        {
+          "case": "ignore_existing_long_ids",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_long_fallback_cannot_overwrite_an_existing_entity"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_long_fallback_cannot_overwrite_an_existing_entity"
+          ],
+          "expected_assertion": "long fallback ID overwrote an existing entity",
+          "pytest_summary": "1 failed in 0.40s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "019eca390b4469d6b44ab52598ac9f58514962445b7c4d8236f653130a6d9cc5"
+          }
+        },
+        {
+          "case": "ignore_reserved_long_ids",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_long_fallback_cannot_consume_a_later_explicit_id"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_long_fallback_cannot_consume_a_later_explicit_id"
+          ],
+          "expected_assertion": "long fallback consumed a reserved explicit ID",
+          "pytest_summary": "1 failed in 0.40s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "8b6545338ef269cf8b2ac1611692b0ac595020c2f4a126d55aa1d8ff76872e1d"
+          }
+        }
+      ]
+    }
+  },
+  "linux": {
+    "new": {
+      "python": "3.13.12",
+      "platform": "Linux",
+      "sqlite": "3.46.1",
+      "baseline": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+      "guard_sha256": "a0036ff5acef586071575e116c2883607ffd654e6576f649f9bff95ff1fed593",
+      "records": [
+        {
+          "case": "fixed",
+          "ok": true,
+          "returncode": 0,
+          "passed": 22,
+          "failed_tests": [],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [],
+          "expected_assertion": "",
+          "pytest_summary": "22 passed, 17 warnings in 1.57s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        },
+        {
+          "case": "baseline",
+          "ok": true,
+          "returncode": 1,
+          "passed": 1,
+          "failed_tests": [
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error",
+            "test_clear_evidence_resumes_after_ambiguity_and_occlusion",
+            "test_core_policy_and_readonly_actions_do_not_lazy_create_a_model",
+            "test_duplicate_explicit_ids_reject_both_measurements",
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only",
+            "test_invalid_frame_rejected_before_graph_updates[True]",
+            "test_invalid_frame_rejected_before_graph_updates[bad]",
+            "test_invalid_frame_rejected_before_graph_updates[inf]",
+            "test_invalid_frame_rejected_before_graph_updates[nan]",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[policy]",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[promoted_pending]",
+            "test_old_v1_payload_restores_legacy_even_into_a_conservative_model",
+            "test_preview_uses_only_a_prediction_for_the_observation_target_tick",
+            "test_readonly_preview_has_detached_candidates_and_does_not_consume_rng",
+            "test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[confirmed]",
+            "test_truncated_prior_can_be_exported_and_restored_again",
+            "test_two_observations_competing_for_one_track_defer_in_both_orders",
+            "test_visual_writeback_uses_original_measurement_index",
+            "test_whole_frame_explicit_reservation_and_new_tracks_are_distinct"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross",
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error",
+            "test_two_observations_competing_for_one_track_defer_in_both_orders",
+            "test_whole_frame_explicit_reservation_and_new_tracks_are_distinct",
+            "test_duplicate_explicit_ids_reject_both_measurements",
+            "test_readonly_preview_has_detached_candidates_and_does_not_consume_rng",
+            "test_preview_uses_only_a_prediction_for_the_observation_target_tick",
+            "test_invalid_frame_rejected_before_graph_updates[nan]",
+            "test_invalid_frame_rejected_before_graph_updates[inf]",
+            "test_invalid_frame_rejected_before_graph_updates[True]",
+            "test_invalid_frame_rejected_before_graph_updates[bad]",
+            "test_clear_evidence_resumes_after_ambiguity_and_occlusion",
+            "test_core_policy_and_readonly_actions_do_not_lazy_create_a_model",
+            "test_visual_writeback_uses_original_measurement_index",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]",
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[confirmed]",
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only",
+            "test_old_v1_payload_restores_legacy_even_into_a_conservative_model",
+            "test_truncated_prior_can_be_exported_and_restored_again",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[policy]",
+            "test_invalid_v2_recovery_does_not_replace_running_facts[promoted_pending]"
+          ],
+          "expected_assertion": "",
+          "pytest_summary": "21 failed, 1 passed in 1.79s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "f328599573397309fe88a7b29a404840647c6604467aa22854500ebb319b19d1",
+            "lingshu/world/wm_simloop.py": "7d33f88cf2ebcb2d24f786d2e4690490d930372b1857b9401d731e1beffd227c",
+            "lingshu/core/core.py": "c192b9c3207adb7f1e62874a8416281582952e8de813cbfec198c0201cf6f1d4"
+          }
+        },
+        {
+          "case": "commit_unresolved_measurement",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error"
+          ],
+          "expected_assertion": "unresolved measurement entered confirmed observations",
+          "pytest_summary": "1 failed in 0.64s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "cc3606e3da4b4f54e154c8c09ce3c77596ecf4f66c8554f8e1b1cadd08c595c7",
+            "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        },
+        {
+          "case": "zip_shortened_visual_observations",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_visual_writeback_uses_original_measurement_index"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_visual_writeback_uses_original_measurement_index"
+          ],
+          "expected_assertion": "visual ID was assigned to an unresolved measurement",
+          "pytest_summary": "1 failed, 9 warnings in 1.26s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+            "lingshu/core/core.py": "1cee99671cd93de280912dc2af5fe20bed6ec6e4844f536cba0c7713c9a3bb37"
+          }
+        },
+        {
+          "case": "restore_with_legacy_association",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only"
+          ],
+          "expected_assertion": "recovery silently changed identity policy",
+          "pytest_summary": "1 failed in 0.71s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "afaf0e25af1292f7f588c68858f6004b690d3a69b9df83a86666261b8f0a0339",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        },
+        {
+          "case": "advance_unresolved_hypothesis",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]"
+          ],
+          "expected_assertion": "unresolved subject advanced hypothesis verification",
+          "pytest_summary": "1 failed in 0.65s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+            "lingshu/world/wm_simloop.py": "96c7c898f5a79ccfb666de13cf184e972b006a68d085a66f567074b6fcf8c957",
+            "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb"
+          }
+        }
+      ]
+    },
+    "old_ids": {
+      "python": "3.13.12",
+      "platform": "Linux",
+      "sqlite": "3.46.1",
+      "baseline": null,
+      "guard_sha256": "a12e0e877f02d2f7133f3d0f740c8ce2d121d51d0390066b0b473172eb2e3ff7",
+      "records": [
+        {
+          "case": "fixed",
+          "ok": true,
+          "returncode": 0,
+          "passed": 6,
+          "failed_tests": [],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [],
+          "expected_assertion": "",
+          "pytest_summary": "6 passed in 0.42s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d"
+          }
+        },
+        {
+          "case": "ignore_reserved_short_ids",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_anonymous_allocation_cannot_consume_a_later_explicit_id"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_anonymous_allocation_cannot_consume_a_later_explicit_id"
+          ],
+          "expected_assertion": "anonymous allocation consumed a reserved explicit ID",
+          "pytest_summary": "1 failed in 0.55s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "84be4785332db2db282aa57dc621c5b03a716b6a5d760d736d60bad010c215c3"
+          }
+        },
+        {
+          "case": "ignore_existing_long_ids",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_long_fallback_cannot_overwrite_an_existing_entity"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_long_fallback_cannot_overwrite_an_existing_entity"
+          ],
+          "expected_assertion": "long fallback ID overwrote an existing entity",
+          "pytest_summary": "1 failed in 0.57s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "019eca390b4469d6b44ab52598ac9f58514962445b7c4d8236f653130a6d9cc5"
+          }
+        },
+        {
+          "case": "ignore_reserved_long_ids",
+          "ok": true,
+          "returncode": 1,
+          "passed": 0,
+          "failed_tests": [
+            "test_long_fallback_cannot_consume_a_later_explicit_id"
+          ],
+          "errors": 0,
+          "skipped": 0,
+          "expected_failures": [
+            "test_long_fallback_cannot_consume_a_later_explicit_id"
+          ],
+          "expected_assertion": "long fallback consumed a reserved explicit ID",
+          "pytest_summary": "1 failed in 0.59s",
+          "source_sha256": {
+            "lingshu/world/world_model.py": "8b6545338ef269cf8b2ac1611692b0ac595020c2f4a126d55aa1d8ff76872e1d"
+          }
+        }
+      ]
+    }
+  }
+}

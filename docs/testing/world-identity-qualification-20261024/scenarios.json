@@ -1,0 +1,488 @@
+{
+  "windows": {
+    "baseline": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+    "baseline_tree": {
+      "scope": "five deterministic synthetic scenarios; nine scored measurements",
+      "results": [
+        {
+          "policy": "legacy",
+          "scenarios": [
+            {
+              "scenario": "separated",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b",
+                "1": "a"
+              }
+            },
+            {
+              "scenario": "crossing_reversed",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "one_occluded",
+              "observed": 1,
+              "confirmed": 1,
+              "correct": 0,
+              "wrong": 1,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b"
+              }
+            },
+            {
+              "scenario": "explicit_crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            }
+          ],
+          "totals": {
+            "observed": 9,
+            "confirmed": 9,
+            "correct": 4,
+            "wrong": 5,
+            "deferred": 0,
+            "rejected": 0
+          },
+          "acceptance_coverage": 1.0,
+          "precision_on_accepted": 0.4444444444444444
+        }
+      ]
+    },
+    "fixed_tree": {
+      "scope": "five deterministic synthetic scenarios; nine scored measurements",
+      "results": [
+        {
+          "policy": "legacy",
+          "scenarios": [
+            {
+              "scenario": "separated",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b",
+                "1": "a"
+              }
+            },
+            {
+              "scenario": "crossing_reversed",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "one_occluded",
+              "observed": 1,
+              "confirmed": 1,
+              "correct": 0,
+              "wrong": 1,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b"
+              }
+            },
+            {
+              "scenario": "explicit_crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            }
+          ],
+          "totals": {
+            "observed": 9,
+            "confirmed": 9,
+            "correct": 4,
+            "wrong": 5,
+            "deferred": 0,
+            "rejected": 0
+          },
+          "acceptance_coverage": 1.0,
+          "precision_on_accepted": 0.4444444444444444
+        },
+        {
+          "policy": "conservative",
+          "scenarios": [
+            {
+              "scenario": "separated",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "crossing",
+              "observed": 2,
+              "confirmed": 0,
+              "correct": 0,
+              "wrong": 0,
+              "deferred": 2,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {}
+            },
+            {
+              "scenario": "crossing_reversed",
+              "observed": 2,
+              "confirmed": 0,
+              "correct": 0,
+              "wrong": 0,
+              "deferred": 2,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {}
+            },
+            {
+              "scenario": "one_occluded",
+              "observed": 1,
+              "confirmed": 0,
+              "correct": 0,
+              "wrong": 0,
+              "deferred": 1,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {}
+            },
+            {
+              "scenario": "explicit_crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            }
+          ],
+          "totals": {
+            "observed": 9,
+            "confirmed": 4,
+            "correct": 4,
+            "wrong": 0,
+            "deferred": 5,
+            "rejected": 0
+          },
+          "acceptance_coverage": 0.4444444444444444,
+          "precision_on_accepted": 1.0
+        }
+      ]
+    },
+    "baseline_temp_cleaned": true
+  },
+  "linux": {
+    "baseline": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+    "baseline_tree": {
+      "scope": "five deterministic synthetic scenarios; nine scored measurements",
+      "results": [
+        {
+          "policy": "legacy",
+          "scenarios": [
+            {
+              "scenario": "separated",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b",
+                "1": "a"
+              }
+            },
+            {
+              "scenario": "crossing_reversed",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "one_occluded",
+              "observed": 1,
+              "confirmed": 1,
+              "correct": 0,
+              "wrong": 1,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b"
+              }
+            },
+            {
+              "scenario": "explicit_crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            }
+          ],
+          "totals": {
+            "observed": 9,
+            "confirmed": 9,
+            "correct": 4,
+            "wrong": 5,
+            "deferred": 0,
+            "rejected": 0
+          },
+          "acceptance_coverage": 1.0,
+          "precision_on_accepted": 0.4444444444444444
+        }
+      ]
+    },
+    "fixed_tree": {
+      "scope": "five deterministic synthetic scenarios; nine scored measurements",
+      "results": [
+        {
+          "policy": "legacy",
+          "scenarios": [
+            {
+              "scenario": "separated",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b",
+                "1": "a"
+              }
+            },
+            {
+              "scenario": "crossing_reversed",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 0,
+              "wrong": 2,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "one_occluded",
+              "observed": 1,
+              "confirmed": 1,
+              "correct": 0,
+              "wrong": 1,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "b"
+              }
+            },
+            {
+              "scenario": "explicit_crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            }
+          ],
+          "totals": {
+            "observed": 9,
+            "confirmed": 9,
+            "correct": 4,
+            "wrong": 5,
+            "deferred": 0,
+            "rejected": 0
+          },
+          "acceptance_coverage": 1.0,
+          "precision_on_accepted": 0.4444444444444444
+        },
+        {
+          "policy": "conservative",
+          "scenarios": [
+            {
+              "scenario": "separated",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            },
+            {
+              "scenario": "crossing",
+              "observed": 2,
+              "confirmed": 0,
+              "correct": 0,
+              "wrong": 0,
+              "deferred": 2,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {}
+            },
+            {
+              "scenario": "crossing_reversed",
+              "observed": 2,
+              "confirmed": 0,
+              "correct": 0,
+              "wrong": 0,
+              "deferred": 2,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {}
+            },
+            {
+              "scenario": "one_occluded",
+              "observed": 1,
+              "confirmed": 0,
+              "correct": 0,
+              "wrong": 0,
+              "deferred": 1,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {}
+            },
+            {
+              "scenario": "explicit_crossing",
+              "observed": 2,
+              "confirmed": 2,
+              "correct": 2,
+              "wrong": 0,
+              "deferred": 0,
+              "rejected": 0,
+              "confirmed_ids_by_observation_index": {
+                "0": "a",
+                "1": "b"
+              }
+            }
+          ],
+          "totals": {
+            "observed": 9,
+            "confirmed": 4,
+            "correct": 4,
+            "wrong": 0,
+            "deferred": 5,
+            "rejected": 0
+          },
+          "acceptance_coverage": 0.4444444444444444,
+          "precision_on_accepted": 1.0
+        }
+      ]
+    },
+    "baseline_temp_cleaned": true
+  }
+}

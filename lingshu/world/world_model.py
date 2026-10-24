@@ -31,10 +31,12 @@ from __future__ import annotations
 import inspect
 import math
 import random
+from copy import deepcopy
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
 from .motion import ObservationWindow, recent_direction
+from .identity import inspect_frame, validate_policy
 
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
@@ -83,7 +85,8 @@ class UnifiedWorldModel:
     """
 
     def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
-                 world: Optional[SceneSimulator] = None):
+                 world: Optional[SceneSimulator] = None, identity_policy: str = "legacy"):
+        self._identity_policy = validate_policy(identity_policy)
         self.world = world or SceneSimulator(size=size, ground_level=ground_level,
                                              seed=seed)
         self.size = self.world.world.size
@@ -116,6 +119,22 @@ class UnifiedWorldModel:
 
     # ================= 理解端口 =================
 
+    @property
+    def identity_policy(self) -> str:
+        return self._identity_policy
+
+    def set_identity_policy(self, policy: str) -> str:
+        self._identity_policy = validate_policy(policy)
+        return self._identity_policy
+
+    def inspect_identity(self, observations: List[Dict], tick: Optional[int] = None) -> Dict:
+        """只读的整帧关联回执；不分配 ID，不读取模拟器身份/行为真值。"""
+        target = self.tick + 1 if tick is None else tick
+        if (isinstance(target, bool) or not isinstance(target, int) or target < 0
+                or (self.history and target <= self.tick)):
+            raise ValueError("观测 tick 必须是晚于当前世界图时刻的非负整数")
+        return inspect_frame(self.nodes, self._last_prediction, observations, target)
+
     def _observe_world(self) -> List[Dict]:
         """传感器读物理世界：只暴露位置/类别（模型看不到内部规则）。"""
         return [{"eid": eid, "category": e.category, "pos": tuple(e.pos)}
@@ -143,6 +162,10 @@ class UnifiedWorldModel:
                 best, best_d = eid, d
         if best is not None and best_d < 2.0:   # 追踪半径：同类别 2 体素内
             return best
+        return self._new_identity(taken)
+
+    def _new_identity(self, taken: Optional[set] = None) -> str:
+        """只分配空闲 ID；不把本帧刚创建的节点重新用作身份候选。"""
         # 生成后查重 self.nodes，碰撞则重生成（6 位 hex=16M 空间，长程生日悖论必然碰撞；
         # 不查重会让新 eid 命中既有键，perceive 走 matched 分支把两个不同实体静默合并）
         for _ in range(8):
@@ -184,6 +207,8 @@ class UnifiedWorldModel:
           - 异常（距离 ≥ bound）→ 置信 -0.1，记录 anomaly（模型缺口/外部事件）
         """
         obs = observations if observations is not None else self._observe_world()
+        assessment = (self.inspect_identity(obs, tick) if self.identity_policy == "conservative"
+                      else None)
         if tick is not None and self.history and tick <= self.tick:
             raise ValueError("观测 tick 必须晚于当前世界图时刻")
         self.tick = self.tick + 1 if tick is None else tick
@@ -196,15 +221,24 @@ class UnifiedWorldModel:
                      is not None else tuple(n.pos) for eid, n in self.nodes.items()}
         taken = {str(o["eid"]) for o in obs if o.get("eid") is not None and str(o["eid"])}
         resolved = []
-        for o in obs:
+        if assessment is not None:
+            stats.update(deferred=assessment["deferred"], rejected=assessment["rejected"])
+        for index, o in enumerate(obs):
+            stats["observed"] += 1
+            reading = assessment["readings"][index] if assessment is not None else None
+            if reading is not None and reading["association_state"] != "ACCEPT":
+                continue
             eid = str(o["eid"]) if o.get("eid") is not None else ""
             if not eid:
-                eid = self._track_identity(o, taken=taken, positions=frame_pos)
+                eid = ((reading["matched_eid"] or self._new_identity(taken)) if reading is not None
+                       else self._track_identity(o, taken=taken, positions=frame_pos))
                 taken.add(eid)                 # 一个节点本帧至多被一个观测占用
             pos = tuple(float(v) for v in o["pos"])
             snap[eid] = list(pos)
             resolved.append({**o, "eid": eid, "pos": list(pos)})
-            stats["observed"] += 1
+            if reading is not None:
+                reading["resolved_eid"] = eid
+                resolved[-1]["observation_index"] = index
             if eid in self.nodes:
                 stats["matched"] += 1
                 n = self.nodes[eid]
@@ -253,9 +287,13 @@ class UnifiedWorldModel:
                              "entities": {eid: list(p) for eid, p in snap.items()}})
         if timestamp is not None:
             self.history[-1]["timestamp"] = timestamp
+        if assessment is not None:
+            self.history[-1].update(identity_readings=deepcopy(assessment["readings"]),
+                                    observation_tool=tool)
         self._patterns = {}   # 模式缓存失效（新观测后重新推断）
         return {"status": "ok", "tick": self.tick, **stats,
-                "anomaly_events": stats["anomalies"], "observations": resolved}
+                "anomaly_events": stats["anomalies"], "observations": resolved,
+                **({"identity": assessment} if assessment is not None else {})}
 
     def restore_trajectory_from_history(self) -> int:
         """把观测历史重建成轨迹缓冲，返回写入的观测点总数。
@@ -645,6 +683,7 @@ class UnifiedWorldModel:
 
     def state(self) -> Dict:
         return {"status": "ok", "tick": self.tick, "size": self.size,
+                "identity_policy": self.identity_policy,
                 "node_count": len(self.nodes), "edge_count": len(self.edges),
                 "history_len": len(self.history),
                 "anomaly_count": len(self._anomalies)}

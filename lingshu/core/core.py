@@ -9976,6 +9976,8 @@ class SpacetimeMemoryEngine:
         - path: 定义巡逻路径
         - perceive: 理解端口（外部 observations 或沙盒观测；可传 tick/timestamp）
         - perceive_visual: 把该 tick 的视觉重建对象送入同一理解端口
+        - identity: 只读检查 observations 的整帧身份候选（tick 可选）
+        - identity_policy: 查询/设置 legacy 或 conservative 关联策略
         - generate: 生成端口（世界图→候选未来，顺序语义外推+不确定边界）
         - verify: 验证端口（外部观察者对比→命中率）
         - run: 持续运行 n tick（generate→物理演化→perceive→verify）
@@ -9998,8 +10000,18 @@ class SpacetimeMemoryEngine:
             self._wmodel = UnifiedWorldModel(
                 size=int(p.get('size', 24)),
                 ground_level=int(p.get('ground_level', 1)),
-                seed=int(p.get('seed', 42)))
+                seed=int(p.get('seed', 42)),
+                identity_policy=p.get('identity_policy', 'legacy'))
             return {"status": "ok", "model": self._wmodel.state()}
+        if action in ("identity", "identity_policy"):
+            if not hasattr(self, '_wmodel'):
+                return {"status": "error", "error": "先 world_model init"}
+            if action == "identity":
+                return {"status": "ok", "identity": self._wmodel.inspect_identity(
+                    p.get("observations", []), tick=p.get("tick"))}
+            if "policy" in p:
+                self._wmodel.set_identity_policy(p["policy"])
+            return {"status": "ok", "identity_policy": self._wmodel.identity_policy}
         if not hasattr(self, '_wmodel'):
             self._wmodel = UnifiedWorldModel()
         if action == "create":
@@ -10030,8 +10042,10 @@ class SpacetimeMemoryEngine:
                                      tick=p.get("tick"), timestamp=p.get("timestamp"))
             visible = [obj for obj in self._world3d.objects
                        if p.get("tick") is None or obj.observed_tick == p["tick"]]
-            for obj, observation in zip(visible, r["observations"]):
-                obj.eid = observation["eid"]
+            for index, observation in enumerate(r["observations"]):
+                source_index = (observation["observation_index"]
+                                if self._wmodel.identity_policy == "conservative" else index)
+                visible[source_index].eid = observation["eid"]
             return {"status": "ok", "perceive": r}
         if action == "generate":
             r = self._wmodel.generate(horizon=int(p.get("horizon", 1)))
@@ -10054,7 +10068,7 @@ class SpacetimeMemoryEngine:
                     "history": self._wmodel.history_view(limit=int(p.get("limit", 10)))}
         if action == "state":
             return {"status": "ok", "model": self._wmodel.state()}
-        return {"status": "error", "error": f"未知动作 {action}（可用: init/create/entity/path/perceive/perceive_visual/generate/verify/run/patterns/anomalies/graph/history/state）"}
+        return {"status": "error", "error": f"未知动作 {action}（可用: init/create/entity/path/perceive/perceive_visual/identity/identity_policy/generate/verify/run/patterns/anomalies/graph/history/state）"}
 
     def world_learner(self, action: str, params: dict = None) -> dict:
         """自监督世界学习（里程碑3.2 · V-JEPA 式）：从观测序列无标注学转移函数——
