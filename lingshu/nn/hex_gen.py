@@ -361,7 +361,22 @@ def render_relations(parts: List[Dict], size: int = 48, seed: int = 7,
                     "pattern": pattern, "size": size_attr,
                     "pattern_period": period, "center": (cx, cy)})
     if noise:
-        img += (rng.random(img.shape) * 18).astype(np.uint8)
+        # issue #150：旧实现 `img += (rng.random(img.shape) * 18).astype(np.uint8)` 是
+        # **uint8 原地加** ⇒ 超过 255 的像素按模 256 回绕。噪声幅度 0..17，故凡基色 >237
+        # 的像素都会回绕：白（245）在 noise>=11 时 245+11=256→0，白盘/白底因此出现
+        # 近黑散点（实测 white disk min channel-sum=1、n(sum<100)=35/529；
+        # clean_white 背景 567/9216=6.15%，理论值 (7/18)^3=5.88%）。
+        # 修法：先在 int16 上做**饱和**加法再夹回 0..255 —— 噪声的语义是「亮度微扰」，
+        # 不是模运算；回绕是 uint8 容器的溢出，不是设计。
+        # 判据来源：issue #150 正文（white disk 变黑 / clean_white 背景变黑）；
+        # 仓内无任何守卫或 docstring 把回绕钉为有意行为（`git grep 回绕` 仅命中
+        # hexgen_pack_certify / hex_gen:725 两处**无关**语义）。
+        # 削掉的判别力：基色接近 255 的像素不再出现「亮变暗」；其余颜色（基色 ≤237）
+        # 的逐像素输出**完全不变**（回绕概率为 0，夹取不触发）。rng 抽样次数与顺序未动
+        # ⇒ 同 seed 的噪声序列与旧实现逐位相同。
+        img = np.clip(img.astype(np.int16)
+                      + (rng.random(img.shape) * 18).astype(np.int16),
+                      0, 255).astype(np.uint8)
     if supersample > 1:
         # R44 软边缘：高分辨率渲染→LANCZOS 降采（自动抗锯齿）
         from PIL import Image as _Im
