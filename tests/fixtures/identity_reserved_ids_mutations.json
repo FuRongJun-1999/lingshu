@@ -5,15 +5,15 @@
   "mutations": [
     {"name": "ignore_reserved_short_ids", "test": "test_anonymous_allocation_cannot_consume_a_later_explicit_id",
       "assertion": "anonymous allocation consumed a reserved explicit ID",
-      "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "_track_identity",
+      "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "_new_identity",
         "old": "            if cand not in self.nodes and (taken is None or cand not in taken):", "new": "            if cand not in self.nodes:"}]},
     {"name": "ignore_existing_long_ids", "test": "test_long_fallback_cannot_overwrite_an_existing_entity",
       "assertion": "long fallback ID overwrote an existing entity",
-      "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "_track_identity",
+      "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "_new_identity",
         "old": "        while cand in self.nodes or (taken is not None and cand in taken):", "new": "        while taken is not None and cand in taken:"}]},
     {"name": "ignore_reserved_long_ids", "test": "test_long_fallback_cannot_consume_a_later_explicit_id",
       "assertion": "long fallback consumed a reserved explicit ID",
-      "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "_track_identity",
+      "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "_new_identity",
         "old": "        while cand in self.nodes or (taken is not None and cand in taken):", "new": "        while cand in self.nodes:"}]}
   ]
 }

@@ -42,6 +42,7 @@ import os
 import time
 import uuid
 from typing import Dict, List, Optional, Tuple
+from .identity import validate_history
 
 try:
     from .world_model import UnifiedWorldModel, WMNode, WMEdge
@@ -315,7 +316,7 @@ class SimulationLoop:
             if external is not None:
                 external(self.scene, self.wm.tick + 1)
             self.scene.step(n=1)                      # ② 物理结算（模型不可见内部）
-            self.wm.perceive(observations=self._observe())  # ③ 观察（遮蔽注入点）
+            perceived = self.wm.perceive(observations=self._observe())  # ③ 观察（遮蔽注入点）
             v = self.wm.verify()                      # ④ 验证（外部观察者）
             if v["hit_rate"] is not None:
                 self._rolling_rates.append(v["hit_rate"])
@@ -324,7 +325,11 @@ class SimulationLoop:
                 "nodes": self._snapshot_nodes(),
                 "edges": self._snapshot_edges(),
                 "hit_rate": v["hit_rate"], "hits": v["hits"],
-                "total": v["total"], "pending": v["pending"]})
+                "total": v["total"], "pending": v["pending"],
+                **({"identity": {"policy": self.wm.identity_policy,
+                    **{key: perceived["identity"][key]
+                       for key in ("accepted", "deferred", "rejected")}}}
+                   if "identity" in perceived else {})})
         return self.state()
 
     def run(self, n: int = 10) -> Dict:
@@ -397,6 +402,10 @@ class SimulationLoop:
             H = self.wm.nodes.get(h["node"])
             if H is None:                       # 被外部移除 → 清账
                 self._hypotheses.pop(subject, None)
+                continue
+            if (self.wm.identity_policy == "conservative"
+                    and subject not in (self.wm._obs_snapshot or {})):
+                # 身份未决/缺观测不是预测失败；验证窗口与假设置信均等待新证据。
                 continue
             hit = self._hit_for(verify_result, subject)
             node_A = self.wm.nodes.get(subject)
@@ -662,11 +671,16 @@ class SimulationLoop:
             if not snapshots:
                 return {"status": "ok", "seeded": 0, "entities": [], "memory_id": None}
             memory_id, state = max(snapshots, key=lambda item: item[1]["saved_at"])
-            if state["schema"] != "lingshu.world-prior.v1":
+            schema = state["schema"]
+            if schema not in ("lingshu.world-prior.v1", "lingshu.world-prior.v2"):
                 raise ValueError("不支持的世界模型经验格式")
             selected = list(state["nodes"].items())[:max(0, limit)]
             # 先构建独立候选；后段字段或历史投影失败时，活动模型必须仍可继续使用。
             candidate = copy(self.wm)
+            candidate.set_identity_policy(state["identity_policy"]
+                                          if schema == "lingshu.world-prior.v2" else "legacy")
+            if schema == "lingshu.world-prior.v2":
+                validate_history(state["history"], state["nodes"])
             candidate.nodes = {eid: WMNode(**{**node, "pos": tuple(node["pos"])})
                                for eid, node in selected}
             candidate.edges = [WMEdge(**edge) for edge in state["edges"]
@@ -681,6 +695,11 @@ class SimulationLoop:
             # 契约就会被判据自身的记账差异打破（实测：smooth_blocked 由
             # speed_near_zero 变成 not_enough_samples）。载荷缺 "history" 时保持空。
             candidate.restore_trajectory_from_history()
+            if schema == "lingshu.world-prior.v2":
+                # 配对误差和旋转是派生缓存，不得沿用恢复前另一段身份关联的读数。
+                candidate._err_ovr = {}
+                candidate._rot_buf = {}
+                candidate._rot_stats = {"perceive_calls": 0, "quats": 0}
             candidate.tick = state["tick"]
             candidate.size = state["size"]
             candidate._motion_estimates = {eid: tuple(value) for eid, value in state["motion_estimates"].items()
@@ -816,7 +835,10 @@ class SimulationLoop:
                  if not node["attrs"].get("hypothesis") or eid in confirmed_ids}
         for eid in confirmed_ids:
             nodes[eid]["attrs"]["phase"] = "confirmed"
-        state = {"schema": "lingshu.world-prior.v1", "saved_at": fm["created_at"],
+        qualified = (self.wm.identity_policy != "legacy"
+                     or any("identity_readings" in frame for frame in self.wm.history))
+        state = {"schema": "lingshu.world-prior.v2" if qualified else "lingshu.world-prior.v1",
+                 "saved_at": fm["created_at"],
                  "tick": self.wm.tick, "size": self.wm.size, "nodes": nodes,
                  "edges": [e for e in g["edges"] if e["source"] in nodes and e["target"] in nodes],
                  "conditions": {eid: g["nodes"][eid]["conditions"] for eid in nodes},
@@ -826,6 +848,8 @@ class SimulationLoop:
                  "relation_history": self.wm.relation_history,
                  "hypotheses": confirmed, "rolling_rates": self._rolling_rates,
                  "last_verification": self.wm._compare}
+        if qualified:
+            state["identity_policy"] = self.wm.identity_policy
         lines += ["", "## 可恢复的观测经验（内部先验）", "```lingshu-world",
                   json.dumps(state, ensure_ascii=False), "```"]
         body = "\n".join(lines)
