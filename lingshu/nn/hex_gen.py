@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .hex_text import parse_description
+from .hex_text import POS_WORDS, parse_description
 from .hex_composite import _COLORS_RGB, _paint
 
 ALGO = "hex_gen-0.1"
@@ -252,7 +252,12 @@ def compile_description(text: str) -> Dict:
     segments = [s.strip() for s in re.split(r"[,，、;;；。]+", text) if s.strip()]
     parts, defaults = [], []
     for seg in segments:
-        base = parse_description(seg)
+        # #306：先剥背景词再喂 parse_description——窄词表也会从「渐变蓝底」抓到「蓝」
+        seg_scan = seg
+        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
+            if bg_w in seg_scan:
+                seg_scan = seg_scan.replace(bg_w, "")
+        base = parse_description(seg_scan)
         cl = base[0] if base else {}
         # 开放词汇优先（连接库生长面），回落 hex_text 基础三词
         pos = cl.get("pos")
@@ -262,11 +267,35 @@ def compile_description(text: str) -> Dict:
                 if zcn in seg:
                     pos = ZONE_CN[zcn]
                     break
-        given = {"shape": _match_open(seg, OPEN_SHAPES) or cl.get("shape"),
-                 "color": _match_open(seg, OPEN_COLORS) or cl.get("color"),
+        # #306：背景词（白底/灰底/渐变X底/深色底）是**画布**词汇，其中的色字
+        # （白/灰/蓝/粉/绿/深）不得参与部件颜色竞争——「渐变绿底中间有蓝色圆形」
+        # 应得 blue、「白底中间有灰色圆形」应得 gray。先把本子句命中的背景词
+        # 从文本里剥掉，再做开放词表匹配；**纯背景子句**（剥掉背景词后没有
+        # 部件词——形状/颜色/方位皆无）不产部件（「渐变蓝底，左上有红色圆」
+        # 的前半段不该在 r4 生成幻影圆）。
+        seg_parts = seg
+        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
+            if bg_w in seg_parts:
+                seg_parts = seg_parts.replace(bg_w, "")
+        has_part_word = bool(_match_open(seg_parts, OPEN_SHAPES)
+                             or _match_open(seg_parts, OPEN_COLORS)
+                             or (pos is not None)
+                             or cl.get("shape") or cl.get("color") or pos)
+        if pos is None and has_part_word:
+            # 剥掉背景词后才暴露的方位词（如「渐变蓝底中间有圆形」的「中间」）
+            for zcn in sorted(ZONE_CN, key=len, reverse=True):
+                if zcn in seg_parts:
+                    pos = ZONE_CN[zcn]
+                    break
+        given = {"shape": (_match_open(seg_parts, OPEN_SHAPES)
+                           if has_part_word else None) or cl.get("shape"),
+                 "color": _match_open(seg_parts, OPEN_COLORS) or cl.get("color"),
                  "zone": pos,
                  "pattern": _match_attr(seg, PATTERN_WORDS),
                  "size": _match_attr(seg, SIZE_WORDS)}
+        # #306：纯背景子句（剥掉背景词后无任何部件词）⇒ 不产部件
+        if not has_part_word:
+            continue
         part = {}
         for k, v in given.items():
             if v is None:
