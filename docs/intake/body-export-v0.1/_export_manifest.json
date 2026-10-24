@@ -1,798 +1,798 @@
 {
- "package": "lingshu",
- "generated": "2026-10-02",
- "aeis_root": "AEIS",
- "blocks": {
-  "world": {
-   "files": [
-    {
-     "file": "anchor_verify.py",
-     "src": "aeis.anchor_verify",
-     "sha256": "ff7688223a718c4a",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": [],
-     "integration_base_sha256": "19ee9b4fccf08248",
-     "base_sha256": "bc17584f080d16fc"
+  "package": "lingshu",
+  "generated": "2026-10-02",
+  "aeis_root": "AEIS",
+  "blocks": {
+    "world": {
+      "files": [
+        {
+          "file": "anchor_verify.py",
+          "src": "aeis.anchor_verify",
+          "sha256": "ff7688223a718c4a",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": [],
+          "integration_base_sha256": "19ee9b4fccf08248",
+          "base_sha256": "bc17584f080d16fc"
+        },
+        {
+          "file": "anchored_verification.py",
+          "src": "aeis.anchored_verification",
+          "sha256": "c500b0b1482a2ad6",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "channel_credibility.py",
+          "src": "aeis.channel_credibility",
+          "sha256": "79c23ecf74623077",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "confirmation.py",
+          "src": "aeis.confirmation",
+          "sha256": "c8977bd4a22ed28b",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "curiosity_explorer.py",
+          "src": "aeis.curiosity_explorer",
+          "sha256": "4a551240f4594c68",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": [],
+          "integration_base_sha256": "4ee3bd03298685a9",
+          "base_sha256": "6bbc5af89375129a"
+        },
+        {
+          "file": "gap_dual.py",
+          "src": "aeis.gap_dual",
+          "sha256": "8a239dda09289ee8",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "motion_groups.py",
+          "origin": "lingshu_native_development",
+          "sha256": "c6822da32c1353f4"
+        },
+        {
+          "file": "multiview.py",
+          "src": "aeis.multiview",
+          "sha256": "a3526709deddaaaa",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "prediction.py",
+          "src": "aeis.prediction",
+          "sha256": "e4a5308e72f80948",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [
+            "semantic_space",
+            "spacetime_memory_core"
+          ],
+          "unresolved_top": []
+        },
+        {
+          "file": "scene_model.py",
+          "src": "aeis.scene_model",
+          "sha256": "78e656c7fc559126",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "scene_simulator.py",
+          "src": "aeis.scene_simulator",
+          "sha256": "75b3a38a45f1f99f",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "semantic_anchor_graph.py",
+          "src": "aeis.semantic_anchor_graph",
+          "sha256": "af37f432452f9f3d",
+          "rewrites": 8,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "seven_layer_loop.py",
+          "src": "aeis.seven_layer_loop",
+          "sha256": "c15d58217999f1df",
+          "rewrites": 8,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": [],
+          "integration_base_sha256": "3101e88c7535bf6c",
+          "base_sha256": "6ceb5c9aca0d0e2d"
+        },
+        {
+          "file": "shapes.py",
+          "src": "aeis.shapes",
+          "sha256": "354363b8cb296256",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "silhouette3d.py",
+          "src": "aeis.silhouette3d",
+          "sha256": "ab76906e5fcaf8f1",
+          "rewrites": 2,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "skeleton3d.py",
+          "src": "aeis.skeleton3d",
+          "sha256": "60fcc971720212c7",
+          "rewrites": 1,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "spacetime_consistency.py",
+          "src": "aeis.spacetime_consistency",
+          "sha256": "8261f462319c1312",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "stable_lease.py",
+          "src": "aeis.stable_lease",
+          "sha256": "851ec8f5a329e875",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "time_core.py",
+          "src": "aeis.time_core",
+          "sha256": "79f5b6493178cb90",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "voxel_world.py",
+          "src": "aeis.voxel_world",
+          "sha256": "c96c94ee03354211",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "vprim.py",
+          "src": "aeis.vprim",
+          "sha256": "86f3f9649881b300",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "wm_simloop.py",
+          "src": "aeis.wm_simloop",
+          "sha256": "7d33f88cf2ebcb2d",
+          "rewrites": 8,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": [],
+          "integration_base_sha256": "ef63a55502e7405e",
+          "base_sha256": "64addc4736a015a5"
+        },
+        {
+          "file": "world3d.py",
+          "src": "aeis.world3d",
+          "sha256": "96415a9439faffcf",
+          "rewrites": 16,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "world_learner.py",
+          "src": "aeis.world_learner",
+          "sha256": "69ddbddd97489708",
+          "rewrites": 8,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": [],
+          "integration_base_sha256": "32f46cbf8ef9a231",
+          "base_sha256": "278670df630ea04b"
+        },
+        {
+          "file": "world_model.py",
+          "src": "aeis.world_model",
+          "sha256": "f328599573397309",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": [],
+          "integration_base_sha256": "d8c018b9645c1c35",
+          "base_sha256": "4e7c7ad0ffcfea85"
+        },
+        {
+          "file": "process_ops.py",
+          "origin": "lingshu_native_development",
+          "sha256": "59cde8f925fac077"
+        },
+        {
+          "file": "world_process.py",
+          "origin": "lingshu_native_development",
+          "sha256": "9b736b05e11637c9"
+        }
+      ],
+      "private_hits": []
     },
-    {
-     "file": "anchored_verification.py",
-     "src": "aeis.anchored_verification",
-     "sha256": "c500b0b1482a2ad6",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
+    "core": {
+      "files": [
+        {
+          "file": "activation.py",
+          "src": "aeis.activation",
+          "sha256": "fd5fc7fc95b14df0",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 1,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "condition_normalize.py",
+          "src": "aeis.condition_normalize",
+          "sha256": "199834c837efe530",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "core.py",
+          "src": "aeis.core",
+          "sha256": "c192b9c3207adb7f",
+          "rewrites": 34,
+          "sanitized": 2,
+          "patches": 2,
+          "hidden_refs": [
+            "1786:vision",
+            "2541:vision",
+            "3365:game_web.generate",
+            "3420:game_web.semantics",
+            "3435:game_web.semantics",
+            "3442:game_web.generate",
+            "5031:scene_reconstruction"
+          ],
+          "externals": [
+            "attention_policy",
+            "blindspot_learning_loop",
+            "body",
+            "cognitive_orchestrator",
+            "entity_registry",
+            "flywheel_engine",
+            "lifecycle_engine",
+            "pattern_separation",
+            "prediction_engine",
+            "self_cognition_engine",
+            "semantic_space"
+          ],
+          "unresolved_top": []
+        },
+        {
+          "file": "longterm_gate.py",
+          "src": "aeis.longterm_gate",
+          "sha256": "ff860efdcaf7ca557d9e21706ac9dee7d61f2198a3e204a25a7786f6c3c07548",
+          "rewrites": 1,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "provenance.py",
+          "src": "aeis.provenance",
+          "sha256": "cded5b23ebacc231",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 5,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "time_core.py",
+          "src": "aeis.time_core",
+          "sha256": "79f5b6493178cb90",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "verdict.py",
+          "src": "aeis.verdict",
+          "sha256": "6b1e73fa53beac56",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        }
+      ],
+      "private_hits": []
     },
-    {
-     "file": "channel_credibility.py",
-     "src": "aeis.channel_credibility",
-     "sha256": "79c23ecf74623077",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
+    "nn": {
+      "files": [
+        {
+          "file": "hex_cnn.py",
+          "src": "aeis.hex_cnn",
+          "sha256": "bee9136a6a886143",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_composite.py",
+          "src": "aeis.hex_composite",
+          "sha256": "a538e0340874fab4",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_gen.py",
+          "src": "aeis.hex_gen",
+          "sha256": "19f3e3857336dc0e",
+          "rewrites": 3,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_hier.py",
+          "src": "aeis.hex_hier",
+          "sha256": "f54e61d10dda98b3",
+          "rewrites": 3,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_nn_preview.py",
+          "src": "aeis.hex_nn_preview",
+          "sha256": "94bbec838d5348e3",
+          "rewrites": 1,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_ortho.py",
+          "src": "aeis.hex_ortho",
+          "sha256": "8dc0beee23f6d3f5",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_query.py",
+          "src": "aeis.hex_query",
+          "sha256": "2717cd646df02ec4",
+          "rewrites": 1,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_recon.py",
+          "src": "aeis.hex_recon",
+          "sha256": "6ba50a37cc403a5d",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_search.py",
+          "src": "aeis.hex_search",
+          "sha256": "e8cefd0623b689f1",
+          "rewrites": 2,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_text.py",
+          "src": "aeis.hex_text",
+          "sha256": "60f0688806a77bb2",
+          "rewrites": 1,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_train.py",
+          "src": "aeis.hex_train",
+          "sha256": "9b35a19eeedff125",
+          "rewrites": 2,
+          "sanitized": 1,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hex_unit.py",
+          "src": "aeis.hex_unit",
+          "sha256": "39aa28bade875edf",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "rust_bridge.py",
+          "src": "aeis.rust_bridge",
+          "sha256": "6eb2b48cd4f4bc22",
+          "rewrites": 0,
+          "sanitized": 4,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "stcnn.py",
+          "src": "wisdom.stcnn",
+          "sha256": "2b73b2e3e3923e10",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        }
+      ],
+      "private_hits": []
     },
-    {
-     "file": "confirmation.py",
-     "src": "aeis.confirmation",
-     "sha256": "c8977bd4a22ed28b",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "curiosity_explorer.py",
-     "src": "aeis.curiosity_explorer",
-     "sha256": "4a551240f4594c68",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": [],
-     "integration_base_sha256": "4ee3bd03298685a9",
-     "base_sha256": "6bbc5af89375129a"
-    },
-    {
-     "file": "gap_dual.py",
-     "src": "aeis.gap_dual",
-     "sha256": "8a239dda09289ee8",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "motion_groups.py",
-     "origin": "lingshu_native_development",
-     "sha256": "c6822da32c1353f4"
-    },
-    {
-     "file": "multiview.py",
-     "src": "aeis.multiview",
-     "sha256": "a3526709deddaaaa",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "prediction.py",
-     "src": "aeis.prediction",
-     "sha256": "e4a5308e72f80948",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [
-      "semantic_space",
-      "spacetime_memory_core"
-     ],
-     "unresolved_top": []
-    },
-    {
-     "file": "scene_model.py",
-     "src": "aeis.scene_model",
-     "sha256": "78e656c7fc559126",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "scene_simulator.py",
-     "src": "aeis.scene_simulator",
-     "sha256": "f07ddfd30d47264e",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "semantic_anchor_graph.py",
-     "src": "aeis.semantic_anchor_graph",
-     "sha256": "af37f432452f9f3d",
-     "rewrites": 8,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "seven_layer_loop.py",
-     "src": "aeis.seven_layer_loop",
-     "sha256": "c15d58217999f1df",
-     "rewrites": 8,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": [],
-     "integration_base_sha256": "3101e88c7535bf6c",
-     "base_sha256": "6ceb5c9aca0d0e2d"
-    },
-    {
-     "file": "shapes.py",
-     "src": "aeis.shapes",
-     "sha256": "354363b8cb296256",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "silhouette3d.py",
-     "src": "aeis.silhouette3d",
-     "sha256": "ab76906e5fcaf8f1",
-     "rewrites": 2,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "skeleton3d.py",
-     "src": "aeis.skeleton3d",
-     "sha256": "60fcc971720212c7",
-     "rewrites": 1,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "spacetime_consistency.py",
-     "src": "aeis.spacetime_consistency",
-     "sha256": "8261f462319c1312",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "stable_lease.py",
-     "src": "aeis.stable_lease",
-     "sha256": "851ec8f5a329e875",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "time_core.py",
-     "src": "aeis.time_core",
-     "sha256": "79f5b6493178cb90",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "voxel_world.py",
-     "src": "aeis.voxel_world",
-     "sha256": "c96c94ee03354211",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "vprim.py",
-     "src": "aeis.vprim",
-     "sha256": "86f3f9649881b300",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "wm_simloop.py",
-     "src": "aeis.wm_simloop",
-     "sha256": "7d33f88cf2ebcb2d",
-     "rewrites": 8,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": [],
-     "integration_base_sha256": "ef63a55502e7405e",
-     "base_sha256": "64addc4736a015a5"
-    },
-    {
-     "file": "world3d.py",
-     "src": "aeis.world3d",
-     "sha256": "96415a9439faffcf",
-     "rewrites": 16,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "world_learner.py",
-     "src": "aeis.world_learner",
-     "sha256": "69ddbddd97489708",
-     "rewrites": 8,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": [],
-     "integration_base_sha256": "32f46cbf8ef9a231",
-     "base_sha256": "278670df630ea04b"
-    },
-    {
-     "file": "world_model.py",
-     "src": "aeis.world_model",
-     "sha256": "f328599573397309",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": [],
-     "integration_base_sha256": "d8c018b9645c1c35",
-     "base_sha256": "4e7c7ad0ffcfea85"
-    },
-    {
-     "file": "process_ops.py",
-     "origin": "lingshu_native_development",
-     "sha256": "59cde8f925fac077"
-    },
-    {
-     "file": "world_process.py",
-     "origin": "lingshu_native_development",
-     "sha256": "9b736b05e11637c9"
+    "gen": {
+      "files": [
+        {
+          "file": "hex_composite.py",
+          "src": "aeis.hex_composite",
+          "sha256": "a538e0340874fab4",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hexgen_align_probe.py",
+          "src": "experiments.hexgen_align_probe",
+          "sha256": "4dced4c36731b7bb",
+          "rewrites": 2,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hexgen_c1_real.py",
+          "src": "experiments.hexgen_c1_real",
+          "sha256": "1f3c99f7c01c9ce7",
+          "rewrites": 0,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hexgen_multi_seed.py",
+          "src": "experiments.hexgen_multi_seed",
+          "sha256": "7f275718a603748d",
+          "rewrites": 1,
+          "sanitized": 1,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [
+            "diffusers"
+          ],
+          "unresolved_top": []
+        },
+        {
+          "file": "hexgen_pack_certify.py",
+          "src": "experiments.hexgen_pack_certify",
+          "sha256": "f754aa0287a9975c",
+          "rewrites": 2,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hexgen_self_source.py",
+          "src": "experiments.hexgen_self_source",
+          "sha256": "9f5a8fa806e7ecf3",
+          "rewrites": 4,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        },
+        {
+          "file": "hexgen_subject_split.py",
+          "src": "experiments.hexgen_subject_split",
+          "sha256": "d41f1edf1137c019",
+          "rewrites": 3,
+          "sanitized": 0,
+          "patches": 0,
+          "hidden_refs": [],
+          "externals": [],
+          "unresolved_top": []
+        }
+      ],
+      "private_hits": []
     }
-   ],
-   "private_hits": []
   },
-  "core": {
-   "files": [
-    {
-     "file": "activation.py",
-     "src": "aeis.activation",
-     "sha256": "fd5fc7fc95b14df0",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 1,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
+  "note": "导出副本；上游 AEIS 为真源（单向引入）",
+  "working_tree_update": {
+    "date": "2026-10-10",
+    "kind": "local_fork_modification",
+    "base_commit": "abb52d005fe6300b3e9b5fd022a5a64d33096693",
+    "report": "docs/world_model_optimization.md",
+    "note": "sha256 verifies current LF-normalized working files; base_sha256 preserves the pre-patch registration. This is not a new upstream export.",
+    "follow_up": {
+      "kind": "pursuit_prediction",
+      "report": "docs/world_model_optimization.md",
+      "previous_sha256": {
+        "world_learner.py": "1b98116bdebba309",
+        "world_model.py": "cacb978b958b47eb",
+        "curiosity_explorer.py": "7a9bc65fc2306194"
+      }
     },
-    {
-     "file": "condition_normalize.py",
-     "src": "aeis.condition_normalize",
-     "sha256": "199834c837efe530",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
+    "integration_base": "777e18f62dfe6918ad271437b887c78d020f0ea4",
+    "benchmark_base": "c22385cb2d75f36bc12fd1de4449edbf92be8698",
+    "metrics_migration": "docs/world_model_metrics_migration.md",
+    "issues_20261015_rebuild_eb497f2": {
+      "date": "2026-10-15",
+      "kind": "local_fork_modification",
+      "base_commit": "eb497f2ab2d067bc97fcca32281bab5a93e5c7e8",
+      "note": "重建于最新 main（S3 公开面整改 + CI 首跑三红处置后续）；sha256 核验 LF 归一后的工作树文件。",
+      "previous_sha256": {
+        "scene_model.py": "0cce56055028e004",
+        "world_learner.py": "80943255192950d9",
+        "world_model.py": "690041d299ed421c",
+        "core.py": "af7c93c0842ca661"
+      }
     },
-    {
-     "file": "core.py",
-     "src": "aeis.core",
-     "sha256": "c192b9c3207adb7f",
-     "rewrites": 34,
-     "sanitized": 2,
-     "patches": 2,
-     "hidden_refs": [
-      "1786:vision",
-      "2541:vision",
-      "3365:game_web.generate",
-      "3420:game_web.semantics",
-      "3435:game_web.semantics",
-      "3442:game_web.generate",
-      "5031:scene_reconstruction"
-     ],
-     "externals": [
-      "attention_policy",
-      "blindspot_learning_loop",
-      "body",
-      "cognitive_orchestrator",
-      "entity_registry",
-      "flywheel_engine",
-      "lifecycle_engine",
-      "pattern_separation",
-      "prediction_engine",
-      "self_cognition_engine",
-      "semantic_space"
-     ],
-     "unresolved_top": []
+    "issues_20261016_physics_collision": {
+      "date": "2026-10-16",
+      "kind": "local_fork_modification",
+      "base_commit": "d7b112c8f8248795948aacd443af6c8f577a37ba",
+      "note": "物理仿真深化（drag2/slope_friction/rolling/collision + Environment/simulate + 环境层 + 环境感知预测）+ 碰撞箱（AABB/OBB-SAT/MTV/CCD）与防穿模接线；sha256 核验 LF 归一后的工作树文件。",
+      "previous_sha256": {
+        "scene_simulator.py": "f1fc508797ab3848"
+      }
     },
-    {
-     "file": "longterm_gate.py",
-     "src": "aeis.longterm_gate",
-     "sha256": "ff860efdcaf7ca557d9e21706ac9dee7d61f2198a3e204a25a7786f6c3c07548",
-     "rewrites": 1,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "provenance.py",
-     "src": "aeis.provenance",
-     "sha256": "cded5b23ebacc231",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 5,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "time_core.py",
-     "src": "aeis.time_core",
-     "sha256": "79f5b6493178cb90",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "verdict.py",
-     "src": "aeis.verdict",
-     "sha256": "6b1e73fa53beac56",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
+    "inference_window_update": {
+      "date": "2026-10-12",
+      "base_commit": "cb3a6ea2dbd9771d685b2bf5c1fe398abe69e419",
+      "report": "docs/world_inference_iteration.md",
+      "previous_sha256": {
+        "world_learner.py": "9066b4cf784d0a56",
+        "world_model.py": "97a0f817684fa51e"
+      },
+      "note": "Shared observation statistics and relation evidence semantics; not a new upstream export.",
+      "review_fix": {
+        "date": "2026-10-12",
+        "review": "https://github.com/FuRongJun-1999/dsh-bounty/issues/34",
+        "previous_head": "6921932b15db31d4be2c150e90f8924f7fab132b",
+        "previous_sha256": {
+          "world_model.py": "435a7cf54030b9c5"
+        },
+        "note": "Retain Unified relations with insufficient mixed evidence; align measured-stop evidence with learner."
+      }
     }
-   ],
-   "private_hits": []
   },
-  "nn": {
-   "files": [
-    {
-     "file": "hex_cnn.py",
-     "src": "aeis.hex_cnn",
-     "sha256": "bee9136a6a886143",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_composite.py",
-     "src": "aeis.hex_composite",
-     "sha256": "a538e0340874fab4",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_gen.py",
-     "src": "aeis.hex_gen",
-     "sha256": "19f3e3857336dc0e",
-     "rewrites": 3,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_hier.py",
-     "src": "aeis.hex_hier",
-     "sha256": "f54e61d10dda98b3",
-     "rewrites": 3,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_nn_preview.py",
-     "src": "aeis.hex_nn_preview",
-     "sha256": "94bbec838d5348e3",
-     "rewrites": 1,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_ortho.py",
-     "src": "aeis.hex_ortho",
-     "sha256": "8dc0beee23f6d3f5",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_query.py",
-     "src": "aeis.hex_query",
-     "sha256": "2717cd646df02ec4",
-     "rewrites": 1,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_recon.py",
-     "src": "aeis.hex_recon",
-     "sha256": "6ba50a37cc403a5d",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_search.py",
-     "src": "aeis.hex_search",
-     "sha256": "e8cefd0623b689f1",
-     "rewrites": 2,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_text.py",
-     "src": "aeis.hex_text",
-     "sha256": "60f0688806a77bb2",
-     "rewrites": 1,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_train.py",
-     "src": "aeis.hex_train",
-     "sha256": "9b35a19eeedff125",
-     "rewrites": 2,
-     "sanitized": 1,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hex_unit.py",
-     "src": "aeis.hex_unit",
-     "sha256": "39aa28bade875edf",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "rust_bridge.py",
-     "src": "aeis.rust_bridge",
-     "sha256": "6eb2b48cd4f4bc22",
-     "rewrites": 0,
-     "sanitized": 4,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "stcnn.py",
-     "src": "wisdom.stcnn",
-     "sha256": "2b73b2e3e3923e10",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    }
-   ],
-   "private_hits": []
-  },
-  "gen": {
-   "files": [
-    {
-     "file": "hex_composite.py",
-     "src": "aeis.hex_composite",
-     "sha256": "a538e0340874fab4",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hexgen_align_probe.py",
-     "src": "experiments.hexgen_align_probe",
-     "sha256": "4dced4c36731b7bb",
-     "rewrites": 2,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hexgen_c1_real.py",
-     "src": "experiments.hexgen_c1_real",
-     "sha256": "1f3c99f7c01c9ce7",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hexgen_multi_seed.py",
-     "src": "experiments.hexgen_multi_seed",
-     "sha256": "7f275718a603748d",
-     "rewrites": 1,
-     "sanitized": 1,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [
-      "diffusers"
-     ],
-     "unresolved_top": []
-    },
-    {
-     "file": "hexgen_pack_certify.py",
-     "src": "experiments.hexgen_pack_certify",
-     "sha256": "f754aa0287a9975c",
-     "rewrites": 2,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hexgen_self_source.py",
-     "src": "experiments.hexgen_self_source",
-     "sha256": "9f5a8fa806e7ecf3",
-     "rewrites": 4,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "hexgen_subject_split.py",
-     "src": "experiments.hexgen_subject_split",
-     "sha256": "d41f1edf1137c019",
-     "rewrites": 3,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    }
-   ],
-   "private_hits": []
-  }
- },
- "note": "导出副本；上游 AEIS 为真源（单向引入）",
- "working_tree_update": {
-  "date": "2026-10-10",
-  "kind": "local_fork_modification",
-  "base_commit": "abb52d005fe6300b3e9b5fd022a5a64d33096693",
-  "report": "docs/world_model_optimization.md",
-  "note": "sha256 verifies current LF-normalized working files; base_sha256 preserves the pre-patch registration. This is not a new upstream export.",
-  "follow_up": {
-   "kind": "pursuit_prediction",
-   "report": "docs/world_model_optimization.md",
-   "previous_sha256": {
-    "world_learner.py": "1b98116bdebba309",
-    "world_model.py": "cacb978b958b47eb",
-    "curiosity_explorer.py": "7a9bc65fc2306194"
-   }
-  },
-  "integration_base": "777e18f62dfe6918ad271437b887c78d020f0ea4",
-  "benchmark_base": "c22385cb2d75f36bc12fd1de4449edbf92be8698",
-  "metrics_migration": "docs/world_model_metrics_migration.md",
-  "issues_20261015_rebuild_eb497f2": {
-   "date": "2026-10-15",
-   "kind": "local_fork_modification",
-   "base_commit": "eb497f2ab2d067bc97fcca32281bab5a93e5c7e8",
-   "note": "重建于最新 main（S3 公开面整改 + CI 首跑三红处置后续）；sha256 核验 LF 归一后的工作树文件。",
-   "previous_sha256": {
-    "scene_model.py": "0cce56055028e004",
-    "world_learner.py": "80943255192950d9",
-    "world_model.py": "690041d299ed421c",
-    "core.py": "af7c93c0842ca661"
-   }
-  },
-  "issues_20261016_physics_collision": {
-   "date": "2026-10-16",
-   "kind": "local_fork_modification",
-   "base_commit": "d7b112c8f8248795948aacd443af6c8f577a37ba",
-   "note": "物理仿真深化（drag2/slope_friction/rolling/collision + Environment/simulate + 环境层 + 环境感知预测）+ 碰撞箱（AABB/OBB-SAT/MTV/CCD）与防穿模接线；sha256 核验 LF 归一后的工作树文件。",
-   "previous_sha256": {
-    "scene_simulator.py": "f1fc508797ab3848"
-   }
-  },
-  "inference_window_update": {
-   "date": "2026-10-12",
-   "base_commit": "cb3a6ea2dbd9771d685b2bf5c1fe398abe69e419",
-   "report": "docs/world_inference_iteration.md",
-   "previous_sha256": {
-    "world_learner.py": "9066b4cf784d0a56",
-    "world_model.py": "97a0f817684fa51e"
-   },
-   "note": "Shared observation statistics and relation evidence semantics; not a new upstream export.",
-   "review_fix": {
+  "world_memory_first_batch": {
     "date": "2026-10-12",
-    "review": "https://github.com/FuRongJun-1999/dsh-bounty/issues/34",
-    "previous_head": "6921932b15db31d4be2c150e90f8924f7fab132b",
+    "base_commit": "cb3a6ea2dbd9771d685b2bf5c1fe398abe69e419",
+    "scope": [
+      "F01",
+      "F02",
+      "F03",
+      "F05"
+    ],
+    "report": "docs/world_memory_first_batch.md",
     "previous_sha256": {
-     "world_model.py": "435a7cf54030b9c5"
+      "lingshu/world/multiview.py": "9ff083b49d899a0e",
+      "lingshu/world/scene_model.py": "06a6086ae7e87497",
+      "lingshu/world/vprim.py": "40c9d7f730314571",
+      "lingshu/world/wm_simloop.py": "aa84dde49ad8c837",
+      "lingshu/world/world3d.py": "7b7527deb009dd70",
+      "lingshu/world/world_model.py": "97a0f817684fa51e",
+      "lingshu/core/core.py": "7610414c5e00bbbd"
+    }
+  },
+  "second_third_batch": {
+    "date": "2026-10-13",
+    "base_commit": "5603e28",
+    "scope": [
+      "F04",
+      "F06",
+      "F07",
+      "F08"
+    ],
+    "report": "docs/second_third_batch_validation.md",
+    "previous_sha256": {
+      "lingshu/core/core.py": "bec07819468eab69",
+      "lingshu/nn/hex_composite.py": "111796661833fe52",
+      "lingshu/nn/hex_gen.py": "eaee7d3ff6191edd",
+      "lingshu/nn/hex_query.py": "8143c596b26d4a70",
+      "lingshu/world/scene_simulator.py": "8128017c055a8f6d",
+      "lingshu/world/seven_layer_loop.py": "5fbc5033eb3f2d42",
+      "lingshu/world/world3d.py": "41a18b0b0e93506f"
+    }
+  },
+  "world_process_first_batch": {
+    "date": "2026-10-13",
+    "base_commit": "894493b",
+    "kind": "lingshu_native_development",
+    "origin": "本仓原生开发（非 AEIS 导出件；不伪造上游来源）",
+    "scope": [
+      "时间会意",
+      "示教迁移",
+      "运动组合体"
+    ],
+    "report": "docs/world_process_usage.md",
+    "previous_sha256": {
+      "lingshu/core/core.py": "2c8a0f7e65774494"
     },
-    "note": "Retain Unified relations with insufficient mixed evidence; align measured-stop evidence with learner."
-   }
-  }
- },
- "world_memory_first_batch": {
-  "date": "2026-10-12",
-  "base_commit": "cb3a6ea2dbd9771d685b2bf5c1fe398abe69e419",
-  "scope": [
-   "F01",
-   "F02",
-   "F03",
-   "F05"
-  ],
-  "report": "docs/world_memory_first_batch.md",
-  "previous_sha256": {
-   "lingshu/world/multiview.py": "9ff083b49d899a0e",
-   "lingshu/world/scene_model.py": "06a6086ae7e87497",
-   "lingshu/world/vprim.py": "40c9d7f730314571",
-   "lingshu/world/wm_simloop.py": "aa84dde49ad8c837",
-   "lingshu/world/world3d.py": "7b7527deb009dd70",
-   "lingshu/world/world_model.py": "97a0f817684fa51e",
-   "lingshu/core/core.py": "7610414c5e00bbbd"
-  }
- },
- "second_third_batch": {
-  "date": "2026-10-13",
-  "base_commit": "5603e28",
-  "scope": [
-   "F04",
-   "F06",
-   "F07",
-   "F08"
-  ],
-  "report": "docs/second_third_batch_validation.md",
-  "previous_sha256": {
-   "lingshu/core/core.py": "bec07819468eab69",
-   "lingshu/nn/hex_composite.py": "111796661833fe52",
-   "lingshu/nn/hex_gen.py": "eaee7d3ff6191edd",
-   "lingshu/nn/hex_query.py": "8143c596b26d4a70",
-   "lingshu/world/scene_simulator.py": "8128017c055a8f6d",
-   "lingshu/world/seven_layer_loop.py": "5fbc5033eb3f2d42",
-   "lingshu/world/world3d.py": "41a18b0b0e93506f"
-  }
- },
- "world_process_first_batch": {
-  "date": "2026-10-13",
-  "base_commit": "894493b",
-  "kind": "lingshu_native_development",
-  "origin": "本仓原生开发（非 AEIS 导出件；不伪造上游来源）",
-  "scope": [
-   "时间会意",
-   "示教迁移",
-   "运动组合体"
-  ],
-  "report": "docs/world_process_usage.md",
-  "previous_sha256": {
-   "lingshu/core/core.py": "2c8a0f7e65774494"
+    "verified_records": "本批模块指纹只登记在 blocks.core.files[core.py] 与 blocks.world.files[world_process.py, motion_groups.py]：verify_manifest.py 逐条核验；本键不重复登记，避免第二份未被核验的指纹。",
+    "unverified_artifacts": [
+      "tests/test_world_process_core.py",
+      "tools/demo_world_process.py",
+      "docs/world_process_usage.md",
+      "README.md",
+      "docs/architecture.md"
+    ]
   },
-  "verified_records": "本批模块指纹只登记在 blocks.core.files[core.py] 与 blocks.world.files[world_process.py, motion_groups.py]：verify_manifest.py 逐条核验；本键不重复登记，避免第二份未被核验的指纹。",
-  "unverified_artifacts": [
-   "tests/test_world_process_core.py",
-   "tools/demo_world_process.py",
-   "docs/world_process_usage.md",
-   "README.md",
-   "docs/architecture.md"
-  ]
- },
- "world_process_second_batch": {
-  "date": "2026-10-14",
-  "base_commit": "2c2e5d9",
-  "kind": "lingshu_native_development",
-  "origin": "本仓原生开发（非 AEIS 导出件；不伪造上游来源）",
-  "scope": [
-   "事件回声",
-   "过程补全",
-   "过程重组"
-  ],
-  "report": "docs/world_process_usage.md",
-  "previous_sha256": {
-   "lingshu/core/core.py": "ed7b3a3ff79416b4",
-   "lingshu/world/world_process.py": "c660faf3f4666ae6"
-  },
-  "verified_records": "本批模块指纹只登记在 blocks.core.files[core.py] 与 blocks.world.files[process_ops.py, world_process.py]：verify_manifest.py 逐条核验；本键不重复登记，避免第二份未被核验的指纹。",
-  "unverified_artifacts": [
-   "tests/test_world_process_core.py",
-   "tools/demo_world_process.py",
-   "docs/world_process_usage.md",
-   "README.md",
-   "docs/architecture.md"
-  ]
- }
+  "world_process_second_batch": {
+    "date": "2026-10-14",
+    "base_commit": "2c2e5d9",
+    "kind": "lingshu_native_development",
+    "origin": "本仓原生开发（非 AEIS 导出件；不伪造上游来源）",
+    "scope": [
+      "事件回声",
+      "过程补全",
+      "过程重组"
+    ],
+    "report": "docs/world_process_usage.md",
+    "previous_sha256": {
+      "lingshu/core/core.py": "ed7b3a3ff79416b4",
+      "lingshu/world/world_process.py": "c660faf3f4666ae6"
+    },
+    "verified_records": "本批模块指纹只登记在 blocks.core.files[core.py] 与 blocks.world.files[process_ops.py, world_process.py]：verify_manifest.py 逐条核验；本键不重复登记，避免第二份未被核验的指纹。",
+    "unverified_artifacts": [
+      "tests/test_world_process_core.py",
+      "tools/demo_world_process.py",
+      "docs/world_process_usage.md",
+      "README.md",
+      "docs/architecture.md"
+    ]
+  }
 }

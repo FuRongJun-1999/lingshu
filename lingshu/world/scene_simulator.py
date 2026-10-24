@@ -386,16 +386,30 @@ class SceneSimulator:
 
     # ---- 自主行为决策（确定性）----
 
-    def _decide(self, e: SceneEntity) -> Tuple[float, float, float]:
-        """行为决策 → 期望移动方向（dx, dy, dz）。"""
+    def _decide(self, e: SceneEntity,
+                positions: Optional[Dict[str, Tuple[float, float, float]]] = None
+                ) -> Tuple[float, float, float]:
+        """行为决策 → 期望移动方向（dx, dy, dz）。
+
+        #428：`positions` 是**本 tick 起始位置的快照**。传入时，目标实体的
+        位置一律从快照读，而不是从 `self.entities[...].pos` 现读——否则先动的
+        实体已写回位置，后动实体的决策依据就随迭代序变化（同循环边读边写）。
+        不传（默认 None）⇒ 退回现读，等价于旧行为（向后兼容）。
+        """
         bx, by, bz = e.pos
+
+        def _pos_of(ent: SceneEntity) -> Tuple[float, float, float]:
+            if positions is None:
+                return ent.pos
+            return positions.get(ent.id, ent.pos)
 
         if e.behavior == "seek":
             # 向目标实体移动
             target = self.entities.get(e.goal)
             if target is not None:
-                dx = target.pos[0] - bx
-                dz = target.pos[2] - bz
+                tx, _ty, tz = _pos_of(target)
+                dx = tx - bx
+                dz = tz - bz
                 return self._normalize(dx, 0, dz)
             return self._unresolved(e)
 
@@ -403,8 +417,9 @@ class SceneSimulator:
             # 远离目标实体（绕障）
             target = self.entities.get(e.goal)
             if target is not None:
-                dx = bx - target.pos[0]
-                dz = bz - target.pos[2]
+                tx, _ty, tz = _pos_of(target)
+                dx = bx - tx
+                dz = bz - tz
                 return self._normalize(dx, 0, dz)
             return self._unresolved(e)
 
@@ -412,8 +427,9 @@ class SceneSimulator:
             # 逃离追捕者（反向 + 随机扰动）
             predator = self.entities.get(e.goal)
             if predator is not None:
-                dx = bx - predator.pos[0]
-                dz = bz - predator.pos[2]
+                px, _py, pz = _pos_of(predator)
+                dx = bx - px
+                dz = bz - pz
                 d = self._normalize(dx, 0, dz)
                 return (d[0] + self._rng.uniform(-0.1, 0.1),
                         0, d[2] + self._rng.uniform(-0.1, 0.1))
@@ -1041,7 +1057,9 @@ class SceneSimulator:
 
     # ---- 决策循环（场景演化）----
 
-    def _approach_distance(self, e: SceneEntity) -> Optional[float]:
+    def _approach_distance(self, e: SceneEntity,
+                           positions: Optional[Dict[str, Tuple[float, float, float]]] = None
+                           ) -> Optional[float]:
         """seek/follow 到目标的剩余平面距离（其余行为 / 目标不可解析 ⇒ None）。
 
         #249：`step` 的步长须按剩余距离封顶（`min(speed, dist)`），否则离目标
@@ -1051,7 +1069,8 @@ class SceneSimulator:
         if e.behavior == "seek":
             t = self.entities.get(e.goal)
             if t is not None:
-                return math.hypot(t.pos[0] - e.pos[0], t.pos[2] - e.pos[2])
+                tp = positions.get(t.id, t.pos) if positions else t.pos
+                return math.hypot(tp[0] - e.pos[0], tp[2] - e.pos[2])
         elif e.behavior == "follow":
             path = self.paths.get(e.goal)
             if path:
@@ -1098,7 +1117,18 @@ class SceneSimulator:
             # 不触碰任何既有状态 ⇒ 逐位不变）。
             if self._collision_boxes:
                 self._tick_start_pos = {eid: e.pos for eid, e in self.entities.items()}
-            for eid, e in self.entities.items():
+            # #428：迭代序取**内容稳定键**，与插入序无关。
+            # ⚠ 不能用 entity id 排序：id 是 uuid4，每次实例化都变 ⇒ 同插入序
+            # 也不可复现（实测 15 次实例化出 6 种结果）。故键取实体**内容**
+            # （category/behavior/pos/speed/goal），同内容同序、跨实例稳定。
+            ordered = sorted(self.entities.items(),
+                             key=lambda kv: (kv[1].category, kv[1].behavior,
+                                             kv[1].pos, kv[1].speed, kv[1].goal))
+            # 本 tick 起始位置的快照：所有决策一律读它，不读实时 pos。
+            snap = {eid: e.pos for eid, e in ordered}
+            # 待写回列表：(eid, e, direction, step_len)。决策阶段只 append，不写 pos。
+            pending = []
+            for eid, e in ordered:
                 # F08：受控动作优先——登记的动作在本 tick 消费一次，且**不**走
                 # 自主行为分支（不调用 _decide ⇒ 不消耗共享 _rng、不读目标规则）。
                 cmd = self._commands.pop(eid, None)
@@ -1115,14 +1145,20 @@ class SceneSimulator:
                     if record is not None:
                         actions.append(record)
                     continue
-                # 决策
-                direction = self._decide(e)
+                # 决策（**只读快照**：不读任何实体的实时 pos，也不写回）
+                direction = self._decide(e, snap)
+                if direction == (0.0, 0.0, 0.0):
+                    pending.append((eid, e, (0.0, 0.0, 0.0), 0.0))
+                    continue
+                # 行动（按速度移动；剩余距离不足 speed 时按 min(speed, dist) 封顶）
+                dist = self._approach_distance(e, snap)
+                step_len = e.speed if dist is None else min(e.speed, dist)
+                pending.append((eid, e, direction, step_len))
+            # 阶段二：统一写回（此刻所有决策都已完成，互不干扰）
+            for eid, e, direction, step_len in pending:
                 if direction == (0.0, 0.0, 0.0):
                     e.velocity = (0.0, 0.0, 0.0)
                     continue
-                # 行动（按速度移动；剩余距离不足 speed 时按 min(speed, dist) 封顶）
-                dist = self._approach_distance(e)
-                step_len = e.speed if dist is None else min(e.speed, dist)
                 nx = e.pos[0] + direction[0] * step_len
                 nz = e.pos[2] + direction[2] * step_len
                 # 世界响应（仅 x/z 边界约束；体素方块不参与碰撞——#249：原注释
