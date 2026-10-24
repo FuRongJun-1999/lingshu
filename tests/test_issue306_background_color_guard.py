@@ -77,3 +77,6 @@ def test_s7_background_word_does_not_leak_into_part_color(bg, color):
     bg_color = {"白底": "white", "灰底": "gray", "渐变蓝底": "blue",
                 "渐变绿底": "green", "渐变粉底": "pink", "深色底": "dark"}[bg]
     assert parts[0]["color"] != bg_color, (bg, parts)
+# CI nudge 2026-10-24：本行无功能作用，仅重建提交以产生 pull_request/synchronize 事件。
+# 起因：7 个分支 80 秒内连推，GitHub 合并/丢弃了后几个的 pull_request 事件；
+# close+reopen、同 tree 重推、workflow_dispatch(403 非 admin) 均无效。
