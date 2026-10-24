@@ -95,3 +95,4 @@ def test_307_real_shape_words_still_matched():
 # CI nudge 2026-10-24：本行无功能作用，仅重建提交以产生 pull_request/synchronize 事件。
 # 起因：7 个分支 80 秒内连推，GitHub 合并/丢弃了后几个的 pull_request 事件；
 # close+reopen、同 tree 重推、workflow_dispatch(403 非 admin) 均无效。
+# CI nudge 2026-10-24：本行无功能作用。原 head_sha 的 pull_request 事件被 GitHub 抑制（实测：同内容新 sha 立即恢复）。
