@@ -18,12 +18,19 @@
 纯 numpy + PIL（D-005 零 LLM）。
 """
 from __future__ import annotations
+import threading
 import io
 import json
 import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+# #197：参数向量「读-改-写」的原子化锁。
+# get_vec/set_vec 是**两次独立调用**，各自内部加锁并不能让裸用的 RMW 成为原子操作
+# （两线程可在 get 与 set 之间交错）。故提供 apply_delta() 把整段收进同一临界区；
+# 本锁为**模块级**（同模块内跨实例串行化），代价是不同实例之间也会互斥。
+_VEC_RMW_LOCK = threading.Lock()
 
 ALGO = "hex_train-0.1"
 
@@ -205,6 +212,13 @@ class HexNet:
 
     # ---- 参数向量平铺（有限差分统一索引） ----
     def get_vec(self) -> np.ndarray:
+        """取参数向量**副本**（HexNet）。
+
+        ⚠ #197：本方法与 `set_vec` 是**两次独立调用**，「get → 改 → set」这一范式
+        在多线程下**非原子** —— 两线程可各自取到同一快照、各自改、后写者覆盖先写者，
+        静默丢一次更新（不抛异常）。单线程下无影响。
+        并发场景请改用 `apply_delta()`（RMW 在同一临界区内完成）。
+        """
         return np.concatenate([self.conv.ravel(), self.mix.ravel(), self.fc.ravel()])
 
     def set_vec(self, vec: np.ndarray):
@@ -221,6 +235,29 @@ class HexNet:
         mk = self.M * self.K
         self.mix = vec[i:i + mk].reshape(self.M, self.K).copy(); i += mk
         self.fc = vec[i:i + self.C * self.M].reshape(self.C, self.M).copy()
+
+    def apply_delta(self, delta):
+        """原子读改写（#197）：在同一临界区内完成 get_vec → 应用 → set_vec。
+
+        `delta` 两种形态：
+          · 可调用对象 `fn(vec) -> ndarray | None`：收到当前向量的副本，
+            返回新向量；返回 None 表示已原地修改传入的副本。
+          · ndarray：与当前向量逐元素相加的增量（形状须一致）。
+
+        并发下多次 `apply_delta` 不会互相覆盖 —— RMW 整段被 `_VEC_RMW_LOCK` 串行化。
+        ⚠ 本方法只保证「apply_delta 之间」原子：`get_vec`/`set_vec` 的**成对裸用**
+          仍然非原子（两次调用之间可被交错）。并发场景请改用本方法，
+          或由调用方自行串行化。返回写入后的向量副本。
+        """
+        with _VEC_RMW_LOCK:
+            vec = self.get_vec()
+            if callable(delta):
+                out = delta(vec)
+                new = vec if out is None else np.asarray(out)
+            else:
+                new = vec + np.asarray(delta)
+            self.set_vec(new)
+            return self.get_vec()
 
     def n_params(self) -> int:
         return self.K * 7 + self.M * self.K + self.C * self.M
