@@ -1,0 +1,290 @@
+CASE fixed
+.......................                                                  [100%]
+23 passed, 9 warnings in 0.91s
+
+CASE baseline
+.FFFFFFFFFFFFFFFFFFFFFF                                                  [100%]
+================================== FAILURES ===================================
+_____ test_relation_changes_prediction_without_committing_any_model_state _____
+tests\test_world_counterfactual_isolation.py:44: in test_relation_changes_prediction_without_committing_any_model_state
+    out = trial(model, relations=flee())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+_____ test_no_conditions_matches_normal_generate_on_an_independent_model ______
+tests\test_world_counterfactual_isolation.py:59: in test_no_conditions_matches_normal_generate_on_an_independent_model
+    out = trial(model, horizon=3)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+___ test_existing_live_forecast_still_verifies_at_its_original_target_tick ____
+tests\test_world_counterfactual_isolation.py:69: in test_existing_live_forecast_still_verifies_at_its_original_target_tick
+    out = trial(model, horizon=1, relations=flee())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+_______ test_outputs_inputs_and_repeated_trials_do_not_alias_the_source _______
+tests\test_world_counterfactual_isolation.py:83: in test_outputs_inputs_and_repeated_trials_do_not_alias_the_source
+    first = trial(model, relations=relation)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+____________ test_failed_prediction_only_mutates_discarded_branch _____________
+tests\test_world_counterfactual_isolation.py:105: in test_failed_prediction_only_mutates_discarded_branch
+    trial(model, relations=flee())
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+__________ test_simulator_and_its_alias_are_neither_copied_nor_read ___________
+tests\test_world_counterfactual_isolation.py:126: in test_simulator_and_its_alias_are_neither_copied_nor_read
+    out = trial(model, relations=flee())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+______________ test_core_uses_same_model_without_database_writes ______________
+tests\test_world_counterfactual_isolation.py:140: in test_core_uses_same_model_without_database_writes
+    assert result["status"] == "ok" and "counterfactual" in result, "W3_CORE_ROUTE_MISSING"
+E   AssertionError: W3_CORE_ROUTE_MISSING
+E   assert ('error' == 'ok'
+E
+E     - ok
+E     + error)
+____________ test_invalid_horizon_rejected_before_generation[bool] ____________
+tests\test_world_counterfactual_isolation.py:161: in test_invalid_horizon_rejected_before_generation
+    trial(model, horizon=horizon)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+____________ test_invalid_horizon_rejected_before_generation[zero] ____________
+tests\test_world_counterfactual_isolation.py:161: in test_invalid_horizon_rejected_before_generation
+    trial(model, horizon=horizon)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+__________ test_invalid_horizon_rejected_before_generation[negative] __________
+tests\test_world_counterfactual_isolation.py:161: in test_invalid_horizon_rejected_before_generation
+    trial(model, horizon=horizon)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+___________ test_invalid_horizon_rejected_before_generation[float] ____________
+tests\test_world_counterfactual_isolation.py:161: in test_invalid_horizon_rejected_before_generation
+    trial(model, horizon=horizon)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+___________ test_invalid_horizon_rejected_before_generation[string] ___________
+tests\test_world_counterfactual_isolation.py:161: in test_invalid_horizon_rejected_before_generation
+    trial(model, horizon=horizon)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+___________ test_invalid_horizon_rejected_before_generation[budget] ___________
+tests\test_world_counterfactual_isolation.py:161: in test_invalid_horizon_rejected_before_generation
+    trial(model, horizon=horizon)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+_________________ test_invalid_relations_are_atomic[not-list] _________________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+________________ test_invalid_relations_are_atomic[not-object] ________________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+______________ test_invalid_relations_are_atomic[missing-field] _______________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+________________ test_invalid_relations_are_atomic[unknown-id] ________________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+________________ test_invalid_relations_are_atomic[self-edge] _________________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+___________ test_invalid_relations_are_atomic[unsupported-relation] ___________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+_______________ test_invalid_relations_are_atomic[extra-field] ________________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+_____________ test_invalid_relations_are_atomic[duplicate-source] _____________
+tests\test_world_counterfactual_isolation.py:178: in test_invalid_relations_are_atomic
+    trial(model, relations=relations)
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+______ test_explicit_physics_configuration_uses_same_prediction_wrapper _______
+tests\test_world_counterfactual_isolation.py:189: in test_explicit_physics_configuration_uses_same_prediction_wrapper
+    out = trial(model, relations=flee())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:20: in trial
+    assert callable(method), "W3_API_MISSING: 缺少隔离反事实入口"
+E   AssertionError: W3_API_MISSING: 缺少隔离反事实入口
+E   assert False
+E    +  where False = callable(None)
+=========================== short test summary info ===========================
+FAILED tests/test_world_counterfactual_isolation.py::test_relation_changes_prediction_without_committing_any_model_state
+FAILED tests/test_world_counterfactual_isolation.py::test_no_conditions_matches_normal_generate_on_an_independent_model
+FAILED tests/test_world_counterfactual_isolation.py::test_existing_live_forecast_still_verifies_at_its_original_target_tick
+FAILED tests/test_world_counterfactual_isolation.py::test_outputs_inputs_and_repeated_trials_do_not_alias_the_source
+FAILED tests/test_world_counterfactual_isolation.py::test_failed_prediction_only_mutates_discarded_branch
+FAILED tests/test_world_counterfactual_isolation.py::test_simulator_and_its_alias_are_neither_copied_nor_read
+FAILED tests/test_world_counterfactual_isolation.py::test_core_uses_same_model_without_database_writes
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_horizon_rejected_before_generation[bool]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_horizon_rejected_before_generation[zero]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_horizon_rejected_before_generation[negative]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_horizon_rejected_before_generation[float]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_horizon_rejected_before_generation[string]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_horizon_rejected_before_generation[budget]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[not-list]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[not-object]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[missing-field]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[unknown-id]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[self-edge]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[unsupported-relation]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[extra-field]
+FAILED tests/test_world_counterfactual_isolation.py::test_invalid_relations_are_atomic[duplicate-source]
+FAILED tests/test_world_counterfactual_isolation.py::test_explicit_physics_configuration_uses_same_prediction_wrapper
+22 failed, 1 passed, 9 warnings in 1.11s
+
+CASE reuse_live_baseline
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____ test_relation_changes_prediction_without_committing_any_model_state _____
+tests\test_world_counterfactual_isolation.py:45: in test_relation_changes_prediction_without_committing_any_model_state
+    assert frozen(model) == before, "W3_LIVE_STATE_CHANGED: 试演污染真实状态"
+E   AssertionError: W3_LIVE_STATE_CHANGED: 试演污染真实状态
+E   assert b'\x80\x04\x9...\x00\x00uuuu.' == b'\x80\x04\x9...uf\x94}\x94u.'
+E
+E     At index 3 diff: b'Y' != b'\xa3'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_counterfactual_isolation.py::test_relation_changes_prediction_without_committing_any_model_state
+1 failed in 0.51s
+
+CASE copy_hidden_simulator
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_simulator_and_its_alias_are_neither_copied_nor_read ___________
+tests\test_world_counterfactual_isolation.py:126: in test_simulator_and_its_alias_are_neither_copied_nor_read
+    out = trial(model, relations=flee())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:21: in trial
+    return method(**kwargs)
+           ^^^^^^^^^^^^^^^^
+lingshu\world\world_model.py:459: in counterfactual
+    baseline_model = deepcopy(self)
+                     ^^^^^^^^^^^^^^
+C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:162: in deepcopy
+    y = _reconstruct(x, memo, *rv)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:259: in _reconstruct
+    state = deepcopy(state, memo)
+            ^^^^^^^^^^^^^^^^^^^^^
+C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:136: in deepcopy
+    y = copier(x, memo)
+        ^^^^^^^^^^^^^^^
+C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:221: in _deepcopy_dict
+    y[deepcopy(key, memo)] = deepcopy(value, memo)
+                             ^^^^^^^^^^^^^^^^^^^^^
+C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:143: in deepcopy
+    y = copier(memo)
+        ^^^^^^^^^^^^
+tests\test_world_counterfactual_isolation.py:114: in __deepcopy__
+    raise AssertionError("W3_HIDDEN_WORLD_COPIED: 读取了模拟器隐藏真相")
+E   AssertionError: W3_HIDDEN_WORLD_COPIED: 读取了模拟器隐藏真相
+=========================== short test summary info ===========================
+FAILED tests/test_world_counterfactual_isolation.py::test_simulator_and_its_alias_are_neither_copied_nor_read
+1 failed in 0.53s
+
+CASE drop_core_relations
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_core_uses_same_model_without_database_writes ______________
+tests\test_world_counterfactual_isolation.py:142: in test_core_uses_same_model_without_database_writes
+    assert out["horizon"] == 2 and out["assumptions"] == flee(), "W3_CORE_CONDITIONS_DROPPED"
+E   AssertionError: W3_CORE_CONDITIONS_DROPPED
+E   assert (2 == 2 and [] == [{'source': '...get': 'goal'}]
+E
+E     Right contains one more item: {'source': 'actor', 'relation': 'flee', 'target': 'goal'}
+E     Use -v to get more diff)
+=========================== short test summary info ===========================
+FAILED tests/test_world_counterfactual_isolation.py::test_core_uses_same_model_without_database_writes
+1 failed, 9 warnings in 0.89s
+
+CASE mark_candidate_committed
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____ test_relation_changes_prediction_without_committing_any_model_state _____
+tests\test_world_counterfactual_isolation.py:51: in test_relation_changes_prediction_without_committing_any_model_state
+    assert out["committed"] is False, "W3_CANDIDATE_MARKED_COMMITTED"
+E   AssertionError: W3_CANDIDATE_MARKED_COMMITTED
+E   assert True is False
+=========================== short test summary info ===========================
+FAILED tests/test_world_counterfactual_isolation.py::test_relation_changes_prediction_without_committing_any_model_state
+1 failed in 0.45s

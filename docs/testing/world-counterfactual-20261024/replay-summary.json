@@ -1,0 +1,336 @@
+{
+  "windows": {
+    "python": "3.12.10",
+    "platform": "Windows",
+    "sqlite": "3.49.1",
+    "baseline": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+    "guard_sha256": "78a0c63abeb325e70f0c2b807332be621d361eec3f175823486a5884079d198e",
+    "records": [
+      {
+        "case": "fixed",
+        "ok": true,
+        "returncode": 0,
+        "passed": 23,
+        "failed_tests": [],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [],
+        "expected_assertion": "",
+        "pytest_summary": "23 passed, 9 warnings in 0.91s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "0b8554430132d7c030ee80f22f8b5e60efddd044413c11010191d2d5a75495f1",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      },
+      {
+        "case": "baseline",
+        "ok": true,
+        "returncode": 1,
+        "passed": 1,
+        "failed_tests": [
+          "test_core_uses_same_model_without_database_writes",
+          "test_existing_live_forecast_still_verifies_at_its_original_target_tick",
+          "test_explicit_physics_configuration_uses_same_prediction_wrapper",
+          "test_failed_prediction_only_mutates_discarded_branch",
+          "test_invalid_horizon_rejected_before_generation[bool]",
+          "test_invalid_horizon_rejected_before_generation[budget]",
+          "test_invalid_horizon_rejected_before_generation[float]",
+          "test_invalid_horizon_rejected_before_generation[negative]",
+          "test_invalid_horizon_rejected_before_generation[string]",
+          "test_invalid_horizon_rejected_before_generation[zero]",
+          "test_invalid_relations_are_atomic[duplicate-source]",
+          "test_invalid_relations_are_atomic[extra-field]",
+          "test_invalid_relations_are_atomic[missing-field]",
+          "test_invalid_relations_are_atomic[not-list]",
+          "test_invalid_relations_are_atomic[not-object]",
+          "test_invalid_relations_are_atomic[self-edge]",
+          "test_invalid_relations_are_atomic[unknown-id]",
+          "test_invalid_relations_are_atomic[unsupported-relation]",
+          "test_no_conditions_matches_normal_generate_on_an_independent_model",
+          "test_outputs_inputs_and_repeated_trials_do_not_alias_the_source",
+          "test_relation_changes_prediction_without_committing_any_model_state",
+          "test_simulator_and_its_alias_are_neither_copied_nor_read"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_relation_changes_prediction_without_committing_any_model_state",
+          "test_no_conditions_matches_normal_generate_on_an_independent_model",
+          "test_existing_live_forecast_still_verifies_at_its_original_target_tick",
+          "test_outputs_inputs_and_repeated_trials_do_not_alias_the_source",
+          "test_failed_prediction_only_mutates_discarded_branch",
+          "test_simulator_and_its_alias_are_neither_copied_nor_read",
+          "test_core_uses_same_model_without_database_writes",
+          "test_invalid_horizon_rejected_before_generation[bool]",
+          "test_invalid_horizon_rejected_before_generation[zero]",
+          "test_invalid_horizon_rejected_before_generation[negative]",
+          "test_invalid_horizon_rejected_before_generation[float]",
+          "test_invalid_horizon_rejected_before_generation[string]",
+          "test_invalid_horizon_rejected_before_generation[budget]",
+          "test_invalid_relations_are_atomic[not-list]",
+          "test_invalid_relations_are_atomic[not-object]",
+          "test_invalid_relations_are_atomic[missing-field]",
+          "test_invalid_relations_are_atomic[unknown-id]",
+          "test_invalid_relations_are_atomic[self-edge]",
+          "test_invalid_relations_are_atomic[unsupported-relation]",
+          "test_invalid_relations_are_atomic[extra-field]",
+          "test_invalid_relations_are_atomic[duplicate-source]",
+          "test_explicit_physics_configuration_uses_same_prediction_wrapper"
+        ],
+        "expected_assertion": "",
+        "pytest_summary": "22 failed, 1 passed, 9 warnings in 1.11s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "f328599573397309fe88a7b29a404840647c6604467aa22854500ebb319b19d1",
+          "lingshu/core/core.py": "c192b9c3207adb7f1e62874a8416281582952e8de813cbfec198c0201cf6f1d4"
+        }
+      },
+      {
+        "case": "reuse_live_baseline",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "expected_assertion": "W3_LIVE_STATE_CHANGED",
+        "pytest_summary": "1 failed in 0.51s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "75b118aeff413c28fb762bbe9f6672c6c5572a6d68e888be75596a7b1d0dbe5d",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      },
+      {
+        "case": "copy_hidden_simulator",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_simulator_and_its_alias_are_neither_copied_nor_read"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_simulator_and_its_alias_are_neither_copied_nor_read"
+        ],
+        "expected_assertion": "W3_HIDDEN_WORLD_COPIED",
+        "pytest_summary": "1 failed in 0.53s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "3db175a42eb7c7e7e7ee62fba64a7da4cf1e07a24e8485025661108fb87432ff",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      },
+      {
+        "case": "drop_core_relations",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_core_uses_same_model_without_database_writes"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_core_uses_same_model_without_database_writes"
+        ],
+        "expected_assertion": "W3_CORE_CONDITIONS_DROPPED",
+        "pytest_summary": "1 failed, 9 warnings in 0.89s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "0b8554430132d7c030ee80f22f8b5e60efddd044413c11010191d2d5a75495f1",
+          "lingshu/core/core.py": "73cf5bee9c71154356df210fd61b5899d5e72431394010eb6ef89bc3d7a740ff"
+        }
+      },
+      {
+        "case": "mark_candidate_committed",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "expected_assertion": "W3_CANDIDATE_MARKED_COMMITTED",
+        "pytest_summary": "1 failed in 0.45s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "849d0f92883dd1483cdac36e514d8d2594619b5ded49ccecb11399591402031a",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      }
+    ]
+  },
+  "linux": {
+    "python": "3.13.12",
+    "platform": "Linux",
+    "sqlite": "3.46.1",
+    "baseline": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+    "guard_sha256": "78a0c63abeb325e70f0c2b807332be621d361eec3f175823486a5884079d198e",
+    "records": [
+      {
+        "case": "fixed",
+        "ok": true,
+        "returncode": 0,
+        "passed": 23,
+        "failed_tests": [],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [],
+        "expected_assertion": "",
+        "pytest_summary": "23 passed, 9 warnings in 1.09s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "0b8554430132d7c030ee80f22f8b5e60efddd044413c11010191d2d5a75495f1",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      },
+      {
+        "case": "baseline",
+        "ok": true,
+        "returncode": 1,
+        "passed": 1,
+        "failed_tests": [
+          "test_core_uses_same_model_without_database_writes",
+          "test_existing_live_forecast_still_verifies_at_its_original_target_tick",
+          "test_explicit_physics_configuration_uses_same_prediction_wrapper",
+          "test_failed_prediction_only_mutates_discarded_branch",
+          "test_invalid_horizon_rejected_before_generation[bool]",
+          "test_invalid_horizon_rejected_before_generation[budget]",
+          "test_invalid_horizon_rejected_before_generation[float]",
+          "test_invalid_horizon_rejected_before_generation[negative]",
+          "test_invalid_horizon_rejected_before_generation[string]",
+          "test_invalid_horizon_rejected_before_generation[zero]",
+          "test_invalid_relations_are_atomic[duplicate-source]",
+          "test_invalid_relations_are_atomic[extra-field]",
+          "test_invalid_relations_are_atomic[missing-field]",
+          "test_invalid_relations_are_atomic[not-list]",
+          "test_invalid_relations_are_atomic[not-object]",
+          "test_invalid_relations_are_atomic[self-edge]",
+          "test_invalid_relations_are_atomic[unknown-id]",
+          "test_invalid_relations_are_atomic[unsupported-relation]",
+          "test_no_conditions_matches_normal_generate_on_an_independent_model",
+          "test_outputs_inputs_and_repeated_trials_do_not_alias_the_source",
+          "test_relation_changes_prediction_without_committing_any_model_state",
+          "test_simulator_and_its_alias_are_neither_copied_nor_read"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_relation_changes_prediction_without_committing_any_model_state",
+          "test_no_conditions_matches_normal_generate_on_an_independent_model",
+          "test_existing_live_forecast_still_verifies_at_its_original_target_tick",
+          "test_outputs_inputs_and_repeated_trials_do_not_alias_the_source",
+          "test_failed_prediction_only_mutates_discarded_branch",
+          "test_simulator_and_its_alias_are_neither_copied_nor_read",
+          "test_core_uses_same_model_without_database_writes",
+          "test_invalid_horizon_rejected_before_generation[bool]",
+          "test_invalid_horizon_rejected_before_generation[zero]",
+          "test_invalid_horizon_rejected_before_generation[negative]",
+          "test_invalid_horizon_rejected_before_generation[float]",
+          "test_invalid_horizon_rejected_before_generation[string]",
+          "test_invalid_horizon_rejected_before_generation[budget]",
+          "test_invalid_relations_are_atomic[not-list]",
+          "test_invalid_relations_are_atomic[not-object]",
+          "test_invalid_relations_are_atomic[missing-field]",
+          "test_invalid_relations_are_atomic[unknown-id]",
+          "test_invalid_relations_are_atomic[self-edge]",
+          "test_invalid_relations_are_atomic[unsupported-relation]",
+          "test_invalid_relations_are_atomic[extra-field]",
+          "test_invalid_relations_are_atomic[duplicate-source]",
+          "test_explicit_physics_configuration_uses_same_prediction_wrapper"
+        ],
+        "expected_assertion": "",
+        "pytest_summary": "22 failed, 1 passed, 9 warnings in 1.92s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "f328599573397309fe88a7b29a404840647c6604467aa22854500ebb319b19d1",
+          "lingshu/core/core.py": "c192b9c3207adb7f1e62874a8416281582952e8de813cbfec198c0201cf6f1d4"
+        }
+      },
+      {
+        "case": "reuse_live_baseline",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "expected_assertion": "W3_LIVE_STATE_CHANGED",
+        "pytest_summary": "1 failed in 0.59s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "75b118aeff413c28fb762bbe9f6672c6c5572a6d68e888be75596a7b1d0dbe5d",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      },
+      {
+        "case": "copy_hidden_simulator",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_simulator_and_its_alias_are_neither_copied_nor_read"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_simulator_and_its_alias_are_neither_copied_nor_read"
+        ],
+        "expected_assertion": "W3_HIDDEN_WORLD_COPIED",
+        "pytest_summary": "1 failed in 0.70s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "3db175a42eb7c7e7e7ee62fba64a7da4cf1e07a24e8485025661108fb87432ff",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      },
+      {
+        "case": "drop_core_relations",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_core_uses_same_model_without_database_writes"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_core_uses_same_model_without_database_writes"
+        ],
+        "expected_assertion": "W3_CORE_CONDITIONS_DROPPED",
+        "pytest_summary": "1 failed, 9 warnings in 1.17s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "0b8554430132d7c030ee80f22f8b5e60efddd044413c11010191d2d5a75495f1",
+          "lingshu/core/core.py": "73cf5bee9c71154356df210fd61b5899d5e72431394010eb6ef89bc3d7a740ff"
+        }
+      },
+      {
+        "case": "mark_candidate_committed",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_relation_changes_prediction_without_committing_any_model_state"
+        ],
+        "expected_assertion": "W3_CANDIDATE_MARKED_COMMITTED",
+        "pytest_summary": "1 failed in 0.59s",
+        "source_sha256": {
+          "lingshu/world/world_model.py": "849d0f92883dd1483cdac36e514d8d2594619b5ded49ccecb11399591402031a",
+          "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286"
+        }
+      }
+    ]
+  }
+}
