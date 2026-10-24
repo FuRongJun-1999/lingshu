@@ -27,8 +27,9 @@ lingshu/world/physics.py:2573:R1      # 物理量：对数衰减率 exp(-2πζ/�
 lingshu/world/physics.py:2605:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
 lingshu/world/shade_paint.py:215:R1      # 色调映射：软肩曲线 1-exp(-(v-S)/S)（呈现层光学变换），非时间演化
 # ── 2026-10-22（#859 acquire history 落盘）后重编号：stable_lease.py 222 → 250 ──
+# ── 2026-10-24（#101 state() 现算谓词）后重编号：stable_lease.py 250 → 265 ──
 # 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。
-lingshu/world/stable_lease.py:250:R1      # 既有：手写同核 exp(-γ·t)（与 time_core.cred_factor 同一指数核），未转交统一时间核
+lingshu/world/stable_lease.py:265:R1      # 既有：手写同核 exp(-γ·t)（与 time_core.cred_factor 同一指数核），未转交统一时间核
 
 #
 # ── 2026-10-16（物理仿真深化 + 碰撞箱）后重编号 ──

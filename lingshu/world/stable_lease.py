@@ -151,10 +151,25 @@ class StableLease:
                 "note": "降级作用于状态，不作用于记录——验证历史仍属不可遗忘范畴"}
 
     def state(self, key: str) -> Dict:
+        """租约台账快照：`state` 字段给出**现算**结论（与 `check()` 同谓词）。
+
+        #101（残余事实 2）：旧实现 `out = {"state": lease["state"], ...}` 直接把
+        存储字段当结论返回，**不判过期、不过谓词** ⇒ 同一次返回体里同时给出
+        `state="stable"` 与 `expires_at <= now` 两个互相冲突的字段（实测
+        `expires_at - now = -0.285`，5/5 次复跑一致）。只读 `state()` 而不读
+        `check()` 的调用方，会把已过期租约当成 stable。
+
+        现改为：先经 `_stable_now()`（`check()` / `_acquire_ok()` 的同一谓词）求值，
+        谓词不成立即报 `weak`。**纯读、无副作用**：不改写 `lease["state"]`
+        （改写是 `check()` 的职责，P1-003 的「降级作用于状态」仍由它落）。
+        键集与修前**逐位相同**（#859 守卫钉死），不新增 `reason` 等字段——
+        需要原因文本的调用方仍走 `check()`。
+        """
         lease = self._leases.get(key)
         if lease is None:
             return {"key": key, "state": "unknown"}
-        out = {"key": key, "state": lease["state"],
+        ok, _reason, _extra = self._stable_now(lease)
+        out = {"key": key, "state": lease["state"] if ok else "weak",
                 "t_verified": round(lease["t_verified"], 1),
                 "ttl": lease["ttl"], "confidence": lease["confidence"],
                 # issue #19：expires_at = **实际**失效时刻（min(TTL, 弱阈值触发)），

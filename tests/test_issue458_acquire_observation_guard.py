@@ -90,10 +90,19 @@ def test_weak_confidence_blocks_acquire_without_check():
 
 
 def test_expired_reaquire_requires_evidence_to_revive():
-    """超时后 acquire 判 weak；带证据 renew 才可恢复（#101 的方向不被本件放宽）。"""
-    lea = StableLease()
-    lea.acquire("k", ttl=0.0)
-    assert lea.acquire("k", ttl=0.0)["state"] == "weak"
+    """超时后 acquire 判 weak；带证据 renew 才可恢复（#101 的方向不被本件放宽）。
+
+    ★ 构造方式重登记（2026-10-24，随 #101「state() 现算」落地）：
+      原实现用 `ttl=0.0` 图省事造「一定超时」的租约。但 `ttl=0.0` 是**退化值**：
+      任何时刻都有 `expires_at <= now`，于是「已超时」与「永远不可能 stable」
+      被混为一谈。`state()` 改为与 `check()` 同谓词现算后，这条退化构造下
+      即便带证据续期也只能得到 weak —— 那是对 ttl=0 的正确结论，不是放宽证据闸。
+      改为「正常 TTL + 把 t_verified 摆到超龄」（本文件既有的 `_forced` 手法），
+      断言链与判据**逐条不变**：acquire→weak、无证据 renew→weak、带证据→stable。
+      判别力仍在：删掉 `renew` 的 evidence 分支 ⇒ 第二条断言当场变红。
+    """
+    lea = _forced(3700.0)                     # t_verified = now − 3700（> TTL=3600）
+    assert lea.acquire("k", ttl=TTL)["state"] == "weak"
     assert lea.renew("k")["state"] == "weak", "无证据续期不得复活"
     assert lea.renew("k", evidence=True)["state"] == "stable"
 
