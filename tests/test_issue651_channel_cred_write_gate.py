@@ -166,21 +166,35 @@ def test_g2_update_unknown_channel_does_not_disturb_legal_accounting():
 # ---------------------------------------------------------------- G3 防过修
 
 def test_g3_default_channels_full_chain_zero_regression():
-    """G3：六条默认通道 record/credibility/state/reset 全链零回归（对齐 A7 基线）。"""
+    """G3：六条默认通道 record/credibility/state/reset 全链零回归（对齐 A7 基线）。
+
+    #119 ② 更新（2026-10-24）：本条原锚 `a == 12.0`（= 2 + 10.0）、`credibility
+    == 12.0/19.0`，锚的是**改前「无遗忘」的累加语义**——即 A7 基线。lingshu
+    #119 ② 修复**有意**给 `_update` 加入折扣 Beta（遗忘）：更新前先
+    `a ← PRIOR_A + α(a - PRIOR_A)`（α=0.95 弱 / 0.7 强），使后验有上界而非
+    无限累加。于是「1 次弱命中后再 1 次弱未命中」时，先前的命中被折一次：
+        a = PRIOR_A + α(12 - PRIOR_A) = 2 + 0.95×10 = 11.5
+        （b 不变：第二次更新前 b 仍在先验 2，折扣对先验无影响 ⇒ 2 + 5 = 7）
+    本锚随之更新为 11.5 / (11.5+7)。**本条的判据本意未被削弱**——它验的是
+    「#651 的写入闸不误伤六条默认通道的全链语义（record/state/reset/known）」，
+    而不是「禁止一切数值变化」；#651 的零回归在**当时**成立，数值被 #119 ②
+    有意改动属正常演进而非回归。G3 其余断言（hits/misses/known/单通道 reset/
+    全量 reset/registry 集合）逐字未动。
+    """
     reg = ChannelCredibilityRegistry()
     for ch in DEFAULT_CHANNELS:
         reg.record_hit(ch, conf=1.0)
         reg.record_miss(ch, conf=0.5)
         st = reg.channel_state(ch)
-        assert st["a"] == pytest.approx(12.0), (ch, st)   # 2 + 10.0
-        assert st["b"] == pytest.approx(7.0), (ch, st)    # 2 + 5.0
+        assert st["a"] == pytest.approx(11.5), (ch, st)   # 2 + 0.95*(12-2)（#119 ② 折扣）
+        assert st["b"] == pytest.approx(7.0), (ch, st)    # 2 + 5.0（折扣对先验无影响）
         assert st["hits"] == 1 and st["misses"] == 1
         assert st["known"] is True
-        assert reg.credibility(ch) == pytest.approx(12.0 / 19.0)   # A7: 0.631579
+        assert reg.credibility(ch) == pytest.approx(11.5 / 18.5)   # 修前 A7: 0.631579
     # 单通道 reset 只复位该通道
     reg.reset("audio")
     assert reg.channel_state("audio") == _prior_state("audio")
-    assert reg.channel_state("visual")["a"] == pytest.approx(12.0)
+    assert reg.channel_state("visual")["a"] == pytest.approx(11.5)
     # 无参全量复位不变
     reg.reset()
     for ch in DEFAULT_CHANNELS:

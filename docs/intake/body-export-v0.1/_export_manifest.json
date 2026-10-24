@@ -32,7 +32,7 @@
     {
      "file": "channel_credibility.py",
      "src": "aeis.channel_credibility",
-     "sha256": "79c23ecf74623077",
+     "sha256": "b154d62c8754ae15",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,

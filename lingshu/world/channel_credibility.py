@@ -216,6 +216,19 @@ class ChannelCredibilityRegistry:
         anchor_w = min(anchor_w, 6.0)
         n_eff = conf * N_BASE * anchor_w
         st = self._state.setdefault(channel, {"a": PRIOR_A, "b": PRIOR_B, "hits": 0.0, "misses": 0.0})
+        # #119 ②：折扣 Beta（遗忘）——α 至此才真正是「保持率」，而不只是算权重的参数。
+        #   旧实现只做 `st["a"] += n_eff` 累加、**从不折旧** ⇒ 历史越长越难被发现失灵：
+        #   issue 实测 50 次强命中后要连续 117 次强未命中才降权，且该数随命中次数 N
+        #   **线性增长**，文件头承诺的「降权 / 检修」于是只在最不需要的新通道上灵敏。
+        #   本件按 issue 修复建议 2 加入折扣：更新前先 `a ← PRIOR_A + α(a - PRIOR_A)`
+        #   （b 同理）⇒ 后验有上界 `a* = PRIOR_A + n_eff/(1-α)`，降权所需未命中次数
+        #   与 N 解耦（即 issue 守卫判据「不超过某个与 N 无关的上界 K」）。
+        #   边界（如实标注）：折扣**只施加于本次被更新的通道**（issue 原文「每次更新
+        #   前先执行」指该通道），不遍历全部通道；`hits`/`misses` 仍为**累计计数**
+        #   ——它们是观测面、不是后验伪样本量，不参与折扣（#119 往返判据要求这两个
+        #   字段 save/load 后逐字段相等）。
+        st["a"] = PRIOR_A + alpha * (st["a"] - PRIOR_A)
+        st["b"] = PRIOR_B + alpha * (st["b"] - PRIOR_B)
         if hit:
             st["a"] += n_eff
             st["hits"] += 1.0
