@@ -475,7 +475,7 @@
     {
      "file": "hex_query.py",
      "src": "aeis.hex_query",
-     "sha256": "2717cd646df02ec4",
+     "sha256": "d131b775c565f233",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -742,7 +742,7 @@
    "lingshu/core/core.py": "bec07819468eab69",
    "lingshu/nn/hex_composite.py": "111796661833fe52",
    "lingshu/nn/hex_gen.py": "eaee7d3ff6191edd",
-   "lingshu/nn/hex_query.py": "8143c596b26d4a70",
+   "lingshu/nn/hex_query.py": "d131b775c565f233",
    "lingshu/world/scene_simulator.py": "8128017c055a8f6d",
    "lingshu/world/seven_layer_loop.py": "5fbc5033eb3f2d42",
    "lingshu/world/world3d.py": "41a18b0b0e93506f"
