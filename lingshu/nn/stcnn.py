@@ -128,6 +128,8 @@ def frame_diff(frames, threshold=0.08):
     `frame_rise`（每个亮灭周期只保留亮起前沿）。
     """
     arr = np.asarray(frames, dtype=np.float32)
+    if arr.ndim == 4:                        # #256：(T,H,W,C) → 灰度
+        arr = arr.mean(axis=-1)              #   与 frames_to_voxel:20-21 同口径
     diffs = np.abs(np.diff(arr, axis=0))
     return (diffs > threshold).astype(np.float32)
 
@@ -140,6 +142,8 @@ def frame_rise(frames, threshold=0.08):
     的沿，这里只保留正向变化（亮起前沿）；`detect_period` 的前沿检测正是按此设计的。
     """
     arr = np.asarray(frames, dtype=np.float32)
+    if arr.ndim == 4:                        # #256：(T,H,W,C) → 灰度
+        arr = arr.mean(axis=-1)              #   与 frames_to_voxel:20-21 同口径
     rise = np.clip(np.diff(arr, axis=0), 0.0, None)
     rise[rise <= threshold] = 0.0
     return rise
