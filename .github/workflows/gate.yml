@@ -9,7 +9,7 @@ name: gate
 # 运行器：**GitHub 托管**（ubuntu-latest）——公开仓免费；**绝不用自托管 runner**
 #   （fork PR 可在自托管 runner 上执行任意代码 ⇒ 等于把内网/凭据暴露给任何提 PR 的人）。
 # 权限：最小化 contents: read（本 workflow 只读仓、不回写）。
-# 编码：PYTHONUTF8=1（对齐仓工作纪律第 15 条——命令执行统一 UTF-8，规避 GBK）。
+# 编码：PYTHONUTF8=1（对齐仓工作纪律「统一 UTF-8」——命令执行统一 UTF-8，规避 GBK）。
 #
 # 测试面实况（2026-10-08 本机实测，证据见报告）：
 #   · **脚本式**（PASS/FAIL + 退出码）：test_brain_store / test_wm_verify_unobserved /

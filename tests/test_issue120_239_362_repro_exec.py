@@ -13,7 +13,7 @@
     `PYTHONUTF8`/`PYTHONIOENCODING`、stdout 为管道 ⇒ stdout 按 cp936 编码，而模块文档含
     `⇒`(U+21D2) / `⚠`(U+26A0) 等 GBK **编不出**的字符 ⇒
     `UnicodeEncodeError: 'gbk' codec can't encode character '\u26a0' …` 退出码 1、stdout 0 字节。
-    判据：仓工作纪律第 15 条「全仓文本与路径一律 UTF-8…控制台乱码属显示层（取用走 python）」
+    判据：仓工作纪律「全仓文本与路径一律 UTF-8…控制台乱码属显示层（取用走 python）」
     ——显示层乱码可接受，**崩溃不可**；故入口把自身 stdio 显式切 UTF-8（`_force_utf8_stdio`）。
     断言：G120 子进程按 cp936 管道跑 `--help` ⇒ 退出码 0、stdout 可按 UTF-8 解码且含 `⇒`/`⚠`。
 
@@ -23,7 +23,7 @@
     `C:\\Users\\…\\repro_issue_xxx\\repro_issue_local.py` 原样透出；
     `grep -rn selftest .github/workflows/*.yml` 仅命中 `pr-lint.yml`（check_pr_title）。
     判据：① 读数要可复现须钉住被测代码与依赖版本（经验标定＝本件 #239）；
-          ② 路径口径＝仓工作纪律第 15 条「公开面路径写相对路径，本机绝对路径以中性占位代」；
+          ② 路径口径＝仓工作纪律「公开面路径写相对路径，本机绝对路径以中性占位代」；
           ③ 自检入口须真被 CI 执行——先例＝`pr-lint.yml` 跑 `check_pr_title.py --selftest`
              （同族盲区教训：不被执行的判据等于不存在）。
     断言：G239a 端到端报告含「被测提交」行（40 位十六进制 sha）与「依赖」行（numpy 版本）；
