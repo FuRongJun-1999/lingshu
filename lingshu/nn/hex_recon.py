@@ -115,10 +115,17 @@ def regions_to_connections(regions: List[Dict],
 # ==================== 复原(从关系描述渲染) ====================
 
 def reconstruct(connections: Dict) -> np.ndarray:
-    """从关系连接描述 → 重建图像。"""
+    """从关系连接描述 → 重建图像。
+
+    #305：铺 bbox 前按面积**降序**排序（大区域先铺、小区域后铺）——旧实现按
+    `extract_regions` 的扫描序逐个覆盖，物体占住 (0,0) 时先于背景入列、被背景
+    整块盖掉（实测 kept=0/25）。面积是连接描述里**已有的**字段，排序不引入
+    新语义；同面积保持原相对顺序（稳定排序）。"""
     w, h = connections["image_size"]
     img = np.full((h, w, 3), 128, dtype=np.uint8)  # 默认背景
-    for conn in connections["connections"]:
+    conns = sorted(connections["connections"],
+                   key=lambda c: c["size"][0] * c["size"][1], reverse=True)
+    for conn in conns:
         cx = int(conn["center"][0] * w)
         cy = int(conn["center"][1] * h)
         sw = int(conn["size"][0] * w)

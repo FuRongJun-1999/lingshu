@@ -215,7 +215,14 @@ def kernel_center_surround() -> np.ndarray:
 def extended_prior_family(n: int) -> List[np.ndarray]:
     """n 个互异白箱先验核(每核唯一,无对称重复)——扩容的单元先验族。
     构成:六方向 edge(六边形天然各向同性完备)+smooth+粗平滑+laplacian
-    +center-surround;超出时按序加微噪变体(仍互异)。"""
+    +center-surround;超出时按序加微噪变体(仍互异)。
+
+    #940：微噪变体的**互异性是断言并保证的**，不是声明——旧实现对常幅基核
+    （如均匀 smooth）加均匀微噪再 L1 归一，扰动被归一化**恒坍缩**回原核：
+    实测 idx 16/26/36 与 idx 6 逐位相同（「互异」声明不实；#339 修 grow_kernel
+    回绕时探针已见 fam dup: 16/6, 26/6, 36/6）。修法：变体扰动**逐档加强**
+    （×10 递进）并在落位前 `array_equal` 复核，仍重合才落位——互异由构造保证。
+    """
     fam: List[np.ndarray] = []
     for d in range(6):                                   # 六方向 edge
         k = np.zeros(7, dtype=np.float32)
@@ -230,9 +237,17 @@ def extended_prior_family(n: int) -> List[np.ndarray]:
     fam.append(kernel_center_surround())
     i = 0
     while len(fam) < n:                                  # 微噪变体(互异)
-        base = fam[i % 10].copy() + (i + 1) * 1e-3
-        fam.append(base / (np.abs(base).sum() + 1e-9))
+        base = fam[i % 10].copy()
+        # #940：扰动逐档加强（1e-3 → 1e-2 → 1e-1 …）；均匀底核的均匀扰动会被
+        # L1 归一坍缩 ⇒ 只扰动**非均匀分量**（对均匀核改为单点脉冲式偏移）。
+        amp = 1e-3 * (10 ** (i // 10))
+        cand = base.copy()
+        cand[1 + (i % 6)] += amp
+        cand = cand / (np.abs(cand).sum() + 1e-9)
         i += 1
+        if any(np.array_equal(cand, ex) for ex in fam):
+            continue                                     # 仍重合 ⇒ 换下一档
+        fam.append(cand)
     return fam[:n]
 
 

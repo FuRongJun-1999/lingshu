@@ -103,8 +103,8 @@ def test_real_repo_shipped_baseline_exit_zero():
     # #614：exit 0 现在还要求基线全有效——无 stale、无行数漂移
     assert data["stale_baseline_entries"] == []
     assert data["drifted_baseline_entries"] == []
-    # 基线里确实登记了真实零引用模块（否则规则可能失效）
-    assert data["baseline_entries"] >= 1
+    # #305 后零引用债务清零：基线为空是合法终态（#23 的目标正是还清这笔债）
+    assert data["baseline_entries"] >= 0
 
 
 def test_shipped_baseline_file_has_provenance():
@@ -112,32 +112,53 @@ def test_shipped_baseline_file_has_provenance():
     assert "基线来源" in text and "HEAD" in text
     entries, errors = C.parse_baseline(text)
     assert errors == []
-    assert entries, "基线清单为空"
+    # #305 后债务清零：基线 0 条目是合法终态（空 dict，非解析故障）
+    assert entries == {}
 
 
 # --------------------------------------------------- C 定点变异：删一个模块 ⇒ 红
 def test_mutation_drop_one_baseline_entry_turns_red(tmp_path):
-    """★ 定点变异：从基线清单删掉一个模块 ⇒ 守卫必红并点名该模块。"""
-    data0 = payload(run_lint("--json"))
-    assert data0["exit_code"] == 0
-    assert data0["zero_ref_modules"], "真实仓库没有零引用模块，无法做变异"
-    victim = data0["zero_ref_modules"][0]["file"]
+    """★ 定点变异：基线漏掉一个零引用模块 ⇒ 守卫必红并点名该模块。
 
-    lines = [z["file"] + "\t" + str(z["lines"]) for z in data0["zero_ref_modules"]
-             if z["file"] != victim]
+    #305 后真实仓零引用债务清零 ⇒ 变异改在合成仓上做（--repo-root/--module-dir/
+    --tests-dir 指向 tmp 树），机制判据不变。"""
+    root = make_repo(tmp_path / "repo", ["orphan.py"],
+                     "def test_a():\n    assert alpha\n")
+    baseline = root / "tools" / "coverage_map_lint_baseline.txt"
+    baseline.parent.mkdir(parents=True, exist_ok=True)
+    baseline.write_text("lingshu/pkg/orphan.py\t1\n", encoding="utf-8")
+
+    res0 = run_lint("--repo-root", str(root),
+                    "--module-dir", str(root / "lingshu" / "pkg"),
+                    "--tests-dir", str(root / "tests"),
+                    "--baseline", str(baseline), "--json")
+    assert payload(res0)["exit_code"] == 0
+
     mutated = tmp_path / "dropped_baseline.txt"
-    mutated.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    res = run_lint("--baseline", str(mutated), "--json")
-    data = payload(res)
-    assert res.returncode == 1, "基线删掉一个模块后守卫竟然没红：%r" % data
-    assert victim in {z["file"] for z in data["new_zero_ref"]}, (victim, data["new_zero_ref"])
+    mutated.write_text("", encoding="utf-8")
+    res1 = run_lint("--repo-root", str(root),
+                    "--module-dir", str(root / "lingshu" / "pkg"),
+                    "--tests-dir", str(root / "tests"),
+                    "--baseline", str(mutated), "--json")
+    data1 = payload(res1)
+    assert res1.returncode == 1, "基线删掉一个模块后守卫竟然没红：%r" % data1
+    assert "lingshu/pkg/orphan.py" in {z["file"] for z in data1["new_zero_ref"]}, (
+        data1["new_zero_ref"])
 
 
 def test_mutation_empty_baseline_turns_red(tmp_path):
+    """空基线 + 存在零引用模块（合成仓）⇒ 红（该模块被点名）。
+
+    #305 后真实仓零引用债务清零 ⇒ 本变异改在合成仓上做（真实仓上空基线是
+    合法终态，exit 0）。"""
+    root = make_repo(tmp_path / "repo", ["orphan.py"],
+                     "def test_a():\n    assert alpha\n")
     empty = tmp_path / "empty.txt"
     empty.write_text("", encoding="utf-8")
-    res = run_lint("--baseline", str(empty))
+    res = run_lint("--repo-root", str(root),
+                   "--module-dir", str(root / "lingshu" / "pkg"),
+                   "--tests-dir", str(root / "tests"),
+                   "--baseline", str(empty))
     assert res.returncode == 1
     assert "新零引用模块" in res.stdout.decode("utf-8")
 
