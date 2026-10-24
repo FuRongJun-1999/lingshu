@@ -1,0 +1,87 @@
+.................................  PASS A1 正常闭环（预测后确有新观测）→ 照旧计分（total=1）
+  PASS A2 快照晚于预测 ⇒ 不标 stale_observation
+  PASS A3 前置事实：obs_tick > pred_tick
+.  PASS B1 快照不晚于预测 ⇒ 不计分：total=0、pending=1
+  PASS B2 自证命中被拦下：hits=0（旧码此处 hits=1、distance=0）
+  PASS B3 每条 detail 标 pending、hit=None（不冒充 verified）
+  PASS B4 标 stale_observation（可审计：为何不计分）
+  PASS B5 报出快照与预测时刻（obs_tick=pred_tick=1）
+.  PASS C1 前置：有一条预测与一份非空快照
+  PASS C2 旧码口径：该快照会让预测自证命中（hits=1）——守卫捕获真实缺陷
+  PASS C3 修复后同一状态 hits=0（自证命中被拦）
+.  PASS D1 从未 perceive ⇒ total=0 + no_observation
+  PASS D2 无快照（None）不误标 stale_observation
+  PASS D3 空观测轮：快照晚于预测仍为有效快照 → 全 pending、不标 no_observation
+.  PASS E1 verify 重复调用结论稳定（时刻判据不随调用次数漂移）
+.== A 组：正常闭环照旧计分 ==
+  PASS A1 正常闭环（预测后确有新观测）→ 照旧计分（total=1）
+  PASS A2 快照晚于预测 ⇒ 不标 stale_observation
+  PASS A3 前置事实：obs_tick > pred_tick
+== B 组：陈旧快照不计分 ==
+  PASS B1 快照不晚于预测 ⇒ 不计分：total=0、pending=1
+  PASS B2 自证命中被拦下：hits=0（旧码此处 hits=1、distance=0）
+  PASS B3 每条 detail 标 pending、hit=None（不冒充 verified）
+  PASS B4 标 stale_observation（可审计：为何不计分）
+  PASS B5 报出快照与预测时刻（obs_tick=pred_tick=1）
+== C 组：旧码口径对照 ==
+  PASS C1 前置：有一条预测与一份非空快照
+  PASS C2 旧码口径：该快照会让预测自证命中（hits=1）——守卫捕获真实缺陷
+  PASS C3 修复后同一状态 hits=0（自证命中被拦）
+== D 组：兼容性 ==
+  PASS D1 从未 perceive ⇒ total=0 + no_observation
+  PASS D2 无快照（None）不误标 stale_observation
+  PASS D3 空观测轮：快照晚于预测仍为有效快照 → 全 pending、不标 no_observation
+== E 组：可重复 ==
+  PASS E1 verify 重复调用结论稳定（时刻判据不随调用次数漂移）
+
+===== SUMMARY 15/15 通过 =====
+VERDICT=PASS（issue #348 守卫：verify 核对快照时刻，陈旧快照不自证计分）
+.  PASS A1 真实观测自然触发生长（假设数=1）
+  PASS A2 假设不是物理实体（从未被观测）
+  PASS A3 真实 actor 照旧计分且未命中（hit=False distance=2.0）
+  PASS A4 未观测假设标 pending 且 hit 不为 True（不再自证命中）
+  PASS A5 计分只含已验证：total=1 hits=0 hit_rate=0.0（pending=1）
+  PASS C1 假设节点仍在 nodes 里（未被删）
+  PASS C2 假设的条件空间仍在 conditions 里
+  PASS C3 seek(A→H) 关系边仍在 edges 里
+.  PASS B1 遮蔽前真实实体已进图
+  PASS B2 此前见过后被遮蔽者 → pending，不参与计分（坑 b）
+  PASS B3 计分项只含本轮真观测者
+  PASS B4 陈旧记忆留在图中且位置未被改写（不删不改）
+  PASS B5 其 last_seen 停在被遮蔽前（故 last_seen==tick 不可作判据）
+  PASS B6 对照组：仍被观测者（a）照旧计分命中
+.  PASS D1 从未 perceive：total=0 + no_observation（不回退 nodes）
+  PASS D2 无节点无预测：total=0 + no_observation + 空 details
+  PASS D3 空观测轮：全部 pending、total=0、快照在场（不标 no_observation）
+.== A 组：报告人场景（未观测假设不计分）+ C 组（假设留图） ==
+  PASS A1 真实观测自然触发生长（假设数=1）
+  PASS A2 假设不是物理实体（从未被观测）
+  PASS A3 真实 actor 照旧计分且未命中（hit=False distance=2.0）
+  PASS A4 未观测假设标 pending 且 hit 不为 True（不再自证命中）
+  PASS A5 计分只含已验证：total=1 hits=0 hit_rate=0.0（pending=1）
+  PASS C1 假设节点仍在 nodes 里（未被删）
+  PASS C2 假设的条件空间仍在 conditions 里
+  PASS C3 seek(A→H) 关系边仍在 edges 里
+== B 组：坑 b（此前见过、后来被遮蔽的真实实体） ==
+  PASS B1 遮蔽前真实实体已进图
+  PASS B2 此前见过后被遮蔽者 → pending，不参与计分（坑 b）
+  PASS B3 计分项只含本轮真观测者
+  PASS B4 陈旧记忆留在图中且位置未被改写（不删不改）
+  PASS B5 其 last_seen 停在被遮蔽前（故 last_seen==tick 不可作判据）
+  PASS B6 对照组：仍被观测者（a）照旧计分命中
+== D 组：兼容性（快照缺失 / 空观测轮） ==
+  PASS D1 从未 perceive：total=0 + no_observation（不回退 nodes）
+  PASS D2 无节点无预测：total=0 + no_observation + 空 details
+  PASS D3 空观测轮：全部 pending、total=0、快照在场（不标 no_observation）
+
+===== SUMMARY 17/17 通过 =====
+VERDICT=PASS（issue #1 守卫：未观测预测不计分；假设/陈旧记忆留图）
+..........................................
+84 passed, 58 warnings in 45.67s
+
+MANIFEST
+ORIGINS origin-only=3 src-only=61 both=0 neither=0
+SUMMARY manifests=2 entries=64 match=64 mismatch=0 bytes_mismatch=0 missing=0 malformed=0 unparseable=0 exit_code=0
+
+TIME CORE
+exit=0; raw JSON SHA256 9a7e6288b8efc84e79e983c5ca8114b09369afe081d58fdc90f616a6dc845af0

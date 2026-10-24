@@ -31,6 +31,7 @@ from __future__ import annotations
 import inspect
 import math
 import random
+from copy import deepcopy
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
@@ -420,6 +421,66 @@ class UnifiedWorldModel:
     def _reach(self, speed: float) -> float:
         """随机行为可达域（D2：分布稳定可预测）。"""
         return max(self.hit_threshold, speed * 1.5 + self.pad)
+
+    def counterfactual(self, *, horizon: int = 1,
+                       relations: Optional[List[Dict]] = None) -> Dict:
+        """在独立副本中比较关系条件，不提交观测、预测缓存或经验。
+
+        首版只支持已知实体之间的 seek/flee 条件；每个来源最多一条。
+        horizon 限 1..64，作为显式计算预算。副本保留整个模型的派生缓冲和
+        RNG 状态，但屏蔽物理世界（包括指向它的别名）；预测链只读已观测模型
+        和调用方显式配置的物理环境。调用方须串行提供稳定实例，本接口不提供
+        并发事务或通用 Python 沙箱。返回的候选仍未经真实后续观测验证。
+        """
+        if type(horizon) is not int or not 1 <= horizon <= 64:
+            raise ValueError("counterfactual horizon must be an integer in 1..64")
+        if relations is None:
+            relations = []
+        if not isinstance(relations, list):
+            raise ValueError("counterfactual relations must be a list")
+        assumptions = []
+        sources = set()
+        for item in relations:
+            if not isinstance(item, dict) or set(item) != {"source", "relation", "target"}:
+                raise ValueError("counterfactual relation requires source/relation/target only")
+            source, target, relation = item["source"], item["target"], item["relation"]
+            if (not isinstance(source, str) or not isinstance(target, str)
+                    or source not in self.nodes or target not in self.nodes):
+                raise ValueError("counterfactual relation must reference known entity IDs")
+            if source == target or source in sources:
+                raise ValueError("counterfactual relation source must be unique and not its target")
+            if relation not in ("seek", "flee"):
+                raise ValueError("counterfactual relation must be seek or flee")
+            sources.add(source)
+            assumptions.append({"source": source, "relation": relation, "target": target})
+
+        # 复制前不生成/推断：这些操作会改真实缓存、关系和节点行为字段。
+        # memo 同时隔断 world 及其别名，不读取或复制模拟器隐藏真相。
+        baseline_model = deepcopy(self, {id(self.world): None})
+        alternative_model = deepcopy(self, {id(self.world): None})
+        baseline = baseline_model.generate(horizon=horizon)
+        if assumptions:
+            alternative_model.infer_patterns()
+            alternative_model.edges = [e for e in alternative_model.edges if e.source not in sources]
+            for item in assumptions:
+                alternative_model.edges.append(WMEdge(**item, confidence=1.0,
+                                                       evidence="counterfactual_assumption"))
+                alternative_model.nodes[item["source"]].behavior_inferred = item["relation"]
+                alternative_model._patterns.setdefault("behavior_inference", {})[item["source"]] = item["relation"]
+            alternative_model._patterns["relations"] = [e.to_dict() for e in alternative_model.edges]
+        # 条件只覆盖此次候选关系；不再让推断把它们覆写回观测模式。
+        alternative = alternative_model.generate(horizon=horizon, use_patterns=not bool(assumptions))
+        deltas = {}
+        for eid, record in alternative["predictions"].items():
+            before = baseline["predictions"][eid]["predicted"]
+            after = record["predicted"]
+            deltas[eid] = {"position": [after[i] - before[i] for i in range(3)],
+                           "distance": math.dist(before, after)}
+        return deepcopy({"schema": "wm.counterfactual/1", "source_tick": self.tick,
+                         "target_tick": self.tick + horizon, "horizon": horizon,
+                         "provenance": "counterfactual", "verification": "unverified",
+                         "committed": False, "assumptions": assumptions,
+                         "baseline": baseline, "alternative": alternative, "deltas": deltas})
 
     def generate(self, horizon: int = 1, use_patterns: bool = True) -> Dict:
         """生成端口：世界图 → 候选未来（顺序语义外推 + 不确定边界）。

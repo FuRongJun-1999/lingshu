@@ -1,0 +1,276 @@
+{
+  "windows": {
+    "native_generate_control": {
+      "entry": "generate",
+      "live_state_changed": true,
+      "original_target_tick": 8,
+      "current_target_tick": 7,
+      "point": [
+        12.0,
+        1.5,
+        2.0
+      ]
+    },
+    "counterfactual_cases": [
+      {
+        "horizon": 1,
+        "relation": null,
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "distance": 0.0
+        },
+        "verification": "unverified"
+      },
+      {
+        "horizon": 1,
+        "relation": "seek",
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "distance": 0.0
+        },
+        "verification": "unverified"
+      },
+      {
+        "horizon": 1,
+        "relation": "flee",
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          10.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            -2.0,
+            0.0,
+            0.0
+          ],
+          "distance": 2.0
+        },
+        "verification": "unverified"
+      },
+      {
+        "horizon": 3,
+        "relation": "flee",
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          14.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          8.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            -6.0,
+            0.0,
+            0.0
+          ],
+          "distance": 6.0
+        },
+        "verification": "unverified"
+      }
+    ],
+    "limits": "受控已知 ID/关系条件，不是因果识别、真实动作执行或预测精度基准",
+    "baseline": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+    "original_main_native_control": {
+      "entry": "generate",
+      "live_state_changed": true,
+      "original_target_tick": 8,
+      "current_target_tick": 7,
+      "point": [
+        12.0,
+        1.5,
+        2.0
+      ]
+    },
+    "baseline_temp_cleaned": true
+  },
+  "linux": {
+    "native_generate_control": {
+      "entry": "generate",
+      "live_state_changed": true,
+      "original_target_tick": 8,
+      "current_target_tick": 7,
+      "point": [
+        12.0,
+        1.5,
+        2.0
+      ]
+    },
+    "counterfactual_cases": [
+      {
+        "horizon": 1,
+        "relation": null,
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "distance": 0.0
+        },
+        "verification": "unverified"
+      },
+      {
+        "horizon": 1,
+        "relation": "seek",
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "distance": 0.0
+        },
+        "verification": "unverified"
+      },
+      {
+        "horizon": 1,
+        "relation": "flee",
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          12.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          10.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            -2.0,
+            0.0,
+            0.0
+          ],
+          "distance": 2.0
+        },
+        "verification": "unverified"
+      },
+      {
+        "horizon": 3,
+        "relation": "flee",
+        "source_fingerprint_before": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "source_fingerprint_after": "fd34b176ec108e91fe9dbb3ef301eda7eddd630e0599315e273604d7b5a95fd2",
+        "live_forecast_object_preserved": true,
+        "original_forecast_target_tick": 8,
+        "baseline": [
+          14.0,
+          1.5,
+          2.0
+        ],
+        "alternative": [
+          8.0,
+          1.5,
+          2.0
+        ],
+        "delta": {
+          "position": [
+            -6.0,
+            0.0,
+            0.0
+          ],
+          "distance": 6.0
+        },
+        "verification": "unverified"
+      }
+    ],
+    "limits": "受控已知 ID/关系条件，不是因果识别、真实动作执行或预测精度基准",
+    "baseline": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+    "original_main_native_control": {
+      "entry": "generate",
+      "live_state_changed": true,
+      "original_target_tick": 8,
+      "current_target_tick": 7,
+      "point": [
+        12.0,
+        1.5,
+        2.0
+      ]
+    },
+    "baseline_temp_cleaned": true
+  }
+}

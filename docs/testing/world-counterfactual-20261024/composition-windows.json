@@ -1,0 +1,56 @@
+{
+  "revisions": [
+    "870f25be5919bb680825892954cd40e86bcd872d",
+    "d677833242c193832e40987faae3de5c838f36be",
+    "e1d4732df8209fa34961e3809aa7529cc0d2483a"
+  ],
+  "merges": [
+    {
+      "revision": "d677833242c193832e40987faae3de5c838f36be",
+      "base": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+      "path": "lingshu/core/core.py",
+      "returncode": 0
+    },
+    {
+      "revision": "d677833242c193832e40987faae3de5c838f36be",
+      "base": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+      "path": "lingshu/world/wm_simloop.py",
+      "returncode": 0
+    },
+    {
+      "revision": "d677833242c193832e40987faae3de5c838f36be",
+      "base": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+      "path": "lingshu/world/world_model.py",
+      "returncode": 0
+    },
+    {
+      "revision": "e1d4732df8209fa34961e3809aa7529cc0d2483a",
+      "base": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+      "path": "lingshu/core/core.py",
+      "returncode": 0
+    },
+    {
+      "revision": "e1d4732df8209fa34961e3809aa7529cc0d2483a",
+      "base": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+      "path": "lingshu/world/seven_layer_loop.py",
+      "returncode": 0
+    }
+  ],
+  "returncode": 0,
+  "tests": 69,
+  "failures": [],
+  "skipped": [],
+  "sha256_lf": {
+    "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+    "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+    "tests/test_world_counterfactual_isolation.py": "78a0c63abeb325e70f0c2b807332be621d361eec3f175823486a5884079d198e",
+    "tests/test_world_identity_qualification.py": "a0036ff5acef586071575e116c2883607ffd654e6576f649f9bff95ff1fed593",
+    "lingshu/core/core.py": "04965940e7f2c5d0617fde11e1dfa44ef55e4277540b446b218c211eb1d3b30c",
+    "lingshu/world/identity.py": "740e664e06e8dc7b1bacae91f478d2e06a91480b1578be5a5aa74d7ffc6edc7e",
+    "tests/test_world_qualified_feedback.py": "8f91640a5475373b5469cae48050900ddd0e7929200ebae12e9cd14d545a3764",
+    "lingshu/world/world_model.py": "50b380c3038987d7e82cb229985ed034dab93a78aa695a25516f3c67531c79b4",
+    "tests/test_joint_world_branches.py": "55a34e8397e2fe44df64ed67b7a090d116cf6c2d66857b1c218eb2bec510d9c2"
+  },
+  "owned_temp_cleaned": true,
+  "scope": "仅隔离源码组合，非正式 Git/清单/全套验收"
+}
