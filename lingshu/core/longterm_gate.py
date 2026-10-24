@@ -359,7 +359,12 @@ class LongTermMemoryGate:
         imp = (w["novelty"] * novelty + w["trust"] * trust
                + w["d2"] * d2 + w["t2"] * t2
                + w["mention"] * min(1.0, 0.15 * (n + 1) / (n + 2)))  # log 平滑近似
-        imp = max(0.0, min(1.0, imp))
+        # #459：`max(0.0, min(1.0, imp))` 对 NaN / +inf **不生效**（`min(1.0, nan)`
+        # 返回 1.0）⇒ 坏输入被判为 imp=1.0 ≥ LONG_TERM_THRESHOLD，任意快照都能
+        # 进长期层并 `protect_node`（不可遗忘）。改用 core 既有闸：非有限回落
+        # 下界 0.0（落情境层），有限值口径不变。函数内导入，避免 core↔gate 循环。
+        from .core import _finite_clamp
+        imp = _finite_clamp(imp, 0.0, 1.0)
         if imp >= self.LONG_TERM_THRESHOLD:
             layer = "long_term"
         elif imp >= self.KNOWLEDGE_THRESHOLD:

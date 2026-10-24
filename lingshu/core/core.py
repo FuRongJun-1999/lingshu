@@ -13728,7 +13728,11 @@ class SpacetimeMemoryEngine:
                       0.30 * connection_drift + 0.15 * prediction_error)
         if d_norm is None:
             return 0.0
-        dn = max(0.0, min(1.0, d_norm))
+        # #459：改用 `_finite_clamp`——`max(0.0, min(1.0, x))` 对 NaN / +inf
+        # **不生效**（Python `min(1.0, nan)` 返回 1.0），坏样本被钳到**上界** 1.0
+        # （fail-open），信息差恒顶满。本闸非有限回落区间下界 0.0；有限输入口径
+        # 不变（值域内原样、越界仍钳到 [0,1]）。
+        dn = _finite_clamp(d_norm, 0.0, 1.0)
         self._gap_history.append({"ts": time.time(), "d_norm": dn})
         if len(self._gap_history) > 100:
             self._gap_history = self._gap_history[-100:]
