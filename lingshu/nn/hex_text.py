@@ -91,18 +91,50 @@ def _draw_object(img: np.ndarray, shape: str, color: str,
     return (cx, cy)
 
 
+#: 场景可放置物体的**结构容量上限**（#194）。位置取自 3×3 象限，
+#: 可用位置标签由 `POS_WORDS` 给死：r0..r8 共 9 个（中央/中心 同指 r4）。
+#: 超过 9 个物体时「无放回抽样」必然取不到空位 ⇒ 不存在可行解。
+MAX_OBJECTS = 9
+
+#: 单次取位的抽样上限（#194 兜底）。n_objects <= MAX_OBJECTS 时拒绝采样
+#: 期望次数有界，此上限只用于把 RNG 退化情形变成显式错误，而不是永久挂起。
+_MAX_POS_DRAWS = 1000
+
+
 def make_multimodal_scene(rng: np.random.Generator, size: int = 48,
                           n_objects: int = 1) -> Tuple[np.ndarray, Dict]:
-    """1-2 物体场景+中文描述。返回 (image, {labels, description, clauses})。"""
+    """1-2 物体场景+中文描述。返回 (image, {labels, description, clauses})。
+
+    #194：物体位置取自 3×3=9 个象限（`POS_WORDS` 仅有 r0..r8），
+    因此 ``n_objects`` 的**结构容量上限是** ``MAX_OBJECTS``（=9）。
+    旧实现在 n_objects>9 时进入 ``while True`` 无放回抽样、永远取不到空位，
+    调用方无限挂起且没有任何报错。现按「先判可行性、再进采样」处置：
+    参数不可行时**显式抛 ValueError**，可行时才进循环（并保留抽样上限兜底）。
+    本改动**不改数值行为**：n_objects <= 9 的既有调用路径逐字未动。
+    """
+    if not isinstance(n_objects, (int, np.integer)) or isinstance(n_objects, bool):
+        raise ValueError("n_objects 必须是整数，收到 %r" % (n_objects,))
+    if n_objects < 1:
+        raise ValueError("n_objects 必须 >= 1，收到 %d" % (n_objects,))
+    if n_objects > MAX_OBJECTS:
+        raise ValueError(
+            "n_objects=%d 超过结构容量上限 %d：位置取自 3×3 象限，"
+            "可用标签仅 r0..r8（POS_WORDS），无放回抽样不存在第 %d 个空位。 "
+            "如需更多物体，需先扩展象限网格与 POS_WORDS（改数值行为）。"
+            % (n_objects, MAX_OBJECTS, n_objects))
     img = (rng.random((size, size, 3)) * 25).astype(np.uint8)
     used_pos = set()
     clauses, objs = [], []
     for _ in range(n_objects):
-        while True:
+        for _draw in range(_MAX_POS_DRAWS):
             qy, qx = int(rng.integers(3)), int(rng.integers(3))
             if (qy, qx) not in used_pos:
                 used_pos.add((qy, qx))
                 break
+        else:
+            raise RuntimeError(
+                "#194：连续 %d 次抽样未取到空位（已占 %d/%d）——参数可行时不应发生，"
+                "请检查传入的 rng 是否退化。" % (_MAX_POS_DRAWS, len(used_pos), MAX_OBJECTS))
         shape = SHAPES[rng.integers(3)]
         color = COLORS[rng.integers(3)]
         pos = f"r{qy * 3 + qx}"
