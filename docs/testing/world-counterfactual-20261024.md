@@ -52,8 +52,10 @@ python -X utf8 tools/time_core_lint.py --json
 python -X utf8 tools/testing/replay_world_branches.py --revisions 870f25be5919bb680825892954cd40e86bcd872d d677833242c193832e40987faae3de5c838f36be e1d4732df8209fa34961e3809aa7529cc0d2483a --output <新输出目录>
 ```
 
-安装项目 .[full,dev] 后在仓根运行；组合引用固定本地提交，缺对象时先获取对应贡献分支。相关回归文件与完整命令保存在 source-provenance.json，逐条输出、基线及变异原文在同名证据目录。公开日志只归一化工作区前缀、换行和行尾空白，原文保留本地。使用契约见[固定验证提交说明](https://github.com/STARDUSTLC666/lingshu/blob/870f25be5919bb680825892954cd40e86bcd872d/docs/world_counterfactual.md)。
+安装项目 .[full,dev] 后在仓根运行；组合引用固定本地提交，缺对象时先获取对应贡献分支。相关回归文件与完整命令保存在 source-provenance.json，逐条输出、基线及变异原文在同名证据目录。公开日志只归一化工作区与解释器前缀、换行和行尾空白，原文保留本地。使用契约见[固定验证提交说明](https://github.com/STARDUSTLC666/lingshu/blob/870f25be5919bb680825892954cd40e86bcd872d/docs/world_counterfactual.md)。
 
 判定为部分验证：已验公开 Python/core、真实预测包装链、显式物理环境诊断、成功/异常隔离、原预测后续核验和 core 数据库零写入。真实相机、在线脑/MCP、DSH、机器人、生产观测、完整物理开关全套、大规模性能及并发快照均未测。horizon 1..64 是显式计算预算，不宣称视界标定；复制成本随模型状态内存增长。仅支持可深拷贝的原生模型，扩展连接/自定义代码不属通用沙箱保证。
 
 仅交付 W3 第一增量：不做动作序列执行/搜索、一般因果识别、完整物理分支或跨分支长期学习。未新增运行依赖或生产模块、未改脑端、宿主、CI、门禁阈值或豁免。复用现有模型及预测链，目标仓/bounty 全状态已查重；未见相同隔离 API 交付。维护者技术与理论人审待完成，human review pending。
+
+公开证据维护：仅将一组预期失败变异的堆栈中 5 处本机解释器前缀替换为 <python>，保留文件、行号、断言和失败读数；功能源码、守卫、场景及组合工具字节未改，复用已完成验证。最终完整 CI 以更新后的 PR head 为准。

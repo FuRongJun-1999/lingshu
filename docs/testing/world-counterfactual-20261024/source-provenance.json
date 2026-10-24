@@ -92,5 +92,5 @@
     }
   },
   "composition_tool_sha256_lf": "28062b70c4ab1f23c96f22cb1f11c5c120f0c0cb0204a5a0dd67e062f83d5e7f",
-  "public_normalization": "Only workspace prefixes, line endings and trailing whitespace; raw originals retained locally."
+  "public_normalization": "Only workspace and interpreter prefixes, line endings and trailing whitespace; raw originals retained locally."
 }

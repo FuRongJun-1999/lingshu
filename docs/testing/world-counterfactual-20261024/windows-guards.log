@@ -240,19 +240,19 @@ tests\test_world_counterfactual_isolation.py:21: in trial
 lingshu\world\world_model.py:459: in counterfactual
     baseline_model = deepcopy(self)
                      ^^^^^^^^^^^^^^
-C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:162: in deepcopy
+<python>\Lib\copy.py:162: in deepcopy
     y = _reconstruct(x, memo, *rv)
         ^^^^^^^^^^^^^^^^^^^^^^^^^^
-C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:259: in _reconstruct
+<python>\Lib\copy.py:259: in _reconstruct
     state = deepcopy(state, memo)
             ^^^^^^^^^^^^^^^^^^^^^
-C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:136: in deepcopy
+<python>\Lib\copy.py:136: in deepcopy
     y = copier(x, memo)
         ^^^^^^^^^^^^^^^
-C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:221: in _deepcopy_dict
+<python>\Lib\copy.py:221: in _deepcopy_dict
     y[deepcopy(key, memo)] = deepcopy(value, memo)
                              ^^^^^^^^^^^^^^^^^^^^^
-C:\Users\29022\AppData\Local\Programs\Python\Python312\Lib\copy.py:143: in deepcopy
+<python>\Lib\copy.py:143: in deepcopy
     y = copier(memo)
         ^^^^^^^^^^^^
 tests\test_world_counterfactual_isolation.py:114: in __deepcopy__
