@@ -36,6 +36,10 @@ IMAGE_DOMAINS = {
     "input_modality": ["彩色立绘","线稿","mask","PSD分层"],
 }
 UNASSERTED = "__UNASSERTED__"
+# #138：非法值（不在枚举里 / 类型不对）与「未声明」必须区分——旧实现两者都写成
+# UNASSERTED，于是「写错的条件」与「根本没声明」同 cond_hash，被静默串进同一个桶，
+# 且 canonical_sourced / validate_edges 都无从报出（issue #138）。
+INVALID = "__INVALID__"
 
 # R10 · source/asserted_by 三字段（条件卡 v0.2 §二 声明-求值二分 P0-001 的实装）
 # evaluated=求值器能从像素判定（强验证）；asserted=声明来源（弱验证，可被求值域反驳）
@@ -65,15 +69,33 @@ SYNONYMS = {
 
 
 def canonical_condition(domains: Dict[str, str]) -> Dict:
-    """域取值→同义词归一化→canonical dict(仅合法枚举值,未知→UNASSERTED,键排序)。"""
+    """域取值→(strip)→同义词归一化→canonical dict（键排序）。
+
+    #138（口径变更，如实登记）：三种情形此前**都**落 UNASSERTED、彼此 cond_hash 相同，
+    于是「写错的值」被静默路由进「未声明」的桶（与 P2-001「未声明无可校验」冲突）。
+    现明确区分：
+      · 缺键            → UNASSERTED（未声明，语义不变）；
+      · 合法值（先 strip）→ 规范枚举值；**" 动漫 " 与 "动漫" 同值同 hash**；
+      · 非法值          → INVALID（与未声明**不同** hash，且可被上游报出）。
+    削掉的判别力：旧口径下「非法值」与「未声明」不可分辨；新口径下二者 hash 不同，
+    故依赖「非法值≡未声明」的历史读数会变（仓内无此类调用方，见 tests 回归面）。
+    """
     canon = {}
     for k, allowed in IMAGE_DOMAINS.items():
-        v = domains.get(k, UNASSERTED)
+        if k not in domains:
+            canon[k] = UNASSERTED          # 未声明：语义不变
+            continue
+        v = domains[k]
+        v = v.strip() if isinstance(v, str) else v   # #138：先剥空白再查同义词
         v = SYNONYMS.get(v, v)
-        if v not in allowed:
-            v = UNASSERTED
-        canon[k] = v
+        canon[k] = v if v in allowed else INVALID
     return dict(sorted(canon.items()))
+
+
+def invalid_domains(domains: Dict[str, str]) -> Dict:
+    """#138：返回 {域: 原值}——本次输入里被判为非法（≠未声明）的域。"""
+    canon = canonical_condition(domains)
+    return {k: domains.get(k) for k, v in canon.items() if v == INVALID}
 
 
 def canonical_sourced(domains: Dict[str, str],
@@ -94,6 +116,8 @@ def canonical_sourced(domains: Dict[str, str],
         out[k] = {"value": canon[k], "source": src,
                   "asserted_by": by.get(k) if src == "asserted" else None,
                   "validate": "强验证" if src == "evaluated" else "弱验证"}
+        if canon[k] == INVALID:            # #138：非法值必须可被调用方看见
+            out[k]["invalid"] = domains.get(k)
     return out
 
 
@@ -124,6 +148,13 @@ def validate_edges(domains: Dict[str, str]) -> Dict:
     """
     c = canonical_condition(domains)
     violations = []
+    # #138：非法值优先报出（E0）。它不是「未声明」，也不是「有冲突的读数」——
+    # 而是**输入本身写错了**，此前被折叠成 UNASSERTED 后此函数完全看不见。
+    bad = {k: v for k, v in c.items() if v == INVALID}
+    if bad:
+        violations.append({"edge": "E0_INVALID",
+                           "note": "条件取值不在枚举内（既非合法值，也不等于未声明）",
+                           "domains": {k: domains.get(k) for k in sorted(bad)}})
     im, le, pose, sym = (c["input_modality"], c["line_edge"],
                          c["pose"], c["symmetry"])
     if (im == "线稿" and le == "无线稿"):

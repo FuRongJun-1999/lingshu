@@ -25,7 +25,7 @@
 import math
 from typing import Dict
 
-from .condition_normalize import UNASSERTED
+from .condition_normalize import INVALID, UNASSERTED
 
 # 图像大域 → 部件遮挡映射(常服/裙等覆盖 → 相应部件 occluded)
 CLOTH_OCCLUDES = {
@@ -58,7 +58,10 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
     # 判成 `!= "无遮挡"` ⇒ 同一张图经 canonical_condition 归一后 4 个可见部件被判
     # DEFER，与未归一输入结论相反。判据：`condition_normalize.py:67-76` 的 UNASSERTED
     # 编码「未声明」，卡 v0.2 P0-001「未声明无可校验」——不得据此判「有遮挡」。
-    if occluded == UNASSERTED:
+    # #138：非法 occlusion 取值（INVALID）同样「无从断言遮挡」——若只认 UNASSERTED，
+    # 一个写错的 occlusion 会掉进下方 `occluded != "无遮挡"` ⇒ 被判「有遮挡」DEFER，
+    # 与「未声明」结论相反。二者在此同义（报出非法值的责任在 canonical_sourced/validate_edges）。
+    if occluded in (UNASSERTED, INVALID):
         occluded = "无遮挡"
     # 0) 部件区面积为零/负 ⇒ 无有效区域，条件冲突 REJECT（issue #296）。
     # 旧式 `_fg_ratio` 用 `max(1, part_area)`，零面积时比值退化为前景像素数本身
