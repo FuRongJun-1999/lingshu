@@ -117,6 +117,18 @@ MOTION_KERNEL[0] = -1.0 / 9.0  # 前帧平均（差分 → 变化检测）
 SPATIAL_KERNEL = np.zeros((1, 3, 3), dtype=np.float32)
 SPATIAL_KERNEL[0] = 1.0 / 9.0
 
+# #352 重判（残余）：`moving` 的**强度**阈值。
+# 旧判据 `motion_mag > 0.5` 把阈值加在 motion_mag 上，而 motion_mag = |conv3d|.sum()
+# 是**广延量**（∝ 输出元素数 (T-1)(H-2)(W-2)），于是同一噪声在不同帧尺寸下判定不同：
+# 实测 σ=0.01 在 8×8 上 motion_mag=0.76（刚越阈）、在 128×128 上 296.2；而 σ=1e-4
+# 这种 0.086% 满量程的纯噪声，在 64×64/128×128 上也越 0.5 被判为 moving=True。
+# 现改为**强度量**（每元素平均响应），并与本模块对「运动」的既有定义同量纲：
+# frame_diff 的逐像素阈值 0.08 ÷ MOTION_KERNEL 的 3×3 空间平均面积 9 = 0.0089。
+# 依据：真运动的每元素响应恰为 1.0/9 = 0.1111（满对比度边沿经 3×3 平均），
+# σ=0.01 噪声为 0.0038 —— 阈值 0.0089 对噪声留 2.3× 余量、对真运动留 12.5× 余量，
+# 且跨尺寸稳定（8..128 上噪声 0.0037–0.0042、真运动 0.0159–0.1111）。
+_MOVING_INTENSITY = 0.08 / 9.0
+
 
 # ============ 三、时空原语提取（运动/方向/速度/周期） ============
 def frame_diff(frames, threshold=0.08):
@@ -259,7 +271,7 @@ def extract_spatiotemporal_primitives(frames):
         "direction": motion_direction(centroids),
         "speed": round(motion_speed(centroids), 4),
         "period": period,
-        "moving": bool(motion_mag > 0.5),  # bool()：numpy bool 不满足 is True
+        "moving": bool(motion_mag / motion_feat.size > _MOVING_INTENSITY) if motion_feat.size else False,
         "trajectory_len": len(centroids),
         "t_first": t_first,
         "t_last": t_last,
