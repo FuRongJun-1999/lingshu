@@ -27,7 +27,7 @@ import numpy as np
 
 ALGO = "hex_train-0.1"
 
-from .hex_cnn import DEFAULT_KERNELS, extended_prior_family, hex_conv
+from .hex_cnn import DEFAULT_KERNELS, hex_conv
 
 
 # ==================== 数据加载（CIFAR-10 parquet） ====================
@@ -191,13 +191,9 @@ class HexNet:
                  seed: int = 7):
         self.K, self.M, self.C = n_kernels, n_mix, n_class
         rng = np.random.default_rng(seed)
-        # 白箱可解释初始化：核从**互异**白箱先验族按 i 轮转取（学习=从物理先验出发微调）。
-        # #339：__init__ 与 grow_kernel 必须共用同一族（extended_prior_family）——
-        # 旧实现这里 `i % len(DEFAULT_KERNELS)`、生长处 `K % 5`，两处各取一族且都
-        # 回绕 ⇒ K 越过 5 后生长核与初始核逐元素重复。n_kernels > 族长时仍会回绕
-        # （如实声明），但族长 37 远大于默认 4 与 max_growth=3 的可达范围。
-        family = extended_prior_family(len(DEFAULT_KERNELS) + 32)
-        self.conv = np.stack([family[i % len(family)]
+        names = list(DEFAULT_KERNELS)
+        # 白箱可解释初始化：核从手写核族取（学习=从物理先验出发微调）
+        self.conv = np.stack([DEFAULT_KERNELS[names[i % len(names)]]
                               for i in range(n_kernels)])           # (K,7)
         # 初始化尺度 0.3——信号须活到 logits（0.05 会衰减到 1e-4 梯度消失）
         self.mix = rng.normal(0, 0.3, (n_mix, n_kernels)).astype(np.float64)
@@ -260,18 +256,10 @@ class HexNet:
         return correct / len(x)
 
     def grow_kernel(self):
-        """误差驱动生长：+1 核（互异白箱先验族按 K 轮转——覆盖多样性且确定性可复现，
-        mix 对应列零——初始不影响输出）。
-
-        #339：核源由 `DEFAULT_KERNELS`（5 项）改为 `extended_prior_family(37)`——
-        旧实现 K 超过 5 后 `K % 5` 回绕，新核与已有核逐元素相同（重复核在 forward
-        里被重复计算、同一 map 出现两次，「新分支」失去意义）。扩展族前 10 项为
-        六方向 edge + smooth + 粗平滑 + laplacian + center-surround（含原 5 项语义，
-        见 `hex_cnn.extended_prior_family` 与理论稿 §8.2），轮转确定性不变；族耗尽
-        仍会回绕，但 37 个互异核对默认 `max_growth=3` 的训练远不可达。
-        """
-        family = extended_prior_family(len(DEFAULT_KERNELS) + 32)
-        new_k = family[self.K % len(family)]
+        """误差驱动生长：+1 核（手写核族按 K 轮转——覆盖多样性且确定性可复现，
+        mix 对应列零——初始不影响输出）。"""
+        names = list(DEFAULT_KERNELS)
+        new_k = DEFAULT_KERNELS[names[self.K % len(names)]]
         self.conv = np.vstack([self.conv, new_k[None, :]])
         self.mix = np.hstack([self.mix, np.zeros((self.M, 1), dtype=np.float32)])
         self.K += 1
@@ -391,13 +379,14 @@ def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
         if log_every and step % log_every == 0 and verbose:
             print(f"  [step {step}] D={d:.4f} 死区={dead_zone:.4f} 冻结{sample.size - updates}/{sample.size}")
 
-    # #335：final_D 必须是**最终模型**的损失——旧实现取 `history[-1]["D"]`，那是
-    # 最后一次参数更新**前**测的 d（更新后 d 不再复算），`final_D` 与 `net` 的实际
-    # 状态不一致（实测 2 步训练报 0.676、模型实际 0.636）。现在循环结束后对最终
-    # 模型重测同一口径；`history`（训练过程曲线）语义不动。steps==0 ⇒ 无更新，
-    # 仍回落 d0（与既有「零步无训练后读数」表述一致）。
-    final_D = round(net.loss(x[:batch], y[:batch]), 5) if history else round(d0, 5)
+    # #335: history[-1]["D"] 是「最后一次参数更新之前」的损失，与训练结束时的
+    # 模型不一致（末步更新没有被反映进去）。这里在循环结束后用与 d0 同一口径
+    # 的切片（x[:batch]）对最终模型重算一次，作为 final_D。
+    # 原值保留为 last_step_D，便于追溯「末步日志」与「最终模型」的差值。
+    last_step_D = history[-1]["D"] if history else round(d0, 5)
+    final_D = float(net.loss(x[:batch], y[:batch]))
     return {"algo": ALGO, "dead_zone": round(dead_zone, 5), "final_D": final_D,
+            "last_step_D": last_step_D,
             "steps": len(history), "growths": growths, "reverts": reverts,
             "final_K": net.K, "n_params": net.n_params(),
             "frozen_total": frozen_total,

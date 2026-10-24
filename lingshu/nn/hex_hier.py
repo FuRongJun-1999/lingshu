@@ -258,16 +258,10 @@ def softmax(z: np.ndarray) -> np.ndarray:
     return e / e.sum(axis=-1, keepdims=True)
 
 
-def _logsumexp(z: np.ndarray, axis: int = -1) -> np.ndarray:
-    maximum = z.max(axis=axis, keepdims=True)
-    return np.squeeze(maximum, axis=axis) + np.log(np.exp(z - maximum).sum(axis=axis))
-
-
 def ce_loss(logits: np.ndarray, y: np.ndarray, idx: Dict[str, int]) -> float:
-    """Logit-domain cross entropy: finite wrong logits retain correction signal (#332)."""
-    z = logits - logits.max(axis=1, keepdims=True)
+    p = softmax(logits)
     yi = np.array([idx[v] for v in y])
-    return float((_logsumexp(z) - z[np.arange(len(yi)), yi]).mean())
+    return float(-np.log(p[np.arange(len(yi)), yi] + 1e-12).mean())
 
 
 # ==================== 分层信息差门控训练 ====================
@@ -289,12 +283,12 @@ def train_hier(net: HexHierNet, lat: np.ndarray, labels: Dict[str, np.ndarray],
         sf, cf = net.l2_features(xb)
         logits = net.l3_logits(sf, cf)
         # 物体 CE + 形状辅助 CE(从物体 logits 边缘化:9→3 分组求和)
-        z = logits - logits.max(axis=1, keepdims=True)
-        grouped = z.reshape(len(z), 3, 3)  # shape|color: three contiguous colors per shape
+        p = softmax(logits)
+        p_shape = np.stack([p[:, i * 3:(i + 1) * 3].sum(axis=1)
+                            for i in range(3)], axis=1)   # obj 顺序 shape|color(每形状连续 3 类)
         sh_idx = np.array([shape_idx[v] for v in sb])
         d_obj = ce_loss(logits, ob, obj_idx)
-        true_group = grouped[np.arange(len(sh_idx)), sh_idx]
-        d_shape = float((_logsumexp(z) - _logsumexp(true_group)).mean())
+        d_shape = float(-np.log(p_shape[np.arange(len(sh_idx)), sh_idx] + 1e-12).mean())
         return d_obj + 0.5 * d_shape
 
     d0 = joint_loss(lat[:batch], labels["shape"][:batch], labels["obj"][:batch])
@@ -319,12 +313,13 @@ def train_hier(net: HexHierNet, lat: np.ndarray, labels: Dict[str, np.ndarray],
         curve.append(round(d, 4))
         if verbose and step % 20 == 0:
             print(f"  [step {step}] D_L2+3={d:.4f}")
-    # #335：final_D 取**最终模型**的损失（循环内 d 是该步更新前测的）；steps==0
-    # ⇒ 无更新，回落 d0。`curve`（训练过程曲线）语义不动。
-    final_D = round(joint_loss(lat[:batch], labels["shape"][:batch],
-                               labels["obj"][:batch]), 4) if steps > 0 else round(d0, 4)
-    return {"init_D": round(d0, 4), "final_D": final_D, "curve": curve,
-            "steps": steps}
+    # #335: curve[-1] 是最后一次更新「之前」记录的 D，与最终模型不一致。
+    # 循环结束后按 init_D 同口径（lat[:batch] 切片）对最终模型重算 final_D；
+    # 原值保留为 last_step_D。
+    last_step_D = curve[-1]
+    final_D = float(joint_loss(lat[:batch], labels["shape"][:batch], labels["obj"][:batch]))
+    return {"init_D": round(d0, 4), "final_D": final_D, "last_step_D": last_step_D,
+            "curve": curve, "steps": steps}
 
 
 # ==================== 条件卡校准(零阶)与信息差预测 ====================
