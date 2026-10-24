@@ -519,7 +519,7 @@
     {
      "file": "hex_train.py",
      "src": "aeis.hex_train",
-     "sha256": "9b35a19eeedff125",
+     "sha256": "996c420412ee631c",
      "rewrites": 2,
      "sanitized": 1,
      "patches": 0,
