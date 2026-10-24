@@ -80,3 +80,4 @@ def test_s7_background_word_does_not_leak_into_part_color(bg, color):
 # CI nudge 2026-10-24：本行无功能作用，仅重建提交以产生 pull_request/synchronize 事件。
 # 起因：7 个分支 80 秒内连推，GitHub 合并/丢弃了后几个的 pull_request 事件；
 # close+reopen、同 tree 重推、workflow_dispatch(403 非 admin) 均无效。
+# probe: 证明是 head_sha 级别的抑制，不是 ref 级别
