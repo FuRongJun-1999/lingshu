@@ -364,9 +364,17 @@ def render_relations(parts: List[Dict], size: int = 48, seed: int = 7,
         img += (rng.random(img.shape) * 18).astype(np.uint8)
     if supersample > 1:
         # R44 软边缘：高分辨率渲染→LANCZOS 降采（自动抗锯齿）
+        # #151：本函数的 `size` 是**渲染尺寸**（调用方 `refine_render` 已按
+        # `size*supersample` 传入，见其 docstring「渲染尺寸 = size*supersample」）
+        # ⇒ 降采目标必须是**请求尺寸** `size // supersample`。旧实现 resize 到
+        # `(size, size)`,与渲染尺寸同值 ⇒ 降采是**空操作**：返回图边长仍为
+        # `size*supersample`（size=48/ss=4 ⇒ 192px 而非 48px），抗锯齿亦未发生。
+        # 边界（如实标注）：`log[i]["center"]` 仍是**高分辨率坐标**，与返回图的
+        # 请求坐标系不一致——是否换算属维护者决定（#151 附注），本件不动。
         from PIL import Image as _Im
+        _out = max(1, size // supersample)
         img = np.asarray(_Im.fromarray(img).resize(
-            (size, size), _Im.LANCZOS))
+            (_out, _out), _Im.LANCZOS))
     return img, log
 
 
@@ -677,13 +685,16 @@ def refine_render(parts: List[Dict], size: int = REFINE_MIN_SIZE, seed: int = 7,
         }
 
     if supersample != 1:
-        # ATTR_CALIB_96 是按 96px 渲染口径标定的；supersample≠1 时图像尺度变了，
-        # 该标定不成立 ⇒ 回读不可用（与 48px 同等处置：verifiable=False、
-        # before/after=None、不修正、不声称成功——数值再像也不是可判读数）。
+        # #151 修正后：渲染在 size*supersample 后经 LANCZOS **降采回请求尺寸**
+        # （旧实现降采是空操作、输出尺度为 size*supersample）。故本分支的判据不再是
+        # 「图像尺度变了」，而是：**降采引入的抗锯齿使像素统计与 ATTR_CALIB_96 的
+        # 直接渲染标定不同源** ⇒ 该标定不成立、回读不可用（与 48px 同等处置：
+        # verifiable=False、before/after=None、不修正、不声称成功——数值再像也不是可判读数）。
         return result(f"supersample={supersample}≠1：回读标定口径不符（不修正、不声称成功）",
                       verifiable=False,
-                      note=(f"supersample={supersample}≠1：ATTR_CALIB_96 的 96px 标定"
-                            f"口径不成立，本次读数不可判（不修正、不声称成功）"))
+                      note=(f"supersample={supersample}≠1：经 LANCZOS 降采的图像与"
+                            f"ATTR_CALIB_96 的直接渲染标定不同源，本次读数不可判"
+                            f"（不修正、不声称成功）"))
     if not base["verifiable"]:
         return result(base["note"])
     if cap <= 0:
