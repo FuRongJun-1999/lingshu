@@ -346,6 +346,26 @@ def _consolidated_kernel(name: str, values) -> np.ndarray:
     return k
 
 
+def _json_safe(v):
+    """把 numpy 标量/数组（含嵌套容器）透明转换为 JSON 可序列化类型（#393 残余）。
+
+    np.generic → `.item()`（int64 → int、float32 → float）；ndarray → tolist()；
+    dict/list/tuple 递归。其余类型原样返回——json.dump 对它们的既有语义不变。
+    旧实现把 meta 值原样放进 payload ⇒ `{"epochs": np.int64(8)}` 这类常见形态
+    在 json.dump 处抛 TypeError：临时档虽有清理、旧档无损（#393 主修复的原子
+    性），但 fail-fast 把「可透明转换」的输入也拒了——本助手把该类输入收下。
+    """
+    if isinstance(v, np.generic):
+        return v.item()
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    if isinstance(v, dict):
+        return {k: _json_safe(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_safe(x) for x in v]
+    return v
+
+
 def save_consolidated(kernels: Dict[str, np.ndarray], meta: Dict, path: str) -> str:
     """白箱固化：学完的核参数 + 训练元数据落盘（JSON——可直读可审计）。
 
@@ -377,7 +397,8 @@ def save_consolidated(kernels: Dict[str, np.ndarray], meta: Dict, path: str) -> 
             # #895：algo 亦属结构字段（固化档的算法标识），meta 同名键不覆盖
             payload.setdefault("_meta_%s" % mk, mv)
         else:
-            payload[mk] = mv
+            # #393 残余：meta 值过 _json_safe（numpy 标量/数组透明转换）
+            payload[mk] = _json_safe(mv)
     target = os.path.realpath(path)
     os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
     tmp = os.path.join(os.path.dirname(target), f".lingshu-save.tmp-{os.getpid()}-{uuid.uuid4().hex}")
