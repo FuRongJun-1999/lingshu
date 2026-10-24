@@ -1,0 +1,56 @@
+.............................................                            [100%]
+============================== warnings summary ===============================
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6924: ComponentDiscoveryWarning: [issue156] 组件 'entity_registry' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from entity_registry import EntityRegistry
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6911: ComponentDiscoveryWarning: [issue156] 组件 'semantic_space' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from semantic_space import SemanticSpaceProvider
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6902: ComponentDiscoveryWarning: [issue156] 组件 'attention_policy' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from attention_policy import AttentionPolicy
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6880: ComponentDiscoveryWarning: [issue156] 组件 'prediction_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from prediction_engine import PredictionEngine
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\world\prediction.py:26: ComponentDiscoveryWarning: [issue156] 组件 'spacetime_memory_core' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from spacetime_memory_core import LayeredStore as _LayeredStore
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6856: ComponentDiscoveryWarning: [issue156] 组件 'lifecycle_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from lifecycle_engine import LifecycleEngine
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6827: ComponentDiscoveryWarning: [issue156] 组件 'flywheel_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from flywheel_engine import FlywheelEngine
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6836: ComponentDiscoveryWarning: [issue156] 组件 'self_cognition_engine' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from self_cognition_engine import SelfCognitionEngine
+
+tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+  <workspace>\outputs\world-w1-delivery-20261024\composition-windows\owned-composition-q_h924sw\lingshu\core\core.py:6817: ComponentDiscoveryWarning: [issue156] 组件 'body' 未在受控解析面找到（已查 6 个条目；LINGSHU_COMPONENT_ROOT 未设置；cwd/空串/脚本目录 sys.path 条目已排除）。若确需该组件，请用 LINGSHU_COMPONENT_ROOT 或 PYTHONPATH 显式声明其所在目录。
+    from body import build_default_registry
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+45 passed, 25 warnings in 1.27s
