@@ -92,3 +92,6 @@ def test_307_real_shape_words_still_matched():
             % (text, got["shape"], exp_shape))
         assert got["zone"] == exp_zone, "%r zone=%r 期望 %r" % (
             text, got["zone"], exp_zone)
+# CI nudge 2026-10-24：本行无功能作用，仅重建提交以产生 pull_request/synchronize 事件。
+# 起因：7 个分支 80 秒内连推，GitHub 合并/丢弃了后几个的 pull_request 事件；
+# close+reopen、同 tree 重推、workflow_dispatch(403 非 admin) 均无效。
