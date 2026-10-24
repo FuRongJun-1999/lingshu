@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .hex_text import POS_WORDS, parse_description
+from .hex_text import parse_description
 from .hex_composite import _COLORS_RGB, _paint
 
 ALGO = "hex_gen-0.1"
@@ -252,12 +252,7 @@ def compile_description(text: str) -> Dict:
     segments = [s.strip() for s in re.split(r"[,，、;;；。]+", text) if s.strip()]
     parts, defaults = [], []
     for seg in segments:
-        # #306：先剥背景词再喂 parse_description——窄词表也会从「渐变蓝底」抓到「蓝」
-        seg_scan = seg
-        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
-            if bg_w in seg_scan:
-                seg_scan = seg_scan.replace(bg_w, "")
-        base = parse_description(seg_scan)
+        base = parse_description(seg)
         cl = base[0] if base else {}
         # 开放词汇优先（连接库生长面），回落 hex_text 基础三词
         pos = cl.get("pos")
@@ -267,35 +262,11 @@ def compile_description(text: str) -> Dict:
                 if zcn in seg:
                     pos = ZONE_CN[zcn]
                     break
-        # #306：背景词（白底/灰底/渐变X底/深色底）是**画布**词汇，其中的色字
-        # （白/灰/蓝/粉/绿/深）不得参与部件颜色竞争——「渐变绿底中间有蓝色圆形」
-        # 应得 blue、「白底中间有灰色圆形」应得 gray。先把本子句命中的背景词
-        # 从文本里剥掉，再做开放词表匹配；**纯背景子句**（剥掉背景词后没有
-        # 部件词——形状/颜色/方位皆无）不产部件（「渐变蓝底，左上有红色圆」
-        # 的前半段不该在 r4 生成幻影圆）。
-        seg_parts = seg
-        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
-            if bg_w in seg_parts:
-                seg_parts = seg_parts.replace(bg_w, "")
-        has_part_word = bool(_match_open(seg_parts, OPEN_SHAPES)
-                             or _match_open(seg_parts, OPEN_COLORS)
-                             or (pos is not None)
-                             or cl.get("shape") or cl.get("color") or pos)
-        if pos is None and has_part_word:
-            # 剥掉背景词后才暴露的方位词（如「渐变蓝底中间有圆形」的「中间」）
-            for zcn in sorted(ZONE_CN, key=len, reverse=True):
-                if zcn in seg_parts:
-                    pos = ZONE_CN[zcn]
-                    break
-        given = {"shape": (_match_open(seg_parts, OPEN_SHAPES)
-                           if has_part_word else None) or cl.get("shape"),
-                 "color": _match_open(seg_parts, OPEN_COLORS) or cl.get("color"),
+        given = {"shape": _match_open(seg, OPEN_SHAPES) or cl.get("shape"),
+                 "color": _match_open(seg, OPEN_COLORS) or cl.get("color"),
                  "zone": pos,
                  "pattern": _match_attr(seg, PATTERN_WORDS),
                  "size": _match_attr(seg, SIZE_WORDS)}
-        # #306：纯背景子句（剥掉背景词后无任何部件词）⇒ 不产部件
-        if not has_part_word:
-            continue
         part = {}
         for k, v in given.items():
             if v is None:
@@ -361,7 +332,22 @@ def render_relations(parts: List[Dict], size: int = 48, seed: int = 7,
                     "pattern": pattern, "size": size_attr,
                     "pattern_period": period, "center": (cx, cy)})
     if noise:
-        img += (rng.random(img.shape) * 18).astype(np.uint8)
+        # issue #150：旧实现 `img += (rng.random(img.shape) * 18).astype(np.uint8)` 是
+        # **uint8 原地加** ⇒ 超过 255 的像素按模 256 回绕。噪声幅度 0..17，故凡基色 >237
+        # 的像素都会回绕：白（245）在 noise>=11 时 245+11=256→0，白盘/白底因此出现
+        # 近黑散点（实测 white disk min channel-sum=1、n(sum<100)=35/529；
+        # clean_white 背景 567/9216=6.15%，理论值 (7/18)^3=5.88%）。
+        # 修法：先在 int16 上做**饱和**加法再夹回 0..255 —— 噪声的语义是「亮度微扰」，
+        # 不是模运算；回绕是 uint8 容器的溢出，不是设计。
+        # 判据来源：issue #150 正文（white disk 变黑 / clean_white 背景变黑）；
+        # 仓内无任何守卫或 docstring 把回绕钉为有意行为（`git grep 回绕` 仅命中
+        # hexgen_pack_certify / hex_gen:725 两处**无关**语义）。
+        # 削掉的判别力：基色接近 255 的像素不再出现「亮变暗」；其余颜色（基色 ≤237）
+        # 的逐像素输出**完全不变**（回绕概率为 0，夹取不触发）。rng 抽样次数与顺序未动
+        # ⇒ 同 seed 的噪声序列与旧实现逐位相同。
+        img = np.clip(img.astype(np.int16)
+                      + (rng.random(img.shape) * 18).astype(np.int16),
+                      0, 255).astype(np.uint8)
     if supersample > 1:
         # R44 软边缘：高分辨率渲染→LANCZOS 降采（自动抗锯齿）
         from PIL import Image as _Im
