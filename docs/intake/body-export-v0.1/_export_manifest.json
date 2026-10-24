@@ -231,7 +231,7 @@
     {
      "file": "vprim.py",
      "src": "aeis.vprim",
-     "sha256": "86f3f9649881b300",
+     "sha256": "7ac93f46f950556f",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -721,7 +721,7 @@
   "previous_sha256": {
    "lingshu/world/multiview.py": "9ff083b49d899a0e",
    "lingshu/world/scene_model.py": "06a6086ae7e87497",
-   "lingshu/world/vprim.py": "40c9d7f730314571",
+   "lingshu/world/vprim.py": "7ac93f46f950556f",
    "lingshu/world/wm_simloop.py": "aa84dde49ad8c837",
    "lingshu/world/world3d.py": "7b7527deb009dd70",
    "lingshu/world/world_model.py": "97a0f817684fa51e",

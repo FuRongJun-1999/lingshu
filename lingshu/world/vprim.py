@@ -24,6 +24,77 @@ from typing import Dict, List, Optional, Tuple
 BBox = Tuple[float, float, float, float]  # (x1, y1, x2, y2)
 
 
+# ---------------------------------------------------------------------------
+# 类别编解码（#174）
+#
+# 写侧 `anchor_text()`/`describe()` 把类别拼在 `@(` 之前。类别含空白时（`cell phone`、
+# `traffic light` 这类 COCO/YOLO 常见类名），**裸文本**无法与「类别前的词间空格」
+# 区分：读回侧任何纯正则方案要么截成末词（`phone`），要么贪婪吞掉前缀词
+# （实测把 `帧0 视觉锚点 tree@(...)` 读成 `帧0 视觉锚点 tree`，导致 #211 的
+# 三帧同物体不再合并）。故对**含空白或引号**的类别加双引号并转义；
+# 不含空白时输出逐字不变 ⇒ 既有单词类别与其存档零影响（向后兼容）。
+# ---------------------------------------------------------------------------
+
+def _encode_category(category: str) -> str:
+    """类别 → 锚点文本里的类别段（仅含空白/引号时才加引号）。"""
+    cat = str(category)
+    if (" " in cat) or ("\t" in cat) or ('"' in cat) or ("\\" in cat):
+        return '"' + cat.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return cat
+
+
+def _decode_category(token: str) -> str:
+    """锚点文本里的类别段 → 类别（引号形态去引号并反转义）。"""
+    tok = token.strip()
+    if len(tok) >= 2 and tok.startswith('"') and tok.endswith('"'):
+        body = tok[1:-1]
+        out, i = [], 0
+        while i < len(body):
+            ch = body[i]
+            if ch == "\\" and i + 1 < len(body):
+                out.append(body[i + 1])
+                i += 2
+                continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+    return tok
+
+
+def _category_before(text: str, i: int) -> str:
+    """取 `@(`（位置 `i`）**之前**的类别段；找不到返回空串。
+
+    **线性**回扫（每个字符至多访问常数次），刻意不用可变长正则前缀——
+    旧式 `([\\w\\-]+)@\\(` 在 `'a'*16000` 上平方回溯实测 0.69s，
+    由 `test_world_vprim_guards.test_parse_anchor_is_linear_on_adversarial_input` 钉住。
+
+    两种形态：
+      · **引号形态**（#174 新写出侧）：紧邻 `@(` 的是结束引号 ⇒ 反向找**未转义**的
+        起始引号，其间内容反转义即类别。多词类别只走这一支。
+      · **裸词形态**（既有存档/单词类别）：反向扫到空白或 `@ ( ) ； ; |` 即止。
+    """
+    if i <= 0:
+        return ""
+    if text[i - 1] == '"':
+        j = i - 1
+        while j > 0:
+            j -= 1
+            if text[j] != '"':
+                continue
+            # 判断该引号是否被转义：数它前面连续反斜杠的个数
+            k, n_bs = j - 1, 0
+            while k >= 0 and text[k] == "\\":
+                n_bs += 1
+                k -= 1
+            if n_bs % 2 == 0:                     # 未转义 ⇒ 是起始引号
+                return _decode_category(text[j:i])
+        return ""
+    j = i
+    while j > 0 and not text[j - 1].isspace() and text[j - 1] not in '@()；;|':
+        j -= 1
+    return text[j:i]
+
+
 @dataclass
 class VPrim:
     """视觉原语：语义时空图中的空间锚点。"""
@@ -54,15 +125,23 @@ class VPrim:
         return asdict(self)
 
     def anchor_text(self) -> str:
-        """视觉锚点文本（进记忆/推理链）：cat@(x1,y1,x2,y2)"""
+        """视觉锚点文本（进记忆/推理链）：cat@(x1,y1,x2,y2)
+
+        #174：类别**含空白或引号**时加双引号并转义（`"cell phone"@(...)`）；
+        不含空白时输出**逐字不变**（`cat@(...)`）⇒ 对既有单词类别完全向后兼容。
+        不加引号则读回侧无法把「类别内的空格」与「类别前的词间空格」区分开
+        （实测：贪婪读法会把 `帧0 视觉锚点 tree@(...)` 读成 `帧0 视觉锚点 tree`，
+        使 #211 的三帧同物体不再合并成 1 个）。
+        """
         x1, y1, x2, y2 = [int(v) for v in self.bbox]
-        return f"{self.category}@({x1},{y1},{x2},{y2})"
+        return f"{_encode_category(self.category)}@({x1},{y1},{x2},{y2})"
 
     def describe(self) -> str:
-        """语义描述文本（图像 → 语义描述）：'moon @ (452,84) 64x64 conf=0.52'"""
+        """语义描述文本（图像 → 语义描述）：'moon@(452,84,516,148) 64x64 conf=0.52'"""
         x1, y1, x2, y2 = [int(v) for v in self.bbox]
         w, h = int(x2 - x1), int(y2 - y1)
-        return f"{self.category}@({x1},{y1},{x2},{y2}) {w}x{h} conf={self.confidence:.2f}"
+        return (f"{_encode_category(self.category)}@({x1},{y1},{x2},{y2}) "
+                f"{w}x{h} conf={self.confidence:.2f}")
 
     def __repr__(self) -> str:
         return f"<VPrim {self.describe()}>"
@@ -174,11 +253,27 @@ def count_vprims(vprims: List[VPrim], category: str = None) -> Dict:
 #: 根本没机会进 `parse_anchor`，空间关系表整体静默失效。
 ANCHOR_COORD_PATTERN = r"-?\d+"
 
+#: 锚点**类别段**形态（#174）：**引号形态优先**，退回「词字符/连字符」串。
+#: 引号形态由 `_encode_category` 只对**含空白或引号**的类别写出；单词类别仍走退回支，
+#: 故既有存档与既有输出零影响。读回侧与扫描侧共用本常量 ⇒ 两侧不可能再各自收窄格式
+#: （与 #718 的「单一真源」同一纪律）。
+#: ★ 两支都**有界**（`"(?:[^"\\]|\\.)*"` 由引号界定、`[\w\-]+` 由非词字符界定）——
+#:   刻意不用 `[^...]+` 这类开区间，否则在 `'a'*40000` 之类对抗输入上会平方回溯
+#:   （实测 7.5s，超 1.0s 预算；该线性性由 `test_world_vprim_guards` 钉住）。
+ANCHOR_CATEGORY_PATTERN = r'"(?:[^"\\]|\\.)*"|[\w\-]+'
+
 #: 锚点**扫描形态**：从任意文本里**定位**锚点 token `类别@(x1,y1,x2,y2)`。
-#: 与 `parse_anchor` 共用 `ANCHOR_COORD_PATTERN`（单一真源）。core 的
-#: `_vprim_context_for_claim` 在其惰性导入处取用本常量——**勿**再内联字面量。
+#: 与 `parse_anchor` 共用 `ANCHOR_COORD_PATTERN` / `ANCHOR_CATEGORY_PATTERN`（单一真源）。
+#: core 的 `_vprim_context_for_claim` 在其惰性导入处取用本常量——**勿**再内联字面量。
+#: ★ 宽高段写作 `[-\d]+x[-\d]+`（**不写** `-?\d+x-?\d+`）：后者含 `-?\d+` 子串，
+#:   会让 `ANCHOR_COORD_PATTERN` 在本常量里出现 6 次而非 4 次，破坏 #718 守卫的
+#:   「同源」判据。字符类 `[-\d]+` 同样收负号（#753 的 `-40x-40`），且不含该子串。
+#:   必须收 conf 段：core 传给 `parse_anchor` 的是**匹配片段** `m.group(0)`，
+#:   片段里没有 `conf=` 的话置信度会静默降级为 0.5（本单实测 C 组正是此症）。
 ANCHOR_SCAN_PATTERN = (
-    r"[\w\-]+@\(" + ",".join([ANCHOR_COORD_PATTERN] * 4) + r"\)"
+    r"(?:" + ANCHOR_CATEGORY_PATTERN + r")@\("
+    + ",".join([ANCHOR_COORD_PATTERN] * 4) + r"\)"
+    r"(?:\s+[-\d]+x[-\d]+\s+conf=[0-9]*\.?[0-9]+)?"
 )
 
 
@@ -224,13 +319,9 @@ def parse_anchor(text: str) -> Optional[VPrim]:
         r"(?:\s+-?\d+x-?\d+\s+conf=(?P<conf>[0-9]*\.?[0-9]+))?", text)
     if not m:
         return None
-    i = m.start()
-    j = i
-    while j > 0 and not text[j - 1].isspace() and text[j - 1] not in "@()":
-        j -= 1
-    if j == i:
+    cat = _category_before(text, m.start())
+    if not cat:
         return None
-    cat = text[j:i]
     x1, y1, x2, y2 = (int(g) for g in m.groups()[:4])
     conf = float(m.group("conf")) if m.group("conf") else 0.5
     return VPrim(category=cat, bbox=(x1, y1, x2, y2),
