@@ -11200,6 +11200,16 @@ class SpacetimeMemoryEngine:
         ——只兜这一类可预期降级（**不**用宽 `except`，以免把真实缺陷一并吞掉），
         并如实降级为「未登记」文案（反思链是既有公开 API，登记是新增观测面，
         不得让它反噬主流程）。
+
+        #503：`verification` 形参此前**在函数体内零引用**（只出现在签名行）——
+        签名承诺了一个并不存在的接线，「一级验证是否发现偏差」对终裁结论毫无影响。
+        本件按**审计面**最小接线，**不**接判据：把一级验证的 `deviation` / `detail`
+        **如实记入**终裁返回值（`verification_deviation` / `verification_detail`），
+        使终裁产物与其行为日志（`_archive_reflection` 记的是整个 `verdict`）不再丢失
+        一级验证读数。★**判据逐字不变**：`reversibility` / `needs_designer` / `action`
+        的取值与分支**完全不受** `verification` 影响（判定仍由可逆性 + 影响级给出，
+        #154 词表边界不变；`high` 级仍只记录不阻断）——「终裁不读一级验证」是**已声明
+        的边界**，不是遗漏；接线只补观测面，不补判别力。
         """
         # 可逆性判定（工程代理：行为类型的可逆度）
         # #154：旧实现纯子串匹配 ⇒ 「不删除」「别覆盖」等**否定式**被误判为
@@ -11237,6 +11247,10 @@ class SpacetimeMemoryEngine:
             "reversibility": reversibility,
             "needs_designer": needs_designer,
             "action": ("本次反思范围内可处理（可逆/半可逆）"),
+            # #503：一级验证读数**审计面**如实记录（不改上方任何判据字段的取值）。
+            # 见 docstring 边界段：终裁判据不读 verification，此处只补观测面。
+            "verification_deviation": (verification or {}).get("deviation"),
+            "verification_detail": (verification or {}).get("detail"),
         }
         if needs_designer:
             # #130 路 B：按 code 直查 + 登记待办（只记录不阻断）。
