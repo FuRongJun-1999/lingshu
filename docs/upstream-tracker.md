@@ -14,7 +14,7 @@
 |---|---|---|---|
 | **脑** | [`FuRongJun-1999/dsh-memory`](https://github.com/FuRongJun-1999/dsh-memory) | 认知图引擎（可安装的包依赖，不 fork） | `lingshu/world/brain_store.py` 的 MCP 对接面（`cg(op=read)` 召回/`limit→k`/`spatial.coords3d`/`stg` 状态槽位）；`tests/test_brain_store.py` 复跑 |
 | **灵** | [`FuRongJun-1999/CommonTrustProtocol`](https://github.com/FuRongJun-1999/CommonTrustProtocol) | 智能论 · 共同信任协议（理论层真源） | `docs/theory/` 的引用与术语一致性 |
-| **身** | 私有（未公开） | 身体侧件由本仓**单向引入**并落 `docs/intake/` | 引入批次与 `docs/intake/**` 登记一致性 |
+| **身** | **无外部上游**（已模块化入本仓：`lingshu` 包 core / world / nn / gen） | 曾经「单向引入并落 `docs/intake/`」的过程已结束；现为本仓自有面，不随上游漂移 | 无（自有面）。`docs/intake/**` 的批次记录仅作**历史**，不再产生同步项 |
 
 ## 登记格式（机器可读）
 
