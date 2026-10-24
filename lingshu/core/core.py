@@ -5348,10 +5348,18 @@ class LayeredStore:
         # 不顺手扩大改动面）；受保护件既不计入 `doomed` 也不删其关联边。
         # 谓词直传入口（`node_id` + `tags`）与 `decay_cycle` 同款，判据本体同一段。
         c = self.conn.cursor()
-        c.execute("SELECT id, tags FROM nodes WHERE layer='self' AND tags LIKE ? "
-                  "ORDER BY rowid DESC", ("%self_snapshot%",))
-        rows = c.fetchall()
-        if len(rows) <= keep:
+        # #201 残留③：选面从**单标签**扩到**两类自动快照**——旧实现只选
+        # `self_snapshot`，而 `update_trust_state` 落的 `trust_snapshot` 永不入选
+        # （实测 prune(5) 后 trust_snapshot 恒 50 条不动）。keep 按**各标签分别**
+        # 生效（不是两类合计），故 self_snapshot 的既有上界语义按条数不变。
+        rows = []
+        for _tag in ("self_snapshot", "trust_snapshot"):
+            c.execute("SELECT id, tags FROM nodes WHERE layer='self' AND tags LIKE ? "
+                      "ORDER BY rowid DESC", ("%" + _tag + "%",))
+            _r = c.fetchall()
+            if len(_r) > keep:
+                rows.extend(_r[keep:])
+        if not rows:
             return 0
         # #769 ②（治理列写面补角色闸）：SELF 层在 `IMMUTABLE_LAYERS` 内——`delete_node`
         # 对 SELF 行一律返回 `False`，而本方法此前**零角色判据**直接 `DELETE` ⇒
@@ -5372,13 +5380,16 @@ class LayeredStore:
                 "#769 prune_self_snapshots 拒绝：role=%s 无权回收自我层快照"
                 "（SELF 属不可遗忘层，与 delete_node 同判据）——本次跳过 %d 条候选，"
                 "零删除；如需回收请以 PRIMARY 身份执行。"
-                % (self.role.value, len(rows) - keep),
+                % (self.role.value, len(rows)),
                 RuntimeWarning, stacklevel=2)
             return 0
         protected = set(self.get_protected_nodes())
         # keep 保留的是**最近** keep 条（rowid 降序前缀）；保护件在淘汰候选里跳过。
         doomed = []
-        for nid, tags_json in rows[keep:]:
+        # #201 残留③：`rows` 此时已是**各标签超出 keep 的候选**（选面处已按标签
+        # 各切 `[keep:]`）——此处**不得再切** `[keep:]`。旧实现 `rows` 是全量
+        # 有序列表，故原写法正确；选面改动后若沿用原写法会二次切片、几乎不删。
+        for nid, tags_json in rows:
             try:
                 _tags = json.loads(tags_json) if tags_json else []
             except (ValueError, TypeError):
@@ -8199,6 +8210,12 @@ class SpacetimeMemoryEngine:
     #: （同类的状态变更历史钳制）同族；经验标定（#201 修复轮；理论章节追不到）。
     SELF_SNAPSHOT_MAX = 200
 
+    #: 信任状态快照有界保留上界（lingshu #201 残留②）。`update_trust_state` 每次
+    #: 调用新建一条 `trust_snapshot`（importance=0.85）——修前只有 `add_node`、
+    #: **无任何回收面**（实测 400 轮 → 400 条，无上界）。取值与同族
+    #: `SELF_SNAPSHOT_MAX` 同档；经验标定（#201 修复轮；理论章节追不到）。
+    TRUST_SNAPSHOT_MAX = 200
+
     #: `self_check` 的环枚举上限（lingshu #252）。`cycle_details` 只取 `cycles[:5]`，
     #: 故枚举到 5 条即可满足自检；旧实现无上限，稠密 SCC 使枚举耗时/内存随环数
     #: 指数增长（issue 实测 11 节点 13.69s / 335 万条 / 3 GB）。经验标定（#252 修复
@@ -8562,6 +8579,10 @@ class SpacetimeMemoryEngine:
                 "自我认知", "信任状态观测", (time.time(), time.time()+3600), "协议实例运行中"),
             importance=0.85, confidence=1.0, layer=MemoryLayer.SELF, tags=["trust_snapshot"])
         self.store.add_node(snapshot)
+        # #201 残留②：信任状态快照同样**有界保留**——旧实现只有 add_node、
+        # 无任何回收面（实测 400 轮后 trust_snapshot 400 条，无上界；对照
+        # self_snapshot 被 SELF_SNAPSHOT_MAX 钳住）。上界取同族 TRUST_SNAPSHOT_MAX。
+        self.store.prune_self_snapshots(self.TRUST_SNAPSHOT_MAX)
         return snapshot
 
     # ==================== v1.11 知识飞轮（FLYWHEEL-REV1） ====================
