@@ -61,14 +61,15 @@ def test_missing_color_defaults_are_logged():
 # ---------------------------------------------------------------- ④ #307 现状锁定
 
 @pytest.mark.parametrize("text,got_shape", [
-    ("中心有蓝色菱形", "heart"),      # #307：'心' 被方位语境劫持（现状如实锁定）
-    ("右下方有蓝色菱形", "square"),   # '方' 被方位语境劫持（现状）
+    ("中心有蓝色菱形", "diamond"),    # #307 已修：'心' 不再被方位语境劫持
+    ("右下方有蓝色菱形", "diamond"),  # #307 已修：'方' 不再被方位语境劫持
 ])
 def test_position_context_shape_hijack_is_documented(text, got_shape):
-    """#307 的形状劫持**尚未修**（单字形状词的语境规则属词汇表设计取舍）。
+    """#307 已修：方位词里的单字不再被当成形状词（原「现状锁定」用例已反转）。
 
-    本用例把现状如实钉住（防「无意中改了行为却没人知道」）；修 #307 时把
-    这两条的期望反转为 diamond 即可。"""
+    上游本用例原先把 #307 的劫持行为如实钉住，并在 docstring 写明「修 #307 时把
+    这两条的期望反转为 diamond 即可」——PR #909 rebase 到 c8fecc48 时按该指引反转。
+    用例名保留（history 可查），语义已从「锁定缺陷」变为「锁定修复」。"""
     r = c(text)
     assert r["parts"][0]["shape"] == got_shape, (
         "%s 的形状行为变了（%r）——若这是 #307 的修复，请同步反转本用例期望"
@@ -76,14 +77,15 @@ def test_position_context_shape_hijack_is_documented(text, got_shape):
 
 
 def test_pattern_word_stripe_hijack_documented():
-    """'条纹背景上有蓝色菱形' 现得 stripe——'条' 劫持形状（#307 面的现状锁定）。
+    """'条纹背景上有蓝色菱形' 现得 diamond——'条' 不再劫持形状（#307 已修）。
 
-    与「中心/右下方」同族：单字形状词（方/条/心）的语境规则属词汇表设计取舍，
-    #307 修复时一并反转。"""
+    与「中心/右下方」同族：上游原先把该劫持行为钉住并注明「#307 修复时一并反转」，
+    本 PR rebase 时按指引反转；花纹仍应识别为 striped（'条纹' 仍是花纹词）。"""
     r = c("条纹背景上有蓝色菱形")
-    assert r["parts"][0]["shape"] == "stripe", (
-        "'条' 的行为变了：%r——若这是 #307 修复，请同步反转期望为 diamond"
-        % (r["parts"][0]["shape"],))
+    assert r["parts"][0]["shape"] == "diamond", (
+        "'条' 仍劫持形状：%r（#307 应得 diamond）" % (r["parts"][0]["shape"],))
+    assert r["parts"][0]["pattern"] == "striped", (
+        "花纹丢失：'条纹' 仍应识别为 striped，实得 %r" % (r["parts"][0]["pattern"],))
 
 
 # ---------------------------------------------------------------- ⑤ 反向对照

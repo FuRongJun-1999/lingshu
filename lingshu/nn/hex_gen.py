@@ -238,6 +238,24 @@ def _match_attr(seg: str, table: Dict[str, tuple]) -> Optional[str]:
             return key
     return None
 
+# #307：方位词/花纹词/尺寸词里的单字（心/方/条/圆/星/菱）会被形状词表误配
+# （「中心」→heart、「右下方」→square、「条纹」→stripe）。`_match_open` 的最长
+# 匹配解决不了单字碰撞——必须先整词扣掉这些「非形状词」再匹配形状。
+# 「右下方」要整段扣（只扣「右下」会留下「方」仍误配 square），故正则带可选「方」。
+_NONSHAPE_POS = ("左上", "上中", "右上", "左中", "中心", "中央",
+                 "右中", "左下", "下中", "右下", "中间",
+                 "左", "右", "上", "下")
+_NONSHAPE_WORDS = _NONSHAPE_POS + tuple(
+    w for words in PATTERN_WORDS.values() for w in words) + tuple(
+    w for words in SIZE_WORDS.values() for w in words)
+_NONSHAPE_RE = re.compile(
+    "(?:%s)方?" % "|".join(sorted(set(_NONSHAPE_WORDS), key=len, reverse=True)))
+
+
+def _strip_nonshape(seg: str) -> str:
+    """扣掉方位词/花纹词/尺寸词，只留可能承载形状词的正文（#307）。"""
+    return _NONSHAPE_RE.sub("", seg)
+
 
 def compile_description(text: str) -> Dict:
     """中文描述 → {parts: [{shape, color, zone, pattern, size}], defaults_applied}。
@@ -277,7 +295,11 @@ def compile_description(text: str) -> Dict:
         for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
             if bg_w in seg_parts:
                 seg_parts = seg_parts.replace(bg_w, "")
-        has_part_word = bool(_match_open(seg_parts, OPEN_SHAPES)
+        # #307：形状匹配只认「扣掉方位/花纹/尺寸词」后的正文，否则「中心」→心、
+        # 「右下方」→方、「条纹」→条 会被当成用户写的形状词。颜色仍用原句。
+        # 与上游 #306 的 seg_parts 叠加：先剥背景词（#306），再剥方位/花纹/尺寸（#307）。
+        shape_seg = _strip_nonshape(seg_parts)
+        has_part_word = bool(_match_open(shape_seg, OPEN_SHAPES)
                              or _match_open(seg_parts, OPEN_COLORS)
                              or (pos is not None)
                              or cl.get("shape") or cl.get("color") or pos)
@@ -287,7 +309,7 @@ def compile_description(text: str) -> Dict:
                 if zcn in seg_parts:
                     pos = ZONE_CN[zcn]
                     break
-        given = {"shape": (_match_open(seg_parts, OPEN_SHAPES)
+        given = {"shape": (_match_open(shape_seg, OPEN_SHAPES)
                            if has_part_word else None) or cl.get("shape"),
                  "color": _match_open(seg_parts, OPEN_COLORS) or cl.get("color"),
                  "zone": pos,
