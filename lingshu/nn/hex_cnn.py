@@ -215,7 +215,21 @@ def kernel_center_surround() -> np.ndarray:
 def extended_prior_family(n: int) -> List[np.ndarray]:
     """n 个互异白箱先验核(每核唯一,无对称重复)——扩容的单元先验族。
     构成:六方向 edge(六边形天然各向同性完备)+smooth+粗平滑+laplacian
-    +center-surround;超出时按序加微噪变体(仍互异)。"""
+    +center-surround;超出时按序加微噪变体(仍互异)。
+
+    #940：旧变体是 `base + 常数 (i+1)*1e-3` 再 L1 归一。对**全正全等的均匀基核**
+    （`smooth` = 1/7 均匀向量）加常数后仍是均匀向量，L1 归一恒得同一向量、与常数
+    大小无关 ⇒ `extended_prior_family(37)` 里 idx 6/16/26/36 逐位相同（4 个同形、
+    6 对重复），"互异"不实；#339 想消灭的"重复核"以变种复活。
+
+    改为**非均匀、随序号变化的确定性微扰**：
+      · 扰动图案 `pat[k] = (-1)**(k+i) * (k+1)` —— 正负混合、相位随 i 轮转，
+        对均匀基核叠加后必然非均匀（不再坍缩）；
+      · 幅度 `amp = 1e-3 * (1 + i//10)` 每 10 个变体递增一档 —— 同一基核的后续
+        变体（i 与 i+10、i+20…）靠幅度区分，故互异性对任意 n 成立。
+    末尾再做一次**互异性 fail-closed 校验**：真出现同形核直接 `ValueError`，
+    不再静默返回重复核（"声明互异"必须与"实际互异"一致）。
+    """
     fam: List[np.ndarray] = []
     for d in range(6):                                   # 六方向 edge
         k = np.zeros(7, dtype=np.float32)
@@ -230,10 +244,21 @@ def extended_prior_family(n: int) -> List[np.ndarray]:
     fam.append(kernel_center_surround())
     i = 0
     while len(fam) < n:                                  # 微噪变体(互异)
-        base = fam[i % 10].copy() + (i + 1) * 1e-3
+        amp = 1e-3 * (1 + i // 10)
+        pat = np.array([((-1.0) ** (k + i)) * (k + 1) for k in range(7)],
+                       dtype=np.float32)
+        base = fam[i % 10].copy() + amp * pat
         fam.append(base / (np.abs(base).sum() + 1e-9))
         i += 1
-    return fam[:n]
+    fam = fam[:n]
+    # #940 fail-closed：声明互异就必须真的互异
+    for a in range(len(fam)):
+        for b in range(a + 1, len(fam)):
+            if np.array_equal(fam[a], fam[b]):
+                raise ValueError(
+                    f"extended_prior_family({n})：idx {a} 与 idx {b} 逐位相同，"
+                    f"核族互异性被破坏（不应发生，请检查变体构造）")
+    return fam
 
 
 DEFAULT_KERNELS: Dict[str, np.ndarray] = {
