@@ -1,0 +1,10 @@
+........................................................................ [ 80%]
+..................                                                       [100%]
+90 passed, 122 warnings in 7.51s
+
+MANIFEST
+ORIGINS origin-only=3 src-only=61 both=0 neither=0
+SUMMARY manifests=2 entries=64 match=64 mismatch=0 bytes_mismatch=0 missing=0 malformed=0 unparseable=0 exit_code=0
+
+TIME CORE
+exit=0; raw JSON SHA256 9a7e6288b8efc84e79e983c5ca8114b09369afe081d58fdc90f616a6dc845af0

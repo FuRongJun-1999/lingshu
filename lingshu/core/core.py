@@ -10589,7 +10589,7 @@ class SpacetimeMemoryEngine:
         - graph: 认知图（L3）
         - state: 闭环状态
         - configure_action: 配置一个实体的行动目标（params: entity_id, target（目标
-          实体 id 或三维坐标）, step_size, policy, fixed_action）——参数原样转发给
+          实体 id 或三维坐标）, step_size, policy, fixed_action, feedback_policy）——参数原样转发给
           SevenLayerLoop.configure_action；与 L7 **观察策略**（init 的 policy）互不影响
         - clear_action: 关闭行动配置（转发 SevenLayerLoop.clear_action）"""
         p = params or {}
@@ -10681,10 +10681,12 @@ class SpacetimeMemoryEngine:
                 return {"status": "error",
                         "error": "target 必填（目标实体 id 或三维坐标）"}
             try:
+                feedback_options = ({"feedback_policy": p["feedback_policy"]}
+                                    if "feedback_policy" in p else {})
                 cfg = fn(entity_id, p["target"],
                          step_size=p.get("step_size", 1.0),
                          policy=p.get("policy", "predictive"),
-                         fixed_action=p.get("fixed_action", "east"))
+                         fixed_action=p.get("fixed_action", "east"), **feedback_options)
             except (ValueError, TypeError) as e:
                 # C 侧把「未知 policy / 未知动作 / 受控实体不在场 / 不合法步长」定为
                 # fail-closed（ValueError，且配置一律不变）。门面**不改**这条判据，

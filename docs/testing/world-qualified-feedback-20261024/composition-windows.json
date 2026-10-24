@@ -1,0 +1,21 @@
+{
+  "left": "e40acb72002e4ac0177b82b55562fb600c676c45",
+  "right": "17e10c30352662a86c28d21624243a2c7b465bb0",
+  "base": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+  "core_merge_returncode": 0,
+  "returncode": 0,
+  "tests": 45,
+  "failures": [],
+  "skipped": [],
+  "sha256_lf": {
+    "lingshu/core/core.py": "3fc46296d4b892ab780172b64adf60135435aaf1e057f8438158b5936f7f9a1e",
+    "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+    "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+    "lingshu/world/identity.py": "740e664e06e8dc7b1bacae91f478d2e06a91480b1578be5a5aa74d7ffc6edc7e",
+    "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+    "tests/test_world_qualified_feedback.py": "8f91640a5475373b5469cae48050900ddd0e7929200ebae12e9cd14d545a3764",
+    "tests/test_world_identity_qualification.py": "a0036ff5acef586071575e116c2883607ffd654e6576f649f9bff95ff1fed593"
+  },
+  "owned_temp_cleaned": true,
+  "scope": "两项增量守卫的源码组合；不是全套或清单/Git合并验收"
+}

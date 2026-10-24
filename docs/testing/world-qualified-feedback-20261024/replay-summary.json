@@ -1,0 +1,376 @@
+{
+  "windows": {
+    "python": "3.12.10",
+    "platform": "Windows",
+    "sqlite": "3.49.1",
+    "baseline": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+    "guard_sha256": "8f91640a5475373b5469cae48050900ddd0e7929200ebae12e9cd14d545a3764",
+    "records": [
+      {
+        "case": "fixed",
+        "ok": true,
+        "returncode": 0,
+        "passed": 23,
+        "failed_tests": [],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [],
+        "expected_assertion": "",
+        "pytest_summary": "23 passed, 9 warnings in 0.82s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "baseline",
+        "ok": true,
+        "returncode": 1,
+        "passed": 1,
+        "failed_tests": [
+          "test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero",
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit",
+          "test_changed_revision_context_is_not_committed",
+          "test_constant_model_bias_is_revised_against_the_base_forecast",
+          "test_coordinate_goal_is_not_a_new_target_observation",
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically",
+          "test_feedback_requires_its_decision_target_tick[-1]",
+          "test_feedback_requires_its_decision_target_tick[99]",
+          "test_feedback_requires_its_decision_target_tick[None]",
+          "test_feedback_requires_its_decision_target_tick[True]",
+          "test_invalid_target_measurement_never_changes_revision[bool]",
+          "test_invalid_target_measurement_never_changes_revision[huge-int]",
+          "test_invalid_target_measurement_never_changes_revision[inf]",
+          "test_invalid_target_measurement_never_changes_revision[nan]",
+          "test_invalid_target_measurement_never_changes_revision[string]",
+          "test_joint_residuals_remain_separate_and_only_target_error_is_revised",
+          "test_missing_target_forecast_keeps_revision_unqualified",
+          "test_real_collision_is_execution_residual_and_does_not_revise_the_target",
+          "test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success",
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised",
+          "test_stale_target_does_not_consume_a_feedback_sample",
+          "test_vertical_residual_is_measured_but_not_claimed_as_corrected"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_constant_model_bias_is_revised_against_the_base_forecast",
+          "test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero",
+          "test_real_collision_is_execution_residual_and_does_not_revise_the_target",
+          "test_joint_residuals_remain_separate_and_only_target_error_is_revised",
+          "test_stale_target_does_not_consume_a_feedback_sample",
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised",
+          "test_missing_target_forecast_keeps_revision_unqualified",
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit",
+          "test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success",
+          "test_changed_revision_context_is_not_committed",
+          "test_invalid_target_measurement_never_changes_revision[nan]",
+          "test_invalid_target_measurement_never_changes_revision[inf]",
+          "test_invalid_target_measurement_never_changes_revision[bool]",
+          "test_invalid_target_measurement_never_changes_revision[string]",
+          "test_invalid_target_measurement_never_changes_revision[huge-int]",
+          "test_feedback_requires_its_decision_target_tick[None]",
+          "test_feedback_requires_its_decision_target_tick[True]",
+          "test_feedback_requires_its_decision_target_tick[-1]",
+          "test_feedback_requires_its_decision_target_tick[99]",
+          "test_vertical_residual_is_measured_but_not_claimed_as_corrected",
+          "test_coordinate_goal_is_not_a_new_target_observation",
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically"
+        ],
+        "expected_assertion": "",
+        "pytest_summary": "22 failed, 1 passed in 1.21s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "c15d58217999f1df269499ae9f94701bfe592d27cc796ca720e12bfe07a55b81",
+          "lingshu/core/core.py": "c192b9c3207adb7f1e62874a8416281582952e8de813cbfec198c0201cf6f1d4"
+        }
+      },
+      {
+        "case": "reuse_corrected_residual_as_base_bias",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_constant_model_bias_is_revised_against_the_base_forecast"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_constant_model_bias_is_revised_against_the_base_forecast"
+        ],
+        "expected_assertion": "qualified revision retained the half-bias fixed point",
+        "pytest_summary": "1 failed in 0.52s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "dfccadfd1fc03cedddc7f8d7eba22013306aef575f426928ab40a4804544ee3c",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "accept_stale_target_feedback",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_stale_target_does_not_consume_a_feedback_sample"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_stale_target_does_not_consume_a_feedback_sample"
+        ],
+        "expected_assertion": "stale target evidence revised state",
+        "pytest_summary": "1 failed in 0.51s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "ff44c990ca3ac0c4c12e3df7bb667888d9c2e7153cc88dd192d7b559a445830c",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "reuse_old_goal_context",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit"
+        ],
+        "expected_assertion": "old goal evidence revised a new goal",
+        "pytest_summary": "1 failed in 0.50s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "bf19988a8377086cacd3ca03ee826b565dd0869f268c4474f793ed98f2994352",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "score_stale_self_position",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised"
+        ],
+        "expected_assertion": "stale self observation became execution error",
+        "pytest_summary": "1 failed in 0.51s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "13bbae6dfb8fd43e0f4fc29af02ec000191e86c6c55561e0c888cbfc5fd8027c",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "drop_core_feedback_policy",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically"
+        ],
+        "expected_assertion": "core dropped feedback qualification policy",
+        "pytest_summary": "1 failed, 9 warnings in 0.95s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+          "lingshu/core/core.py": "f115411179b191e5aef27b638704b63ed3452d12802f31a1824b18b26734c225"
+        }
+      }
+    ]
+  },
+  "linux": {
+    "python": "3.13.12",
+    "platform": "Linux",
+    "sqlite": "3.46.1",
+    "baseline": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+    "guard_sha256": "8f91640a5475373b5469cae48050900ddd0e7929200ebae12e9cd14d545a3764",
+    "records": [
+      {
+        "case": "fixed",
+        "ok": true,
+        "returncode": 0,
+        "passed": 23,
+        "failed_tests": [],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [],
+        "expected_assertion": "",
+        "pytest_summary": "23 passed, 9 warnings in 1.16s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "baseline",
+        "ok": true,
+        "returncode": 1,
+        "passed": 1,
+        "failed_tests": [
+          "test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero",
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit",
+          "test_changed_revision_context_is_not_committed",
+          "test_constant_model_bias_is_revised_against_the_base_forecast",
+          "test_coordinate_goal_is_not_a_new_target_observation",
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically",
+          "test_feedback_requires_its_decision_target_tick[-1]",
+          "test_feedback_requires_its_decision_target_tick[99]",
+          "test_feedback_requires_its_decision_target_tick[None]",
+          "test_feedback_requires_its_decision_target_tick[True]",
+          "test_invalid_target_measurement_never_changes_revision[bool]",
+          "test_invalid_target_measurement_never_changes_revision[huge-int]",
+          "test_invalid_target_measurement_never_changes_revision[inf]",
+          "test_invalid_target_measurement_never_changes_revision[nan]",
+          "test_invalid_target_measurement_never_changes_revision[string]",
+          "test_joint_residuals_remain_separate_and_only_target_error_is_revised",
+          "test_missing_target_forecast_keeps_revision_unqualified",
+          "test_real_collision_is_execution_residual_and_does_not_revise_the_target",
+          "test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success",
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised",
+          "test_stale_target_does_not_consume_a_feedback_sample",
+          "test_vertical_residual_is_measured_but_not_claimed_as_corrected"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_constant_model_bias_is_revised_against_the_base_forecast",
+          "test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero",
+          "test_real_collision_is_execution_residual_and_does_not_revise_the_target",
+          "test_joint_residuals_remain_separate_and_only_target_error_is_revised",
+          "test_stale_target_does_not_consume_a_feedback_sample",
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised",
+          "test_missing_target_forecast_keeps_revision_unqualified",
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit",
+          "test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success",
+          "test_changed_revision_context_is_not_committed",
+          "test_invalid_target_measurement_never_changes_revision[nan]",
+          "test_invalid_target_measurement_never_changes_revision[inf]",
+          "test_invalid_target_measurement_never_changes_revision[bool]",
+          "test_invalid_target_measurement_never_changes_revision[string]",
+          "test_invalid_target_measurement_never_changes_revision[huge-int]",
+          "test_feedback_requires_its_decision_target_tick[None]",
+          "test_feedback_requires_its_decision_target_tick[True]",
+          "test_feedback_requires_its_decision_target_tick[-1]",
+          "test_feedback_requires_its_decision_target_tick[99]",
+          "test_vertical_residual_is_measured_but_not_claimed_as_corrected",
+          "test_coordinate_goal_is_not_a_new_target_observation",
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically"
+        ],
+        "expected_assertion": "",
+        "pytest_summary": "22 failed, 1 passed in 2.32s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "c15d58217999f1df269499ae9f94701bfe592d27cc796ca720e12bfe07a55b81",
+          "lingshu/core/core.py": "c192b9c3207adb7f1e62874a8416281582952e8de813cbfec198c0201cf6f1d4"
+        }
+      },
+      {
+        "case": "reuse_corrected_residual_as_base_bias",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_constant_model_bias_is_revised_against_the_base_forecast"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_constant_model_bias_is_revised_against_the_base_forecast"
+        ],
+        "expected_assertion": "qualified revision retained the half-bias fixed point",
+        "pytest_summary": "1 failed in 0.75s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "dfccadfd1fc03cedddc7f8d7eba22013306aef575f426928ab40a4804544ee3c",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "accept_stale_target_feedback",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_stale_target_does_not_consume_a_feedback_sample"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_stale_target_does_not_consume_a_feedback_sample"
+        ],
+        "expected_assertion": "stale target evidence revised state",
+        "pytest_summary": "1 failed in 0.74s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "ff44c990ca3ac0c4c12e3df7bb667888d9c2e7153cc88dd192d7b559a445830c",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "reuse_old_goal_context",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit"
+        ],
+        "expected_assertion": "old goal evidence revised a new goal",
+        "pytest_summary": "1 failed in 0.77s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "bf19988a8377086cacd3ca03ee826b565dd0869f268c4474f793ed98f2994352",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "score_stale_self_position",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_stale_self_is_not_scored_but_fresh_target_can_be_revised"
+        ],
+        "expected_assertion": "stale self observation became execution error",
+        "pytest_summary": "1 failed in 0.74s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "13bbae6dfb8fd43e0f4fc29af02ec000191e86c6c55561e0c888cbfc5fd8027c",
+          "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535"
+        }
+      },
+      {
+        "case": "drop_core_feedback_policy",
+        "ok": true,
+        "returncode": 1,
+        "passed": 0,
+        "failed_tests": [
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically"
+        ],
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": [
+          "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically"
+        ],
+        "expected_assertion": "core dropped feedback qualification policy",
+        "pytest_summary": "1 failed, 9 warnings in 1.33s",
+        "source_sha256": {
+          "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+          "lingshu/core/core.py": "f115411179b191e5aef27b638704b63ed3452d12802f31a1824b18b26734c225"
+        }
+      }
+    ]
+  }
+}

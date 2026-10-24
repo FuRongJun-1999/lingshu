@@ -1,0 +1,504 @@
+{
+  "windows": {
+    "baseline": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+    "baseline_tree": {
+      "scope": "one fixed model bias and a real simulator collision; not general predictive performance",
+      "results": [
+        {
+          "policy": "legacy",
+          "constant_model_bias": {
+            "training": [
+              {
+                "target_point_error": 1.0,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              }
+            ],
+            "frozen_correction": [
+              0.5,
+              0.0
+            ],
+            "holdout_count": 2,
+            "holdout_errors": [
+              0.5,
+              0.5
+            ],
+            "holdout_mean_error": 0.5,
+            "holdout_fixed_threshold": 0.5,
+            "holdout_hits": 0,
+            "correction_samples": 6
+          },
+          "real_collision_execution": {
+            "execution_error": 1.0,
+            "target_error": 0.0,
+            "correction": [
+              0.0,
+              0.0
+            ],
+            "classification": null,
+            "cause": null,
+            "contact_count": 1
+          }
+        }
+      ]
+    },
+    "fixed_tree": {
+      "scope": "one fixed model bias and a real simulator collision; not general predictive performance",
+      "results": [
+        {
+          "policy": "legacy",
+          "constant_model_bias": {
+            "training": [
+              {
+                "target_point_error": 1.0,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              }
+            ],
+            "frozen_correction": [
+              0.5,
+              0.0
+            ],
+            "holdout_count": 2,
+            "holdout_errors": [
+              0.5,
+              0.5
+            ],
+            "holdout_mean_error": 0.5,
+            "holdout_fixed_threshold": 0.5,
+            "holdout_hits": 0,
+            "correction_samples": 6
+          },
+          "real_collision_execution": {
+            "execution_error": 1.0,
+            "target_error": 0.0,
+            "correction": [
+              0.0,
+              0.0
+            ],
+            "classification": null,
+            "cause": null,
+            "contact_count": 1
+          }
+        },
+        {
+          "policy": "qualified",
+          "constant_model_bias": {
+            "training": [
+              {
+                "target_point_error": 1.0,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.75,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.25,
+                "correction": [
+                  0.875,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.125,
+                "correction": [
+                  0.9375,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.0625,
+                "correction": [
+                  0.9688,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.031200000000000117,
+                "correction": [
+                  0.9844,
+                  0.0
+                ],
+                "execution_error": 0.0
+              }
+            ],
+            "frozen_correction": [
+              0.9844,
+              0.0
+            ],
+            "holdout_count": 2,
+            "holdout_errors": [
+              0.015600000000000058,
+              0.015600000000000058
+            ],
+            "holdout_mean_error": 0.015600000000000058,
+            "holdout_fixed_threshold": 0.5,
+            "holdout_hits": 2,
+            "correction_samples": 6
+          },
+          "real_collision_execution": {
+            "execution_error": 1.0,
+            "target_error": 0.0,
+            "correction": [
+              0.0,
+              0.0
+            ],
+            "classification": "execution_residual",
+            "cause": "unknown",
+            "contact_count": 1
+          }
+        }
+      ]
+    },
+    "baseline_temp_cleaned": true
+  },
+  "linux": {
+    "baseline": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+    "baseline_tree": {
+      "scope": "one fixed model bias and a real simulator collision; not general predictive performance",
+      "results": [
+        {
+          "policy": "legacy",
+          "constant_model_bias": {
+            "training": [
+              {
+                "target_point_error": 1.0,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              }
+            ],
+            "frozen_correction": [
+              0.5,
+              0.0
+            ],
+            "holdout_count": 2,
+            "holdout_errors": [
+              0.5,
+              0.5
+            ],
+            "holdout_mean_error": 0.5,
+            "holdout_fixed_threshold": 0.5,
+            "holdout_hits": 0,
+            "correction_samples": 6
+          },
+          "real_collision_execution": {
+            "execution_error": 1.0,
+            "target_error": 0.0,
+            "correction": [
+              0.0,
+              0.0
+            ],
+            "classification": null,
+            "cause": null,
+            "contact_count": 1
+          }
+        }
+      ]
+    },
+    "fixed_tree": {
+      "scope": "one fixed model bias and a real simulator collision; not general predictive performance",
+      "results": [
+        {
+          "policy": "legacy",
+          "constant_model_bias": {
+            "training": [
+              {
+                "target_point_error": 1.0,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              }
+            ],
+            "frozen_correction": [
+              0.5,
+              0.0
+            ],
+            "holdout_count": 2,
+            "holdout_errors": [
+              0.5,
+              0.5
+            ],
+            "holdout_mean_error": 0.5,
+            "holdout_fixed_threshold": 0.5,
+            "holdout_hits": 0,
+            "correction_samples": 6
+          },
+          "real_collision_execution": {
+            "execution_error": 1.0,
+            "target_error": 0.0,
+            "correction": [
+              0.0,
+              0.0
+            ],
+            "classification": null,
+            "cause": null,
+            "contact_count": 1
+          }
+        },
+        {
+          "policy": "qualified",
+          "constant_model_bias": {
+            "training": [
+              {
+                "target_point_error": 1.0,
+                "correction": [
+                  0.5,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.5,
+                "correction": [
+                  0.75,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.25,
+                "correction": [
+                  0.875,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.125,
+                "correction": [
+                  0.9375,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.0625,
+                "correction": [
+                  0.9688,
+                  0.0
+                ],
+                "execution_error": 0.0
+              },
+              {
+                "target_point_error": 0.031200000000000117,
+                "correction": [
+                  0.9844,
+                  0.0
+                ],
+                "execution_error": 0.0
+              }
+            ],
+            "frozen_correction": [
+              0.9844,
+              0.0
+            ],
+            "holdout_count": 2,
+            "holdout_errors": [
+              0.015600000000000058,
+              0.015600000000000058
+            ],
+            "holdout_mean_error": 0.015600000000000058,
+            "holdout_fixed_threshold": 0.5,
+            "holdout_hits": 2,
+            "correction_samples": 6
+          },
+          "real_collision_execution": {
+            "execution_error": 1.0,
+            "target_error": 0.0,
+            "correction": [
+              0.0,
+              0.0
+            ],
+            "classification": "execution_residual",
+            "cause": "unknown",
+            "contact_count": 1
+          }
+        }
+      ]
+    },
+    "baseline_temp_cleaned": true
+  }
+}
