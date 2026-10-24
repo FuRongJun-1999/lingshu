@@ -96,7 +96,12 @@ def verify_designer(designer_key) -> bool:
     expected = os.environ.get("AEIS_DESIGNER_KEY")
     if not expected or not designer_key:
         return False
-    return _hmac.compare_digest(str(designer_key), str(expected))
+    # #51：`hmac.compare_digest` 对**非 ASCII str** 抛 TypeError（CPython 文档化
+    # 行为）⇒ 中文密钥下终裁门禁从「干净拒绝」变成「崩」（6 条终裁通路全部
+    # 不可用）。修法：统一 encode 成 bytes 再比较——时序安全语义不变、对任意
+    # Unicode 密钥成立；不匹配 ⇒ False（fail-closed 原样），不再抛。
+    return _hmac.compare_digest(str(designer_key).encode("utf-8"),
+                                str(expected).encode("utf-8"))
 
 
 # main 侧 #29② 判据的原因名 → 矛盾感知（contradiction.py）的原因名，供 conflict:{reason} 标签统一口径
