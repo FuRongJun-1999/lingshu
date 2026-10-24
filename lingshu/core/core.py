@@ -8652,13 +8652,20 @@ class SpacetimeMemoryEngine:
                                   "ts": now, "count": 1})
 
     def consume_events(self) -> Dict:
-        """P1-4：批量消费事件标记（定时轮询优先；P0 危机期间暂停）"""
+        """P1-4：批量消费事件标记（定时轮询优先；P0 危机期间暂停）。
+
+        #54：paused 的语义是「暂停处理」，不是「丢弃数据」。旧实现先在方法开头
+        执行 `_event_queue = []` 再判 paused，paused 分支直接 return ⇒ 暂停期投递的
+        事件既不处理也不放回（静默丢失、不可恢复，且对外只报 consumed=0）。
+        现改为：paused 时不动队列，仅回报 pending 计数；恢复后照常消费。
+        """
+        if self._lifecycle and self._lifecycle.state == "paused":
+            return {"status": "paused", "consumed": 0,
+                    "pending": len(self._event_queue),
+                    "note": "P0 危机期间暂停非 P0 处理（3.4 节）；事件保留待恢复后消费"}
         events = list(self._event_queue)
         self._event_queue = []
         consumed = 0
-        if self._lifecycle and self._lifecycle.state == "paused":
-            return {"status": "paused", "consumed": 0,
-                    "note": "P0 危机期间暂停非 P0 处理（3.4 节）"}
         for ev in events:
             if ev["type"] in ("perception", "write", "condition_switch") and self._flywheel:
                 try:
