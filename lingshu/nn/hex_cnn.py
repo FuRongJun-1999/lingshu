@@ -32,6 +32,12 @@ ALGO = "hex_cnn-0.1"
 # 蜂窝六邻方向（axial 坐标 ±q/±r）：E, NE, NW, W, SW, SE（pointy-top 约定）
 HEX_DIRS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
 
+# 错行 offset 存储下的六邻方向（issue #6）。与 `hex_conv` 内 `even_off` / `odd_off`
+# 的取值**逐项一致**（那里是局部字面量，此处提为模块级供 `HexGrid.neighbors` 复用；
+# 未改 `hex_conv` 本身，避免波及既有卷积用例）。
+OFFSET_DIRS_EVEN = [(-1, 0), (1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+OFFSET_DIRS_ODD = [(-1, 0), (1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+
 
 # ==================== 蜂窝晶格（axial 坐标 ↔ 像素） ====================
 
@@ -39,19 +45,45 @@ class HexGrid:
     """蜂窝晶格：axial 坐标 (q, r) 存储为「错行矩形」数组（row=r, col=q+offset）。
     pointy-top：六边形尖朝上下；行间水平错位半格，垂直间距 3/4·size。"""
 
-    def __init__(self, width_cells: int, height_cells: int, cell_size: float = 1.0):
+    def __init__(self, width_cells: int, height_cells: int, cell_size: float = 1.0,
+                 layout: str = "axial"):
         self.W = width_cells      # 列数（q 方向）
         self.H = height_cells     # 行数（r 方向）
         self.size = float(cell_size)
+        #: 像素坐标布局（issue #6）。**同一个 HexGrid 此前只有 axial 一套坐标，
+        #: 而 `image_to_grid` / `grid_to_image` 实际用的是错行 offset 布局** ⇒
+        #: 把 `image_to_grid` 返回的 grid 拿去 `pixel_to_cell(采样中心)` 必然对不上
+        #: （实测往返 0/72、0/288）。
+        #:   "axial"  —— 真 axial 斜轴：x=√3·s·(q+r/2),      y=1.5·s·r
+        #:               默认值，保持既有语义不变（`test_hex_cnn.py` 的 axial 断言不受影响）
+        #:   "offset" —— 错行矩形：   x=√3·s·(q+0.5·(r%2)+0.5), y=1.5·s·r+s
+        #:               与 `image_to_grid` 的采样中心、`grid_to_image` 的绘制中心**同一套**
+        #: 判据来源：`test_hex_grid_extent.py` D 组标题「返回 grid 与采样节距自洽」——
+        #: 仓内意图本就是「返回的 grid 必须与采样自洽」，该组只验了节距一项（D1），
+        #: 漏验原点偏移与错行偏移；本参数补上这两项。
+        if layout not in ("axial", "offset"):
+            raise ValueError("HexGrid.layout must be 'axial' or 'offset', got %r" % (layout,))
+        self.layout = layout
 
     # ---- 像素坐标（cell 中心，图像坐标系 y 向下） ----
     def center_px(self, q: int, r: int) -> Tuple[float, float]:
+        """cell (q,r) 的中心像素坐标（按 `layout` 取 axial 或错行 offset 公式）。"""
+        if self.layout == "offset":
+            s3 = self.size * math.sqrt(3)
+            x = s3 * (q + 0.5 * (r % 2) + 0.5)
+            y = self.size * 1.5 * r + self.size
+            return (x, y)
         x = self.size * math.sqrt(3) * (q + r / 2.0)
         y = self.size * 1.5 * r
         return (x, y)
 
     def pixel_to_cell(self, x: float, y: float) -> Tuple[int, int]:
-        """像素 → 最近 cell（axial round：立方坐标四舍五入）。"""
+        """像素 → 最近 cell（axial 用立方坐标四舍五入；offset 用错行反解）。"""
+        if self.layout == "offset":
+            s3 = self.size * math.sqrt(3)
+            r = int(round((y - self.size) / (1.5 * self.size)))
+            q = int(round(x / s3 - 0.5 * (r % 2) - 0.5))
+            return (q, r)
         # 逆变换到轴向浮点
         qf = (math.sqrt(3) / 3 * x - y / 3.0) / self.size
         rf = (2.0 / 3.0 * y) / self.size
@@ -68,6 +100,10 @@ class HexGrid:
         return (q, r)
 
     def neighbors(self, q: int, r: int) -> List[Tuple[int, int]]:
+        """六邻。axial 用 `HEX_DIRS`；offset 用错行邻接表（与 `hex_conv` 同值）。"""
+        if self.layout == "offset":
+            offs = OFFSET_DIRS_EVEN if (r % 2 == 0) else OFFSET_DIRS_ODD
+            return [(q + dq, r + dr) for dq, dr in offs]
         return [(q + dq, r + dr) for dq, dr in HEX_DIRS]
 
     def in_bounds(self, q: int, r: int) -> bool:
@@ -84,7 +120,9 @@ def image_to_grid(img_arr: np.ndarray, cells_across: int = 48) -> Tuple[np.ndarr
     s3 = W / (cells_across + 0.5)       # 横向节距 √3·s（此前误作 s 用：晶格横向越出画幅 √3 倍）
     cell = s3 / math.sqrt(3)
     rows = max(1, int(round(H / (cell * 1.5)) - 1)) or 1
-    grid = HexGrid(cells_across, rows, cell)
+    # issue #6：返回的 grid 必须与**本函数实际采样坐标**同一套 ⇒ layout="offset"。
+    # 旧实现用默认 axial ⇒ `grid.pixel_to_cell(采样中心)` 往返 0/72、0/288（必然对不上）。
+    grid = HexGrid(cells_across, rows, cell, layout="offset")
     out = np.zeros((rows, cells_across, img_arr.shape[2]), dtype=np.float32)
     for r in range(rows):
         xoff = s3 * (0.5 * (r % 2) + 0.5)
