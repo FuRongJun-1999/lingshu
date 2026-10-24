@@ -45,8 +45,8 @@
   {
    "file": "tests/test_hex_hier.py",
    "src": "tests/test_hex_hier.py",
-   "bytes": 5324,
-   "sha256": "29b334866f36025e",
+   "bytes": 7108,
+   "sha256": "d529489f699f2854",
    "rewrites": 4,
    "patches": 0,
    "sanitized": 0
