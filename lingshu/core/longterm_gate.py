@@ -310,6 +310,65 @@ class LongTermMemoryGate:
         self._known_total_len = total_len
         return union, counts, per_node, sig
 
+    @staticmethod
+    def _template_of(text: str):
+        """把 ASCII token 抹成占位符 ⇒ (句型模板, token 集合)。#573 / #213 建议2。
+
+        模板 = 正文里每个「ASCII 标识符整体」（数字/主机名/域名/IP/CVE 号/账号…）
+        被替换成 `\\x00` 之后的字符串；token 集合 = 被抹掉的那些 token。
+
+        「同模板、不同 token」⇒ 内容确实变了（高新奇）；「同模板、同 token」⇒ 重复。
+        这是 `_core_grams` 比例判据的补充：比例判据里新增/消失的 gram 会相互抵消，
+        句越长上限越低（实测 25 字句上限仅 6/25=0.24，远低于 0.75 阈值）。
+        """
+        import re as _re
+        if LongTermMemoryGate._ASCII_TOKEN is None:
+            LongTermMemoryGate._ASCII_TOKEN = _re.compile(
+                r'[A-Za-z0-9][A-Za-z0-9_.\-:/@]*')
+        toks = []
+
+        def _sub(m):
+            tok = m.group(0)
+            if len(tok) >= 2:        # 与 _core_grams 同口径：单字符 token 是噪音
+                toks.append(tok)
+                return "\x00"
+            return tok
+
+        tpl = LongTermMemoryGate._ASCII_TOKEN.sub(_sub, text or "")
+        return tpl, frozenset(toks)
+
+    def _known_templates(self, exclude_id: str = None) -> dict:
+        """已知内容的「句型模板 → token 集合的集合」索引（带签名缓存）。"""
+        sig = self._known_sig
+        cache = getattr(self, "_tpl_cache", None)
+        if (cache is not None and sig is not None
+                and getattr(self, "_tpl_sig", None) == sig):
+            idx = cache
+        else:
+            rows = self.engine.store.conn.execute(
+                "SELECT id, content FROM nodes").fetchall()
+            idx = {}
+            for nid, content in rows:
+                tpl, toks = LongTermMemoryGate._template_of(content)
+                idx.setdefault(tpl, set()).add(toks)
+            self._tpl_cache = idx
+            self._tpl_sig = sig
+        if exclude_id:
+            # 排除自身节点：其模板/token 不应让「自己」显得已知
+            node = self.engine.store.get_node(exclude_id)
+            if node is not None:
+                tpl, toks = LongTermMemoryGate._template_of(node.content)
+                seen = idx.get(tpl)
+                if seen is not None and toks in seen:
+                    idx = dict(idx)
+                    rest = set(seen)
+                    rest.discard(toks)
+                    if rest:
+                        idx[tpl] = rest
+                    else:
+                        idx.pop(tpl, None)
+        return idx
+
     def _novelty(self, content: str, existing_id: str = None) -> float:
         """新信息度（v1.27 改：参考集覆盖全库，并真正使用 existing_id）。
 
@@ -317,6 +376,19 @@ class LongTermMemoryGate:
         v1.15 起用核心词新颖比例（非整句相似度），但参考集取的是排名前 80 条，
         「库里的老知识」对它不可见：同一内容只改写入先后/importance，
         新奇度就在 1.0 与 0.0 两端跳变。现按全库统计，且 existing_id 生效。
+
+        #573（#213 建议2 落地）：**比例判据在中等长度句子上有系统性上限**——
+        同模板只换一个 ASCII token 时，新增 gram 与消失 gram 数量相等，
+        比例上相互抵消，且上限随句长下降（实测 25 字句仅 6/25=0.24）。
+        故在比例之外**并列一条模板判据**（任一命中即判变更）：
+          · 模板命中已知模板，但 **token 集合不同** ⇒ 内容确实变了 ⇒ 取 1.0；
+          · 模板命中且 token 集合相同 ⇒ 真重复 ⇒ 保持比例值（会被判低）；
+          · 模板未命中（新句型）⇒ 保持比例值（比例判据本就够用）。
+        这样既修好「换数字/账号/域名/IP」这一族，又不动「真重复」与「全新句型」
+        的既有语义（比例判据仍是这两类的唯一依据）。
+        判据来源：issue #573 正文 + `_core_grams` docstring 的「未修」条 + #213 §六·建议2。
+        削掉的判别力：模板相同而 token 不同时**不再看比例**（一律 1.0）——
+        这是有意的：该族的比例上限由句长决定、与改动重要性无关，继续用比例就是错的。
         """
         try:
             grams = self._core_grams(content)
@@ -327,7 +399,16 @@ class LongTermMemoryGate:
                 return 0.5  # 无参照：中性
             novel_grams = sum(1 for g in grams if g not in known)
             ratio = novel_grams / max(1, len(grams))
-            return max(0.0, min(1.0, ratio))
+            ratio = max(0.0, min(1.0, ratio))
+            # #573：模板判据（同模板换 token ⇒ 变更）
+            try:
+                tpl, toks = LongTermMemoryGate._template_of(content)
+                seen = self._known_templates(exclude_id=existing_id).get(tpl)
+                if seen is not None and toks not in seen:
+                    return 1.0
+            except Exception:
+                pass                      # 模板判据失败不得影响主判据
+            return ratio
         except Exception:
             pass
         return 0.5  # 无参照：中性
