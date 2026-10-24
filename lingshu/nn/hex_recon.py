@@ -115,17 +115,47 @@ def regions_to_connections(regions: List[Dict],
 # ==================== 复原(从关系描述渲染) ====================
 
 def reconstruct(connections: Dict) -> np.ndarray:
-    """从关系连接描述 → 重建图像。"""
+    """从关系连接描述 → 重建图像。
+
+    绘制顺序（z-order）:按区域面积降序绘制 —— 大面积先画 = 压在下层,
+    小面积后画 = 盖在上层。extract_regions 的行优先扫描序不是层序:
+    左上角的物体先被扫描到、先被提取,若按数组序绘制会被后画的背景整块盖掉
+    (issue #305)。
+
+    层序显式化:连接描述里若带 "z" 字段则优先按 z 升序(小 z 在下层),
+    z 相同时再按面积降序。未带 z 时行为与「面积降序」一致。
+    """
     w, h = connections["image_size"]
     img = np.full((h, w, 3), 128, dtype=np.uint8)  # 默认背景
-    for conn in connections["connections"]:
-        cx = int(conn["center"][0] * w)
-        cy = int(conn["center"][1] * h)
-        sw = int(conn["size"][0] * w)
-        sh = int(conn["size"][1] * h)
+
+    def _area(c: Dict) -> int:
+        sw = int(c["size"][0] * w)
+        sh = int(c["size"][1] * h)
+        return max(1, sw) * max(1, sh)
+
+    # 稳定排序:先按 z(默认 0)升序,再按面积降序
+    ordered = sorted(
+        connections["connections"],
+        key=lambda c: (c.get("z", 0), -_area(c)),
+    )
+
+    for conn in ordered:
+        # center/size 是 round(...,4) 量化值,反推时**不能先截断成整数**:
+        # 半像素中心(如 bbox 7..20 的中心 13.5)截断后变 14,整块会错位一格。
+        # 故 center 保持浮点,只在定出左上角时取整。
+        cxf = conn["center"][0] * w
+        cyf = conn["center"][1] * h
+        sw = max(1, int(round(conn["size"][0] * w)))
+        sh = max(1, int(round(conn["size"][1] * h)))
         col = tuple(conn["color"])
-        x0, x1 = max(0, cx - sw // 2), min(w, cx + sw // 2 + 1)
-        y0, y1 = max(0, cy - sh // 2), min(h, cy + sh // 2 + 1)
+        # 以「像素中心」为准反推包围盒:区域跨像素 [b0, b0+sw-1] 时,
+        # 其中心在 b0 + (sw-1)/2。原写法 x1 = cx + sw//2 + 1 在 sw 为偶数
+        # 时比实际宽 1 像素(如 sw=20 会画成 21),故先定 b0、再由 b0+sw 定上界,
+        # 宽度恒等于 sw。
+        x0 = max(0, int(round(cxf - (sw - 1) / 2)))
+        y0 = max(0, int(round(cyf - (sh - 1) / 2)))
+        x1 = min(w, x0 + sw)
+        y1 = min(h, y0 + sh)
         img[y0:y1, x0:x1] = col
     return img
 
