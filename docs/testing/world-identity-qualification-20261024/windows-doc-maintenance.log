@@ -1,0 +1,7 @@
+............                                                             [100%]
+============================== warnings summary ===============================
+tests/test_doc_module_counts_guard.py::test_no_other_guard_reads_doc_counts
+  <unknown>:5: SyntaxWarning: invalid escape sequence '\d'
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+12 passed, 1 warning in 8.27s
