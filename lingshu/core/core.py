@@ -6595,6 +6595,21 @@ def _filter_min_score(scored, min_score):
 # 时空记忆引擎（SpacetimeMemoryEngine）
 # =============================================================================
 
+# #500：验证标准参数的**读取点登记表**（不是「允许的参数表」——任何 param 都能写入
+# `_verifier_config`）。语义：该集合内的参数在引擎内确有读取点（会改变可观测行为）；
+# 集合外者当前**只登记、不影响行为**（幻影旋钮），结构层记录必须如实标注这一点，
+# 不能让记录读起来像「已生效」。
+# 判据来源：本件普查（`git grep deviation_threshold` 全仓 19 处，无一为读取：
+# 定义 core.py:6667 / 回放赋值 6729 / 终裁赋值 13540 / 注释 13546 + 5 份测试的断言与
+# fixture）＋ 行为实验（应用 0.99 后 `_reflect_verify` 偏差判定、`check_escalation`
+# 对 ESC-004 条件串、`_dedup_static` 逐项不变；对照组 `dedup_static` 可被检出变化）。
+# 未查到仓内对该参数「取向属设计裁定」的先例（`docs/` 无命中、`tests/` 无相关守卫），
+# 故按「只钉事实」处置，**不**让该参数真的去影响判据（那属设计裁定）。
+_VERIFIER_PARAMS_WITH_READERS = frozenset({"dedup_static"})
+
+# 结构层记录里对「无读取点」参数的如实标注（#500）。
+_NO_READER_NOTE = "无读取点：仅登记，当前不影响行为"
+
 class SpacetimeMemoryEngine:
     """
     协议实例核心引擎，封装 LayeredStore 并提供高层 API。
@@ -13525,6 +13540,12 @@ class SpacetimeMemoryEngine:
                         record = (f"{result['param']}="
                                   f"{self._verifier_config.get(result['param'], result['value'])}"
                                   f" 终裁通过（{adjudicator}）")
+                        # #500：记录必须**如实**。该参数若无读取点（幻影旋钮），
+                        # 上面这串「X=值 终裁通过（人）」会被读成「此标准已生效」，
+                        # 而实际写入后行为完全不变 ⇒ 追加如实标注，避免记录撒谎。
+                        # 只改记录文本，不动终裁返回契约、不动配置、不动任何判据。
+                        if result["param"] not in _VERIFIER_PARAMS_WITH_READERS:
+                            record += f"[{_NO_READER_NOTE}]"
                         # #130（路 B · 裁定帖原文）：本调用点此前与升级点表**零接触**
                         # ——「验证标准变更四步制衡第④步」正是内置 `ESC-005` 的
                         # condition，却从无代码按 code 去查它（`check_escalation` 的
