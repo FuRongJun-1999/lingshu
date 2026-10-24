@@ -497,7 +497,7 @@
     {
      "file": "hex_search.py",
      "src": "aeis.hex_search",
-     "sha256": "e8cefd0623b689f1",
+     "sha256": "9d48d0a555e63a6b",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,

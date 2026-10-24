@@ -243,5 +243,9 @@ def search_report(net: HexHierNet, lat: np.ndarray, metas: List[Dict],
             "obj_precision": round(obj_hit / max(1, det_obj_total), 3),
             "pos_false_positives": max(0, det_pos_total - pos_hit),
             "obj_false_positives": max(0, det_obj_total - obj_hit),
-            "avg_visited": round(total_nodes / n, 1),
+            # #942 F23-05：空批次（`lat=[]` ⇒ `n=0`）时裸除抛 ZeroDivisionError。
+            # 同 return 的另 5 处除法都有 `max(1,·)`，docstring 亦写明「分母取
+            # max(1,·)」——此处补齐；空批次 `avg_visited` 记 0.0（与同 return
+            # 其它字段「记 0.0」口径一致，不伪造成满分）。
+            "avg_visited": round(total_nodes / max(1, n), 1),
             "prune_rate": round(total_rej / max(1, total_nodes), 3)}
