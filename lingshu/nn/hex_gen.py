@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .hex_text import POS_WORDS, parse_description
+from .hex_text import parse_description
 from .hex_composite import _COLORS_RGB, _paint
 
 ALGO = "hex_gen-0.1"
@@ -78,6 +78,8 @@ OPEN_SHAPES = {"圆": "circle", "三角": "triangle", "条": "stripe",
 BACKGROUND_WORDS = {"白底": "white", "灰底": "gray", "渐变蓝底": "grad_blue",
                    "渐变粉底": "grad_pink", "渐变绿底": "grad_green",
                    "深色底": "dark"}
+# #306：背景词剔除用（最长优先，避免「渐变蓝底」被「蓝底」之类的短词先拆坏）
+_BG_WORDS_SORTED = tuple(sorted(BACKGROUND_WORDS, key=len, reverse=True))
 _BACKGROUNDS = {
     "white": None,  # 默认=原始噪声模式（保持 R2 回读校准兼容）
     "clean_white": lambda s: np.full((s, s, 3), 245, dtype=np.uint8),
@@ -239,6 +241,18 @@ def _match_attr(seg: str, table: Dict[str, tuple]) -> Optional[str]:
     return None
 
 
+def _strip_background_words(seg: str) -> str:
+    """#306：剔除背景词（最长优先），返回剩余子句。
+
+    「白底中间有灰色圆形」→「中间有灰色圆形」（「白」不再被当成部件色）；
+    「白底」→ 空串（调用方据此判定该子句不生成部件）。
+    """
+    body = seg
+    for w in _BG_WORDS_SORTED:
+        body = body.replace(w, "")
+    return body.strip()
+
+
 def compile_description(text: str) -> Dict:
     """中文描述 → {parts: [{shape, color, zone, pattern, size}], defaults_applied}。
 
@@ -248,59 +262,37 @@ def compile_description(text: str) -> Dict:
     进入开放词表前被整句丢掉。故这里「先切句，再让开放词表逐句生效」；
     `parse_description` 只用来补窄词表的基础 shape/color/pos 字段。
     花纹/尺寸词在本模块解析（实心/条纹/点纹 + 大/小）；缺项按 DEFAULTS 补全并落账。
+
+    #306：背景词（白底/灰底/渐变X底/深色底）里的色字不是部件颜色。故每句
+    先剔除背景词再取字段；剔除后为空（只含背景词）的子句不生成部件，
+    否则「白底」会凭空造出一个白色圆（幻影部件）。
     """
     segments = [s.strip() for s in re.split(r"[,，、;;；。]+", text) if s.strip()]
     parts, defaults = [], []
     for seg in segments:
-        # #306：先剥背景词再喂 parse_description——窄词表也会从「渐变蓝底」抓到「蓝」
-        seg_scan = seg
-        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
-            if bg_w in seg_scan:
-                seg_scan = seg_scan.replace(bg_w, "")
-        base = parse_description(seg_scan)
+        body = _strip_background_words(seg)
+        if not body:
+            continue
+        base = parse_description(body)
         cl = base[0] if base else {}
         # 开放词汇优先（连接库生长面），回落 hex_text 基础三词
         pos = cl.get("pos")
         if pos is None:
             # R43：单字方位词匹配（最长优先）
             for zcn in sorted(ZONE_CN, key=len, reverse=True):
-                if zcn in seg:
+                if zcn in body:
                     pos = ZONE_CN[zcn]
                     break
-        # #306：背景词（白底/灰底/渐变X底/深色底）是**画布**词汇，其中的色字
-        # （白/灰/蓝/粉/绿/深）不得参与部件颜色竞争——「渐变绿底中间有蓝色圆形」
-        # 应得 blue、「白底中间有灰色圆形」应得 gray。先把本子句命中的背景词
-        # 从文本里剥掉，再做开放词表匹配；**纯背景子句**（剥掉背景词后没有
-        # 部件词——形状/颜色/方位皆无）不产部件（「渐变蓝底，左上有红色圆」
-        # 的前半段不该在 r4 生成幻影圆）。
-        seg_parts = seg
-        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
-            if bg_w in seg_parts:
-                seg_parts = seg_parts.replace(bg_w, "")
-        has_part_word = bool(_match_open(seg_parts, OPEN_SHAPES)
-                             or _match_open(seg_parts, OPEN_COLORS)
-                             or (pos is not None)
-                             or cl.get("shape") or cl.get("color") or pos)
-        if pos is None and has_part_word:
-            # 剥掉背景词后才暴露的方位词（如「渐变蓝底中间有圆形」的「中间」）
-            for zcn in sorted(ZONE_CN, key=len, reverse=True):
-                if zcn in seg_parts:
-                    pos = ZONE_CN[zcn]
-                    break
-        given = {"shape": (_match_open(seg_parts, OPEN_SHAPES)
-                           if has_part_word else None) or cl.get("shape"),
-                 "color": _match_open(seg_parts, OPEN_COLORS) or cl.get("color"),
+        given = {"shape": _match_open(body, OPEN_SHAPES) or cl.get("shape"),
+                 "color": _match_open(body, OPEN_COLORS) or cl.get("color"),
                  "zone": pos,
-                 "pattern": _match_attr(seg, PATTERN_WORDS),
-                 "size": _match_attr(seg, SIZE_WORDS)}
-        # #306：纯背景子句（剥掉背景词后无任何部件词）⇒ 不产部件
-        if not has_part_word:
-            continue
+                 "pattern": _match_attr(body, PATTERN_WORDS),
+                 "size": _match_attr(body, SIZE_WORDS)}
         part = {}
         for k, v in given.items():
             if v is None:
                 part[k] = DEFAULTS[k]
-                defaults.append({"text": seg, "field": k,
+                defaults.append({"text": body, "field": k,
                                  "applied": DEFAULTS[k]})
             else:
                 part[k] = v
