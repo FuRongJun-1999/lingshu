@@ -44,6 +44,7 @@ from __future__ import annotations
 import math
 import warnings
 from typing import Dict, List, Optional, Tuple
+from .time_core import cred_blend
 
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 # （F08 起把原先重复两次的同一条导入回退合并为一处：静默宽 except 计数
@@ -65,6 +66,7 @@ except ImportError:
 
 #: F08 合法行动策略（fail-closed 白名单；未知策略名在 configure_action 即拒）
 ACTION_POLICIES: Tuple[str, ...] = ("predictive", "fixed")
+FEEDBACK_POLICIES: Tuple[str, ...] = ("legacy", "qualified")
 
 #: F08 目标误差结算状态（诚实口径）——只有 "verified" 允许写 correction /
 #: error_history 并返回 corrected=True；其余状态一律只标注、不记账。
@@ -74,6 +76,8 @@ TARGET_ERROR_STATUSES: Tuple[str, ...] = (
     "stale_target_observation",  # 目标本轮未被观测（陈旧读数）⇒ 不作为新误差反馈
     "target_unobserved",         # 本轮完全没有目标观测 ⇒ 不编造误差
     "no_forecast",               # 本 tick 留痕里没有目标预测 ⇒ 无误差可结算
+    "feedback_deferred",         # qualified：等待匹配时刻/新鲜证据，不消费修订
+    "feedback_rejected",         # qualified：行动上下文或数值不合法
 )
 
 
@@ -97,7 +101,12 @@ class ActionDecision:
     CORRECTION_ALPHA = 0.5
 
     def __init__(self, entity_id: str, target, target_kind: str,
-                 step_size: float, policy: str, fixed_action: str):
+                 step_size: float, policy: str, fixed_action: str,
+                 feedback_policy: str = "legacy"):
+        if feedback_policy not in FEEDBACK_POLICIES:
+            raise ValueError("未知 feedback_policy（可用：legacy/qualified）")
+        self.feedback_policy = feedback_policy
+        self._last_feedback_tick = None
         self.entity_id = entity_id
         self.target = target
         self.target_kind = target_kind
@@ -120,7 +129,7 @@ class ActionDecision:
 
     def config(self) -> Dict:
         """本决策器的当前配置与统计（白箱可审计）。"""
-        return {"entity": self.entity_id, "target": self.target_ref(),
+        out = {"entity": self.entity_id, "target": self.target_ref(),
                 "target_kind": self.target_kind, "step_size": self.step_size,
                 "policy": self.policy, "fixed_action": self.fixed_action,
                 "correction": [round(self.correction[0], 4),
@@ -130,6 +139,10 @@ class ActionDecision:
                     round(sum(self.error_history) / len(self.error_history), 4)
                     if self.error_history else None),
                 "error_samples": len(self.error_history)}
+        if self.feedback_policy == "qualified":
+            out.update(feedback_policy=self.feedback_policy,
+                       last_feedback_tick=self._last_feedback_tick)
+        return out
 
     # ---- 预测面（全部来自观测与学得模型）----
 
@@ -199,6 +212,12 @@ class ActionDecision:
                        "greedy_current_choice": None, "chosen_action": None,
                        "forecast": None, "observation": None,
                        "executed": None, "outcome": None}
+        if self.feedback_policy == "qualified":
+            trace["feedback_context"] = {
+                "entity": self.entity_id, "target": self.target_ref(),
+                "target_kind": self.target_kind, "step_size": self.step_size,
+                "policy": self.policy, "fixed_action": self.fixed_action,
+                "decision_tick": explorer.tick, "expected_observation_tick": explorer.tick + 1}
         node = explorer.nodes.get(self.entity_id)
         if node is None:
             trace["status"] = "controlled_unobserved"
@@ -264,7 +283,8 @@ class ActionDecision:
         return trace
 
     def observe_outcome(self, trace: Dict, observed_self, observed_target,
-                        target_fresh: bool) -> Dict:
+                        target_fresh: bool, *, self_fresh: Optional[bool] = None,
+                        feedback_tick: Optional[int] = None) -> Dict:
         """用**新观测**结算上一预测：自/目标误差 + 距离变化 + 修正下一步。
 
         诚实口径（F08 本次返工钉死）：只有 target_fresh=True 且本轮**确实观测到**
@@ -288,6 +308,9 @@ class ActionDecision:
         """
         if trace.get("status") != "ok" or trace.get("chosen_action") is None:
             return trace
+        if self.feedback_policy == "qualified":
+            return self._qualified_outcome(trace, observed_self, observed_target,
+                                           target_fresh, self_fresh, feedback_tick)
         executed = trace.get("executed") or {}
         forecast = trace.get("forecast") or {}
         predicted_self = executed.get("predicted_self")
@@ -349,6 +372,132 @@ class ActionDecision:
         trace["outcome"] = outcome
         return trace
 
+    @staticmethod
+    def _feedback_component(predicted, observed, fresh: bool) -> Dict:
+        """分量残差只来自新鲜观测；不是对执行器/目标行为的因果裁决。"""
+        row = {"state": "DEFER", "reason": "no_forecast", "predicted": None,
+               "observed": None, "residual_xyz": None, "norm": None}
+        if predicted is None:
+            return row
+        if observed is None:
+            row["reason"] = "unobserved"
+            return row
+        if fresh is not True:
+            row["reason"] = "stale_observation"
+            return row
+        for vector in (predicted, observed):
+            try:
+                invalid = (not isinstance(vector, (list, tuple)) or len(vector) != 3
+                           or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                                  or not math.isfinite(v) for v in vector))
+            except OverflowError:
+                invalid = True
+            if invalid:
+                row.update(state="REJECT", reason="invalid_vector")
+                return row
+        delta = [round(observed[i] - predicted[i], 4) for i in range(3)]
+        norm = round(math.dist(predicted, observed), 4)
+        if not all(math.isfinite(v) for v in [*delta, norm]):
+            row.update(state="REJECT", reason="nonfinite_residual")
+            return row
+        row.update(state="ACCEPT", reason="fresh_observation",
+                   predicted=list(predicted), observed=list(observed),
+                   residual_xyz=delta, norm=norm)
+        return row
+
+    def _qualified_outcome(self, trace, observed_self, observed_target,
+                           target_fresh, self_fresh, feedback_tick) -> Dict:
+        """W1：分别诊断残差，只修订本行动目标的 x/z 预测偏移。"""
+        ctx = trace.get("feedback_context") or {}
+        expected = {"entity": self.entity_id, "target": self.target_ref(),
+                    "target_kind": self.target_kind, "step_size": self.step_size,
+                    "policy": self.policy, "fixed_action": self.fixed_action}
+        reason = None
+        if not isinstance(ctx, dict) or any(ctx.get(k) != v for k, v in expected.items()):
+            reason = ("goal_context_changed" if isinstance(ctx, dict)
+                      and ctx.get("target") != self.target_ref() else "action_context_changed")
+        elif (isinstance(feedback_tick, bool) or not isinstance(feedback_tick, int)
+              or feedback_tick != ctx.get("expected_observation_tick")
+              or ctx.get("decision_tick") != feedback_tick - 1):
+            reason = "feedback_tick_mismatch"
+        elif self._last_feedback_tick is not None and feedback_tick <= self._last_feedback_tick:
+            reason = "duplicate_or_out_of_order_feedback"
+        executed = dict(trace.get("executed") or {})
+        forecast = trace.get("forecast") or {}
+        execution = self._feedback_component(executed.get("predicted_self"), observed_self, self_fresh)
+        target = self._feedback_component(forecast.get("predicted"), observed_target, target_fresh)
+        if self.target_kind == "coordinate":
+            target = {"state": "BLINDSPOT", "reason": "configured_coordinate",
+                      "predicted": self.target_ref(), "observed": None,
+                      "residual_xyz": None, "norm": None}
+        revision = {"state": "DEFER", "target": "target_forecast_offset_xz",
+                    "reason": "target_evidence_unqualified", "changed": False,
+                    "before": list(self.correction), "after": list(self.correction),
+                    "base_forecast_residual_xz": None}
+        if reason is not None:
+            state = "DEFER" if reason == "duplicate_or_out_of_order_feedback" else "REJECT"
+            revision.update(state=state, reason=reason)
+            for component in (execution, target):
+                component.update(state=state, reason=reason, residual_xyz=None, norm=None)
+        elif target["state"] == "ACCEPT":
+            applied = forecast.get("correction_applied")
+            if (not isinstance(applied, (list, tuple)) or list(applied) != list(self.correction)
+                    or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                           or not math.isfinite(v) for v in applied)):
+                revision.update(state="REJECT", reason="revision_context_changed")
+            else:
+                # 残差针对已加偏移的预测；先还原对未修正模型的偏差，再交统一时间核。
+                err = [target["residual_xyz"][0], target["residual_xyz"][2]]
+                innovation = [err[i] + applied[i] for i in range(2)]
+                a = self.CORRECTION_ALPHA
+                proposed = tuple(round(cred_blend(self.correction[i], a * innovation[i], 1 - a), 4)
+                                 for i in range(2))
+                if not all(math.isfinite(v) for v in [*innovation, *proposed]):
+                    revision.update(state="REJECT", reason="nonfinite_revision")
+                else:
+                    revision.update(state="ACCEPT", reason="fresh_target_residual",
+                                    changed=proposed != self.correction, after=list(proposed),
+                                    base_forecast_residual_xz=innovation)
+                    self.correction = proposed
+                    self.error_history.append(round(math.hypot(*err), 4))
+                    self._last_feedback_tick = feedback_tick
+        elif target["state"] == "REJECT":
+            revision.update(state="REJECT", reason=target["reason"])
+        elif self.target_kind == "coordinate":
+            revision.update(state="BLINDSPOT", reason="configured_coordinate")
+        else:
+            revision["reason"] = target["reason"]
+        execution_changed = execution["norm"] is not None and execution["norm"] > 0
+        target_changed = target["norm"] is not None and target["norm"] > 0
+        classification = (reason or ("execution_and_target_residual" if execution_changed and target_changed
+            else "execution_residual" if execution_changed else "target_forecast_residual" if target_changed
+            else "no_measured_residual" if execution["state"] == target["state"] == "ACCEPT"
+            else "partial_or_missing_evidence"))
+        executed.update(observed_to=execution["observed"], self_error=execution["norm"], distance_after=None)
+        distance_target = target["observed"] if self.target_kind == "entity" else self.target_ref()
+        if reason is None and execution["state"] == "ACCEPT" and distance_target is not None:
+            executed["distance_after"] = round(math.dist(execution["observed"], distance_target), 4)
+        target_accepted = target["state"] == "ACCEPT" and reason is None
+        status = ("feedback_rejected" if revision["state"] == "REJECT" else "verified" if target_accepted
+                  else "static_coordinate" if self.target_kind == "coordinate" and reason is None else "feedback_deferred")
+        outcome = {"observed_self": execution["observed"], "observed_target": target["observed"],
+                   "predicted_target": target["predicted"], "target_observation_fresh": target_fresh is True,
+                   "target_error": ([target["residual_xyz"][i] for i in (0, 2)] if target_accepted else None),
+                   "target_error_norm": (round(math.hypot(target["residual_xyz"][0], target["residual_xyz"][2]), 4)
+                                         if target_accepted else None),
+                   "target_error_status": status,
+                   "target_error_reason": (revision["reason"] if status.startswith("feedback_") else target["reason"]),
+                   "corrected": revision["changed"], "next_correction": list(self.correction),
+                   "diagnosis": {"feedback_policy": self.feedback_policy, "feedback_tick": feedback_tick,
+                       "classification": classification, "cause": "unknown",
+                       "cause_note": "分量残差不能单独证明目标意图变化、执行器故障或身份/观测错误",
+                       "execution": execution, "target_forecast": target, "revision": revision,
+                       "unsupported_correction_axes": ["y"]}}
+        # 拒绝旧留痕时不改写之前已入审计的对象；原始成功结算仍与 audit 共用同一留痕。
+        out = dict(trace) if reason is not None else trace
+        out.update(executed=executed, outcome=outcome)
+        return out
+
 
 class SevenLayerLoop:
     """七层闭环：感知→记忆→理解→预测→验证→物理→决策 的持续自主循环。
@@ -407,7 +556,7 @@ class SevenLayerLoop:
 
     def configure_action(self, entity_id, target, step_size: float = 1.0,
                          policy: str = "predictive",
-                         fixed_action: str = "east") -> Dict:
+                         fixed_action: str = "east", feedback_policy: str = "legacy") -> Dict:
         """配置受控实体的预测行动（F08）。
 
         entity_id：受控实体 id（必须在场）；target：目标实体 id，或 (x, y, z)
@@ -430,7 +579,8 @@ class SevenLayerLoop:
         target_kind, resolved = self._resolve_target(entity_id, target)
         decision = ActionDecision(entity_id=entity_id, target=resolved,
                                   target_kind=target_kind, step_size=step,
-                                  policy=policy, fixed_action=fixed_action)
+                                  policy=policy, fixed_action=fixed_action,
+                                  feedback_policy=feedback_policy)
         # 原子替换：校验全部通过后才落配置；顺带清掉可能残留的待消费动作
         self._action = decision
         self.world.clear_command()
@@ -544,6 +694,10 @@ class SevenLayerLoop:
         else:
             observed_target = [round(float(v), 4) for v in act.target]
             fresh = True
+        if act.feedback_policy == "qualified":
+            return act.observe_outcome(trace, observed_self, observed_target, fresh,
+                self_fresh=bool(self_node is not None and self_node.last_seen == self_tick),
+                feedback_tick=self_tick)
         return act.observe_outcome(trace, observed_self, observed_target, fresh)
 
     # ---- 七层一步 ----
