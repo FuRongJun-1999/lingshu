@@ -364,6 +364,24 @@ def _require_finite(name: str, x) -> float:
     return v
 
 
+def _normalize_limit(limit):
+    """把检索族的 limit 归一为非负 int（dsh-bounty #1795，#658 口径收口）。
+
+    #658 已把 query_nodes 族的「None＝全量、0＝空、负数＝全量（SQLite
+    `LIMIT -1`＝不限）」钉为契约并配守卫，但切片族读函数漏归一：
+      · `seq[:limit]` 对 `-1` 做 Python 负切片——静默丢掉最后一条命中
+        （实测 5 条命中 `search_content(limit=-1)` 只回 4 条）；
+      · FTS 腿 `max(int(limit) * 5, 100)` 对 `None` 抛 `TypeError`
+        （`LINGSHU_FTS=1` 时 `search_content(limit=None)` 崩溃，LIKE 腿同输入
+        却正常全量——同一公开入口两条腿行为分叉）。
+    本单点把 None／负数归一为哨兵大数 10**9（切片与 int() 两用皆安全，
+    远小于 SQLite LIMIT 上界 2^63-1）；`0` 原样保留（＝空，#658 G2 口径）。
+    判据来源：dsh-bounty #1795（含逐字读数）＋ #658 守卫
+    tests/test_issue658_limit_none_full_return_guard.py 的 G1/G2 判据。
+    """
+    return 10 ** 9 if (limit is None or limit < 0) else limit
+
+
 def _finite_clamp(x, lo: float, hi: float, default: float = None) -> float:
     """把浮点入参归一为 [lo, hi] 内的**有限**值（非有限/非数 → `default`）。
 
@@ -4216,6 +4234,9 @@ class LayeredStore:
         返回前会把命中节点的 `last_access` 刷成「现在」⇒ 同一节点的分数在两次调用
         间漂移（issue 实测 ~1.9e-08），主排序键不稳定 ⇒ 排序翻转。打分路径不写回
         打分输入（检索只计数、不刷新近因），分数即成为固定输入的纯函数。"""
+        # dsh-bounty #1795：#658「None／-1＝全量」口径在此入口收口（FTS 腿
+        # `int(limit)` 对 None 崩、两腿 `scored[:limit]` 对 -1 负切片丢尾条）。
+        limit = _normalize_limit(limit)
         q = query.strip()
         if not q:
             return []
@@ -8110,6 +8131,8 @@ class SpacetimeMemoryEngine:
 
     def semantic_search(self, query: str, limit: int = 10) -> List[Tuple[STNode, float]]:
         """v1.7 语义检索：优先结构化语义坐标相似度；无坐标节点回退文本相似度（D-005 降级）"""
+        # dsh-bounty #1795：同款负切片/None 收口（本方法 `scored[:limit]` 两处）。
+        limit = _normalize_limit(limit)
         if not self._semantic_provider:
             return self.store.search_content(query, limit=limit)
         q_sc = self._semantic_provider.to_semantic_coordinates(query)
@@ -8189,6 +8212,8 @@ class SpacetimeMemoryEngine:
         自身语料标定（本仓不内置）。边界：矛盾配对（`LINGSHU_CONTRADICTION=1`）
         与阈值同时启用时，低于阈值的对侧仍会被截掉（配对可能被拆开）——阈值
         优先生效，调用方需自行评估该组合。"""
+        # dsh-bounty #1795: #658 None/-1=full semantics (scored[:limit] x4 here).
+        limit = _normalize_limit(limit)
         # #787：touch=False——recall 的打分输入（last_access）不得被自己的检索腿
         # 写回（根修「分数漂移」）；候选池/排序其余口径逐位不变。
         results = self.store.search_content(context_content, limit=50, touch=False)
@@ -11702,6 +11727,8 @@ class SpacetimeMemoryEngine:
     def query_by_semantics(self, text: str, limit: int = 10,
                            modality: str = None) -> List[Tuple[STNode, float]]:
         """语义→图像（反向映射）：文本 → semantic_coordinates → 图节点检索（D-003 明确检索语义坐标）"""
+        # dsh-bounty #1795: same None/-1 normalization (scored[:limit] x2).
+        limit = _normalize_limit(limit)
         if not self._semantic_provider:
             return []
         q_sc = self._semantic_provider.to_semantic_coordinates(text)
