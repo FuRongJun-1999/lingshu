@@ -8,7 +8,7 @@
 
 ## 基线与验收
 
-独立基于最新 main `aadc9f13d70be7536b6b2e1c753e325b4859f66f`；双平台源码验证提交 `870f25be5919bb680825892954cd40e86bcd872d`。同一守卫在 main 为 22 failed、1 passed，具名断言报告新接口缺失；旧 generate 对照通过，无导入错误或 SKIP。基线场景另从原始 main 的 git archive 导出运行。
+原始开发基线 main `aadc9f13d70be7536b6b2e1c753e325b4859f66f`；双平台源码验证提交 `870f25be5919bb680825892954cd40e86bcd872d`。同一守卫在 main 为 22 failed、1 passed，具名断言报告新接口缺失；旧 generate 对照通过，无导入错误或 SKIP。基线场景另从原始 main 的 git archive 导出运行。
 
 | 平台 | 基线 | 功能实现 | 变异自证 |
 | --- | --- | --- | --- |
@@ -59,3 +59,9 @@ python -X utf8 tools/testing/replay_world_branches.py --revisions 870f25be5919bb
 仅交付 W3 第一增量：不做动作序列执行/搜索、一般因果识别、完整物理分支或跨分支长期学习。未新增运行依赖或生产模块、未改脑端、宿主、CI、门禁阈值或豁免。复用现有模型及预测链，目标仓/bounty 全状态已查重；未见相同隔离 API 交付。维护者技术与理论人审待完成，human review pending。
 
 公开证据维护：仅将一组预期失败变异的堆栈中 5 处本机解释器前缀替换为 <python>，保留文件、行号、断言和失败读数；功能源码、守卫、场景及组合工具字节未改，复用已完成验证。最终完整 CI 以更新后的 PR head 为准。
+
+## main 同步后的交付状态
+
+合入 main `6146c78086c68f1f882077ba3b78d14f78c49853`，唯一冲突为导出清单指纹；采用 main 清单元数据，再按实际合成的 core/world_model 文件登记 SHA，严格检查仍为 64/64 MATCH。main 新增的既有 core/nn 修复及守卫原样保留，不计为本件贡献。
+
+原本地验证提交与读数保持冻结。core 文件含 main 的其他方法更新，不能再称整个生产文件逐字节未改；本件 counterfactual 方法和 core.world_model 门面 AST 与原验证提交完全一致，守卫、场景、组合工具字节未改。相应方法和当前模块指纹见同目录 main-sync-20261025.json。复用原定向验证，不反复跑本地全套，最终合成 head 的完整 CI 单独核验。

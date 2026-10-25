@@ -96,7 +96,12 @@ def verify_designer(designer_key) -> bool:
     expected = os.environ.get("AEIS_DESIGNER_KEY")
     if not expected or not designer_key:
         return False
-    return _hmac.compare_digest(str(designer_key), str(expected))
+    # #51：`hmac.compare_digest` 对**非 ASCII str** 抛 TypeError（CPython 文档化
+    # 行为）⇒ 中文密钥下终裁门禁从「干净拒绝」变成「崩」（6 条终裁通路全部
+    # 不可用）。修法：统一 encode 成 bytes 再比较——时序安全语义不变、对任意
+    # Unicode 密钥成立；不匹配 ⇒ False（fail-closed 原样），不再抛。
+    return _hmac.compare_digest(str(designer_key).encode("utf-8"),
+                                str(expected).encode("utf-8"))
 
 
 # main 侧 #29② 判据的原因名 → 矛盾感知（contradiction.py）的原因名，供 conflict:{reason} 标签统一口径
@@ -2870,16 +2875,30 @@ class LayeredStore:
         if not ids:
             return
         try:
-            obs = sqlite3.connect(self.db_path, timeout=0)
+            # #52：`:memory:` 后端时 `self.db_path` 是 ":memory:" 字面量——
+            # `sqlite3.connect(":memory:")` 得到**另一个空库**（每连接一个独立库），
+            # UPDATE 落在 `no such table` 上被吞 ⇒ 访问计数静默失效（实测 3 次调用
+            # 后 access_count=0，文件库=3）。内存库实际载体是 shared-cache DSN
+            # （`_memory_dsn`，见 `__init__`），旁路连接必须带 `uri=True` 连它才看
+            # 得到同一份数据；`timeout=0` 的非阻塞设计保留不动。文件库路径原样。
+            dsn = self._memory_dsn or self.db_path
+            obs = sqlite3.connect(dsn, timeout=0,
+                                  uri=dsn.startswith("file:"))
             try:
                 # #93：本连接独立于 `_connect`（访问计数为尽力而为的旁路写），
                 # 连接级外键开关必须逐连接重设，否则该连接上外键不生效。
                 obs.execute("PRAGMA foreign_keys=ON")
                 if touch:
+                    # #52：整批共用**一个**时间戳——此前逐行 time.time()，而 ids 是
+                    # 按检索得分序传入的（高分在前）⇒ 低分节点拿到更晚的
+                    # last_access，下一次 recall 的近因项反向偏向低分节点
+                    # （:memory: 上该刷新曾因 #52 静默丢失而从未生效，修复后暴露，
+                    # W6 在依赖下界档复现）。一次检索事件＝一个时刻。
+                    ts = time.time()
                     obs.executemany(
                         'UPDATE nodes SET access_count = access_count + 1,'
                         ' last_access = ? WHERE id=?',
-                        [(time.time(), nid) for nid in ids])
+                        [(ts, nid) for nid in ids])
                 else:
                     obs.executemany(
                         'UPDATE nodes SET access_count = access_count + 1 WHERE id=?',
@@ -4520,10 +4539,20 @@ class LayeredStore:
         # 同一事务：多进程 0 异常但标签静默丢失」＋ 其修法建议「把标签改动收进单条 SQL
         # （同一事务内读改写，或 BEGIN IMMEDIATE）」。取后者（IMMEDIATE）——不改
         # `nodes.tags` 的**整列覆盖**语义，只把读改写收进一个原子边界。
+        # #928：`tag` 必须是**非空字符串**——旧实现来者不拒，传 list 时整个列表被
+        # 当作**一个元素** append 进 tags（`["甲"]` ⇒ `[["甲"]]`），串行两次即得嵌套
+        # `[[甲],[乙]]`；`get_nodes_by_tag` 对嵌套形态匹配必失配 ⇒ 按标签检索丢节点。
+        # 跨进程+字符串 tag 本身无恙（#344 的 BEGIN IMMEDIATE 保证），损坏源是
+        # **类型未校验**，与进程数无关。fail-closed：非 str/空串当场 ValueError，
+        # 不静默改造、不落半截数据。
         # 边界（削掉的判别力，如实标注）：①本件只保证 `tags` 的读改写原子；同一节点上
         # **其它列**的并发读改写（如 `longterm_gate` 的 importance+tags 合并写）不归本件；
         # ②`_lock` 是**进程内**锁、跨进程无效，故此处用 DB 级 `BEGIN IMMEDIATE`（跨进程
         # 亦成立），而非复用 `_lock`；③已在事务中（嵌套调用）则不插手，交由外层边界。
+        if not isinstance(tag, str) or not tag:
+            raise ValueError(
+                "tag_node：tag 须为非空字符串（写入 nodes.tags 扁平数组），"
+                "实得 %r（%s）——列表请改多次调用或先归一为字符串" % (tag, type(tag).__name__))
         own_tx = not self.conn.in_transaction
         if own_tx:
             self.conn.execute("BEGIN IMMEDIATE")
@@ -8633,13 +8662,17 @@ class SpacetimeMemoryEngine:
                                   "ts": now, "count": 1})
 
     def consume_events(self) -> Dict:
-        """P1-4：批量消费事件标记（定时轮询优先；P0 危机期间暂停）"""
+        """P1-4：批量消费事件标记（定时轮询优先；P0 危机期间暂停）。
+
+        #54：paused 时**不消费也不清空**队列——事件保留到恢复后一并处理；
+        旧实现先清空再判 paused ⇒ paused 期间排队的事件被静默丢弃。"""
+        if self._lifecycle and self._lifecycle.state == "paused":
+            return {"status": "paused", "consumed": 0,
+                    "pending": len(self._event_queue),
+                    "note": "P0 危机期间暂停非 P0 处理（3.4 节）；队列保留"}
         events = list(self._event_queue)
         self._event_queue = []
         consumed = 0
-        if self._lifecycle and self._lifecycle.state == "paused":
-            return {"status": "paused", "consumed": 0,
-                    "note": "P0 危机期间暂停非 P0 处理（3.4 节）"}
         for ev in events:
             if ev["type"] in ("perception", "write", "condition_switch") and self._flywheel:
                 try:
@@ -13714,6 +13747,11 @@ class SpacetimeMemoryEngine:
                       0.30 * connection_drift + 0.15 * prediction_error)
         if d_norm is None:
             return 0.0
+        # #459：非有限（NaN/±Inf）不可判 ⇒ 归钳制区间**下界** 0.0（#402 口径：
+        # 非有限一律回落下界，不得抬到上界伪装成「最大信息差」——旧实现
+        # `min(1.0, nan)` 返回 1.0，NaN 样本进 gap_history 后被 Δ²D/趋势当满值）。
+        if not math.isfinite(d_norm):
+            d_norm = 0.0
         dn = max(0.0, min(1.0, d_norm))
         self._gap_history.append({"ts": time.time(), "d_norm": dn})
         if len(self._gap_history) > 100:
@@ -13728,7 +13766,7 @@ class SpacetimeMemoryEngine:
             self._commit_locked()
         except Exception:
             pass
-        return d_norm
+        return dn
 
     def _load_gap_history(self) -> List[Dict]:
         """D 序列跨进程恢复（OBS-REV1 / 钉死批条款4）：读库尾 100 条填内存
