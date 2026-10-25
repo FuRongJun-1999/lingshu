@@ -4813,6 +4813,14 @@ class LayeredStore:
     @_transactional
     def add_skill(self, name: str, description: str, procedure: str, confidence: float = 0.5) -> str:
         """登记技能卡（名称/描述/步骤/初始置信度），返回技能 id。"""
+        # dsh-bounty #1797（#185/#790 族在 skills 表漏网）：confidence 零校验直插
+        # ⇒ NaN 被 SQLite 存成 NULL，此后 `NULL + ?` 恒 NULL、MIN/MAX 遇 NULL 回
+        # NULL——`update_skill_confidence` 的 clamp 对该技能卡永不兑现（成功/失败
+        # 经验增减信全部失效），`search_skills` 的 ORDER BY confidence DESC 里
+        # NULL 恒沉底。接 `_require_finite` 单点闸（#206/#790 同款 fail-closed
+        # 拒收，判据写侧读侧共用）；值域超界不在本闸收口（与 update 的
+        # MIN/MAX clamp 语义兼容）。
+        confidence = _require_finite("confidence", confidence)
         sid = f"sk_{uuid.uuid4().hex[:8]}"
         c = self.conn.cursor()
         c.execute("INSERT INTO skills VALUES (?,?,?,?,?,?,?,?)",
