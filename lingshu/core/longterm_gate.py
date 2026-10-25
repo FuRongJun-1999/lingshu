@@ -885,7 +885,15 @@ class LongTermMemoryGate:
         try:
             from .core import MemoryLayer, _finite_clamp
             nodes = engine.store.get_layer_nodes(MemoryLayer.CONTEXT)
-            for node in nodes:
+            # dsh-bounty #1794（#665 纪律漏网点）：旧实现循环体内裸
+            # `engine.store.conn.commit()`——它不是 `@_transactional` 方法、体内
+            # 无 `_tx` 包装，`_commit_locked()` 在调用方外层事务（depth==1）内
+            # 仍会真提交 ⇒ 调用方「先 promote 再失败回滚」时提升被固化成
+            # 「回滚了但已生效」（假原子性）。修法对齐 `write_snapshot`：整段
+            # 写入包进 `with store._tx():`——独立调用时 depth==1 真提交（行为
+            # 不变）；被外层事务调进来时 depth==2 走 SAVEPOINT，提交权归外层。
+            with engine.store._tx():
+              for node in nodes:
                 if len(promoted) >= limit:
                     break
                 ev = self.evaluate(node.content, "promote", node.tags, node.id)
@@ -903,7 +911,9 @@ class LongTermMemoryGate:
                         "UPDATE nodes SET importance=?, layer=?, tags=? WHERE id=?",
                         (new_imp, MemoryLayer.KNOWLEDGE.value,
                          _json.dumps(tags_new, ensure_ascii=False), node.id))
-                    engine.store.conn.commit()
+                    # #665/#770①：提交走 `_commit_locked()`（本块已包在 `_tx()`
+                    # 内：嵌套时 no-op、推迟到外层；独立调用时真提交）。
+                    engine.store._commit_locked()
                     if ev["layer"] == "long_term":
                         try:
                             engine.protect_node(node.id, "LongTermMemoryGate:promote")

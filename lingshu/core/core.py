@@ -8667,7 +8667,12 @@ class SpacetimeMemoryEngine:
                 "DELETE FROM flywheel_reuse WHERE rowid NOT IN"
                 " (SELECT rowid FROM flywheel_reuse ORDER BY rowid DESC LIMIT ?)",
                 (self.FLYWHEEL_REUSE_MAX_ROWS,))
-            conn.commit()
+            # #665 同款（dsh-bounty #1794）：本方法是 `@_transactional`，体内裸
+            # `conn.commit()` 会提交整条事务并销毁外层 SAVEPOINT——`recall`/
+            # `search_content` 等读 API 在调用方外层事务内命中时会以
+            # `no such savepoint` 崩溃。改走 `_commit_locked()`（委托 store，
+            # 只有最外层真提交）。此处位于 try 内：观测落库失败仍静默。
+            self._commit_locked()
         except Exception:
             pass  # 观测落库失败静默（不阻断检索）
 
