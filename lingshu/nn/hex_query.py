@@ -209,6 +209,12 @@ def query_match(detections: List[Dict], lib: ConnectionLibrary,
     零梯度,纯比对——毫秒级。"""
     if not detections:
         return [{"verdict": "BLINDSPOT", "note": "无检出"}]
+    # dsh-bounty #1800①：知识侧的对称退化——空连接库（`ConnectionLibrary()`
+    # 或 save→load 往返后的 0 记录库）是合法状态，恰是本模块对 BLINDSPOT 的
+    # 定义（「库中无相关配方」）。旧实现在 results[0] 处 IndexError，四态契约
+    # 被崩溃打破；与数据侧兜底同形状返回。
+    if not lib.records:
+        return [{"verdict": "BLINDSPOT", "note": "连接库为空（无已登记配方）"}]
     results = []
     for rec in lib.records:
         score, report = _score_record(rec, detections)

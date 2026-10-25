@@ -70,8 +70,13 @@ def load_cifar10_parquet(path: str, n_train: int = 2000, n_test: int = 500,
 
 def images_to_lattices(images: np.ndarray, cells_across: int = 16) -> np.ndarray:
     """批量图像 → 灰度蜂窝晶格 (N, rows, cols, 1) float32。
-    M2 用小晶格（16 列≈10 行）控制有限差分成本。"""
+    M2 用小晶格（16 列≈10 行）控制有限差分成本。
+    空批次（N=0）返回 (0, 0, 0, 1) float32 空数组（dsh-bounty #1800③：rows
+    依赖单图高度，零样本时无形状可推，用零维占位；下游按 len==0 分流）。
+    """
     from .hex_cnn import image_to_grid
+    if len(images) == 0:
+        return np.zeros((0, 0, 0, 1), dtype=np.float32)
     out = None
     for i in range(len(images)):
         img = images[i]

@@ -204,6 +204,14 @@ class HexHierNet:
             amp = np.linalg.norm(deep1, axis=1, keepdims=True)
             deep1 = deep1 / (amp + 1e-12)
             if self.amp_sep:
+                # dsh-bounty #1800②：与 stacked 分支（上方）同一处理——旧实现
+                # 在 stacked=False 配置下漏了 amp_log 中心化，该参数静默失效、
+                # 无界原始幅度直接进 head（正是 M4.4 注释声明要防的形态；
+                # stacked=False 是 make_plan 认可的受支持配置）。
+                if self.amp_log:
+                    # 固定参考点中心化(amp=1→0)——不能用 batch mean,
+                    # 否则特征 batch 依赖,训练/测试/子区域分布错乱
+                    amp = np.log1p(amp) - 0.6931471805599453
                 deep1 = np.concatenate([deep1, amp], axis=1)
         return deep1, lat.mean(axis=(1, 2))
 
