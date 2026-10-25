@@ -496,6 +496,17 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
     initial = recon_loss(eval_masked, evaluation, eval_hole)
     conv_vec_len = net.K * 7
     n_cells = int(x.shape[1] * x.shape[2])
+    if steps <= 0:
+        # dsh-bounty #1799：对齐同族训练入口的「0 步＝无更新」契约——
+        # train_infogap（#335「steps==0 ⇒ 无更新，仍回落 d0」）、
+        # hex_hier.train_hier、hex_cnn.selfsup_finetune（「epochs<=0 表示
+        # 『不训练』：loss_curve 为空……核保持为输入核」，有守卫
+        # tests/test_hex_selfsup_epochs_zero.py）。旧 `max(1, ...)` 把显式
+        # 0/负步钳成 1 步 ⇒ 模型被静默训练一步、核被改写（curve 非空、
+        # final != init）——本函数是该家族唯一违背者。
+        return {"algo": ALGO + "+selfsup", "init": round(initial, 5),
+                "final": round(initial, 5), "curve": [], "steps": 0,
+                "n_cells": n_cells}
     REF_CELLS = 160                     # 原 steps 标定的旧晶格规模（10×16）
     eff_steps = max(1, int(round(steps * n_cells / REF_CELLS)))
     curve = []
