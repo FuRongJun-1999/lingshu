@@ -1894,11 +1894,22 @@ _ROT = {
 
 # ------------------------------------------------------------------ 四元数
 def _rot_qnorm(q):
-    w, x, y, z = (float(v) for v in q[:4])
-    n = math.sqrt(w * w + x * x + y * y + z * z)
-    if n <= 1e-12:
-        return (1.0, 0.0, 0.0, 0.0)
-    return (w / n, x / n, y / n, z / n)
+    """有限非零四元数归一化；先缩放，避免平方溢出或下溢冒充单位姿态。"""
+    if (not isinstance(q, (list, tuple)) or len(q) != 4
+            or any(isinstance(v, bool) for v in q)):
+        raise ValueError("rot_quat must contain four finite numbers")
+    try:
+        values = tuple(float(v) for v in q)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ValueError("rot_quat must contain four finite numbers") from error
+    if not all(math.isfinite(v) for v in values):
+        raise ValueError("rot_quat must contain four finite numbers")
+    scale = max(abs(v) for v in values)
+    if scale == 0.0:
+        raise ValueError("rot_quat must be nonzero")
+    scaled = tuple(v / scale for v in values)
+    n = math.sqrt(sum(v * v for v in scaled))
+    return tuple(v / n for v in scaled)
 
 
 def _rot_mul(a, b):
@@ -2066,14 +2077,17 @@ def _perceive_with_rot(self, observations=None, tool="observer",
     if buf is None:
         buf = self._rot_buf = {}
     got = 0
-    for o in observations:
+    rejected = []
+    for index, o in enumerate(observations):
         eid = str(o.get("eid", ""))
         q = o.get("rot_quat")
-        if not eid or not isinstance(q, (list, tuple)) or len(q) != 4:
+        if not eid or q is None:
             continue
         try:
             qq = _rot_qnorm(q)
         except (TypeError, ValueError):     # 四元数形状/数值不合法 ⇒ 跳过；
+            rejected.append({"observation_index": o.get("observation_index", index),
+                             "eid": eid, "reason": "invalid_quaternion"})
             continue                        # 其余异常照常抛出（不再静默掩盖）
         buf.setdefault(eid, []).append((self.tick, qq))
         buf[eid] = buf[eid][-_ROT["len"]:]
@@ -2083,6 +2097,8 @@ def _perceive_with_rot(self, observations=None, tool="observer",
         st["perceive_calls"] += 1
         st["quats"] += got
         self._rot_stats = st
+    if rejected:
+        out["rotation_rejections"] = rejected
     return out
 
 
