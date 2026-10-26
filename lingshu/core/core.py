@@ -158,6 +158,22 @@ class ConditionSpace:
 # tags 列序列化（唯一真源 · issue #378）
 # =============================================================================
 
+class _DedupCandidate:
+    """M5 去重候选的窄载行（#661）：只带判同所需的四列属性。
+
+    刻意做成与 `STNode` 同形的**属性读取**面（`id/content/tags/condition_space`），
+    使 M5 判定循环零改动即可复用；命中后调用方仍走 `get_node(best.id)` 取完整节点。
+    用 `__slots__` 抑制 `__dict__`：2000 条候选时省下每行一个 dict 的开销。
+    """
+    __slots__ = ("id", "content", "tags", "condition_space")
+
+    def __init__(self, nid: str, content: str, tags: list, condition_space):
+        self.id = nid
+        self.content = content
+        self.tags = tags
+        self.condition_space = condition_space
+
+
 def _dumps_tags(tags, ensure_ascii: bool = False) -> str:
     """序列化 `nodes.tags` 列（唯一真源）。拒绝含 UTF-16 代理码点的标签。
 
@@ -3154,6 +3170,44 @@ class LayeredStore:
         nodes, skipped = self._tolerant_nodes(c.fetchall())
         self.last_skipped_rows = skipped
         return nodes
+
+    def query_dedup_candidates(self, layer: MemoryLayer = None,
+                               modality: str = None) -> List["_DedupCandidate"]:
+        """M5 去重候选的**窄列**查询（#661）：只取判同所需四列。
+
+        `query_nodes(limit=-1)` 走 `SELECT *` + `STNode.from_row` 全列反序列化
+        （8 个 JSON 列），而 M5 判定循环只读 `id / content / tags / condition_space`。
+        旧路径使写入代价随知识层规模线性增长（issue #661：500→2000 条 6.3→27.4
+        ms/条；cProfile 中 `query_nodes` 占 ~75%、其内 `from_row` 占 ~61%）。
+
+        口径与 `query_nodes` 一致的部分：同一 `WHERE layer/modality`、同一
+        `ORDER BY importance DESC, last_access DESC`；坏行只跳过并计入
+        `last_skipped_rows`（不中断整层装载）。
+        """
+        conditions, params = [], []
+        if layer is not None:
+            conditions.append("layer=?")
+            params.append(layer.value)
+        if modality is not None:
+            conditions.append("modality=?")
+            params.append(modality)
+        where = " AND ".join(conditions) if conditions else "1=1"
+        c = self.conn.cursor()
+        c.execute(f"SELECT id, content, tags, condition_space FROM nodes WHERE {where}"
+                  f" ORDER BY importance DESC, last_access DESC", params)
+        out, skipped = [], []
+        for nid, content, tags_json, cs_json in c.fetchall():
+            try:
+                tags = json.loads(tags_json) if tags_json else []
+                if not isinstance(tags, list):
+                    tags = []
+                cs = ConditionSpace.from_json(cs_json) if cs_json else None
+            except Exception:
+                skipped.append(str(nid))
+                continue
+            out.append(_DedupCandidate(nid, content or "", tags, cs))
+        self.last_skipped_rows = skipped
+        return out
 
     def _tolerant_nodes(self, rows) -> Tuple[List[STNode], List[str]]:
         """逐行反序列化节点（#267）：坏行只跳过该行，返回 (nodes, skipped_ids)。
@@ -7262,8 +7316,10 @@ class SpacetimeMemoryEngine:
                 # （本仓索引只有 `idx_nodes_layer/idx_edges_source/idx_edges_target`，
                 # core.py:988-990），故不引入；③issue 建议 3（维持 200 并显式声明）**不**
                 # 采纳——那只是把漏去重写进文档，缺陷仍在；④仍按 `modality` 过滤（#223）。
-                candidates = self.store.query_nodes(layer=MemoryLayer.KNOWLEDGE,
-                                                    modality=modality, limit=-1)
+                # #661：M5 去重只需判同四列——改窄列查询（旧 `query_nodes(limit=-1)`
+                # 是 SELECT * + 全列反序列化，写入代价随库规模线性增长）。
+                candidates = self.store.query_dedup_candidates(
+                    layer=MemoryLayer.KNOWLEDGE, modality=modality)
                 best, best_sim = None, 0.0
                 # #225：极性闸——**成败极性不同的节点不得合并**。旧实现只比正文二元组，
                 # 而 `record_action_sequence` 把成败写成正文前缀（`成功：`/`失败：`，且
