@@ -1,0 +1,25 @@
+{
+  "baseline": "c3f9178eb70c8cd43d317a33fb7989ef66b0f001",
+  "validated_production_commit": "ee83c19d88767e4883109e800d539def3d788999",
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "316e91ded6756fcd19b0308d85a5eec31d9d57188380b8a37bd4c9546b36c08c",
+    "tests/test_world_rotation_tick_clock.py": "11cf71ac016235fd8be0ec687420a35e1b85b2222401977fdb1db26aa758f883",
+    "tests/fixtures/world_rotation_tick_clock_mutations.json": "bcdc4460858207b0b750fc11d2887532b346978aa176fd8b03ded17cfc47d4ae"
+  },
+  "related_files": [
+    "test_world_observation_contracts.py",
+    "test_world_identity_qualification.py",
+    "test_world_counterfactual_isolation.py",
+    "test_world_memory_first_batch.py",
+    "test_trajectory_resolved_observations.py",
+    "test_issue418_sparse_motion_guard.py",
+    "test_wm_verify_snapshot_tick.py",
+    "test_wm_verify_unobserved.py",
+    "test_world_qualified_feedback.py",
+    "test_pursuit_prediction.py",
+    "test_world_period_silent_wrong_guard.py"
+  ],
+  "normalization": "Only workspace/interpreter prefixes, CRLF and line-end whitespace; raw local logs retained",
+  "temporary_copy_cleanup": true,
+  "local_linux_replay": "not run; WSL launch failed before Python"
+}
