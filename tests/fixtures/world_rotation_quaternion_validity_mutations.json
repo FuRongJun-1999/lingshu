@@ -1,6 +1,6 @@
 {
   "guard": "tests/test_world_rotation_quaternion_validity.py",
-  "total": 24,
+  "total": 25,
   "sources": ["lingshu/world/world_model.py"],
   "baseline_failures": [
     "test_normalization_preserves_orientation_at_finite_scales[large]",
@@ -22,6 +22,7 @@
     "test_core_keeps_valid_positions_and_finite_predictions_on_bad_rotation[nan]",
     "test_core_keeps_valid_positions_and_finite_predictions_on_bad_rotation[overflow]",
     "test_rejection_receipt_keeps_the_conservative_source_index",
+    "test_legacy_rejection_index_is_not_overridden_by_input_metadata",
     "test_a_new_valid_sample_recovers_without_flushing_the_history"
   ],
   "mutations": [
@@ -42,6 +43,6 @@
       "changes": [{"file": "lingshu/world/world_model.py", "method": "_perceive_with_rot", "old": "        out[\"rotation_rejections\"] = rejected", "new": "        pass"}]},
     {"name": "use_filtered_observation_index", "test": "test_rejection_receipt_keeps_the_conservative_source_index",
       "assertion": "WM_QUAT_RECEIPT_WRONG_SOURCE_INDEX",
-      "changes": [{"file": "lingshu/world/world_model.py", "method": "_perceive_with_rot", "old": "o.get(\"observation_index\", index)", "new": "index"}]}
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_perceive_with_rot", "old": "o[\"observation_index\"] if self.identity_policy == \"conservative\" else index", "new": "index"}]}
   ]
 }

@@ -149,6 +149,13 @@ def test_rejection_receipt_keeps_the_conservative_source_index():
     assert len(model._rot_buf["c"]) == 6
 
 
+def test_legacy_rejection_index_is_not_overridden_by_input_metadata():
+    model = seeded()
+    measurement = {**row(6, q=["bad", 0, 0, 1]), "observation_index": 99}
+    result = model.perceive([measurement], tick=6)
+    assert result.get("rotation_rejections") == [{"observation_index": 0, "eid": "shaft", "reason": "invalid_quaternion"}], "WM_QUAT_LEGACY_RECEIPT_TRUSTED_INPUT_INDEX"
+
+
 def test_float_convertible_legacy_quaternions_remain_supported():
     assert module._rot_qnorm(["0.5"]*4) == (0.5, 0.5, 0.5, 0.5)
 

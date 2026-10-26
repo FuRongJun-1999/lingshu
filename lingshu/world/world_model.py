@@ -2086,7 +2086,8 @@ def _perceive_with_rot(self, observations=None, tool="observer",
         try:
             qq = _rot_qnorm(q)
         except (TypeError, ValueError):     # 四元数形状/数值不合法 ⇒ 跳过；
-            rejected.append({"observation_index": o.get("observation_index", index),
+            source_index = o["observation_index"] if self.identity_policy == "conservative" else index
+            rejected.append({"observation_index": source_index,
                              "eid": eid, "reason": "invalid_quaternion"})
             continue                        # 其余异常照常抛出（不再静默掩盖）
         buf.setdefault(eid, []).append((self.tick, qq))
