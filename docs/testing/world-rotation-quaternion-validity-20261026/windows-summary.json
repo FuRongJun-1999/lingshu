@@ -1,0 +1,49 @@
+{
+  "platform": "Windows",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "baseline": "c3f9178eb70c8cd43d317a33fb7989ef66b0f001",
+  "validated_commit": "3d8e7ed0884f9f91487af9cd03434268c0e92e92",
+  "commands": [
+    {
+      "name": "replay",
+      "returncode": 0
+    },
+    {
+      "name": "related",
+      "returncode": 0
+    },
+    {
+      "name": "manifest",
+      "returncode": 0
+    },
+    {
+      "name": "time-core",
+      "returncode": 0
+    }
+  ],
+  "related_files": [
+    "test_world_observation_contracts.py",
+    "test_world_identity_qualification.py",
+    "test_world_counterfactual_isolation.py",
+    "test_world_memory_first_batch.py",
+    "test_trajectory_resolved_observations.py",
+    "test_issue418_sparse_motion_guard.py",
+    "test_wm_verify_snapshot_tick.py",
+    "test_wm_verify_unobserved.py",
+    "test_world_qualified_feedback.py",
+    "test_pursuit_prediction.py",
+    "test_world_period_silent_wrong_guard.py"
+  ],
+  "related_total": 161,
+  "related_skips": [
+    "test_scene_relations_round_trip_real_brain",
+    "test_experience_real_brain_restart_preserves_predictive_relations"
+  ],
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "37dd59696c5418a0beece63a60a08e6b56143dcf1dd4021a7706369f392552a6",
+    "tests/test_world_rotation_quaternion_validity.py": "dcde5d8b60225adbec19d848d02ea099221de81212d54536a7245177fabc028f",
+    "tests/fixtures/world_rotation_quaternion_validity_mutations.json": "b676adfaa3ae3851612d50c13c5023b90d9575b513e551af69f37565cf683c0a"
+  },
+  "owned_test_temp_cleaned": true
+}

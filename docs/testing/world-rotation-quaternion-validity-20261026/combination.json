@@ -1,0 +1,20 @@
+{
+  "revisions": [
+    "3d8e7ed0884f9f91487af9cd03434268c0e92e92",
+    "f411d1e0a73fbadf36e0b5b315b9e0b1421bc240"
+  ],
+  "base": "c3f9178eb70c8cd43d317a33fb7989ef66b0f001",
+  "merge_returncode": 0,
+  "returncode": 0,
+  "tests": 45,
+  "failures": [],
+  "skipped": [],
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "dfd6578cdb0eff9120457b9ec1580350810109f6c9ee687ae904c35a17574da0",
+    "tests/test_world_rotation_quaternion_validity.py": "dcde5d8b60225adbec19d848d02ea099221de81212d54536a7245177fabc028f",
+    "tests/test_world_rotation_tick_clock.py": "11cf71ac016235fd8be0ec687420a35e1b85b2222401977fdb1db26aa758f883"
+  },
+  "helper_sha256_lf": "f512ec0538de2a5da1d7ec4cf8e8e0af876199c9c1d829e1c35858bc4d825be3",
+  "owned_temp_cleaned": true,
+  "scope": "隔离源码组合；非正式 Git/清单/全套验收"
+}
