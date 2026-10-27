@@ -13236,6 +13236,19 @@ class SpacetimeMemoryEngine:
                 _skip_row = False
                 for _col in cols:
                     _val = r.get(_col)
+                    # #1009（本件）：nodes 表 `tags`/`condition_space` 的 null
+                    # 值按列既有语义归一为空 JSON 文本并**计数上报**（tags=None
+                    # ⇒ "[]"（#718「None 视为无该标记」）；condition_space=None
+                    # ⇒ "{}"（NOT NULL 列，None 原样绑定会抛 IntegrityError 被
+                    # 外层吞 ⇒ imported 照计、行未落库＝静默丢行＋计数错报，
+                    # 即报告实测）。归一后行可落库亦可读；#378-E 的「None 保持
+                    # None 落库」断言随本契约演进更新。其它列 None 原样绑定。
+                    if (_val is None and table == "nodes"
+                            and _col in ("tags", "condition_space")):
+                        r[_col] = "[]" if _col == "tags" else "{}"
+                        _nv = normalized_values.setdefault(table, {})
+                        _nv[_col] = _nv.get(_col, 0) + 1
+                        continue
                     if _val is None or isinstance(_val, (str, int, float, bytes)):
                         continue
                     if col_types.get(_col, "") == "TEXT":
