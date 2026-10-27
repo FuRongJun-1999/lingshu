@@ -227,6 +227,14 @@ class ChannelCredibilityRegistry:
         #   前先执行」指该通道），不遍历全部通道；`hits`/`misses` 仍为**累计计数**
         #   ——它们是观测面、不是后验伪样本量，不参与折扣（#119 往返判据要求这两个
         #   字段 save/load 后逐字段相等）。
+        # #1064：`n_eff == 0`（非有限置信度按上面 #402 归零后，或调用方显式传 0.0）
+        # 意为「零信息事件」——#402 注释已承诺「后验不动」。旧实现无条件先执行
+        # #119 折扣 ⇒ 一次无信息事件扣掉 (1-α) 比例的历史证据：实测训练过的通道
+        # a 201.84→141.89（Δ-59.95），且对 miss-heavy 通道方向反转（b 202→142，
+        # 可信度 0.0098→0.0139 反而上升；conf=0 时 maintenance→downweighted）。
+        # 此处短路：零伪样本量 ⇒ 后验与计数都不动，只回读状态。
+        if n_eff <= 0.0:
+            return self.channel_state(channel)
         st["a"] = PRIOR_A + alpha * (st["a"] - PRIOR_A)
         st["b"] = PRIOR_B + alpha * (st["b"] - PRIOR_B)
         if hit:
