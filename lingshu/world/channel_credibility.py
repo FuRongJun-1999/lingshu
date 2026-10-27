@@ -139,7 +139,12 @@ class ChannelCredibilityRegistry:
         if not self.persist_path:
             return
         try:
-            os.makedirs(os.path.dirname(self.persist_path), exist_ok=True)
+            # #1065：裸文件名（"cred.json"）的 dirname 为空串，`os.makedirs("")`
+            # 抛 FileNotFoundError 并被外层 `except Exception: pass` 吞掉 ⇒ 每次
+            # 「保存成功」但盘上无文件、重启全丢。空目录分量时跳过建档。
+            _dir = os.path.dirname(self.persist_path)
+            if _dir:
+                os.makedirs(_dir, exist_ok=True)
             # #651：落盘前过滤非注册键——_load 重启后只认 DEFAULT_CHANNELS
             #（构造器先建的就是这六个键），写下去也只写这批，盘面与重载面
             # 严格一致。_state 里混入的其它键（直改内部字典 / 旧版本残留）

@@ -139,7 +139,11 @@ REPO_DATA = os.path.join(REPO, "lingshu", "data")
 
 # 改前基线（Lead 在任何人动手前实测）——**像素级**金标，与 PIL 的 deflate 后端无关：
 #   skeleton_walk.png = 像素 sha256 247c38432b4449ad…（1440×240，1036800 B）
-#   skeleton_demo.png = 像素 sha256 365e6a3166984e63…（1200×400，1440000 B）
+#   skeleton_demo.png = 像素 sha256 0a7b79bf0c83a56c…（1200×400，1440000 B）
+#   ★ 2026-10-27 #1066（关节半径改按相机深度）：demo 相机是 look_at 摆位
+#     （cz=-2.20/pitch=-8°）、关节世界 z=5.0 而真实深度≈7.2 ⇒ 旧实现把关节
+#     画大了约 30%；本条金标随之更新。skeleton_walk.png（默认机位）逐字节
+#     不变（247c3843… 前后一致），可作「影响面仅限非默认机位」的证据。
 #
 # ★为何冻结在**像素**层而不是文件字节层（2026-10-14 机制定因，本机实测）：
 #   PNG 文件字节由**打包进 Pillow 轮的 zlib 实现**决定，而 `PIL.__version__` 不反映它 ——
@@ -156,7 +160,7 @@ _GOLDEN_PIXELS = {
     "skeleton_walk.png": (
         "247c38432b4449ad03857c73f6ccb7fa5850ffee7704198f9d928165db174355", 1036800, (1440, 240)),
     "skeleton_demo.png": (
-        "365e6a3166984e6351d5871a9cd9b15a20383461c700e8cbfa9f199aa69dda74", 1440000, (1200, 400)),
+        "0a7b79bf0c83a56c52433a6c2eb3bbe43e9b8ec2454ec398a13b9baf70fbf1b2", 1440000, (1200, 400)),
 }
 
 # 文件字节级金标（**作者原设计的那一层，2026-10-15 恢复**）：分档键从 `PIL.__version__`
@@ -169,12 +173,12 @@ _GOLDEN_PNG = {
     # 记录机（Lead 出值的环境）：stock zlib
     ("12.3.0", "1.3.1"): {
         "skeleton_walk.png": ("9fd99af8acf41522b7687b812712f55e573bb7df2ee95309558f0a9b4c38ad00", 3465),
-        "skeleton_demo.png": ("59ba23047da29e96d82ace9221ca5e99764992e6aab45bcc8836126eefa2ecbe", 4068),
+        "skeleton_demo.png": ("5456cab39aeb60dc9c4929d1e52ce8c6af678a0711483a8c265f6ed6d857e4d5", 4134),
     },
     # 本机（Windows / zlib-ng 构建的 Pillow 轮）：2026-10-15 实测
     ("12.3.0", "1.3.1.zlib-ng"): {
         "skeleton_walk.png": ("c5d21eb5ad9df7237b3b20c7a0a3033f436e58deeba199a55e32d43155db3d45", 3403),
-        "skeleton_demo.png": ("b786d387c77e3eac088e2329434cc0eb3c4cfb7014dc2bea2ace2385ba2fcc09", 3988),
+        "skeleton_demo.png": ("5456cab39aeb60dc9c4929d1e52ce8c6af678a0711483a8c265f6ed6d857e4d5", 4134),
     },
 }
 

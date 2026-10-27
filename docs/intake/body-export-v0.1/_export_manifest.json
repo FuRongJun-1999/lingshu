@@ -32,7 +32,7 @@
     {
      "file": "channel_credibility.py",
      "src": "aeis.channel_credibility",
-     "sha256": "b154d62c8754ae15",
+     "sha256": "90ceb1f06d0fa627",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -176,7 +176,7 @@
     {
      "file": "skeleton3d.py",
      "src": "aeis.skeleton3d",
-     "sha256": "60fcc971720212c7",
+     "sha256": "c52d984697eaa106",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
