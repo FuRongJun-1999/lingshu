@@ -1,0 +1,197 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "ee4da17d97fe4303875cd9ab75a542cd66ba292d",
+  "guard_sha256": "dcde5d8b60225adbec19d848d02ea099221de81212d54536a7245177fabc028f",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 25,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "25 passed, 17 warnings in 0.51s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "4766120556bd36acaef576cb857eb1a3191295b9b2e3e9bad524f3db3c10788d"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 4,
+      "failed_tests": [
+        "test_a_new_valid_sample_recovers_without_flushing_the_history",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[bool]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[inf]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[nan]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[negative_inf]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[overflow]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[shape]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[text]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[zero]",
+        "test_core_keeps_valid_positions_and_finite_predictions_on_bad_rotation[nan]",
+        "test_core_keeps_valid_positions_and_finite_predictions_on_bad_rotation[overflow]",
+        "test_legacy_rejection_index_is_not_overridden_by_input_metadata",
+        "test_normalization_preserves_orientation_at_finite_scales[large]",
+        "test_normalization_preserves_orientation_at_finite_scales[near_max]",
+        "test_normalization_preserves_orientation_at_finite_scales[small]",
+        "test_normalization_preserves_orientation_at_finite_scales[subnormal]",
+        "test_only_invalid_rotations_never_claim_a_rotation_prediction",
+        "test_rejection_receipt_keeps_the_conservative_source_index",
+        "test_scaled_rotation_stream_matches_the_unit_stream[large]",
+        "test_scaled_rotation_stream_matches_the_unit_stream[negative_large]",
+        "test_scaled_rotation_stream_matches_the_unit_stream[small]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_normalization_preserves_orientation_at_finite_scales[large]",
+        "test_normalization_preserves_orientation_at_finite_scales[small]",
+        "test_normalization_preserves_orientation_at_finite_scales[near_max]",
+        "test_normalization_preserves_orientation_at_finite_scales[subnormal]",
+        "test_scaled_rotation_stream_matches_the_unit_stream[large]",
+        "test_scaled_rotation_stream_matches_the_unit_stream[small]",
+        "test_scaled_rotation_stream_matches_the_unit_stream[negative_large]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[nan]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[inf]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[negative_inf]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[zero]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[overflow]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[text]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[shape]",
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[bool]",
+        "test_only_invalid_rotations_never_claim_a_rotation_prediction",
+        "test_core_keeps_valid_positions_and_finite_predictions_on_bad_rotation[nan]",
+        "test_core_keeps_valid_positions_and_finite_predictions_on_bad_rotation[overflow]",
+        "test_rejection_receipt_keeps_the_conservative_source_index",
+        "test_legacy_rejection_index_is_not_overridden_by_input_metadata",
+        "test_a_new_valid_sample_recovers_without_flushing_the_history"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "21 failed, 4 passed, 17 warnings in 0.73s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "c8268fb53e55717bbbd30d52c5a639c4a21e597866587d6c04cbd22098c26d96"
+      }
+    },
+    {
+      "case": "accept_nonfinite_quaternions",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[nan]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[nan]"
+      ],
+      "expected_assertion": "WM_BAD_QUAT_REACHED_BUFFER",
+      "pytest_summary": "1 failed in 0.26s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "feed2b8dbacb5f6dd318e7c5abb1239b765f23c3c9654a60d74fc5baeb0b839e"
+      }
+    },
+    {
+      "case": "invent_identity_for_zero_quaternion",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[zero]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[zero]"
+      ],
+      "expected_assertion": "WM_BAD_QUAT_REACHED_BUFFER",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "ed25af5afcb5724341d51c2b6fb9be1379dd6a3cddf4c790bb48a658d67e57b9"
+      }
+    },
+    {
+      "case": "square_before_scaling",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_normalization_preserves_orientation_at_finite_scales[large]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_normalization_preserves_orientation_at_finite_scales[large]"
+      ],
+      "expected_assertion": "WM_QUAT_SCALE_CHANGED_ORIENTATION",
+      "pytest_summary": "1 failed in 0.25s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "0ddbca3444656e9ca728b57265c2753f085c60032548acc005f68f2a26773a8c"
+      }
+    },
+    {
+      "case": "let_numeric_conversion_overflow_escape",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[overflow]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[overflow]"
+      ],
+      "expected_assertion": "WM_BAD_QUAT_ABORTED_POSITION_FRAME",
+      "pytest_summary": "1 failed in 0.28s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "2e6ab9b2d3389d41c043be1ccabaae35b6c0ed948a7002533bbd12d3d8b2c406"
+      }
+    },
+    {
+      "case": "drop_rejection_receipt",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[text]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[text]"
+      ],
+      "expected_assertion": "WM_QUAT_REJECTION_RECEIPT_MISSING",
+      "pytest_summary": "1 failed in 0.30s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "08ce7600fc7ccd9784baf0f1492bfc90f1c764085c6ebd0646a9594a7cf19734"
+      }
+    },
+    {
+      "case": "use_filtered_observation_index",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_rejection_receipt_keeps_the_conservative_source_index"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_rejection_receipt_keeps_the_conservative_source_index"
+      ],
+      "expected_assertion": "WM_QUAT_RECEIPT_WRONG_SOURCE_INDEX",
+      "pytest_summary": "1 failed in 0.26s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "69997545b6ac90663f81d1176eab624ab5d83dc0e8ab922e7f1017d43d6714d2"
+      }
+    }
+  ]
+}

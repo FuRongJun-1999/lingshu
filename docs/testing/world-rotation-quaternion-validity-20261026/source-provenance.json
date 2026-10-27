@@ -23,5 +23,65 @@
   "combination_helper_path": "docs/testing/world-rotation-quaternion-validity-20261026/replay_combination.py",
   "normalization": "Only workspace/interpreter prefixes, CRLF and line-end whitespace; raw local logs retained",
   "owned_temporary_copies_cleaned": true,
-  "local_linux_replay": "not run; WSL launch failed before Python"
+  "local_linux_replay": "not run; WSL launch failed before Python",
+  "historical_evidence_note": "Top-level original baseline/source fingerprints belong to the pre-sync batch; current delivery is recorded separately below.",
+  "current_delivery": {
+    "platform": "Windows",
+    "python": "3.12.10",
+    "sqlite": "3.49.1",
+    "baseline": "ee4da17d97fe4303875cd9ab75a542cd66ba292d",
+    "validated_commit": "6d7839e2f8c0cb9dab53be85b2eb7a7991ffd734",
+    "commands": [
+      {
+        "name": "replay",
+        "returncode": 0
+      },
+      {
+        "name": "related",
+        "returncode": 0
+      },
+      {
+        "name": "manifest",
+        "returncode": 0
+      },
+      {
+        "name": "time-core",
+        "returncode": 0
+      }
+    ],
+    "related_files": [
+      "test_world_observation_contracts.py",
+      "test_world_identity_qualification.py",
+      "test_world_counterfactual_isolation.py",
+      "test_world_memory_first_batch.py",
+      "test_trajectory_resolved_observations.py",
+      "test_issue418_sparse_motion_guard.py",
+      "test_wm_verify_snapshot_tick.py",
+      "test_wm_verify_unobserved.py",
+      "test_world_qualified_feedback.py",
+      "test_pursuit_prediction.py",
+      "test_world_period_silent_wrong_guard.py",
+      "test_world_rotation_tick_clock.py",
+      "test_world_observation_atomicity.py",
+      "test_issue1010_vprim_category_roundtrip.py",
+      "test_issue1011_identity_float_projection.py",
+      "test_issue1012_rot_buffer_dedupe.py"
+    ],
+    "related_total": 215,
+    "related_skips": [
+      "test_scene_relations_round_trip_real_brain",
+      "test_experience_real_brain_restart_preserves_predictive_relations"
+    ],
+    "sha256_lf": {
+      "lingshu/world/world_model.py": "4766120556bd36acaef576cb857eb1a3191295b9b2e3e9bad524f3db3c10788d",
+      "tests/test_world_rotation_quaternion_validity.py": "dcde5d8b60225adbec19d848d02ea099221de81212d54536a7245177fabc028f",
+      "tests/fixtures/world_rotation_quaternion_validity_mutations.json": "b676adfaa3ae3851612d50c13c5023b90d9575b513e551af69f37565cf683c0a"
+    },
+    "owned_test_temp_cleaned": true,
+    "upstream_rot_tick_dedupe_preserved": true,
+    "only_changed_production_functions": [
+      "_rot_qnorm",
+      "_perceive_with_rot"
+    ]
+  }
 }

@@ -1,6 +1,6 @@
 # 世界模型四元数归一化与无效旋转隔离
 
-日期：2026-10-26
+日期：2026-10-27
 
 ## 问题与修复
 
@@ -13,7 +13,21 @@ NaN/Inf 未检查就写进旋转缓冲，一条坏读数即可让后续 predicte
 回执给出已解析实体、原因与帧内来源序号，legacy 不采信上游索引覆盖，conservative 保留原序号。
 没有旋转或没有拒绝时不增加拒绝字段；无旋转历史仍走原位置输出。
 
-## 最终定向批次
+## 同步最新 main 后的交付批次
+
+交付基线为 `ee4da17d97fe4303875cd9ab75a542cd66ba292d`，固定源码验证提交
+`6d7839e2f8c0cb9dab53be85b2eb7a7991ffd734`。该 main 已纳入观测帧预检、旋转真实 tick
+以及同 tick 旋转去重等修复；本件保留这些行为，对该 main 的生产差异仍只有上述两个函数。
+只按合并后的文件内容重算派生清单，未覆盖上游 vprim/identity 改动。
+
+Windows 集中增验一批：同一守卫在新 main 上 21 failed、4 passed，修复后 25 passed；
+6/6 具名变异各恰好命中指定断言、1 failed，均 0 errors / 0 skipped。
+相关回归扩入已合并的时钟、坏帧预检和三项上游守卫：213 passed、2 skipped。
+清单 64/64 MATCH，时间核 0 新违规；本批临时副本已清理。未跑本地全套。
+当前整文件指纹、命令、原始读数见 main-sync.json、main-sync-guard-replay.json 及同前缀日志。
+以下原基线证据另存，不能把原整文件指纹冒充同步后文件指纹。
+
+## 原基线定向批次
 
 main 基线 `c3f9178eb70c8cd43d317a33fb7989ef66b0f001`；固定验证提交
 `3d8e7ed0884f9f91487af9cd03434268c0e92e92`。
@@ -41,15 +55,15 @@ let_numeric_conversion_overflow_escape、drop_rejection_receipt、use_filtered_o
 修复用四个等分量的严格归一化断言、有效旋转流对照与后续预测严格 JSON 编码核对，
 对浮点已丢失的信息不作恢复承诺。真值与控制流是合成数据，不是实机精度基准。
 
-## 与旋转时间修复的组合
+## 同步前与旋转时间修复的隔离组合
 
 以本件固定验证提交和 [#1007 固定 head](https://github.com/FuRongJun-1999/lingshu/pull/1007)
 `f411d1e0a73fbadf36e0b5b315b9e0b1421bc240` 做真实源文件三方合并，统一 CRLF/LF 后无冲突。
 隔离副本执行本件 25 条与既有时间守卫 20 条：45 passed、0 skipped。
 合成源、两个守卫和执行工具指纹见同目录 combination.json；临时副本已清理。
 
-这只证明隔离源码组合，不是正式 Git/清单/全套合并验收；Linux 组合未跑。
-本 PR 不携带或重复申报 #1007 的生产改动或 20 条守卫。
+这只证明当时的隔离源码组合，不是正式 Git/清单/全套合并验收；Linux 组合未跑。
+交付基线已包含该时间修复；当前 PR 对最新 main 的差异不再包含或重复申报 #1007 的生产改动或 20 条守卫。
 
 ## 复跑
 
@@ -57,7 +71,7 @@ let_numeric_conversion_overflow_escape、drop_rejection_receipt、use_filtered_o
 
 ```text
 python -X utf8 -m pytest tests/test_world_rotation_quaternion_validity.py -q
-python -X utf8 tools/testing/replay_save_guards.py --spec tests/fixtures/world_rotation_quaternion_validity_mutations.json --baseline c3f9178eb70c8cd43d317a33fb7989ef66b0f001 --mutate --output <新证据目录>
+python -X utf8 tools/testing/replay_save_guards.py --spec tests/fixtures/world_rotation_quaternion_validity_mutations.json --baseline ee4da17d97fe4303875cd9ab75a542cd66ba292d --mutate --output <新证据目录>
 python -X utf8 docs/testing/world-rotation-quaternion-validity-20261026/replay_combination.py --output <新组合目录>
 python -X utf8 tools/verify_manifest.py --strict --quiet
 ```

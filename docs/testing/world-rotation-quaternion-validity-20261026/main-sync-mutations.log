@@ -1,0 +1,93 @@
+===== accept_nonfinite_quaternions =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[nan] __
+tests\test_world_rotation_quaternion_validity.py:78: in test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact
+    assert model._rot_buf == prior, "WM_BAD_QUAT_REACHED_BUFFER"
+E   AssertionError: WM_BAD_QUAT_REACHED_BUFFER
+E   assert {'shaft': [(0..., 0.0)), ...]} == {'shaft': [(0...22768, 0.0))]}
+E
+E     Differing items:
+E     {'shaft': [(0, (1.0, 0.0, 0.0, 0.0)), (1, (0.9996875162757025, 0.0, 0.024997395914712332, 0.0)), (2, (0.99875026039496..., (0.9950041652780257, 0.0, 0.09983341664682814, 0.0)), (5, (0.9921976672293289, 0.0, 0.12467473338522768, 0.0)), ...]} != {'shaft': [(0, (1.0, 0.0, 0.0, 0.0)), (1, (0.9996875162757025, 0.0, 0.024997395914712332, 0.0)), (2, (0.99875026039496...), (4, (0.9950041652780257, 0.0, 0.09983341664682814, 0.0)), (5, (0.9921976672293289, 0.0, 0.12467473338522768, 0.0))]}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_quaternion_validity.py::test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[nan]
+1 failed in 0.26s
+
+===== invent_identity_for_zero_quaternion =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[zero] _
+tests\test_world_rotation_quaternion_validity.py:78: in test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact
+    assert model._rot_buf == prior, "WM_BAD_QUAT_REACHED_BUFFER"
+E   AssertionError: WM_BAD_QUAT_REACHED_BUFFER
+E   assert {'shaft': [(0..., 0.0)), ...]} == {'shaft': [(0...22768, 0.0))]}
+E
+E     Differing items:
+E     {'shaft': [(0, (1.0, 0.0, 0.0, 0.0)), (1, (0.9996875162757025, 0.0, 0.024997395914712332, 0.0)), (2, (0.99875026039496..., (0.9950041652780257, 0.0, 0.09983341664682814, 0.0)), (5, (0.9921976672293289, 0.0, 0.12467473338522768, 0.0)), ...]} != {'shaft': [(0, (1.0, 0.0, 0.0, 0.0)), (1, (0.9996875162757025, 0.0, 0.024997395914712332, 0.0)), (2, (0.99875026039496...), (4, (0.9950041652780257, 0.0, 0.09983341664682814, 0.0)), (5, (0.9921976672293289, 0.0, 0.12467473338522768, 0.0))]}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_quaternion_validity.py::test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[zero]
+1 failed in 0.27s
+
+===== square_before_scaling =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_normalization_preserves_orientation_at_finite_scales[large] _______
+tests\test_world_rotation_quaternion_validity.py:46: in test_normalization_preserves_orientation_at_finite_scales
+    assert normalized == pytest.approx(expected, abs=1e-14), "WM_QUAT_SCALE_CHANGED_ORIENTATION"
+E   AssertionError: WM_QUAT_SCALE_CHANGED_ORIENTATION
+E   assert (0.0, 0.0, 0.0, 0.0) == approx([0.5 ±....5 ± 1.0e-14])
+E
+E     comparison failed. Mismatched elements: 4 / 4:
+E     Max absolute difference: 0.5
+E     Max relative difference: inf
+E     Index | Obtained | Expected
+E     0     | 0.0      | 0.5 ± 1.0e-14
+E     1     | 0.0      | 0.5 ± 1.0e-14
+E     2     | 0.0      | 0.5 ± 1.0e-14
+E     3     | 0.0      | 0.5 ± 1.0e-14
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_quaternion_validity.py::test_normalization_preserves_orientation_at_finite_scales[large]
+1 failed in 0.25s
+
+===== let_numeric_conversion_overflow_escape =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[overflow] _
+tests\test_world_rotation_quaternion_validity.py:77: in test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact
+    assert error is None, "WM_BAD_QUAT_ABORTED_POSITION_FRAME"
+E   AssertionError: WM_BAD_QUAT_ABORTED_POSITION_FRAME
+E   assert OverflowError('int too large to convert to float') is None
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_quaternion_validity.py::test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[overflow]
+1 failed in 0.28s
+
+===== drop_rejection_receipt =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[text] _
+tests\test_world_rotation_quaternion_validity.py:86: in test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact
+    assert result.get("rotation_rejections") == [{"observation_index": 0, "eid": "shaft", "reason": "invalid_quaternion"}], "WM_QUAT_REJECTION_RECEIPT_MISSING"
+E   AssertionError: WM_QUAT_REJECTION_RECEIPT_MISSING
+E   assert None == [{'observation_index': 0, 'eid': 'shaft', 'reason': 'invalid_quaternion'}]
+E    +  where None = <built-in method get of dict object at 0x0000021CB863E200>('rotation_rejections')
+E    +    where <built-in method get of dict object at 0x0000021CB863E200> = {'status': 'ok', 'tick': 6, 'observed': 1, 'matched': 1, ...}.get
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_quaternion_validity.py::test_bad_rotation_leaves_the_rotation_track_and_valid_position_intact[text]
+1 failed in 0.30s
+
+===== use_filtered_observation_index =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_rejection_receipt_keeps_the_conservative_source_index __________
+tests\test_world_rotation_quaternion_validity.py:148: in test_rejection_receipt_keeps_the_conservative_source_index
+    assert result.get("rotation_rejections") == [{"observation_index": 1, "eid": "c", "reason": "invalid_quaternion"}], "WM_QUAT_RECEIPT_WRONG_SOURCE_INDEX"
+E   AssertionError: WM_QUAT_RECEIPT_WRONG_SOURCE_INDEX
+E   assert [{'observatio..._quaternion'}] == [{'observatio..._quaternion'}]
+E
+E     At index 0 diff: {'observation_index': 0, 'eid': 'c', 'reason': 'invalid_quaternion'} != {'observation_index': 1, 'eid': 'c', 'reason': 'invalid_quaternion'}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_quaternion_validity.py::test_rejection_receipt_keeps_the_conservative_source_index
+1 failed in 0.26s
