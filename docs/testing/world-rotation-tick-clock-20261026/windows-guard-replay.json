@@ -1,0 +1,168 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "c3f9178eb70c8cd43d317a33fb7989ef66b0f001",
+  "guard_sha256": "11cf71ac016235fd8be0ec687420a35e1b85b2222401977fdb1db26aa758f883",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 20,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "20 passed, 9 warnings in 0.48s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "316e91ded6756fcd19b0308d85a5eec31d9d57188380b8a37bd4c9546b36c08c"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 4,
+      "failed_tests": [
+        "test_acceleration_uses_real_interval_midpoints[irregular]",
+        "test_acceleration_uses_real_interval_midpoints[sparse]",
+        "test_acceleration_uses_real_interval_midpoints[stale]",
+        "test_acceleration_uses_real_interval_midpoints[unit]",
+        "test_constant_rate_targets_the_world_tick[irregular]",
+        "test_constant_rate_targets_the_world_tick[large_origin]",
+        "test_constant_rate_targets_the_world_tick[occluded]",
+        "test_constant_rate_targets_the_world_tick[position_only]",
+        "test_constant_rate_targets_the_world_tick[sparse]",
+        "test_core_forecast_uses_the_same_rotation_clock_without_database_writes",
+        "test_counterfactual_preserves_live_state_and_uses_the_world_clock",
+        "test_irregular_clock_never_enters_the_sample_index_period_detector",
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample]",
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[multiple_cycles]",
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[stale]",
+        "test_rotation_diagnostics_bind_age_target_and_units"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_constant_rate_targets_the_world_tick[sparse]",
+        "test_constant_rate_targets_the_world_tick[irregular]",
+        "test_constant_rate_targets_the_world_tick[occluded]",
+        "test_constant_rate_targets_the_world_tick[position_only]",
+        "test_constant_rate_targets_the_world_tick[large_origin]",
+        "test_acceleration_uses_real_interval_midpoints[unit]",
+        "test_acceleration_uses_real_interval_midpoints[sparse]",
+        "test_acceleration_uses_real_interval_midpoints[irregular]",
+        "test_acceleration_uses_real_interval_midpoints[stale]",
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample]",
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[multiple_cycles]",
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[stale]",
+        "test_irregular_clock_never_enters_the_sample_index_period_detector",
+        "test_core_forecast_uses_the_same_rotation_clock_without_database_writes",
+        "test_counterfactual_preserves_live_state_and_uses_the_world_clock",
+        "test_rotation_diagnostics_bind_age_target_and_units"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "16 failed, 4 passed, 9 warnings in 0.64s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "50b380c3038987d7e82cb229985ed034dab93a78aa695a25516f3c67531c79b4"
+      }
+    },
+    {
+      "case": "ignore_rotation_observation_age",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_constant_rate_targets_the_world_tick[occluded]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_constant_rate_targets_the_world_tick[occluded]"
+      ],
+      "expected_assertion": "WM_ROT_WRONG_TARGET_TIME",
+      "pytest_summary": "1 failed in 0.25s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "e1d9e305a3af05c62f63fa2983dae95aeae618480e61cb7c4184295f23a1865e"
+      }
+    },
+    {
+      "case": "treat_samples_as_ticks",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_constant_rate_targets_the_world_tick[sparse]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_constant_rate_targets_the_world_tick[sparse]"
+      ],
+      "expected_assertion": "WM_ROT_WRONG_TARGET_TIME",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "b909179705fc1adec8941a6254236777ef3036b250d7342fddcbbed8c1b8f7ef"
+      }
+    },
+    {
+      "case": "use_window_velocity_as_endpoint_velocity",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_acceleration_uses_real_interval_midpoints[unit]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_acceleration_uses_real_interval_midpoints[unit]"
+      ],
+      "expected_assertion": "WM_ROT_RATE_AT_WRONG_TIME",
+      "pytest_summary": "1 failed in 0.25s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "0b1ac22bc32bdda55fb976bd005373fc43ebfa98342b5959af58662270d462a3"
+      }
+    },
+    {
+      "case": "skip_sample_phase_conversion",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample]"
+      ],
+      "expected_assertion": "WM_ROT_WRONG_SAMPLE_PHASE",
+      "pytest_summary": "1 failed in 0.28s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "e4aab46c2b9bf1bfbb6547eed66760b3a0f88c1383aec3dabe2422550dbe9243"
+      }
+    },
+    {
+      "case": "infer_index_period_on_nonuniform_samples",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_irregular_clock_never_enters_the_sample_index_period_detector"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_irregular_clock_never_enters_the_sample_index_period_detector"
+      ],
+      "expected_assertion": "WM_ROT_NONUNIFORM_USED_INDEX_PERIOD",
+      "pytest_summary": "1 failed in 0.26s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "4e1b376df600f1f81f50b1d95e5d317865a66a61c1f56c902c6e2924875490ae"
+      }
+    }
+  ]
+}

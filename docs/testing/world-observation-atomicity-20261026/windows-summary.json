@@ -1,0 +1,47 @@
+{
+  "platform": "Windows",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "baseline": "a4c8207996f2cf2e41db792a918a3b484abef382",
+  "validated_commit": "e3453b8c8420e7c7c2333f6842d2ae73d6f7d447",
+  "commands": [
+    {
+      "name": "replay",
+      "returncode": 0
+    },
+    {
+      "name": "related",
+      "returncode": 0
+    },
+    {
+      "name": "manifest",
+      "returncode": 0
+    },
+    {
+      "name": "time-core",
+      "returncode": 0
+    }
+  ],
+  "related_files": [
+    "test_world_observation_contracts.py",
+    "test_world_identity_qualification.py",
+    "test_world_counterfactual_isolation.py",
+    "test_world_memory_first_batch.py",
+    "test_trajectory_resolved_observations.py",
+    "test_issue418_sparse_motion_guard.py",
+    "test_wm_verify_snapshot_tick.py",
+    "test_wm_verify_unobserved.py"
+  ],
+  "related_total": 128,
+  "related_skips": [
+    "test_scene_relations_round_trip_real_brain",
+    "test_experience_real_brain_restart_preserves_predictive_relations"
+  ],
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "e776437d2f634ba07d8a20479d3490ee1db878c2ff4f1e5154ee11cd60b0cbe7",
+    "lingshu/world/identity.py": "a0b2276deef172925e72690ca8aa594b8c0226f1d1dee6159b4348003d3549c2",
+    "tests/test_world_observation_atomicity.py": "c0d44160b099612a1870a548f2a13ca957396bad3cdf8b7e346bbc15041fe06b",
+    "tests/fixtures/world_observation_atomicity_mutations.json": "5829782a5cef14356373bcd8168f7caf45dbb3dbcd97ded9ceb5f6929a4fbe20"
+  },
+  "owned_test_temp_cleaned": true
+}

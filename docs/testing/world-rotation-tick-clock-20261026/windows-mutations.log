@@ -1,0 +1,75 @@
+===== ignore_rotation_observation_age =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_constant_rate_targets_the_world_tick[occluded] _____________
+tests\test_world_rotation_tick_clock.py:54: in test_constant_rate_targets_the_world_tick
+    assert p["predicted_rot"] == pytest.approx(angle(now+h), abs=1e-8), "WM_ROT_WRONG_TARGET_TIME"
+E   AssertionError: WM_ROT_WRONG_TARGET_TIME
+E   assert 0.3 == 0.55 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.3
+E     Expected: 0.55 ± 1.0e-08
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_tick_clock.py::test_constant_rate_targets_the_world_tick[occluded]
+1 failed in 0.25s
+
+===== treat_samples_as_ticks =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_constant_rate_targets_the_world_tick[sparse] ______________
+tests\test_world_rotation_tick_clock.py:54: in test_constant_rate_targets_the_world_tick
+    assert p["predicted_rot"] == pytest.approx(angle(now+h), abs=1e-8), "WM_ROT_WRONG_TARGET_TIME"
+E   AssertionError: WM_ROT_WRONG_TARGET_TIME
+E   assert 0.6875 == 0.55 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.6875
+E     Expected: 0.55 ± 1.0e-08
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_tick_clock.py::test_constant_rate_targets_the_world_tick[sparse]
+1 failed in 0.27s
+
+===== use_window_velocity_as_endpoint_velocity =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_acceleration_uses_real_interval_midpoints[unit] _____________
+tests\test_world_rotation_tick_clock.py:69: in test_acceleration_uses_real_interval_midpoints
+    assert p["predicted_rot"] == pytest.approx(accelerated(now+h), abs=1e-8), "WM_ROT_RATE_AT_WRONG_TIME"
+E   AssertionError: WM_ROT_RATE_AT_WRONG_TIME
+E   assert 0.565 == 0.5950000000000001 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.565
+E     Expected: 0.5950000000000001 ± 1.0e-08
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_tick_clock.py::test_acceleration_uses_real_interval_midpoints[unit]
+1 failed in 0.25s
+
+===== skip_sample_phase_conversion =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample] _
+tests\test_world_rotation_tick_clock.py:83: in test_periodic_rotation_converts_sample_phase_to_world_ticks
+    assert p["predicted_rot"] == pytest.approx(triangle(ticks[-1]+age+h, period), abs=1e-8), "WM_ROT_WRONG_SAMPLE_PHASE"
+E   AssertionError: WM_ROT_WRONG_SAMPLE_PHASE
+E   assert -0.3 == -0.22499999999999998 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: -0.3
+E     Expected: -0.22499999999999998 ± 1.0e-08
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_tick_clock.py::test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample]
+1 failed in 0.28s
+
+===== infer_index_period_on_nonuniform_samples =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____ test_irregular_clock_never_enters_the_sample_index_period_detector ______
+tests\test_world_rotation_tick_clock.py:100: in test_irregular_clock_never_enters_the_sample_index_period_detector
+    assert not rotation_calls, "WM_ROT_NONUNIFORM_USED_INDEX_PERIOD"
+E   AssertionError: WM_ROT_NONUNIFORM_USED_INDEX_PERIOD
+E   assert not [1]
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_tick_clock.py::test_irregular_clock_never_enters_the_sample_index_period_detector
+1 failed in 0.26s

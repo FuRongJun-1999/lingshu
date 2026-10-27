@@ -1,0 +1,6 @@
+{
+  "tests_executed": false,
+  "reason": "WSL launch failed before Python: Wsl/Service/CreateInstance/CreateVm/HCS/ERROR_NOT_FOUND",
+  "services_read": "WslService and vmcompute were Running; no service or VM settings modified",
+  "replacement_evidence": "Linux GitHub Actions CI required on the PR head; not equivalent to a local Linux replay"
+}

@@ -36,9 +36,16 @@ BBox = Tuple[float, float, float, float]  # (x1, y1, x2, y2)
 # ---------------------------------------------------------------------------
 
 def _encode_category(category: str) -> str:
-    """类别 → 锚点文本里的类别段（仅含空白/引号时才加引号）。"""
+    """类别 → 锚点文本里的类别段（含空白/引号/读侧保留字符时加引号）。
+
+    #1010：裸词扫描的 stop-set 是空白与 ``@ ( ) ； ; |``——类别含这些字符而
+    不加引号，读回被截断（``a|b`` 读回 ``b``；``充电\\u3000桩`` 读回 ``桩``——
+    旧条件只查 ASCII 空格/tab，非 ASCII 空白的 ``isspace()`` 漏网）。含引号或
+    反斜杠沿 #174 转义形态。不含上述字符时输出逐字不变（向后兼容承诺不变）。
+    """
     cat = str(category)
-    if (" " in cat) or ("\t" in cat) or ('"' in cat) or ("\\" in cat):
+    if ('"' in cat) or ("\\" in cat) or any(
+            ch.isspace() or ch in "@()；;|" for ch in cat):
         return '"' + cat.replace("\\", "\\\\").replace('"', '\\"') + '"'
     return cat
 
@@ -88,7 +95,10 @@ def _category_before(text: str, i: int) -> str:
                 k -= 1
             if n_bs % 2 == 0:                     # 未转义 ⇒ 是起始引号
                 return _decode_category(text[j:i])
-        return ""
+        # 未找到未转义的起始引号 ⇒ 并非引号形态：#174 之前旧式裸类别以引号
+        # 结尾的存档（如 ab"@(1,2,3,4)）走此处——回落裸词扫描，逐字恢复 ab"
+        # （issue #1010：旧实现返回空串 ⇒ parse_anchor 整条 None，合法旧存档
+        # 静默消失）。
     j = i
     while j > 0 and not text[j - 1].isspace() and text[j - 1] not in '@()；;|':
         j -= 1

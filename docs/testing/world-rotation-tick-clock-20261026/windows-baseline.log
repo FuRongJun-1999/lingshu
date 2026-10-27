@@ -1,0 +1,158 @@
+.FFFFFFFFF.FFFF..FFF                                                     [100%]
+================================== FAILURES ===================================
+______________ test_constant_rate_targets_the_world_tick[sparse] ______________
+tests\test_world_rotation_tick_clock.py:54: in test_constant_rate_targets_the_world_tick
+    assert p["predicted_rot"] == pytest.approx(angle(now+h), abs=1e-8), "WM_ROT_WRONG_TARGET_TIME"
+E   AssertionError: WM_ROT_WRONG_TARGET_TIME
+E   assert 0.6 == 0.55 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.6
+E     Expected: 0.55 ± 1.0e-08
+____________ test_constant_rate_targets_the_world_tick[irregular] _____________
+tests\test_world_rotation_tick_clock.py:54: in test_constant_rate_targets_the_world_tick
+    assert p["predicted_rot"] == pytest.approx(angle(now+h), abs=1e-8), "WM_ROT_WRONG_TARGET_TIME"
+E   AssertionError: WM_ROT_WRONG_TARGET_TIME
+E   assert 0.85 == 0.65 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.85
+E     Expected: 0.65 ± 1.0e-08
+_____________ test_constant_rate_targets_the_world_tick[occluded] _____________
+tests\test_world_rotation_tick_clock.py:54: in test_constant_rate_targets_the_world_tick
+    assert p["predicted_rot"] == pytest.approx(angle(now+h), abs=1e-8), "WM_ROT_WRONG_TARGET_TIME"
+E   AssertionError: WM_ROT_WRONG_TARGET_TIME
+E   assert 0.3 == 0.55 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.3
+E     Expected: 0.55 ± 1.0e-08
+__________ test_constant_rate_targets_the_world_tick[position_only] ___________
+tests\test_world_rotation_tick_clock.py:54: in test_constant_rate_targets_the_world_tick
+    assert p["predicted_rot"] == pytest.approx(angle(now+h), abs=1e-8), "WM_ROT_WRONG_TARGET_TIME"
+E   AssertionError: WM_ROT_WRONG_TARGET_TIME
+E   assert 0.7 == 0.8500000000000001 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.7
+E     Expected: 0.8500000000000001 ± 1.0e-08
+___________ test_constant_rate_targets_the_world_tick[large_origin] ___________
+tests\test_world_rotation_tick_clock.py:54: in test_constant_rate_targets_the_world_tick
+    assert p["predicted_rot"] == pytest.approx(angle(now+h), abs=1e-8), "WM_ROT_WRONG_TARGET_TIME"
+E   AssertionError: WM_ROT_WRONG_TARGET_TIME
+E   assert 0.6 == 0.55 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.6
+E     Expected: 0.55 ± 1.0e-08
+____________ test_acceleration_uses_real_interval_midpoints[unit] _____________
+tests\test_world_rotation_tick_clock.py:69: in test_acceleration_uses_real_interval_midpoints
+    assert p["predicted_rot"] == pytest.approx(accelerated(now+h), abs=1e-8), "WM_ROT_RATE_AT_WRONG_TIME"
+E   AssertionError: WM_ROT_RATE_AT_WRONG_TIME
+E   assert 0.575 == 0.5950000000000001 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.575
+E     Expected: 0.5950000000000001 ± 1.0e-08
+___________ test_acceleration_uses_real_interval_midpoints[sparse] ____________
+tests\test_world_rotation_tick_clock.py:69: in test_acceleration_uses_real_interval_midpoints
+    assert p["predicted_rot"] == pytest.approx(accelerated(now+h), abs=1e-8), "WM_ROT_RATE_AT_WRONG_TIME"
+E   AssertionError: WM_ROT_RATE_AT_WRONG_TIME
+E   assert 1.6 == 1.32 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 1.6
+E     Expected: 1.32 ± 1.0e-08
+__________ test_acceleration_uses_real_interval_midpoints[irregular] __________
+tests\test_world_rotation_tick_clock.py:69: in test_acceleration_uses_real_interval_midpoints
+    assert p["predicted_rot"] == pytest.approx(accelerated(now+h), abs=1e-8), "WM_ROT_RATE_AT_WRONG_TIME"
+E   AssertionError: WM_ROT_RATE_AT_WRONG_TIME
+E   assert 2.085 == 1.495 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 2.085
+E     Expected: 1.495 ± 1.0e-08
+____________ test_acceleration_uses_real_interval_midpoints[stale] ____________
+tests\test_world_rotation_tick_clock.py:69: in test_acceleration_uses_real_interval_midpoints
+    assert p["predicted_rot"] == pytest.approx(accelerated(now+h), abs=1e-8), "WM_ROT_RATE_AT_WRONG_TIME"
+E   AssertionError: WM_ROT_RATE_AT_WRONG_TIME
+E   assert 1.28 == 2.08 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 1.28
+E     Expected: 2.08 ± 1.0e-08
+_ test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample] _
+tests\test_world_rotation_tick_clock.py:83: in test_periodic_rotation_converts_sample_phase_to_world_ticks
+    assert p["predicted_rot"] == pytest.approx(triangle(ticks[-1]+age+h, period), abs=1e-8), "WM_ROT_WRONG_SAMPLE_PHASE"
+E   AssertionError: WM_ROT_WRONG_SAMPLE_PHASE
+E   assert -0.3 == -0.22499999999999998 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: -0.3
+E     Expected: -0.22499999999999998 ± 1.0e-08
+_ test_periodic_rotation_converts_sample_phase_to_world_ticks[multiple_cycles] _
+tests\test_world_rotation_tick_clock.py:83: in test_periodic_rotation_converts_sample_phase_to_world_ticks
+    assert p["predicted_rot"] == pytest.approx(triangle(ticks[-1]+age+h, period), abs=1e-8), "WM_ROT_WRONG_SAMPLE_PHASE"
+E   AssertionError: WM_ROT_WRONG_SAMPLE_PHASE
+E   assert 0.0 == -0.22499999999999998 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.0
+E     Expected: -0.22499999999999998 ± 1.0e-08
+_____ test_periodic_rotation_converts_sample_phase_to_world_ticks[stale] ______
+tests\test_world_rotation_tick_clock.py:83: in test_periodic_rotation_converts_sample_phase_to_world_ticks
+    assert p["predicted_rot"] == pytest.approx(triangle(ticks[-1]+age+h, period), abs=1e-8), "WM_ROT_WRONG_SAMPLE_PHASE"
+E   AssertionError: WM_ROT_WRONG_SAMPLE_PHASE
+E   assert -0.15 == 0.22499999999999998 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: -0.15
+E     Expected: 0.22499999999999998 ± 1.0e-08
+_____ test_irregular_clock_never_enters_the_sample_index_period_detector ______
+tests\test_world_rotation_tick_clock.py:100: in test_irregular_clock_never_enters_the_sample_index_period_detector
+    assert not rotation_calls, "WM_ROT_NONUNIFORM_USED_INDEX_PERIOD"
+E   AssertionError: WM_ROT_NONUNIFORM_USED_INDEX_PERIOD
+E   assert not [1]
+___ test_core_forecast_uses_the_same_rotation_clock_without_database_writes ___
+tests\test_world_rotation_tick_clock.py:134: in test_core_forecast_uses_the_same_rotation_clock_without_database_writes
+    assert p["predicted_rot"] == pytest.approx(angle(11), abs=1e-8), "WM_ROT_CORE_WRONG_CLOCK"
+E   AssertionError: WM_ROT_CORE_WRONG_CLOCK
+E   assert 0.6 == 0.55 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.6
+E     Expected: 0.55 ± 1.0e-08
+______ test_counterfactual_preserves_live_state_and_uses_the_world_clock ______
+tests\test_world_rotation_tick_clock.py:146: in test_counterfactual_preserves_live_state_and_uses_the_world_clock
+    assert out["baseline"]["predictions"]["shaft"]["predicted_rot"] == pytest.approx(angle(13), abs=1e-8), "WM_ROT_TRIAL_WRONG_CLOCK"
+E   AssertionError: WM_ROT_TRIAL_WRONG_CLOCK
+E   assert 0.8 == 0.65 ± 1.0e-08
+E
+E     comparison failed
+E     Obtained: 0.8
+E     Expected: 0.65 ± 1.0e-08
+_____________ test_rotation_diagnostics_bind_age_target_and_units _____________
+tests\test_world_rotation_tick_clock.py:156: in test_rotation_diagnostics_bind_age_target_and_units
+    assert d.get("last_observation_tick") == 10, "WM_ROT_CLOCK_RECEIPT_MISSING"
+E   AssertionError: WM_ROT_CLOCK_RECEIPT_MISSING
+E   assert None == 10
+E    +  where None = <built-in method get of dict object at 0x000001811B27FE00>('last_observation_tick')
+E    +    where <built-in method get of dict object at 0x000001811B27FE00> = {'caliber': 'wm.rot-channel/1', 'n': 6, 'mode': 'rot_rate', 'axis': [0.0, 1.0, 0.0], ...}.get
+=========================== short test summary info ===========================
+FAILED tests/test_world_rotation_tick_clock.py::test_constant_rate_targets_the_world_tick[sparse]
+FAILED tests/test_world_rotation_tick_clock.py::test_constant_rate_targets_the_world_tick[irregular]
+FAILED tests/test_world_rotation_tick_clock.py::test_constant_rate_targets_the_world_tick[occluded]
+FAILED tests/test_world_rotation_tick_clock.py::test_constant_rate_targets_the_world_tick[position_only]
+FAILED tests/test_world_rotation_tick_clock.py::test_constant_rate_targets_the_world_tick[large_origin]
+FAILED tests/test_world_rotation_tick_clock.py::test_acceleration_uses_real_interval_midpoints[unit]
+FAILED tests/test_world_rotation_tick_clock.py::test_acceleration_uses_real_interval_midpoints[sparse]
+FAILED tests/test_world_rotation_tick_clock.py::test_acceleration_uses_real_interval_midpoints[irregular]
+FAILED tests/test_world_rotation_tick_clock.py::test_acceleration_uses_real_interval_midpoints[stale]
+FAILED tests/test_world_rotation_tick_clock.py::test_periodic_rotation_converts_sample_phase_to_world_ticks[fractional_sample]
+FAILED tests/test_world_rotation_tick_clock.py::test_periodic_rotation_converts_sample_phase_to_world_ticks[multiple_cycles]
+FAILED tests/test_world_rotation_tick_clock.py::test_periodic_rotation_converts_sample_phase_to_world_ticks[stale]
+FAILED tests/test_world_rotation_tick_clock.py::test_irregular_clock_never_enters_the_sample_index_period_detector
+FAILED tests/test_world_rotation_tick_clock.py::test_core_forecast_uses_the_same_rotation_clock_without_database_writes
+FAILED tests/test_world_rotation_tick_clock.py::test_counterfactual_preserves_live_state_and_uses_the_world_clock
+FAILED tests/test_world_rotation_tick_clock.py::test_rotation_diagnostics_bind_age_target_and_units
+16 failed, 4 passed, 9 warnings in 0.64s

@@ -36,7 +36,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
 from .motion import ObservationWindow, recent_direction
-from .identity import inspect_frame, validate_policy
+from .identity import inspect_frame, validate_measurements, validate_policy
 
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
@@ -1201,6 +1201,42 @@ def _wm_traj_buf(self):
     return buf
 
 
+def _prepare_observation_frame(self, observations, tick):
+    """Check and materialize a frame before tick, RNG or lazy buffers change.
+
+    Legacy keeps float-convertible and nonfinite measurements: motion diagnostics
+    already account for those. Conservative retains its stricter existing rules.
+    This is input preflight, not rollback for arbitrary extension/runtime failures.
+    """
+    target = self.tick + 1 if tick is None else tick
+    if (isinstance(target, bool) or not isinstance(target, int) or target < 0
+            or (self.history and target <= self.tick)):
+        raise ValueError("观测 tick 必须是晚于当前世界图时刻的非负整数")
+    observations = self._observe_world() if observations is None else observations
+    if self.identity_policy == "conservative":
+        validate_measurements(observations)
+        return observations
+    if not isinstance(observations, (list, tuple)):
+        raise ValueError("observations must be a list of measurements")
+    prepared = []
+    for observation in observations:
+        if not isinstance(observation, dict):
+            raise ValueError("each observation must be a mapping")
+        if not isinstance(observation.get("conditions", {}), dict):
+            raise ValueError("conditions must be a mapping")
+        try:
+            pos = [float(value) for value in observation["pos"]]
+            str(observation["category"])
+            eid = observation.get("eid")
+            eid = str(eid) if eid is not None else None
+        except (KeyError, TypeError, ValueError, OverflowError) as error:
+            raise ValueError("invalid observation fields") from error
+        if len(pos) != 3:
+            raise ValueError("pos must contain three coordinates")
+        prepared.append({**observation, "pos": pos, "eid": eid})
+    return prepared
+
+
 def _perceive_with_traj(self, observations=None, tool="observer",
                         tick=None, timestamp=None):
     """包装：① 记轨迹缓冲（供周期检测）② 用上一轮预测对账，滚动记两种误差。
@@ -1209,6 +1245,7 @@ def _perceive_with_traj(self, observations=None, tool="observer",
     见文件尾「包装链签名契约 `wm.perceive-signature/1`」：任一层漏转，等于把
     下层的关键字参数吃掉——调用方不报错，但 `tick` 静默失效。
     """
+    observations = _prepare_observation_frame(self, observations, tick)
     buf = _wm_traj_buf(self)
     out = _ORIG_WM_PERCEIVE(self, observations, tool, tick, timestamp)
     # 本体已把匿名/默认传感器观测解析为真实 eid；所有派生视图消费同一份结果。
@@ -1868,8 +1905,8 @@ _WM_COORD_FACTORY = {"apply_move": _wm_apply_move_with_coord}
 #      â 的**一致性**（与各瞬时轴夹角 ≤30° 的加权质量占比）低于阈值 ⇒ 标 `multi_axis`
 #      并**不给预测**（fail-closed：宁可报 unresolved，不拿单轴口径糊多轴刚体）。
 #   ② **预测 = 与位置通道同族的四态**：
-#        rot_static（|角速度| ≤ 容差）／ **rot_periodic**（复用 `_wm_detect_period`，
-#        把 θ 当 (θ,0,0) 传）/ rot_smooth（等角加速度，`h(h+1)/2` 同式）／ rot_rate（等角速度）。
+#        rot_static（|角速度| ≤ 容差）／ **rot_periodic**（等间隔样本复用 `_wm_detect_period`，
+#        把 θ 当 (θ,0,0) 传）/ rot_smooth（按真实 tick 估计等角加速度）／ rot_rate（等角速度）。
 #   ③ **落点**：`generate()` 每条预测多 `predicted_rot`(rad) + `rot_mode` + `rot_axis`
 #      + `rot_axis_consistency` + `rot_P`；`out["rot"]` 给汇总。**位置通道一字不动。**
 #
@@ -1885,8 +1922,8 @@ _ROT = {
     "min_samples": 6,               # 少于这么多样本不给旋转预测
     "axis_consistency_min": 0.90,   # 加权轴一致性下限（低于 ⇒ multi_axis，不给预测）
     "axis_tol_deg": 30.0,           # 判"同一转轴"的夹角容差
-    "static_tol_rad": 1e-4,         # 每步角速度小于它 ⇒ rot_static
-    "accel_tol_rad": 1e-6,          # 每步角加速度大于它 ⇒ 走 rot_smooth
+    "static_tol_rad": 1e-4,         # 每 tick 角速度小于它 ⇒ rot_static
+    "accel_tol_rad": 1e-6,          # 每 tick² 角加速度大于它 ⇒ 走 rot_smooth
     "len": 96,                      # 角序列缓冲长度（与位置通道 window 对齐）
     "rate_window": 3,               # 估等角速度用最近几个差分
 }
@@ -2007,6 +2044,18 @@ def _rot_predict(self, eid, h=1):
     if not _ROT["enabled"] or len(seq) < _ROT["min_samples"]:
         d["reason"] = "样本不足（%d < %d）" % (len(seq), _ROT["min_samples"])
         return None, d
+    ticks = [t for t, _q in buf]
+    if (type(self.tick) is not int or any(type(t) is not int or t < 0 for t in ticks)
+            or any(b <= a for a, b in zip(ticks, ticks[1:]))
+            or self.tick < ticks[-1]):
+        d.update(mode="unresolved", reason="invalid_rotation_ticks")
+        return None, d
+    intervals = [b - a for a, b in zip(ticks, ticks[1:])]
+    step = intervals[0] if len(set(intervals)) == 1 else None
+    lead = self.tick - ticks[-1] + h
+    d.update(last_observation_tick=ticks[-1], target_tick=self.tick + h,
+             observation_age=self.tick - ticks[-1], horizon_from_observation=lead,
+             sampling_step=step, rate_unit="rad/tick", accel_unit="rad/tick^2")
     axis, consist, mass = _rot_dominant_axis(seq)
     if axis is None:
         # 朝向**恒定**（无任何净旋转）⇒ 转轴不可定。取默认 z：角是常量，
@@ -2030,31 +2079,45 @@ def _rot_predict(self, eid, h=1):
     if len(th) < 3:
         d["reason"] = "角序列太短"
         return None, d
-    rates = [th[i] - th[i - 1] for i in range(1, len(th))]
-    k = max(1, min(_ROT["rate_window"], len(rates)))
-    v1 = sum(rates[-k:]) / k
+    k = max(1, min(_ROT["rate_window"], len(th) - 1))
+    span = ticks[-1] - ticks[-1-k]
+    v1 = (th[-1] - th[-1-k]) / span
     if abs(v1) <= _ROT["static_tol_rad"]:
         d["mode"] = "rot_static"
         d["rate"] = round(v1, 9)
         return th[-1], d
-    P, pd = _wm_detect_period(self, eid, seq=[(x, 0.0, 0.0) for x in th])
+    angles = [(x, 0.0, 0.0) for x in th]
+    # 周期检测器按样本索引工作；不等间隔时不能把索引周期冒充世界时钟周期。
+    P, pd = (_wm_detect_period(self, eid, seq=angles) if step is not None else (None, {}))
+    if step is None:
+        d["period_unavailable"] = "nonuniform_sampling"
     if P:
         d["mode"] = "rot_periodic"
-        d["P"] = P
+        d["P"] = P * step
+        d["sample_period"] = P
         d["resid"] = pd.get("resid")
         d["P_used"] = pd.get("P_used")
-        # ⚠ 用**共享**取址：非整数 P 下 `th[h - P - 1]` 会 TypeError（本轮实测）
-        return _phase_at([(x, 0.0, 0.0) for x in th], P, h)[0], d
-    v2 = (sum(rates[-k - 1:-1]) / k) if len(rates) > k else v1
-    acc = v1 - v2
+        # 先把目标时刻换回采样格，再用共享插值；跨多个周期也回绕到已有观测。
+        phase_h = (lead / step) % P or P
+        if isinstance(P, int) and float(phase_h).is_integer():
+            return _phase_at(angles, P, int(phase_h))[0], d
+        return _phase_at(angles, float(P), phase_h)[0], d
+    acc = 0.0
+    if len(th) - 1 > k:
+        previous_span = ticks[-2] - ticks[-2-k]
+        v2 = (th[-2] - th[-2-k]) / previous_span
+        # 区间平均角速度位于区间中点；两个滑窗中点的距离不一定是一 tick。
+        center_dt = ((ticks[-1] - ticks[-2]) + (ticks[-1-k] - ticks[-2-k])) / 2.0
+        acc = (v1 - v2) / center_dt
     if abs(acc) > _ROT["accel_tol_rad"]:
         d["mode"] = "rot_smooth"
-        d["rate"] = round(v1, 9)
+        current_rate = v1 + acc * span / 2.0
+        d["rate"] = round(current_rate, 9)
         d["accel"] = round(acc, 9)
-        return th[-1] + h * v1 + acc * (h * (h + 1) / 2.0), d
+        return th[-1] + lead * current_rate + acc * lead * lead / 2.0, d
     d["mode"] = "rot_rate"
     d["rate"] = round(v1, 9)
-    return th[-1] + h * v1, d
+    return th[-1] + lead * v1, d
 
 
 #: gen3 包的是**出厂那一对 gen2**（组合顺序：orig → gen1 → gen2 → gen3）
@@ -2090,7 +2153,15 @@ def _perceive_with_rot(self, observations=None, tool="observer",
             rejected.append({"observation_index": source_index,
                              "eid": eid, "reason": "invalid_quaternion"})
             continue                        # 其余异常照常抛出（不再静默掩盖）
-        buf.setdefault(eid, []).append((self.tick, qq))
+        entries = buf.setdefault(eid, [])
+        if entries and entries[-1][0] == self.tick:
+            # #1012：一 tick 一条目——同帧重复显式 eid 取帧内最后一条读数。
+            # 旧实现无条件 append 两条同 tick 条目，读侧严格递增守卫
+            # （invalid_rotation_ticks）随即拒读缓冲约 96 tick（整个老化窗口），
+            # predicted_rot 静默失效且入口无任何告警。
+            entries[-1] = (self.tick, qq)
+        else:
+            entries.append((self.tick, qq))
         buf[eid] = buf[eid][-_ROT["len"]:]
         got += 1
     if got:

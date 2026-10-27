@@ -17,16 +17,11 @@ def validate_policy(policy):
     return policy
 
 
-def inspect_frame(nodes, predictions, observations, target_tick):
-    """Return detached receipts without allocating IDs or changing any state.
-
-    All candidates are retained. Work and diagnostic space are O(observations
-    * known entities); truncating the set could fabricate uniqueness.
-    """
+def validate_measurements(observations):
+    """Validate conservative measurements without association or state changes."""
     if not isinstance(observations, (list, tuple)):
         raise ValueError("observations must be a list of measurements")
-    rows = []
-    for index, observation in enumerate(observations):
+    for observation in observations:
         if not isinstance(observation, dict):
             raise ValueError("each observation must be a mapping")
         category, pos = observation.get("category"), observation.get("pos")
@@ -41,6 +36,18 @@ def inspect_frame(nodes, predictions, observations, target_tick):
         eid = observation.get("eid")
         if eid is not None and (isinstance(eid, bool) or not isinstance(eid, (str, int))):
             raise ValueError("eid must be a string, integer or null")
+
+
+def inspect_frame(nodes, predictions, observations, target_tick):
+    """Return detached receipts without allocating IDs or changing any state.
+
+    All candidates are retained. Work and diagnostic space are O(observations
+    * known entities); truncating the set could fabricate uniqueness.
+    """
+    validate_measurements(observations)
+    rows = []
+    for index, observation in enumerate(observations):
+        eid = observation.get("eid")
         eid = "" if eid is None else str(eid)
         rows.append({"observation_index": index, "tick": target_tick,
                      "measurement": deepcopy(observation),
@@ -114,7 +121,11 @@ def validate_history(history, retained_entities):
                 eid = row["resolved_eid"]
                 if not isinstance(eid, str) or not eid or eid in accepted:
                     raise ValueError("accepted identity must have a unique resolved_eid")
-                accepted[eid] = list(row["measurement"]["pos"])
+                # #1011：与快照侧同一投影（world_model.perceive 落盘时逐值
+                # float() 化）——旧实现拿原始 int 测量值与 float 快照做恒等比较，
+                # >2^53 的合法整数坐标（validate_measurements 放行）使投影恒不等，
+                # v2 恢复（wm_simloop seed_from_prior 的本函数门卫）永久失败。
+                accepted[eid] = [float(v) for v in row["measurement"]["pos"]]
             elif row.get("resolved_eid") is not None:
                 raise ValueError("unresolved measurement cannot have a resolved_eid")
         projected = {eid: pos for eid, pos in accepted.items() if eid in retained_entities}

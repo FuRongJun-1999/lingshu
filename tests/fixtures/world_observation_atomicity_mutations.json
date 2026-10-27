@@ -1,0 +1,45 @@
+{
+  "guard": "tests/test_world_observation_atomicity.py",
+  "total": 16,
+  "sources": ["lingshu/world/world_model.py", "lingshu/world/identity.py"],
+  "baseline_failures": [
+    "test_bad_later_row_preserves_the_live_frame[conditions]",
+    "test_bad_later_row_preserves_the_live_frame[position]",
+    "test_bad_later_row_preserves_the_live_frame[category]",
+    "test_bad_later_row_preserves_the_live_frame[dimension]",
+    "test_rejection_preserves_rng_and_anonymous_identity_on_retry",
+    "test_first_rejection_does_not_initialize_prediction_buffers[legacy]",
+    "test_first_rejection_does_not_initialize_prediction_buffers[conservative]",
+    "test_invalid_tick_is_rejected_before_any_state_change[bool]",
+    "test_invalid_tick_is_rejected_before_any_state_change[negative]",
+    "test_invalid_tick_is_rejected_before_any_state_change[float]",
+    "test_invalid_tick_is_rejected_before_any_state_change[string]",
+    "test_valid_retry_verifies_the_original_forecast_at_the_same_tick",
+    "test_default_sensor_is_read_once_and_checked_before_state_changes",
+    "test_core_rejects_without_database_or_model_writes_and_can_retry"
+  ],
+  "mutations": [
+    {
+      "name": "skip_frame_preflight",
+      "test": "test_bad_later_row_preserves_the_live_frame[conditions]",
+      "assertion": "WM_REJECTED_FRAME_CHANGED_STATE",
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_perceive_with_traj",
+        "old": "    observations = _prepare_observation_frame(self, observations, tick)\n", "new": ""}]
+    },
+    {
+      "name": "validate_first_row_only",
+      "test": "test_bad_later_row_preserves_the_live_frame[conditions]",
+      "assertion": "WM_REJECTED_FRAME_CHANGED_STATE",
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_prepare_observation_frame",
+        "old": "    for observation in observations:", "new": "    for observation in observations[:1]:"}]
+    },
+    {
+      "name": "initialize_buffers_before_validation",
+      "test": "test_first_rejection_does_not_initialize_prediction_buffers[conservative]",
+      "assertion": "WM_FIRST_REJECTION_INITIALIZED_BUFFERS",
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_perceive_with_traj",
+        "old": "    observations = _prepare_observation_frame(self, observations, tick)\n    buf = _wm_traj_buf(self)",
+        "new": "    buf = _wm_traj_buf(self)\n    observations = _prepare_observation_frame(self, observations, tick)"}]
+    }
+  ]
+}
