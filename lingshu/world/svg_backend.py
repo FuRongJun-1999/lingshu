@@ -56,7 +56,10 @@ def _num(v) -> str:
     """
     try:
         f = float(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # #1090(4)：float(10**400) 抛 OverflowError（大整数转 float）——旧实现
+        # 只捕 TypeError/ValueError => 契约内输入（既有守卫明写「对坐标不设
+        # 上限」）直接崩溃，跳过与计数都不执行。
         return None
     if f != f or f in (float("inf"), float("-inf")):     # NaN / ±inf
         return None
@@ -102,9 +105,19 @@ def _color(c) -> Optional[Tuple[str, Optional[str], bool]]:
 
 
 def _attr_escape(v: str) -> str:
-    """属性值转义：`&` 与引号（id 里出现引号会直接破坏文档结构，故 fail-closed 转义）。"""
-    return (str(v).replace("&", "&amp;").replace("<", "&lt;")
-            .replace(">", "&gt;").replace('"', "&quot;"))
+    """属性值转义：XML 特殊字符 + 非法控制字符（fail-closed）。
+
+    #1091：旧实现只转 & < > 与双引号。U+0000-U+001F（除 TAB/LF/CR）在
+    XML 1.0 中非法，原样写入会让整份文档无法被任何解析器打开（实测控制
+    字符进 gid 即 ParseError）；生产路径可达：mesh_svg.render_mesh_svg
+    把 Object3D.category 原样作 data-label 传入，该字段无字符集约束。
+    非法控制字符替换为 U+FFFD（保留信息长度、不引入新歧义）。
+    """
+    out = (str(v).replace("&", "&amp;").replace("<", "&lt;")
+           .replace(">", "&gt;").replace('"', "&quot;"))
+    return "".join(chr(0xFFFD)
+                   if (ord(ch) < 0x20 and ch not in (chr(9), chr(10), chr(13)))
+                   else ch for ch in out)
 
 
 class SVGBackend:
@@ -222,9 +235,14 @@ class SVGBackend:
             self._skip("rectangle_box")
             return
         x0, y0, x1, y1 = box
+        # #1090(3)：or "0" 把「格式化失败」偷换成「宽度就是 0」——既发射了又
+        # 不计数，产出静默不可见矩形（PIL 出口会画满画布）。按契约跳过并计数。
+        w_txt, h_txt = _num(float(x1) - float(x0)), _num(float(y1) - float(y0))
+        if w_txt is None or h_txt is None:
+            self._skip("rectangle_size")
+            return
         self._emit("rect", ' x="%s" y="%s" width="%s" height="%s"' % (
-            x0, y0, _num(float(x1) - float(x0)) or "0",
-            _num(float(y1) - float(y0)) or "0") + self._fill_stroke(fill, outline, width))
+            x0, y0, w_txt, h_txt) + self._fill_stroke(fill, outline, width))
 
     def ellipse(self, xy: Sequence, fill=None, outline=None, width: int = 1) -> None:
         """内切于给定矩形的椭圆（PIL 同形）：`xy` = `[x0, y0, x1, y1]`。
@@ -244,8 +262,15 @@ class SVGBackend:
             return
         cx = (float(x0) + float(x1)) / 2.0
         cy = (float(y0) + float(y1)) / 2.0
+        # #1090(2)：推导值也可能因 float64 溢出成 inf——_num 按契约返回 None，
+        # 旧实现直接 %s 进属性 => 发射 rx="None" 的非法长度值（渲染器报错/
+        # 整元素不画），skipped 仍为空。
+        _a = [_num(cx), _num(cy), _num(rx), _num(ry)]
+        if any(x is None for x in _a):
+            self._skip("ellipse_overflow")
+            return
         self._emit("ellipse", ' cx="%s" cy="%s" rx="%s" ry="%s"' % (
-            _num(cx), _num(cy), _num(rx), _num(ry)) + self._fill_stroke(fill, outline, width))
+            _a[0], _a[1], _a[2], _a[3]) + self._fill_stroke(fill, outline, width))
 
     def line(self, xy: Sequence, fill=None, width: int = 1) -> None:
         """折线（PIL 同形）：`xy` = 顶点序列；两点即线段。"""
@@ -438,5 +463,11 @@ class SVGBackend:
             vals = [_num(seq[0][0]), _num(seq[0][1]), _num(seq[1][0]), _num(seq[1][1])]
             if any(v is None for v in vals):
                 return None
+            # #1090(1)：两点式与四元式同口径反序校验。旧实现直接 return =>
+            # [(40,10),(10,40)] 会发射 width="-30" 的 <rect>（SVG 1.1 error、
+            # 渲染器不画、skipped 不计数），与模块 docstring「反序照 PIL 抛
+            # ValueError」及位图出口分道。
+            if float(seq[1][0]) < float(seq[0][0]) or float(seq[1][1]) < float(seq[0][1]):
+                raise ValueError("x1 must be greater than or equal to x0")
             return (vals[0], vals[1], vals[2], vals[3])
         return None
