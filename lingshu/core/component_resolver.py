@@ -213,6 +213,15 @@ def safe_search_path() -> list:
             roots.append(p)
 
     for p in configured_roots():
+        # #1094（安全）：环境变量面的**相对条目**与快照条目同口径剔除。
+        # 旧实现只过滤 _startup_controlled_entries() 一侧，configured_roots()
+        # 直接 _add ⇒ `LINGSHU_COMPONENT_ROOT=components` 或 `.` 进入受控面，
+        # 其解析目标由**判定时的 cwd** 决定：chdir 后即加载该目录下的组件
+        # （实测引擎进程内任意代码执行，毒组件的 .EXEC 载荷落盘）。
+        # 模块 docstring「解释器按当前目录解析这一隐式面被本模块关闭」与
+        # safe_search_path()「相对路径条目一律不计入」正是本修的依据。
+        if _is_relative_entry(p):
+            continue
         _add(p)
     for entry in _startup_controlled_entries():
         if not isinstance(entry, str) or entry == "":
