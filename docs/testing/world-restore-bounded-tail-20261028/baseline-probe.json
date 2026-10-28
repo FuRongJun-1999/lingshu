@@ -1,0 +1,9 @@
+{
+  "baseline": "68f2c3ab22ed667832311bb3207f88e9294c1efd",
+  "entities": 32,
+  "frames": 4000,
+  "retained_points": 8192,
+  "traced_peak_bytes": 16420792,
+  "traced_call_seconds": 0.525715100025991,
+  "note": "Initial allocation probe only; latency includes tracing overhead, not the final speed comparison."
+}

@@ -1,0 +1,57 @@
+===== unbounded_intermediate_tail =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_restore_live_normalized_coordinates_are_bounded[one] __________
+tests\test_world_restore_bounded_tail.py:35: in test_restore_live_normalized_coordinates_are_bounded
+    assert counts["peak"] <= 3 * (entities * 256 + 1), "WM_RESTORE_PEAK_GROWS_WITH_HISTORY"
+E   AssertionError: WM_RESTORE_PEAK_GROWS_WITH_HISTORY
+E   assert 12288 <= (3 * ((1 * 256) + 1))
+=========================== short test summary info ===========================
+FAILED tests/test_world_restore_bounded_tail.py::test_restore_live_normalized_coordinates_are_bounded[one]
+1 failed in 0.29s
+
+===== reverse_retained_observations =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_newest_points_and_chronological_order __________________
+tests\test_world_restore_bounded_tail.py:46: in test_newest_points_and_chronological_order
+    assert model._traj_buf == expected, "WM_RESTORE_TAIL_OR_ORDER_CHANGED"
+E   AssertionError: WM_RESTORE_TAIL_OR_ORDER_CHANGED
+E   assert {'e0': [(299,..., 1.0)), ...]} == {'e0': [(44, ..., 1.0)), ...]}
+E
+E     Differing items:
+E     {'e0': [(299, (299.0, 1.5, 0.0)), (298, (298.0, 1.5, 0.0)), (297, (297.0, 1.5, 0.0)), (296, (296.0, 1.5, 0.0)), (295, (295.0, 1.5, 0.0)), (294, (294.0, 1.5, 0.0)), ...]} != {'e0': [(44, (44.0, 1.5, 0.0)), (45, (45.0, 1.5, 0.0)), (46, (46.0, 1.5, 0.0)), (47, (47.0, 1.5, 0.0)), (48, (48.0, 1.5, 0.0)), (49, (49.0, 1.5, 0.0)), ...]}
+E     {'e1': [(299, (299.0, 1.5, 1.0)), (298, (298.0, 1.5, 1.0)), (297, (297.0, 1.5, 1.0)), (296, (296.0, 1.5, 1.0)), (295, (295.0, 1.5, 1.0)), (294, (294.0, 1.5, 1.0)), ...]} != {'e1': [(44, (44.0, 1.5, 1.0)), (45, (45.0, 1.5, 1.0)), (...
+E
+E     ...Full output truncated (2 lines hidden), use '-vv' to show
+=========================== short test summary info ===========================
+FAILED tests/test_world_restore_bounded_tail.py::test_newest_points_and_chronological_order
+1 failed in 0.29s
+
+===== trim_source_history =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_history_and_unrelated_state_are_untouched ________________
+tests\test_world_restore_bounded_tail.py:78: in test_history_and_unrelated_state_are_untouched
+    assert model.history is original and model.history == snapshot, "WM_RESTORE_CHANGED_HISTORY"
+E   AssertionError: WM_RESTORE_CHANGED_HISTORY
+E   assert ([{'tick': 44, 'entities': {'e0': [44.0, 1.5, 0.0]}}, {'tick': 45, 'entities': {'e0': [45.0, 1.5, 0.0]}}, {'tick': 46, ...5, 0.0]}}, {'tick': 48, 'entities': {'e0': [48.0, 1.5, 0.0]}}, {'tick': 49, 'entities': {'e0': [49.0, 1.5, 0.0]}}, ...] is [{'tick': 0, 'entities': {'e0': [0.0, 1.5, 0.0]}}, {'tick': 1, 'entities': {'e0': [1.0, 1.5, 0.0]}}, {'tick': 2, 'enti..., 1.5, 0.0]}}, {'tick': 4, 'entities': {'e0': [4.0, 1.5, 0.0]}}, {'tick': 5, 'entities': {'e0': [5.0, 1.5, 0.0]}}, ...])
+E    +  where [{'tick': 44, 'entities': {'e0': [44.0, 1.5, 0.0]}}, {'tick': 45, 'entities': {'e0': [45.0, 1.5, 0.0]}}, {'tick': 46, ...5, 0.0]}}, {'tick': 48, 'entities': {'e0': [48.0, 1.5, 0.0]}}, {'tick': 49, 'entities': {'e0': [49.0, 1.5, 0.0]}}, ...] = <lingshu.world.world_model.UnifiedWorldModel object at 0x00000150052CB380>.history
+=========================== short test summary info ===========================
+FAILED tests/test_world_restore_bounded_tail.py::test_history_and_unrelated_state_are_untouched
+1 failed in 0.27s
+
+===== publish_before_validation =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_failed_restore_does_not_publish_partial_state[position] _________
+tests\test_world_restore_bounded_tail.py:105: in test_failed_restore_does_not_publish_partial_state
+    assert (model._traj_buf, model._err_model, model._err_persist) == before, "WM_RESTORE_FAILED_CHANGED_STATE"
+E   AssertionError: WM_RESTORE_FAILED_CHANGED_STATE
+E   assert ({}, {'keep':...{'keep': [3]}) == ({'keep': [(1...{'keep': [3]})
+E
+E     At index 0 diff: {} != {'keep': [(1, (1.0, 2.0, 3.0))]}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_restore_bounded_tail.py::test_failed_restore_does_not_publish_partial_state[position]
+1 failed in 0.29s

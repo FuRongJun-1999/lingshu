@@ -1,0 +1,121 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "68f2c3ab22ed667832311bb3207f88e9294c1efd",
+  "guard_sha256": "ade71dc307964ba9f24c4422e3f56662fb1ddbf0e708352a86e3edc9e78957cf",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 14,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "14 passed in 0.32s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "89e7b19e706e63f9aeb2beccbe2fa80916066316c860c05a814b88ce458326ab"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 12,
+      "failed_tests": [
+        "test_restore_live_normalized_coordinates_are_bounded[four]",
+        "test_restore_live_normalized_coordinates_are_bounded[one]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_restore_live_normalized_coordinates_are_bounded[one]",
+        "test_restore_live_normalized_coordinates_are_bounded[four]"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "2 failed, 12 passed in 0.43s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "079b3ec3775e43ae471afd6e6ab21fdaa7855beb995f9baeed029b8eb3bf579c"
+      }
+    },
+    {
+      "case": "unbounded_intermediate_tail",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_restore_live_normalized_coordinates_are_bounded[one]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_restore_live_normalized_coordinates_are_bounded[one]"
+      ],
+      "expected_assertion": "WM_RESTORE_PEAK_GROWS_WITH_HISTORY",
+      "pytest_summary": "1 failed in 0.29s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "5c41f386a935a37e2df9a735f521efceb365c43eb266cdbd27917e0c574cff57"
+      }
+    },
+    {
+      "case": "reverse_retained_observations",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_newest_points_and_chronological_order"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_newest_points_and_chronological_order"
+      ],
+      "expected_assertion": "WM_RESTORE_TAIL_OR_ORDER_CHANGED",
+      "pytest_summary": "1 failed in 0.29s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "0792f349f738ae6a2e637cd59686e32e02f4a29c641b4aa11294116ba818f2a3"
+      }
+    },
+    {
+      "case": "trim_source_history",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_history_and_unrelated_state_are_untouched"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_history_and_unrelated_state_are_untouched"
+      ],
+      "expected_assertion": "WM_RESTORE_CHANGED_HISTORY",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "78604a695947ddaad61045401695a93142498d7c4d97ec242b7898a988845c98"
+      }
+    },
+    {
+      "case": "publish_before_validation",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_failed_restore_does_not_publish_partial_state[position]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_failed_restore_does_not_publish_partial_state[position]"
+      ],
+      "expected_assertion": "WM_RESTORE_FAILED_CHANGED_STATE",
+      "pytest_summary": "1 failed in 0.29s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "74f1230906879c659298ae4274b3273a011d6079e5cea103e503ebb102a7e6c1"
+      }
+    }
+  ]
+}

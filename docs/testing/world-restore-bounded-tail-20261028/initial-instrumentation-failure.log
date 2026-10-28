@@ -1,0 +1,10 @@
+F.............                                                           [100%]
+================================== FAILURES ===================================
+________ test_restore_peak_does_not_scale_with_discarded_history[one] _________
+tests\test_world_restore_bounded_tail.py:40: in test_restore_peak_does_not_scale_with_discarded_history
+    assert long < short * 3, "WM_RESTORE_PEAK_GROWS_WITH_HISTORY"
+E   AssertionError: WM_RESTORE_PEAK_GROWS_WITH_HISTORY
+E   assert 164880 < (53264 * 3)
+=========================== short test summary info ===========================
+FAILED tests/test_world_restore_bounded_tail.py::test_restore_peak_does_not_scale_with_discarded_history[one]
+1 failed, 13 passed in 0.65s

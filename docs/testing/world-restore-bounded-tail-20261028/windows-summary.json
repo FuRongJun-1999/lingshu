@@ -1,0 +1,57 @@
+{
+  "platform": "Windows",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "baseline": "68f2c3ab22ed667832311bb3207f88e9294c1efd",
+  "validated_commit": "548ee0cffc3e90a514df13cba71233fc03d4ef86",
+  "commands": [
+    {
+      "name": "replay",
+      "returncode": 0
+    },
+    {
+      "name": "related",
+      "returncode": 0
+    },
+    {
+      "name": "manifest",
+      "returncode": 0
+    },
+    {
+      "name": "time-core",
+      "returncode": 0
+    }
+  ],
+  "related_files": [
+    "test_world_prior_atomic_restore.py",
+    "test_trajectory_resolved_observations.py",
+    "test_world_memory_first_batch.py",
+    "test_world_counterfactual_isolation.py",
+    "test_world_observation_contracts.py",
+    "test_world_identity_qualification.py",
+    "test_world_qualified_feedback.py",
+    "test_world_rotation_tick_clock.py",
+    "test_world_period_phase_wrap.py",
+    "test_world_period_silent_wrong_guard.py",
+    "test_issue706_sharpness_span_guard.py",
+    "test_issue418_sparse_motion_guard.py",
+    "test_world_inference_window.py",
+    "test_issue455_subprocess_encoding.py",
+    "test_doc_module_counts_guard.py",
+    "test_issue79_architecture_layers_guard.py",
+    "test_gate_dependency_closure.py"
+  ],
+  "related_total": 228,
+  "related_skips": [
+    "test_scene_relations_round_trip_real_brain",
+    "test_experience_real_brain_restart_preserves_predictive_relations"
+  ],
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "89e7b19e706e63f9aeb2beccbe2fa80916066316c860c05a814b88ce458326ab",
+    "tests/test_world_restore_bounded_tail.py": "ade71dc307964ba9f24c4422e3f56662fb1ddbf0e708352a86e3edc9e78957cf",
+    "tests/fixtures/world_restore_bounded_tail_mutations.json": "397ec2b2d295fe9baa39be98f7919d7ababb04740d46f6dad702f57585366060",
+    "bench/bench_world_restore_tail.py": "1e9b8a7880f73e97e49c9777820fb8fbde6ac2e200ce7fca6e56be5666cd5f28",
+    "docs/intake/body-export-v0.1/_export_manifest.json": "20798ae4dacdcdf2f0f17ef28f3518c024f072c407d4d645547818249e6d5be7"
+  },
+  "owned_test_temp_cleaned": true
+}
