@@ -1,12 +1,11 @@
 """恢复轨迹的保留语义与临时分配上界；不以耗时作为 CI 判据。"""
 from copy import deepcopy
-import gc
 import math
-import tracemalloc
 
 import pytest
 
 from lingshu.world.world_model import UnifiedWorldModel
+from lingshu.world import world_model as module
 
 
 def frames(count, entities=1):
@@ -14,31 +13,28 @@ def frames(count, entities=1):
                                       for i in range(entities)}} for tick in range(count)]
 
 
-def peak_for(count, entities):
-    model = UnifiedWorldModel()
-    model.history = frames(count, entities)
-    gc.collect()
-    already = tracemalloc.is_tracing()
-    if not already:
-        tracemalloc.start()
-    current, _ = tracemalloc.get_traced_memory()
-    tracemalloc.reset_peak()
-    try:
-        retained = model.restore_trajectory_from_history()
-        _, peak = tracemalloc.get_traced_memory()
-    finally:
-        if not already:
-            tracemalloc.stop()
-    return peak - current, retained
-
-
 @pytest.mark.parametrize("entities", [1, 4], ids=["one", "four"])
-def test_restore_peak_does_not_scale_with_discarded_history(entities):
-    short, short_count = peak_for(512, entities)
-    long, long_count = peak_for(4096, entities)
-    # 输入增长八倍、保留点相同；留三倍余量，识别全量副本而非卡具体字节数。
-    assert long < short * 3, "WM_RESTORE_PEAK_GROWS_WITH_HISTORY"
-    assert short_count == long_count == entities * 256
+def test_restore_live_normalized_coordinates_are_bounded(monkeypatch, entities):
+    model = UnifiedWorldModel()
+    model.history = frames(4096, entities)
+    counts = {"live": 0, "peak": 0, "converted": 0}
+    class TrackedFloat(float):
+        """只记录归一化坐标的存活量，不要求使用特定容器。"""
+        __slots__ = ()
+        def __new__(cls, value):
+            out = super().__new__(cls, value)
+            counts["live"] += 1
+            counts["converted"] += 1
+            counts["peak"] = max(counts["peak"], counts["live"])
+            return out
+        def __del__(self):
+            counts["live"] -= 1
+    monkeypatch.setattr(module, "float", TrackedFloat, raising=False)
+    retained = model.restore_trajectory_from_history()
+    # 每实体 256 个已保留点，最多再有一个尚未入队的新点；原始历史仍全部转换。
+    assert counts["peak"] <= 3 * (entities * 256 + 1), "WM_RESTORE_PEAK_GROWS_WITH_HISTORY"
+    assert counts["converted"] == 4096 * entities * 3
+    assert retained == entities * 256
 
 
 def test_newest_points_and_chronological_order():

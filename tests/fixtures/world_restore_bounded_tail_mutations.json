@@ -5,13 +5,13 @@
     "lingshu/world/world_model.py"
   ],
   "baseline_failures": [
-    "test_restore_peak_does_not_scale_with_discarded_history[one]",
-    "test_restore_peak_does_not_scale_with_discarded_history[four]"
+    "test_restore_live_normalized_coordinates_are_bounded[one]",
+    "test_restore_live_normalized_coordinates_are_bounded[four]"
   ],
   "mutations": [
     {
       "name": "unbounded_intermediate_tail",
-      "test": "test_restore_peak_does_not_scale_with_discarded_history[one]",
+      "test": "test_restore_live_normalized_coordinates_are_bounded[one]",
       "assertion": "WM_RESTORE_PEAK_GROWS_WITH_HISTORY",
       "changes": [
         {
