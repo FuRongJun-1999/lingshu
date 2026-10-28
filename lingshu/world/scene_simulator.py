@@ -310,6 +310,11 @@ class SceneSimulator:
         # 漏传第一处的后果：`create_scene` 的地形与 seed 完全无关（VoxelWorld 恒用
         # 自身缺省 seed=0），「换 seed 重跑」在世界构建维度上是空转。
         self.world = VoxelWorld(size=size, ground_level=ground_level, seed=seed)
+        # #1096：seed 的**可读回**。VoxelWorld 不留 seed（只吃进生成器），而
+        # `CuriosityExplorer` 在 `world=` 注入路径下需要从注入世界回填 seed
+        # （`_build_world` 重建「同世界配置」对比世界）——没有这个属性就只能
+        # 读到形参缺省值。只增只读字段，既有读取方不受影响。
+        self.seed = int(seed)
         self.entities: Dict[str, SceneEntity] = {}
         self.paths: Dict[str, List[Tuple[float, float, float]]] = {}
         # #424：环形缓冲——此前是普通 list，长期运行 / 单次大 n 只增不减，
