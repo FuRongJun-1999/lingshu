@@ -335,23 +335,43 @@ class _ComponentFinder:
 _FINDER = None
 
 
+def _live_finder():
+    """`sys.meta_path` 里**实际在拦截**的 finder（按类名匹配，跨模块实例）。
+
+    #1097：`importlib.reload(component_resolver)` 会把模块级 `_FINDER` 清成
+    None，但**旧实例仍在 sys.meta_path 里继续拦截**。旧实现只用模块级变量判定
+    ⇒ `is_installed()` 报 False（与实际行为矛盾）、`install()` 再新建一个插入
+    ⇒ 幂等性被破坏、每次 reload+install 净增一个 finder（实测 5 次 reload 后
+    finders=5，长驻进程里是元路径泄漏）。此处按实例身份（而非模块变量）查找。
+    """
+    for f in sys.meta_path:
+        if f.__class__.__name__ == "_ComponentFinder":
+            return f
+    return None
+
+
 def install() -> "_ComponentFinder":
     """安装组件解析守卫（幂等，可重复调用；仅首次调用注册告警过滤规则）。"""
     global _FINDER
+    live = _live_finder()
+    if live is not None:
+        # #1097：复用磁盘上真实在拦截的实例（reload 后即为旧实例），
+        # 不再新建 —— 幂等性恢复。
+        _FINDER = live
+        return live
     if _FINDER is None:
         _FINDER = _ComponentFinder()
-    if _FINDER not in sys.meta_path:
-        sys.meta_path.insert(0, _FINDER)
-        try:  # 确保本类告警默认可观测（即便外部 -W error 也不改变导入语义）
-            warnings.filterwarnings("default", category=ComponentDiscoveryWarning)
-        except Exception:
-            pass
+    sys.meta_path.insert(0, _FINDER)
+    try:  # 确保本类告警默认可观测（即便外部 -W error 也不改变导入语义）
+        warnings.filterwarnings("default", category=ComponentDiscoveryWarning)
+    except Exception:
+        pass
     return _FINDER
 
 
 def is_installed() -> bool:
-    """守卫是否已安装。"""
-    return _FINDER is not None and _FINDER in sys.meta_path
+    """守卫是否已安装（按 sys.meta_path 实际实例判定，见 #1097）。"""
+    return _live_finder() is not None
 
 
 def discovery_report() -> dict:

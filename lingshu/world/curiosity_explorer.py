@@ -64,6 +64,16 @@ class CuriosityExplorer(WorldLearner):
                          window=window, world=world)
         # 保留构造配置（#345）：compare_policies 需按本实例的 size/seed 重建
         # 同配置的对比世界，否则非缺省实例的比较结果与该实例无关。
+        # #1096：#345 只覆盖了显式构造路径——`world=` 注入时 size 由基类从
+        # 注入世界反推，但 ground_level 仍停在**形参缺省值**（实测注入 gl=3
+        # 的世界，实例仍 gl=1），于是 compare_policies 重建的是另一个世界。
+        # 此处从注入世界回填 ground_level。
+        # 边界（如实标注）：**seed 无法回填**——`SceneSimulator`/`VoxelWorld`
+        # 都不保存构造 seed（只在 WorldLearner 里被消费成 `_rng`），注入路径
+        # 下无从取回；本修只收口可回填的那一项，caller 若需一致 seed 须显式
+        # 传 `seed=`（`_build_world` 仍按 self.seed 重建）。
+        if world is not None:
+            ground_level = getattr(getattr(world, "world", world), "ground_level", ground_level)
         self.seed = seed
         self.ground_level = ground_level
         self.last_observed: Dict[str, int] = {}
