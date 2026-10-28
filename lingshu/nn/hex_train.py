@@ -617,12 +617,21 @@ def four_state_accuracy(net: HexNet, x: np.ndarray, y: np.ndarray,
 def calibrate_class_cards(net: HexNet, x: np.ndarray, y: np.ndarray) -> List[Dict]:
     """每类一张条件卡（零阶校准，免梯度）：阈值取类内统计分位——
     p_threshold = 该类样本 softmax 概率的 25% 分位；
-    margin_threshold = 类内 logit top1-top2 差的 25% 分位。白箱可复算。"""
+    margin_threshold = 类内 logit top1-top2 差的 25% 分位。白箱可复算。
+
+    退化输入（#254）：校准集**缺类** ⇒ 该类给保守卡并标注 `"missing": True`，
+    不再 `np.quantile` 空数组抛 IndexError。p_threshold=1.0 使该类判定永远进
+    DEFER（softmax 概率恒 <1，ACCEPT 的 `p_best >= pthr` 分支必不成立）；
+    复核补上该类样本后重跑校准即得真实卡。"""
     logits, _ = net.forward(x)
     probs = _softmax(logits)
     cards = []
     for c in range(net.C):
         m = logits[y == c]
+        if m.size == 0:
+            cards.append({"class": c, "p_threshold": 1.0,
+                          "margin_threshold": 1.0, "missing": True})
+            continue
         p = probs[y == c, c]
         top2 = np.sort(m, axis=1)[:, -2:]
         cards.append({"class": c,

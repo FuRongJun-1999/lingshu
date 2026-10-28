@@ -384,26 +384,41 @@ def train_hier(net: HexHierNet, lat: np.ndarray, labels: Dict[str, np.ndarray],
 def calibrate_hier_cards(net: HexHierNet, lat: np.ndarray,
                          labels: Dict[str, np.ndarray]) -> Dict:
     """L2 语义卡(形状/颜色原型+分位阈值)与 L3 物体卡(概率分位)。
-    返回卡片+校准分布(分布宽度=该层信息差读数)。"""
+    返回卡片+校准分布(分布宽度=该层信息差读数)。
+
+    退化输入（#254 同步面）：某语义/物体在标注里**缺样本** ⇒ 该卡给保守阈值
+    并标注 `"missing": True`（inlier_q25/p_q25 取 1.0 = 永远达不到的门槛），
+    不再空数组 `mean`/`np.quantile` 抛错或产 NaN。"""
     sf, cf = net.l2_features(lat)
     logits = net.l3_logits(sf, cf)
     probs = softmax(logits)
     cards = {"shape": [], "color": [], "obj": []}
     for i, s in enumerate(SHAPES):
-        sims = [_cos(sf[labels["shape"] == s].mean(axis=0), sf[j])
-                for j in range(len(sf))]
+        mask = labels["shape"] == s
+        if not mask.any():
+            cards["shape"].append({"semantic": s, "proto": None,
+                                   "inlier_q25": 1.0, "missing": True})
+            continue
+        sims = [_cos(sf[mask].mean(axis=0), sf[j]) for j in range(len(sf))]
         sims = np.array(sims)
-        in_sims = sims[labels["shape"] == s]
-        cards["shape"].append({"semantic": s, "proto": sf[labels["shape"] == s].mean(axis=0).tolist(),
+        in_sims = sims[mask]
+        cards["shape"].append({"semantic": s, "proto": sf[mask].mean(axis=0).tolist(),
                                "inlier_q25": round(float(np.quantile(in_sims, 0.25)), 4)})
     for i, c in enumerate(COLORS):
         in_cf = cf[labels["color"] == c]
+        if in_cf.shape[0] == 0:
+            cards["color"].append({"semantic": c, "proto": None,
+                                   "inlier_q25": 1.0, "missing": True})
+            continue
         proto = in_cf.mean(axis=0)
         in_sims = np.array([_cos(proto, p) for p in in_cf])
         cards["color"].append({"semantic": c, "proto": proto.tolist(),
                                "inlier_q25": round(float(np.quantile(in_sims, 0.25)), 4)})
     for i, o in enumerate(OBJ):
         in_p = probs[labels["obj"] == o, i]
+        if in_p.size == 0:
+            cards["obj"].append({"obj": o, "p_q25": 1.0, "missing": True})
+            continue
         cards["obj"].append({"obj": o,
                              "p_q25": round(float(np.quantile(in_p, 0.25)), 4)})
     return cards
