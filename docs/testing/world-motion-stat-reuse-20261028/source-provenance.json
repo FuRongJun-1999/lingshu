@@ -40,5 +40,19 @@
     "successful_followup_title_run": 40648504014,
     "rerun_permission": "upstream Actions rerun unavailable; cancelled run is not counted as passed",
     "final_submission": "Update PR description before final evidence push, then freeze description and verify every check on the new head. No code or local test rerun."
+  },
+  "delivery_tooling_adjustment": {
+    "file": "bench/bench_world_motion_reuse.py",
+    "measured_source_sha256_lf": "558a3c7792865e4ba3f88f2627fc17d0488f21af61c17b6bdc2bd8f6efa686e2",
+    "delivery_source_sha256_lf": "39bec978aecb14b1d4b8ab0f62cae626de998fb01dde6076bf5abd22f683669b",
+    "change": "Only explicit UTF-8/errors=replace for git HEAD metadata subprocess; timed loop AST unchanged",
+    "timed_loop_ast_unchanged": true,
+    "existing_guard_result": "2 passed, 3 warnings in 1.81s",
+    "previous_ci_failure": {
+      "head": "c145cf4b9b61beb1d76da0129923f1f227cb612d",
+      "job": 122684786460,
+      "summary": "1 failed, 4490 passed, 44 skipped, 8738 warnings, 98 subtests passed in 716.73s",
+      "test": "test_no_text_mode_subprocess_without_encoding"
+    }
   }
 }

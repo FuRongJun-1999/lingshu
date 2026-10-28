@@ -93,3 +93,11 @@ python -X utf8 tools/verify_manifest.py --strict --quiet
 PR #615 补稀疏样本与诊断，PR #1080 修有限运动算术。本件处理当前 main 仍存在的两种 accessor 重复估计，
 沿用三者规则，不重复申报既有算法与数值修复，也不按 accessor、模型或平台拆成多项交付。
 维护者人审与架构核验待完成；human review pending。
+
+## CI 发现与工具修正
+
+head `c145cf4b9b61beb1d76da0129923f1f227cb612d` 的[依赖下界门禁](https://github.com/FuRongJun-1999/lingshu/actions/runs/40649010188/job/122684786460)返回 1 failed、4490 passed、44 skipped；唯一失败为既有 `test_no_text_mode_subprocess_without_encoding`。
+新增基准脚本读取 Git 提交号时使用 text=True，漏了显式 encoding。交付版本补 `encoding="utf-8", errors="replace"`；既有编码守卫补跑 2 passed。
+该读取发生在计时循环结束后的报告元数据阶段；计时循环及其此前代码的 AST 与固定计时版本逐字结构相同，运动源码、守卫、规格和输入未变。
+原始计时、测量源码指纹仍指向 `2ea4835`；交付脚本的新指纹和该差异单列于 source-provenance.json，不把旧计时冒充新脚本重跑结果。
+首轮 CI 的失败不计通过，修正后须重新通过当前 head 的全部门禁才能申报。

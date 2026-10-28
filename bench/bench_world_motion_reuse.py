@@ -100,7 +100,8 @@ def run(baseline, repeats):
             finally:
                 engine.close()
                 world_learner.ObservationWindow = world_model.ObservationWindow = ObservationWindow
-    return {"baseline": baseline, "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+    return {"baseline": baseline, "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                                                  text=True, encoding="utf-8", errors="replace").strip(),
             "platform": platform.platform(), "python": platform.python_version(), "repeats": repeats,
             "method": "randomized paired core calls; one warmup pair; setup/hash excluded; GC disabled equally",
             "baseline_source_sha256_lf": hashlib.sha256(source.replace(b"\r\n", b"\n")).hexdigest(),
