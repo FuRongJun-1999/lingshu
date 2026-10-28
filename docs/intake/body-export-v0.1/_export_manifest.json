@@ -54,7 +54,7 @@
     {
      "file": "curiosity_explorer.py",
      "src": "aeis.curiosity_explorer",
-     "sha256": "4a551240f4594c68",
+     "sha256": "2f11d215d86fa1d6",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -266,7 +266,7 @@
     {
      "file": "world_learner.py",
      "src": "aeis.world_learner",
-     "sha256": "69ddbddd97489708",
+     "sha256": "51ad590a4070f0d6",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,

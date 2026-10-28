@@ -291,9 +291,16 @@ class CuriosityExplorer(WorldLearner):
         return round(sum(bounds) / len(bounds), 4) if bounds else 1.0
 
     def probe(self, ticks: int = 15) -> Dict:
-        """全带宽冻结参数评估，沿用统一点误差与范围覆盖口径。"""
-        result = self.eval_phase(ticks, include_oracle=False)
-        return {**result, "probe_ticks": int(ticks)}
+        """全带宽冻结参数评估，沿用统一点误差与范围覆盖口径。
+
+        #1095：与 `explore()` 同一「返回诚实」口径（#497）——旧实现把输入原样
+        回填 `probe_ticks`，但 `eval_phase` 的 `range(max(1, int(eval_ticks)))`
+        仍推进一步（实测：tick 1→2、world 0→1、报告 probe_ticks=0）；负数更会
+        把 -5 写进 `eval_ticks` 同时推进 tick。此处先钳后跑。
+        """
+        n = max(0, int(ticks))
+        result = self.eval_phase(n, include_oracle=False)
+        return {**result, "probe_ticks": n, "eval_ticks": n}
 
     def _build_world(self) -> "CuriosityExplorer":
         """标准测试世界：追逐链 player(wander)←wolf(seek)←rabbit(flee)。
@@ -326,7 +333,9 @@ class CuriosityExplorer(WorldLearner):
             ex.observe()
             # 预热：全带宽观测 window tick（让关系/速度先成形，探索决策才有依据）
             ex.run(n=self.window)
-            for _ in range(max(1, int(explore_ticks))):
+            # #1095：与 explore()/probe() 同一口径——旧 `max(1, ...)` 在
+            # explore_ticks=0 时仍跑 1 个探索 tick，返回却报 explore_ticks=0。
+            for _ in range(max(0, int(explore_ticks))):
                 ex.explore_tick(budget=budget, policy=pol)
             pr = ex.probe(ticks=probe_ticks)
             results[pol] = {
@@ -337,8 +346,13 @@ class CuriosityExplorer(WorldLearner):
                 "bound_coverage": pr["bound_coverage"],
                 "mean_distance": pr["mean_distance"],
                 "mean_bound": pr["mean_bound"],
-                "final_uncertainty": ex.uncertainty_curve[-1],
-                "uncertainty_min": min(ex.uncertainty_curve),
+                # #1095：explore_ticks=0 时 curve 为空——旧实现 `[-1]`/`min([])`
+                # 直接 IndexError/ValueError（诚实钳制后必然出现的路径）。
+                # 与 explore() 同口径：空 curve 回落到现场 uncertainty()。
+                "final_uncertainty": (ex.uncertainty_curve[-1]
+                                      if ex.uncertainty_curve else ex.uncertainty()),
+                "uncertainty_min": (min(ex.uncertainty_curve)
+                                    if ex.uncertainty_curve else ex.uncertainty()),
                 "obs_distribution": dict(ex.obs_counts),
                 "curve": list(ex.uncertainty_curve),
             }

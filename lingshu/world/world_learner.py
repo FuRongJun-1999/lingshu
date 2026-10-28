@@ -374,7 +374,10 @@ class WorldLearner:
     def next_state_loss(self, eval_ticks: int = 10) -> Dict:
         """冻结模型的一步预测与新鲜观测的平均欧氏距离；无样本返回 None。"""
         dists = []
-        for _ in range(max(1, int(eval_ticks))):
+        # #1095：与 explore()/probe() 同一「返回诚实」口径（#497 族）——旧
+        # max(1, ...) 在 eval_ticks=0 时仍推进一步（实测 world_tick 0->1），
+        # 调用方却按 0 解读。
+        for _ in range(max(0, int(eval_ticks))):
             lp = self.predict(horizon=1)
             self.world.step(n=1)
             self.observe()
@@ -408,7 +411,10 @@ class WorldLearner:
         covered = oracle_covered = common = common_learned = common_oracle = 0
         distances, naive_distances, bounds = [], [], []
         oracle_available = False
-        for _ in range(max(1, int(eval_ticks))):
+        # #1095：与 explore()/probe() 同一「返回诚实」口径（#497 族）——旧
+        # max(1, ...) 在 eval_ticks=0 时仍推进一步（实测 world_tick 0->1），
+        # 调用方却按 0 解读。
+        for _ in range(max(0, int(eval_ticks))):
             lp = self.predict(horizon=1)
             op = self._oracle_predict() if include_oracle else {}
             before = {eid: tuple(e.pos) for eid, e in self.world.entities.items()}
