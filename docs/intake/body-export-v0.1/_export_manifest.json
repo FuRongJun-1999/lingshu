@@ -54,7 +54,7 @@
     {
      "file": "curiosity_explorer.py",
      "src": "aeis.curiosity_explorer",
-     "sha256": "4a551240f4594c68",
+     "sha256": "85dbe6a5ef4e0d56",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -119,7 +119,7 @@
     {
      "file": "scene_simulator.py",
      "src": "aeis.scene_simulator",
-     "sha256": "f07ddfd30d47264e",
+     "sha256": "480dd26fc331094a",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -266,7 +266,7 @@
     {
      "file": "world_learner.py",
      "src": "aeis.world_learner",
-     "sha256": "69ddbddd97489708",
+     "sha256": "4054ae30bafa1d00",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,

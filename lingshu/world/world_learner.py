@@ -408,7 +408,10 @@ class WorldLearner:
         covered = oracle_covered = common = common_learned = common_oracle = 0
         distances, naive_distances, bounds = [], [], []
         oracle_available = False
-        for _ in range(max(1, int(eval_ticks))):
+        # #1095：`max(1, ...)` 把 0/负 eval_ticks 偷跑成一步——与 explore 的
+        # #497 同族（返回值与实际行为矛盾：调用方报 0 实际推进 1）。零步 ⇒
+        # 各 rate 无样本 ⇒ 按 docstring 既有口径返回 None，不显示成满分。
+        for _ in range(max(0, int(eval_ticks))):
             lp = self.predict(horizon=1)
             op = self._oracle_predict() if include_oracle else {}
             before = {eid: tuple(e.pos) for eid, e in self.world.entities.items()}
