@@ -20,7 +20,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _run(script: str) -> str:
     r = subprocess.run([sys.executable, "-X", "utf8", "-c", textwrap.dedent(script), REPO],
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     assert r.returncode == 0, (r.returncode, r.stdout, r.stderr)
     return r.stdout
 
