@@ -201,7 +201,9 @@ def safe_search_path() -> list:
     （其目标由 cwd 决定，属 #273/#275 的核心面）。
 
     另注意：显式配置根（`LINGSHU_COMPONENT_ROOT`）**先加且永不受** cwd/脚本目录
-    判定影响 ⇒ 部署方声明的组件位置始终可达（正对照，防过度收紧）。
+    判定影响 ⇒ 部署方声明的组件位置始终可达（正对照，防过度收紧）；但**相对根**
+    例外（#1094）——相对条目按 `_is_relative_entry` 与快照同口径剔除，其解析目标
+    由判定时的 cwd 决定，属本模块要关闭的「按当前目录解析」隐式面。
     """
     roots: list = []
     seen: set = set()
@@ -213,6 +215,11 @@ def safe_search_path() -> list:
             roots.append(p)
 
     for p in configured_roots():
+        if _is_relative_entry(p):
+            # #1094：相对配置根与快照条目同口径剔除——import 之后的合法 chdir
+            # 即可翻转加载源（构造进程内任意代码执行），docstring 的「受控面
+            # 不由 cwd 现算」承诺对配置根同样成立。
+            continue
         _add(p)
     for entry in _startup_controlled_entries():
         if not isinstance(entry, str) or entry == "":
@@ -336,8 +343,16 @@ _FINDER = None
 
 
 def install() -> "_ComponentFinder":
-    """安装组件解析守卫（幂等，可重复调用；仅首次调用注册告警过滤规则）。"""
+    """安装组件解析守卫（幂等，可重复调用；仅首次调用注册告警过滤规则）。
+
+    #1097：幂等性按 `sys.meta_path` 里的**实际实例**判定——`importlib.reload`
+    会把模块级 `_FINDER` 归 `None`，但旧实例仍留在 `sys.meta_path` 且继续拦截；
+    若只看模块级变量，reload 后每次 install 都净增一个 finder（无界堆积）。
+    """
     global _FINDER
+    if _FINDER is None or _FINDER not in sys.meta_path:
+        _FINDER = next((f for f in sys.meta_path
+                        if f.__class__.__name__ == "_ComponentFinder"), None)
     if _FINDER is None:
         _FINDER = _ComponentFinder()
     if _FINDER not in sys.meta_path:
@@ -350,8 +365,13 @@ def install() -> "_ComponentFinder":
 
 
 def is_installed() -> bool:
-    """守卫是否已安装。"""
-    return _FINDER is not None and _FINDER in sys.meta_path
+    """守卫是否已安装。
+
+    #1097：按 `sys.meta_path` 的实际实例判定（reload 后模块级 `_FINDER` 为
+    `None` 而旧实例仍在拦截——查模块级变量会让状态查询与实际行为矛盾，
+    `discovery_report()["guard_installed"]` 同源失真）。
+    """
+    return any(f.__class__.__name__ == "_ComponentFinder" for f in sys.meta_path)
 
 
 def discovery_report() -> dict:
