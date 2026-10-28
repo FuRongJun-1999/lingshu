@@ -12722,6 +12722,13 @@ class SpacetimeMemoryEngine:
         边界（如实标注）：只归一**容器**值；数值越界仍走 #574/#690 的钳制，
         字符串编码口径不动（#378/#494 的面）。
 
+        Related #1009：追加 `unreadable_imported_nodes`（count / 前 20 个 id 样本）。
+        仅诊断本次实际写入的最终节点行是否可由既有严格读面反序列化；重复 id
+        覆盖以最终存量行为准，SQL NULL id 样本保留 None。不清洗、不拒绝、不改
+        imported / skipped_rows / integrity_ok 的既有口径，不扫描无关存量坏行。
+        此诊断不保证字段业务语义正确，也不涵盖边或其它表；SQL 行存在但不可读
+        不等于未落库。原始 NULL / 非法 JSON 保留，修复或拒收策略不在本增量。
+
         #93（悬挂引用不再静默落库）：本方法所在连接已开 `PRAGMA
         foreign_keys=ON`（见 `LayeredStore._connect`），备份里指向不存在节点的边
         若照旧 `INSERT OR REPLACE` 会抛 `FOREIGN KEY constraint failed` 并**中断
@@ -13008,6 +13015,9 @@ class SpacetimeMemoryEngine:
                 "（如 write_snapshot 已存在分支）静默失效，并随备份继续传播"
                 "（fail-closed，零落库）"
                 % (len(bad_tags), bad_tags[0]["id"], bad_tags[0]["reason"]))
+        # Track physical rows actually written, not declared IDs: NULL IDs and
+        # repeated INSERT OR REPLACE entries must describe final stored rows.
+        _imported_node_rowids = {}
         counts = {}
         skipped = []
         discarded = {}
@@ -13257,6 +13267,8 @@ class SpacetimeMemoryEngine:
                          else "INSERT OR REPLACE")
                 c.execute(f"{_verb} INTO {table} ({col_sql}) VALUES ({placeholders})",
                           tuple(r.get(col) for col in cols))
+                if table == "nodes":
+                    _imported_node_rowids[c.lastrowid] = None
             counts[table] = len(rows) - skipped_rows.get(table, 0)
         # #778 F1/F2 硬配套：受保护节点被导入覆写 ⇒ 审计只追加（与 `add_node` 的
         # #659 同款 action_type / 字段面）。**不**拒绝覆盖（灾备恢复语义不动）。
@@ -13288,6 +13300,19 @@ class SpacetimeMemoryEngine:
                 node_ids=[i for i in immutable_rows if i],
                 outcome={"requires_review": True, "immutable_rows": len(immutable_rows),
                          "relayer_rows": len(relayer_rows)})
+        # Related #1009: physical writes can succeed while strict node decoding
+        # fails. Report only final rows touched here; leave stored bytes, imported
+        # counts and the FK-only integrity_ok contract unchanged. The pure helper
+        # uses the same decoder as reads without changing last_skipped_rows.
+        # Query failures propagate before commit; only decoder failures are reported.
+        _unreadable_count = 0
+        _unreadable_sample = []
+        for _rowid in _imported_node_rowids:
+            _stored = c.execute("SELECT * FROM nodes WHERE rowid=?", (_rowid,)).fetchall()
+            _, _unreadable = self.store._tolerant_nodes(_stored)
+            _unreadable_count += len(_unreadable)
+            if len(_unreadable_sample) < 20:
+                _unreadable_sample.extend(_unreadable[:20 - len(_unreadable_sample)])
         self._commit_locked()
         # #493：导入后把运行期容量状态随盘面刷新（与「启动时从库读」同口径）：
         # 上方逐表 INSERT OR REPLACE 已把备份的 engine_meta（含 context_max）落库，
@@ -13307,6 +13332,8 @@ class SpacetimeMemoryEngine:
         # 口径不同（详见本方法 docstring），不要把这一个数当成那一个数。
         dangling = {(table, rid) for table, rid, *_ in c.fetchall()}
         return {"imported": counts, "skipped_tables": skipped,
+                "unreadable_imported_nodes": {"count": _unreadable_count,
+                                               "sample": _unreadable_sample},
                 "dangling_rows": len(dangling),
                 "orphan_edges": len(orphan_rows),
                 "orphan_edges_sample": [
