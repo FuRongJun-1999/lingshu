@@ -33,5 +33,12 @@
   "owned_temporary_copies_cleaned": true,
   "normalization": "Only workspace/interpreter prefixes, CRLF and trailing whitespace",
   "local_linux": "not run; remote Linux CI is separate evidence",
-  "production_data_real_device_online_brain_dsh": "not tested"
+  "production_data_real_device_online_brain_dsh": "not tested",
+  "publication_ci_audit": {
+    "superseded_evidence_head": "4b6e916b848f0e6ac100c592beaed8884108e309",
+    "cancelled_title_run": 40648502641,
+    "successful_followup_title_run": 40648504014,
+    "rerun_permission": "upstream Actions rerun unavailable; cancelled run is not counted as passed",
+    "final_submission": "Update PR description before final evidence push, then freeze description and verify every check on the new head. No code or local test rerun."
+  }
 }
