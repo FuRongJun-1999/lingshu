@@ -1,0 +1,60 @@
+FFFFFFFF.........                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_accessors_estimate_once[motion-flat] __________________
+tests\test_world_motion_stat_reuse.py:36: in test_accessors_estimate_once
+    assert len(calls) == 1, "WM_MOTION_REESTIMATED_WITHIN_VIEW"
+E   AssertionError: WM_MOTION_REESTIMATED_WITHIN_VIEW
+E   assert 2 == 1
+E    +  where 2 = len([1, 1])
+_________________ test_accessors_estimate_once[motion-nested] _________________
+tests\test_world_motion_stat_reuse.py:36: in test_accessors_estimate_once
+    assert len(calls) == 1, "WM_MOTION_REESTIMATED_WITHIN_VIEW"
+E   AssertionError: WM_MOTION_REESTIMATED_WITHIN_VIEW
+E   assert 2 == 1
+E    +  where 2 = len([1, 1])
+__________________ test_accessors_estimate_once[detail-flat] __________________
+tests\test_world_motion_stat_reuse.py:36: in test_accessors_estimate_once
+    assert len(calls) == 1, "WM_MOTION_REESTIMATED_WITHIN_VIEW"
+E   AssertionError: WM_MOTION_REESTIMATED_WITHIN_VIEW
+E   assert 2 == 1
+E    +  where 2 = len([1, 1])
+_________________ test_accessors_estimate_once[detail-nested] _________________
+tests\test_world_motion_stat_reuse.py:36: in test_accessors_estimate_once
+    assert len(calls) == 1, "WM_MOTION_REESTIMATED_WITHIN_VIEW"
+E   AssertionError: WM_MOTION_REESTIMATED_WITHIN_VIEW
+E   assert 2 == 1
+E    +  where 2 = len([1, 1])
+___________________ test_sparse_context_is_read_once[flat] ____________________
+tests\test_world_motion_stat_reuse.py:60: in test_sparse_context_is_read_once
+    assert len(reads) == once, "WM_MOTION_CONTEXT_RESCANNED"
+E   AssertionError: WM_MOTION_CONTEXT_RESCANNED
+E   assert 600 == 300
+E    +  where 600 = len([1, 1, 1, 1, 1, 1, ...])
+__________________ test_sparse_context_is_read_once[nested] ___________________
+tests\test_world_motion_stat_reuse.py:60: in test_sparse_context_is_read_once
+    assert len(reads) == once, "WM_MOTION_CONTEXT_RESCANNED"
+E   AssertionError: WM_MOTION_CONTEXT_RESCANNED
+E   assert 600 == 300
+E    +  where 600 = len([1, 1, 1, 1, 1, 1, ...])
+_____________ test_core_entry_estimates_each_entity_once[learner] _____________
+tests\test_world_motion_stat_reuse.py:93: in test_core_entry_estimates_each_entity_once
+    assert len(calls) == 1, "WM_CORE_DUPLICATE_MOTION_ESTIMATE"
+E   AssertionError: WM_CORE_DUPLICATE_MOTION_ESTIMATE
+E   assert 2 == 1
+E    +  where 2 = len([1, 1])
+_____________ test_core_entry_estimates_each_entity_once[unified] _____________
+tests\test_world_motion_stat_reuse.py:93: in test_core_entry_estimates_each_entity_once
+    assert len(calls) == 1, "WM_CORE_DUPLICATE_MOTION_ESTIMATE"
+E   AssertionError: WM_CORE_DUPLICATE_MOTION_ESTIMATE
+E   assert 2 == 1
+E    +  where 2 = len([1, 1])
+=========================== short test summary info ===========================
+FAILED tests/test_world_motion_stat_reuse.py::test_accessors_estimate_once[motion-flat]
+FAILED tests/test_world_motion_stat_reuse.py::test_accessors_estimate_once[motion-nested]
+FAILED tests/test_world_motion_stat_reuse.py::test_accessors_estimate_once[detail-flat]
+FAILED tests/test_world_motion_stat_reuse.py::test_accessors_estimate_once[detail-nested]
+FAILED tests/test_world_motion_stat_reuse.py::test_sparse_context_is_read_once[flat]
+FAILED tests/test_world_motion_stat_reuse.py::test_sparse_context_is_read_once[nested]
+FAILED tests/test_world_motion_stat_reuse.py::test_core_entry_estimates_each_entity_once[learner]
+FAILED tests/test_world_motion_stat_reuse.py::test_core_entry_estimates_each_entity_once[unified]
+8 failed, 9 passed, 17 warnings in 0.67s

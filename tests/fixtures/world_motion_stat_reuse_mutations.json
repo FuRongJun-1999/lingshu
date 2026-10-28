@@ -1,0 +1,75 @@
+{
+  "guard": "tests/test_world_motion_stat_reuse.py",
+  "total": 17,
+  "sources": [
+    "lingshu/world/motion.py"
+  ],
+  "baseline_failures": [
+    "test_accessors_estimate_once[motion-flat]",
+    "test_accessors_estimate_once[motion-nested]",
+    "test_accessors_estimate_once[detail-flat]",
+    "test_accessors_estimate_once[detail-nested]",
+    "test_sparse_context_is_read_once[flat]",
+    "test_sparse_context_is_read_once[nested]",
+    "test_core_entry_estimates_each_entity_once[learner]",
+    "test_core_entry_estimates_each_entity_once[unified]"
+  ],
+  "mutations": [
+    {
+      "name": "recompute_between_accessors",
+      "test": "test_accessors_estimate_once[motion-flat]",
+      "assertion": "WM_MOTION_REESTIMATED_WITHIN_VIEW",
+      "changes": [
+        {
+          "file": "lingshu/world/motion.py",
+          "class": "ObservationWindow",
+          "method": "_motion_estimate",
+          "old": "        if eid not in self._estimates:",
+          "new": "        if True:"
+        }
+      ]
+    },
+    {
+      "name": "read_mutable_public_estimate",
+      "test": "test_public_diagnostic_mutation_cannot_change_motion[detail]",
+      "assertion": "WM_MUTABLE_DIAGNOSTIC_CHANGED_MOTION",
+      "changes": [
+        {
+          "file": "lingshu/world/motion.py",
+          "class": "ObservationWindow",
+          "method": "motion",
+          "old": "        return self._motions[eid]",
+          "new": "        return self.motion_detail(eid)[\"estimate\"]"
+        }
+      ]
+    },
+    {
+      "name": "share_cache_between_views",
+      "test": "test_new_view_refreshes_after_new_observation",
+      "assertion": "WM_MOTION_CACHE_ESCAPED_VIEW",
+      "changes": [
+        {
+          "file": "lingshu/world/motion.py",
+          "class": "ObservationWindow",
+          "method": "__init__",
+          "old": "        self._motions = {}",
+          "new": "        self._motions = getattr(type(self), \"_shared_motion\", {})\n        type(self)._shared_motion = self._motions"
+        }
+      ]
+    },
+    {
+      "name": "force_diagnostics_for_motion_only",
+      "test": "test_motion_only_does_not_build_public_diagnostics",
+      "assertion": "WM_MOTION_ONLY_FORCED_DIAGNOSTICS",
+      "changes": [
+        {
+          "file": "lingshu/world/motion.py",
+          "class": "ObservationWindow",
+          "method": "motion",
+          "old": "        return self._motions[eid]",
+          "new": "        self.motion_detail(eid)\n        return self._motions[eid]"
+        }
+      ]
+    }
+  ]
+}

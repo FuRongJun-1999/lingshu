@@ -1,0 +1,58 @@
+{
+  "baseline": "cebbe423779bd25cb106998a6e1f4ca2a4e262ad",
+  "validated_production_commit": "2ea4835ec987d45d87d27cac37525b40e9bda5ff",
+  "sha256_lf": {
+    "lingshu/world/motion.py": "8ee9c4c9f9cf784acd704cedc984566cec71194c3457078e4794b36cfb186ff6",
+    "tests/test_world_motion_stat_reuse.py": "c3671f7f1bb88d0a5e8ae8cfbac26eafeedaa577143a49f0cf862f834fd837e2",
+    "tests/fixtures/world_motion_stat_reuse_mutations.json": "49d1f13bb88d035d0a2fe35ed95fc5e0360f01d9a5c8c754073c3599b1aeae02",
+    "bench/bench_world_motion_reuse.py": "558a3c7792865e4ba3f88f2627fc17d0488f21af61c17b6bdc2bd8f6efa686e2"
+  },
+  "benchmark_dependencies_sha256_lf": {
+    "lingshu/world/motion.py": "8ee9c4c9f9cf784acd704cedc984566cec71194c3457078e4794b36cfb186ff6",
+    "lingshu/world/world_learner.py": "69ddbddd97489708720705dd5b83e7a0d891166486402083ab8f1b03cd536450",
+    "lingshu/world/world_model.py": "079b3ec3775e43ae471afd6e6ab21fdaa7855beb995f9baeed029b8eb3bf579c",
+    "lingshu/core/core.py": "3771e99a05a3565fc67c5ae6c3200b802f3e434e0b741a7e2b38afa92ba56a87",
+    "bench/bench_world_inference.py": "9ad082d59502bd683efd37bb6014d70d5f508a0814a0747f6fc57255ecb813bc",
+    "bench/bench_world_motion_reuse.py": "558a3c7792865e4ba3f88f2627fc17d0488f21af61c17b6bdc2bd8f6efa686e2"
+  },
+  "related_files": [
+    "test_world_inference_window.py",
+    "test_issue418_sparse_motion_guard.py",
+    "test_world_motion_finite_arithmetic.py",
+    "test_world_observation_contracts.py",
+    "test_world_counterfactual_isolation.py",
+    "test_world_identity_qualification.py",
+    "test_world_qualified_feedback.py",
+    "test_world_memory_first_batch.py",
+    "test_pursuit_prediction.py",
+    "test_trajectory_resolved_observations.py",
+    "test_motion_groups.py",
+    "test_wm_verify_snapshot_tick.py",
+    "test_wm_verify_unobserved.py"
+  ],
+  "owned_temporary_copies_cleaned": true,
+  "normalization": "Only workspace/interpreter prefixes, CRLF and trailing whitespace",
+  "local_linux": "not run; remote Linux CI is separate evidence",
+  "production_data_real_device_online_brain_dsh": "not tested",
+  "publication_ci_audit": {
+    "superseded_evidence_head": "4b6e916b848f0e6ac100c592beaed8884108e309",
+    "cancelled_title_run": 40648502641,
+    "successful_followup_title_run": 40648504014,
+    "rerun_permission": "upstream Actions rerun unavailable; cancelled run is not counted as passed",
+    "final_submission": "Update PR description before final evidence push, then freeze description and verify every check on the new head. No code or local test rerun."
+  },
+  "delivery_tooling_adjustment": {
+    "file": "bench/bench_world_motion_reuse.py",
+    "measured_source_sha256_lf": "558a3c7792865e4ba3f88f2627fc17d0488f21af61c17b6bdc2bd8f6efa686e2",
+    "delivery_source_sha256_lf": "39bec978aecb14b1d4b8ab0f62cae626de998fb01dde6076bf5abd22f683669b",
+    "change": "Only explicit UTF-8/errors=replace for git HEAD metadata subprocess; timed loop AST unchanged",
+    "timed_loop_ast_unchanged": true,
+    "existing_guard_result": "2 passed, 3 warnings in 1.81s",
+    "previous_ci_failure": {
+      "head": "c145cf4b9b61beb1d76da0129923f1f227cb612d",
+      "job": 122684786460,
+      "summary": "1 failed, 4490 passed, 44 skipped, 8738 warnings, 98 subtests passed in 716.73s",
+      "test": "test_no_text_mode_subprocess_without_encoding"
+    }
+  }
+}

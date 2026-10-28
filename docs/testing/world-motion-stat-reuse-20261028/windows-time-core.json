@@ -1,0 +1,211 @@
+{
+  "baseline_entries": 23,
+  "baseline_file": "tools/time_core_lint_baseline.txt",
+  "baseline_found": true,
+  "canonical_modules": [
+    "lingshu/core/time_core.py",
+    "lingshu/world/time_core.py"
+  ],
+  "exit_code": 0,
+  "files_scanned": 82,
+  "new_violations": [],
+  "registered_violations": [
+    {
+      "baseline": true,
+      "code_snippet": "d *= cond_match(cur_cs.get(src), cur_cs.get(dst))",
+      "file": "lingshu/core/activation.py",
+      "line": 355,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "e = [math.exp(-k * x) for x in tau]",
+      "file": "lingshu/world/physics.py",
+      "line": 359,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "e = [math.exp(-k * x) for x in tau]",
+      "file": "lingshu/world/physics.py",
+      "line": 387,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "p = vadd(vadd(model[\"p0\"], vscale(model[\"v0\"], tau)), vscale(a, 0.5 * tau * tau))",
+      "file": "lingshu/world/physics.py",
+      "line": 504,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "p = vadd(vadd(model[\"p0\"], vscale(model[\"v0\"], tau)), vscale(a, 0.5 * tau * tau))",
+      "file": "lingshu/world/physics.py",
+      "line": 508,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "e = math.exp(-kk * tau)",
+      "file": "lingshu/world/physics.py",
+      "line": 512,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "e = math.exp(-kk * tau)",
+      "file": "lingshu/world/physics.py",
+      "line": 512,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "th = model[\"theta0\"] + model[\"omega\"] * tau",
+      "file": "lingshu/world/physics.py",
+      "line": 519,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "vert = model[\"center\"][up] + model[\"v_up\"] * tau",
+      "file": "lingshu/world/physics.py",
+      "line": 522,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "u = u0 + g * tau / vt",
+      "file": "lingshu/world/physics.py",
+      "line": 539,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "p[i] = float(model[\"p0\"][i]) + float(drift[i]) * tau",
+      "file": "lingshu/world/physics.py",
+      "line": 548,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "s = v_s0 * tau + 0.5 * a * tau * tau",
+      "file": "lingshu/world/physics.py",
+      "line": 563,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "v_s = v_s0 + a * tau",
+      "file": "lingshu/world/physics.py",
+      "line": 564,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "p = tuple(float(model[\"p0\"][i]) + u_dir[i] * s + float(drift[i]) * tau for i in range(3))",
+      "file": "lingshu/world/physics.py",
+      "line": 566,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "return a + math.log1p(math.exp(-2.0 * a)) - math.log(2.0)",
+      "file": "lingshu/world/physics.py",
+      "line": 969,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "e = math.exp(-z * w * tt)",
+      "file": "lingshu/world/physics.py",
+      "line": 2453,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "return (1.0 + w * tt) * math.exp(-w * tt)",
+      "file": "lingshu/world/physics.py",
+      "line": 2456,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "e = math.exp(-z * w * tt)",
+      "file": "lingshu/world/physics.py",
+      "line": 2458,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "out[\"amplitude_ratio_per_period\"] = math.exp(-2.0 * math.pi * z / math.sqrt(1.0 - z * z))",
+      "file": "lingshu/world/physics.py",
+      "line": 2474,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "out[\"amplitude_ratio_per_period\"] = math.exp(",
+      "file": "lingshu/world/physics.py",
+      "line": 2573,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "return (tuple(p0[i] + v0[i] * tau + 0.5 * g[i] * tau * tau for i in range(3)),",
+      "file": "lingshu/world/physics.py",
+      "line": 2605,
+      "rule": "R3",
+      "rule_name": "ema"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "return SHOULDER + span * (1.0 - math.exp(-(v - SHOULDER) / span))",
+      "file": "lingshu/world/shade_paint.py",
+      "line": 215,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    },
+    {
+      "baseline": true,
+      "code_snippet": "decayed_conf = lease[\"confidence\"] * math.exp(-self.gamma * age)",
+      "file": "lingshu/world/stable_lease.py",
+      "line": 265,
+      "rule": "R1",
+      "rule_name": "exp_decay"
+    }
+  ],
+  "rule_names": {
+    "R1": "exp_decay",
+    "R2": "keep_rate",
+    "R3": "ema"
+  },
+  "stale_baseline_entries": [],
+  "summary": {
+    "files": 82,
+    "new": 0,
+    "registered": 23,
+    "total": 23
+  },
+  "version": 2
+}
