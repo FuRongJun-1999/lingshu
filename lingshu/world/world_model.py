@@ -31,6 +31,7 @@ from __future__ import annotations
 import inspect
 import math
 import random
+from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
@@ -306,17 +307,18 @@ class UnifiedWorldModel:
         `speed_near_zero` 变成 `not_enough_samples`，两侧预测不再一致。
 
         边界：只有本帧真实观测到的实体进缓冲（与 `snap` 同源），模型信念
-        位置不进；被存档历史丢掉的帧无法补回。
+        位置不进；被存档历史丢掉的帧无法补回。读取时即按实体保留最后
+        256 个点，避免先构造全历史的第二份轨迹；完整 history 不裁剪。
         """
-        buf: Dict[str, List[Tuple[int, Tuple[float, float, float]]]] = {}
+        buf: Dict[str, deque] = {}
         for frame in self.history:
             tick = int(frame["tick"])
             for eid, pos in frame["entities"].items():
-                buf.setdefault(eid, []).append((tick, tuple(float(v) for v in pos)))
-        for eid, seq in buf.items():
-            if len(seq) > 256:
-                buf[eid] = seq[-256:]
-        self._traj_buf = buf
+                rows = buf.get(eid)
+                if rows is None:
+                    rows = buf[eid] = deque(maxlen=256)
+                rows.append((tick, tuple(float(v) for v in pos)))
+        self._traj_buf = {eid: list(seq) for eid, seq in buf.items()}
         # 与轨迹缓冲同批建立：包装层只在"缓冲不存在"时一并初始化这两个误差
         # 队列；先把缓冲建出来而不建它们，下一帧 perceive 就会在
         # `self._err_model.setdefault` 上抛 AttributeError。
