@@ -41,6 +41,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
 __all__ = ["SVGBackend", "SVG_PRECISION"]
@@ -56,7 +57,9 @@ def _num(v) -> str:
     """
     try:
         f = float(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError：超出 float64 的 int（如 10**400）——契约内输入（既有守卫
+        # 明写「svg_backend 对坐标不设上限」），返回 None 让调用方跳过，不崩。#1090
         return None
     if f != f or f in (float("inf"), float("-inf")):     # NaN / ±inf
         return None
@@ -101,10 +104,32 @@ def _color(c) -> Optional[Tuple[str, Optional[str], bool]]:
     return None
 
 
+# XML 1.0 `Char` 产生式之外的字符（C0 控制符除 `\t\n\r`、U+FFFE/U+FFFF、孤立代理对）。
+# 属性值里出现任何一个，整个文档就不是 well-formed（任何 XML 解析器都打不开）。
+_XML_ILLEGAL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff\ud800-\udfff]")
+
+
 def _attr_escape(v: str) -> str:
-    """属性值转义：`&` 与引号（id 里出现引号会直接破坏文档结构，故 fail-closed 转义）。"""
-    return (str(v).replace("&", "&amp;").replace("<", "&lt;")
+    """属性值转义：`&` 与引号（id 里出现引号会直接破坏文档结构，故 fail-closed 转义）。
+
+    `Char` 之外的字符（控制字符等）⇒ 替换为 U+FFFD 而不是抛：拒绝会让整张图导不出
+    （生产路径可达——`Object3D.category` 无字符集约束，经 `mesh_svg` 进 `data-label`），
+    替换保住文档合法且留下「这里有坏字符」的可见痕迹。#1091
+    """
+    cleaned = _XML_ILLEGAL_RE.sub("\ufffd", str(v))
+    return (cleaned.replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+_XML_NAME_START_RE = re.compile(r"[A-Za-z_:]")
+_XML_NAME_CHAR_RE = re.compile(r"[A-Za-z0-9._:\-]")
+
+
+def _is_xml_name(s: str) -> bool:
+    """XML 1.0 `Name` 产生式的 ASCII 覆盖。attrs 键经 `**kwargs` 进来只可能是
+    ASCII 标识符（Python 关键字语法），完整 NameChar 的扩展区码点用不上。"""
+    return bool(s) and bool(_XML_NAME_START_RE.match(s[0])) \
+        and all(_XML_NAME_CHAR_RE.match(c) for c in s[1:])
 
 
 class SVGBackend:
@@ -184,6 +209,10 @@ class SVGBackend:
         if label:
             body += ' data-label="%s"' % _attr_escape(label)
         for k in sorted(attrs):
+            if not _is_xml_name(str(k)):
+                # 非 XML Name 的键会直接破坏文档结构（如含空格）——fail-closed 抛，
+                # 与上面 gid 校验同风格（#1091）。
+                raise ValueError("属性名不是合法 XML Name：%r" % (k,))
             v = attrs[k]
             if v is None:
                 continue
@@ -222,9 +251,15 @@ class SVGBackend:
             self._skip("rectangle_box")
             return
         x0, y0, x1, y1 = box
+        w = _num(float(x1) - float(x0))
+        h = _num(float(y1) - float(y0))
+        if w is None or h is None:
+            # 跨度在 float64 溢出 ⇒ 画不出合法矩形 ⇒ 不发射、计数（此前 `or "0"`
+            # 把「格式化失败」偷换成「宽度就是 0」，静默发射一个不可见的元素）。#1090
+            self._skip("rectangle_span")
+            return
         self._emit("rect", ' x="%s" y="%s" width="%s" height="%s"' % (
-            x0, y0, _num(float(x1) - float(x0)) or "0",
-            _num(float(y1) - float(y0)) or "0") + self._fill_stroke(fill, outline, width))
+            x0, y0, w, h) + self._fill_stroke(fill, outline, width))
 
     def ellipse(self, xy: Sequence, fill=None, outline=None, width: int = 1) -> None:
         """内切于给定矩形的椭圆（PIL 同形）：`xy` = `[x0, y0, x1, y1]`。
@@ -244,8 +279,14 @@ class SVGBackend:
             return
         cx = (float(x0) + float(x1)) / 2.0
         cy = (float(y0) + float(y1)) / 2.0
-        self._emit("ellipse", ' cx="%s" cy="%s" rx="%s" ry="%s"' % (
-            _num(cx), _num(cy), _num(rx), _num(ry)) + self._fill_stroke(fill, outline, width))
+        dims = [_num(cx), _num(cy), _num(rx), _num(ry)]
+        if any(v is None for v in dims):
+            # 输入分量各自有限但跨度在 float64 溢出 ⇒ `_num` 按契约返回 None；
+            # 此前会把 `None` 直接格式化进属性（非法长度值）。不发射、计数。#1090
+            self._skip("ellipse_span")
+            return
+        self._emit("ellipse", ' cx="%s" cy="%s" rx="%s" ry="%s"' % tuple(dims)
+                   + self._fill_stroke(fill, outline, width))
 
     def line(self, xy: Sequence, fill=None, width: int = 1) -> None:
         """折线（PIL 同形）：`xy` = 顶点序列；两点即线段。"""
@@ -438,5 +479,10 @@ class SVGBackend:
             vals = [_num(seq[0][0]), _num(seq[0][1]), _num(seq[1][0]), _num(seq[1][1])]
             if any(v is None for v in vals):
                 return None
+            if float(seq[1][0]) < float(seq[0][0]) or float(seq[1][1]) < float(seq[0][1]):
+                # 与四元分支同判据（docstring 承诺「反序矩形/椭圆照 PIL 抛
+                # `ValueError`（同文本）」——此前只有四元分支做了，两点分支漏，
+                # 会发射负 width 的 `<rect>`；ellipse 反序则被伪装成退化跳过。#1090
+                raise ValueError("x1 must be greater than or equal to x0")
             return (vals[0], vals[1], vals[2], vals[3])
         return None
