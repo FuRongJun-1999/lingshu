@@ -280,9 +280,7 @@ class ObservationWindow:
 
     def motion(self, eid):
         if eid not in self._motions:
-            points, _context = self._context_points(eid, self.points.get(eid, []))
-            self._motions[eid] = _estimate_points(points, self.window_start,
-                                                  self.interval_limit)
+            self.motion_detail(eid)
         return self._motions[eid]
 
     def motion_detail(self, eid) -> Dict:
@@ -344,6 +342,10 @@ class ObservationWindow:
                     out["evidence"] = "window+context"
                 else:
                     out["evidence"] = "context_only"
+            # Both accessors use one estimate and context lookup per view.
+            # Keep the tuple separate from the public mutable diagnostic dict:
+            # callers changing that dict must not change motion()'s result.
+            self._motions[eid] = out["estimate"]
             self._details[eid] = out
         return self._details[eid]
 
