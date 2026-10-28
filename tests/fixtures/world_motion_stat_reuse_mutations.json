@@ -1,6 +1,6 @@
 {
   "guard": "tests/test_world_motion_stat_reuse.py",
-  "total": 16,
+  "total": 17,
   "sources": [
     "lingshu/world/motion.py"
   ],
@@ -23,9 +23,9 @@
         {
           "file": "lingshu/world/motion.py",
           "class": "ObservationWindow",
-          "method": "motion",
-          "old": "            self.motion_detail(eid)",
-          "new": "            points, _context = self._context_points(eid, self.points.get(eid, []))\n            self._motions[eid] = _estimate_points(points, self.window_start, self.interval_limit)"
+          "method": "_motion_estimate",
+          "old": "        if eid not in self._estimates:",
+          "new": "        if True:"
         }
       ]
     },
@@ -54,6 +54,20 @@
           "method": "__init__",
           "old": "        self._motions = {}",
           "new": "        self._motions = getattr(type(self), \"_shared_motion\", {})\n        type(self)._shared_motion = self._motions"
+        }
+      ]
+    },
+    {
+      "name": "force_diagnostics_for_motion_only",
+      "test": "test_motion_only_does_not_build_public_diagnostics",
+      "assertion": "WM_MOTION_ONLY_FORCED_DIAGNOSTICS",
+      "changes": [
+        {
+          "file": "lingshu/world/motion.py",
+          "class": "ObservationWindow",
+          "method": "motion",
+          "old": "        return self._motions[eid]",
+          "new": "        self.motion_detail(eid)\n        return self._motions[eid]"
         }
       ]
     }

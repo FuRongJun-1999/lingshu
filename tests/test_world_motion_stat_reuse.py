@@ -131,6 +131,18 @@ def test_entity_and_instance_caches_are_independent():
     assert second.motion("a")[1] == 1
 
 
+def test_motion_only_does_not_build_public_diagnostics(monkeypatch):
+    calls = []
+    original = motion._nonfinite_points
+    def counted(*args):
+        calls.append(1)
+        return original(*args)
+    monkeypatch.setattr(motion, "_nonfinite_points", counted)
+    view = ObservationWindow(history(), 2)
+    assert view.motion("a")[1] == 1
+    assert not calls and not view._details, "WM_MOTION_ONLY_FORCED_DIAGNOSTICS"
+
+
 @pytest.mark.parametrize("case", ["missing", "stationary", "nonfinite", "overflow"])
 def test_empty_and_rejected_estimates_keep_diagnostics(case):
     frames = {

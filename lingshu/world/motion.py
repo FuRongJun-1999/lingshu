@@ -227,6 +227,7 @@ class ObservationWindow:
         self.frames = []
         self.points = {}
         self.masks = {}
+        self._estimates = {}
         self._motions = {}
         self._details = {}
         self._pairs = {}
@@ -278,9 +279,20 @@ class ObservationWindow:
                              cur['pos'] if self.nested else cur))
         return kept[::-1] + list(points), len(kept)
 
+    def _motion_estimate(self, eid):
+        """Resolve real context and numeric estimates once within this view."""
+        if eid not in self._estimates:
+            points, n_context = self._context_points(eid, self.points.get(eid, []))
+            detail = _estimate_detail(points, self.window_start, self.interval_limit)
+            self._estimates[eid] = points, n_context, detail
+        return self._estimates[eid]
+
     def motion(self, eid):
         if eid not in self._motions:
-            self.motion_detail(eid)
+            _points, _context, detail = self._motion_estimate(eid)
+            self._motions[eid] = (None if detail is None else
+                                 (detail["persistence"], detail["speed"],
+                                  detail["samples"], detail["direction"]))
         return self._motions[eid]
 
     def motion_detail(self, eid) -> Dict:
@@ -298,9 +310,7 @@ class ObservationWindow:
         """
         if eid not in self._details:
             window_points = self.points.get(eid, [])
-            points, n_context = self._context_points(eid, window_points)
-            detail = _estimate_detail(points, self.window_start,
-                                      self.interval_limit)
+            points, n_context, detail = self._motion_estimate(eid)
             nonfinite = _nonfinite_points(points)
             last_obs = points[-1][0] if points else None
             stale = (self.last_tick - last_obs
