@@ -14188,10 +14188,38 @@ class SpacetimeMemoryEngine:
         for n in nodes:
             groups.setdefault(find(n.id), []).append(n)
         clusters = [g for g in groups.values() if len(g) >= min_cluster_size]
+        # #263（残余项 A）：同主题**合并**，不再每凑够 min_cluster_size 条就新建一个概念。
+        # 旧实现：每轮把新到的 3 条同主题记忆聚成一簇 ⇒ 新建 1 个概念节点，且从不与
+        # 既有概念比对 ⇒ 300 轮实测 99 个概念 / 3 主题 = 每主题 33 个互不合并的副本，
+        # 知识层净膨胀（399 vs 300 条输入）。现改为：先算候选摘要，与**既有概念**比
+        # 字符二元组 Jaccard；达 similarity_threshold 即视为同主题 ⇒ 把本簇成员挂到
+        # 该既有概念上（加 SIMILAR 边 + 打 cluster_member 标签），**不新建节点**。
+        # 判据来源：lingshu #263（残余项 A）与复现判定 VERDICT.md 的「加压缩/去重」建议。
+        # 边界（削掉的判别力）：合并判据只看**摘要文本**的二元组相似度，不看簇内语义；
+        # 摘要由 `_summarize_cluster` 规则式生成（代表节点前 40 字），故同主题不同表述
+        # 可能被判为不同主题（保守：宁可多留一个概念，也不错并两个主题）。
+        # 合并时不改写既有概念的 content（不改其 sha/可追溯性），累计规模不进摘要 ——
+        # 如需规模读数，从 SIMILAR 边数统计。
+        existing_concepts = [n for n in self.store.query_nodes(
+            layer=MemoryLayer.KNOWLEDGE, limit=500) if "concept" in n.tags]
         concepts = []
+        merged = 0
         for cluster in clusters[:max_concepts]:
+            summary = self._summarize_cluster(cluster)
+            target = None
+            for ec in existing_concepts:
+                if LayeredStore.char_bigram_jaccard(summary, ec.content) >= t:
+                    target = ec
+                    break
+            if target is not None:
+                for m in cluster:
+                    self.add_edge(target.id, m.id, EdgeType.SIMILAR, confidence=0.6,
+                                  source_evidence="inferred")
+                    self.store.tag_node(m.id, "cluster_member")
+                merged += 1
+                continue
             concept = self.add_perception(
-                content=self._summarize_cluster(cluster),
+                content=summary,
                 importance=0.75,
                 tags=["concept", "induced", "pending_verification"],
                 condition_space=condition_space)
@@ -14199,6 +14227,7 @@ class SpacetimeMemoryEngine:
                 self.add_edge(concept.id, m.id, EdgeType.SIMILAR, confidence=0.6,
                               source_evidence="inferred")
                 self.store.tag_node(m.id, "cluster_member")
+            existing_concepts.append(concept)
             concepts.append(concept)
         return concepts
 
