@@ -297,3 +297,11 @@ if __name__ == "__main__":
         sys.exit(1 if _f else 0)
     _m = _mutate(sys.argv[1:])
     sys.exit(1 if (_f or _m) else 0)
+
+
+def test_structure_service_startup_validation_gate():
+    """pytest 收集入口（#1107 脚本式守卫的门禁接线）：进程内直调断言组，
+    任一钉子失败即红（与 `python -X utf8` 直跑同判据）。"""
+    failures = _run_assertions()
+    assert failures == 0, "结构服务启动校验守卫红：%d 条失败 ⇒ %r" % (
+        failures, FAILS)
