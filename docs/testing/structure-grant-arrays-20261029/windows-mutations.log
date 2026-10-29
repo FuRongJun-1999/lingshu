@@ -1,0 +1,35 @@
+split_instance_string
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_malformed_grant_is_rejected_before_startup[instances-string] ______
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+=========================== short test summary info ===========================
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[instances-string]
+1 failed in 0.44s
+
+split_capability_string
+F                                                                        [100%]
+================================== FAILURES ===================================
+____ test_malformed_grant_is_rejected_before_startup[capabilities-string] _____
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+=========================== short test summary info ===========================
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[capabilities-string]
+1 failed in 0.45s
+
+allow_empty_names
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_malformed_grant_is_rejected_before_startup[instances-empty] _______
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+=========================== short test summary info ===========================
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[instances-empty]
+1 failed in 0.44s

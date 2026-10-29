@@ -1,0 +1,84 @@
+FFFFFFFFFF...                                                            [100%]
+================================== FAILURES ===================================
+______ test_malformed_grant_is_rejected_before_startup[instances-string] ______
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+______ test_malformed_grant_is_rejected_before_startup[instances-object] ______
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+______ test_malformed_grant_is_rejected_before_startup[instances-nested] ______
+tests\test_structure_grant_arrays.py:65: in test_malformed_grant_is_rejected_before_startup
+    load(field, value)
+tests\test_structure_grant_arrays.py:45: in load
+    server = service.load_service(path, bind_and_activate=False)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\structure_service.py:180: in load_service
+    frozenset(grant["capabilities"]), frozenset(grant.get("instances", ())))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: unhashable type: 'list'
+_______ test_malformed_grant_is_rejected_before_startup[instances-null] _______
+tests\test_structure_grant_arrays.py:65: in test_malformed_grant_is_rejected_before_startup
+    load(field, value)
+tests\test_structure_grant_arrays.py:45: in load
+    server = service.load_service(path, bind_and_activate=False)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\structure_service.py:180: in load_service
+    frozenset(grant["capabilities"]), frozenset(grant.get("instances", ())))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not iterable
+______ test_malformed_grant_is_rejected_before_startup[instances-empty] _______
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+____ test_malformed_grant_is_rejected_before_startup[capabilities-string] _____
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+____ test_malformed_grant_is_rejected_before_startup[capabilities-object] _____
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+____ test_malformed_grant_is_rejected_before_startup[capabilities-nested] _____
+tests\test_structure_grant_arrays.py:65: in test_malformed_grant_is_rejected_before_startup
+    load(field, value)
+tests\test_structure_grant_arrays.py:45: in load
+    server = service.load_service(path, bind_and_activate=False)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\structure_service.py:180: in load_service
+    frozenset(grant["capabilities"]), frozenset(grant.get("instances", ())))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: unhashable type: 'list'
+_____ test_malformed_grant_is_rejected_before_startup[capabilities-null] ______
+tests\test_structure_grant_arrays.py:65: in test_malformed_grant_is_rejected_before_startup
+    load(field, value)
+tests\test_structure_grant_arrays.py:45: in load
+    server = service.load_service(path, bind_and_activate=False)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\core\structure_service.py:180: in load_service
+    frozenset(grant["capabilities"]), frozenset(grant.get("instances", ())))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not iterable
+_____ test_malformed_grant_is_rejected_before_startup[capabilities-empty] _____
+tests\test_structure_grant_arrays.py:64: in test_malformed_grant_is_rejected_before_startup
+    with pytest.raises(WriteError, match=field):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE WriteError
+=========================== short test summary info ===========================
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[instances-string]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[instances-object]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[instances-nested]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[instances-null]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[instances-empty]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[capabilities-string]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[capabilities-object]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[capabilities-nested]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[capabilities-null]
+FAILED tests/test_structure_grant_arrays.py::test_malformed_grant_is_rejected_before_startup[capabilities-empty]
+10 failed, 3 passed in 0.64s

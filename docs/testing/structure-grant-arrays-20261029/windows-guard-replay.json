@@ -1,0 +1,118 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "7e2de720b39d220fc1553cf114e3a28b4cdf274f",
+  "guard_sha256": "63acd3535248be4f2d89a21ac9405fb8064710bf1f686ada7d66a324b513d6c6",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 13,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "13 passed in 0.50s",
+      "source_sha256": {
+        "lingshu/core/structure_service.py": "7bc4f8bfdac1716a2d3c0bdbd2461b674b06437b8c533ea67eb1b72738408481"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_malformed_grant_is_rejected_before_startup[capabilities-empty]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-nested]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-null]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-object]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-string]",
+        "test_malformed_grant_is_rejected_before_startup[instances-empty]",
+        "test_malformed_grant_is_rejected_before_startup[instances-nested]",
+        "test_malformed_grant_is_rejected_before_startup[instances-null]",
+        "test_malformed_grant_is_rejected_before_startup[instances-object]",
+        "test_malformed_grant_is_rejected_before_startup[instances-string]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_malformed_grant_is_rejected_before_startup[instances-string]",
+        "test_malformed_grant_is_rejected_before_startup[instances-object]",
+        "test_malformed_grant_is_rejected_before_startup[instances-nested]",
+        "test_malformed_grant_is_rejected_before_startup[instances-null]",
+        "test_malformed_grant_is_rejected_before_startup[instances-empty]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-string]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-object]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-nested]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-null]",
+        "test_malformed_grant_is_rejected_before_startup[capabilities-empty]"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "10 failed, 3 passed in 0.64s",
+      "source_sha256": {
+        "lingshu/core/structure_service.py": "8160fda39d718ed07f677337713865bd4baa7b72920cd7a45bbb7d8fc93758ef"
+      }
+    },
+    {
+      "case": "split_instance_string",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_malformed_grant_is_rejected_before_startup[instances-string]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_malformed_grant_is_rejected_before_startup[instances-string]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.44s",
+      "source_sha256": {
+        "lingshu/core/structure_service.py": "0a2c412ee1571951d2a7ee61e3db06069d9135abe6e6478d15d9358beecdc69d"
+      }
+    },
+    {
+      "case": "split_capability_string",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_malformed_grant_is_rejected_before_startup[capabilities-string]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_malformed_grant_is_rejected_before_startup[capabilities-string]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.45s",
+      "source_sha256": {
+        "lingshu/core/structure_service.py": "9807e9bdaa1c8ae50d40b7525618dde5752c576ff7f173f887af5ebef630be63"
+      }
+    },
+    {
+      "case": "allow_empty_names",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_malformed_grant_is_rejected_before_startup[instances-empty]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_malformed_grant_is_rejected_before_startup[instances-empty]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.44s",
+      "source_sha256": {
+        "lingshu/core/structure_service.py": "e429d8cf9443011433b0bc3c672e82fa7745fb52093403327b82386eeddeb978"
+      }
+    }
+  ]
+}

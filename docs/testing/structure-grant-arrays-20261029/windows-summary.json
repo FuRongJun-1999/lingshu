@@ -1,0 +1,34 @@
+{
+  "platform": "Windows",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "baseline": "7e2de720b39d220fc1553cf114e3a28b4cdf274f",
+  "validated_commit": "a2a2d3784a89f089bab02706e6997d4cb0b1cfe3",
+  "commands": [
+    {
+      "name": "replay",
+      "returncode": 0
+    },
+    {
+      "name": "related",
+      "returncode": 0
+    },
+    {
+      "name": "manifest",
+      "returncode": 0
+    },
+    {
+      "name": "time-core",
+      "returncode": 0
+    }
+  ],
+  "related_total": 18,
+  "related_passed": 18,
+  "related_skips": [],
+  "sha256_lf": {
+    "lingshu/core/structure_service.py": "7bc4f8bfdac1716a2d3c0bdbd2461b674b06437b8c533ea67eb1b72738408481",
+    "tests/test_structure_grant_arrays.py": "63acd3535248be4f2d89a21ac9405fb8064710bf1f686ada7d66a324b513d6c6",
+    "tests/fixtures/structure_grant_arrays_mutations.json": "c46604f274648d26f3d98dac44446e543970005095134d42a16c14c2859b5815"
+  },
+  "owned_test_temp_cleaned": true
+}
