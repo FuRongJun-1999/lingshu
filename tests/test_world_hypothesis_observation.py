@@ -23,7 +23,11 @@ def _loop(policy="legacy", phase="candidate"):
 
 
 def _evidence(loop, subject, hid):
-    return deepcopy((loop._hypotheses.get(subject), loop.wm.nodes.get(hid),
+    node = loop.wm.nodes.get(hid)
+    # 只核对假设验证所写的字段；generate 会正常更新 behavior_inferred，
+    # 该预测诊断不属于确认窗口、置信或假设位置的外部证据。
+    state = (node.pos, node.confidence, node.last_seen) if node is not None else None
+    return deepcopy((loop._hypotheses.get(subject), state,
                      loop.wm._conditions.get(hid), loop._growth_log))
 
 
