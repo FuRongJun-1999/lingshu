@@ -5665,12 +5665,13 @@ class LayeredStore:
         # `id, importance` 同表同行 ⇒ 一并取出、按 `_state_attr_of` 单点解析一次。
         # #769/#780：`layer` 一并取出——下方**逐节点**判「目标行层 × 角色」，避免
         # 每节点一次 `SELECT layer`（与既有 N+1 收口同法）。
-        c_.execute("SELECT id, importance, state_attributes, layer FROM nodes")
+        # #274：tags 一并取出——归档/驳回节点不参与本轮结构重算。
+        c_.execute("SELECT id, importance, state_attributes, layer, tags FROM nodes")
         rows = c_.fetchall()
         imp_map = {nid: (imp if imp is not None else 0.5)
-                   for nid, imp, _sa, _ly in rows}
+                   for nid, imp, _sa, _ly, _tg in rows}
         _sb_map = {nid: self._state_attr_of(_sa, "structural_boost", 0.0)
-                   for nid, _imp, _sa, _ly in rows}
+                   for nid, _imp, _sa, _ly, _tg in rows}
 
         # 因果上游度传播（BFS · 深度上限 · 节点去重 · 路径置信度加权）
         influence: Dict[str, float] = {}
@@ -5688,7 +5689,11 @@ class LayeredStore:
                         continue
                     nconf = pc * causal_conf.get((node, t), 0.5)
                     visited.add(t)
-                    infl += nconf * imp_map.get(t, 0.5) / nd
+                    target_imp = imp_map.get(t)
+                    # #274：悬空边（目标节点已删）不计；普通 importance 的
+                    # 扇出也不得把上游抬过保护阈——只让「重要下游」贡献。
+                    if target_imp is not None and target_imp >= 0.7:
+                        infl += nconf * target_imp / nd
                     frontier.append((t, nconf, nd))
             if infl > 0:
                 influence[src] = round(infl, 4)
@@ -5697,7 +5702,12 @@ class LayeredStore:
         protected = []
         skipped_shared = []
         applied = 0
-        for nid, imp, _sa, nid_layer in rows:
+        for nid, imp, _sa, nid_layer, nid_tags in rows:
+            # #274：已归档/已驳回/已废弃的节点不参与本轮重算（旧实现会把它们
+            # 从 0.1 拉回 0.9 并重新登记保护，抵消主动遗忘）。
+            if any(tag in {"archived", "refuted", "deprecated"}
+                   for tag in _json_tags(nid_tags)):
+                continue
             infl = influence.get(nid, 0)
             # #769/#780：**逐节点隔离**——非 PRIMARY 时共享层行整体跳过（既不写
             # `state_attributes`、也不抬 `importance`、也不登记 `protections`）。
@@ -5709,6 +5719,7 @@ class LayeredStore:
             if not self.layer_writable_by_role(nid_layer):
                 skipped_shared.append(nid)
                 continue
+            # #274：archive/refute 的节点已在循环开头跳过。
             # 上游度写入 state_attributes（可检索/可查）
             if infl > 0 and not dry_run:
                 self._write_influence(nid, infl)
