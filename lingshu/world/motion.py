@@ -321,8 +321,14 @@ class ObservationWindow:
         """
         if not self.start:
             return points, 0
-        need = max(0, 2 - len(points))
-        if points and len(points) < len(self.frames):
+        # #1117②：`need` 只按**有限**点数算——旧实现把窗口内的非有限观测
+        # 也算进 `points`，于是「窗口内 [有限, NaN] + 更早还有真实观测」时
+        # 认为已够 2 点、不回填（该补不补），且 `window_points`/`evidence`
+        # 把它报成「窗口内自足」。与 `motion_detail` docstring「非有限读数
+        # 不进估计、也不静默」及 `_nonfinite_pairs` 的口径一致。
+        finite_n = sum(1 for _t, p in points if _finite_pos(p))
+        need = max(0, 2 - finite_n)
+        if finite_n and len(points) < len(self.frames):
             need = max(need, 1)
         if need <= 0:
             return points, 0
@@ -495,7 +501,10 @@ def recent_direction(history, eid, nested=False) -> Optional[Tuple[float, float,
             continue
         pos = cur["pos"] if nested else cur
         if not _finite_pos(pos):
-            newer = None
+            # #1117③：坏读数按「该帧没有可用观测」处理（与 `cur is None` 同路径）
+            # ——旧实现把 `newer` 重置成 None，于是 `[有限, NaN, 有限]` 三帧里
+            # 两侧真实有限观测永远构不成配对，方向回落 None（实测）；同模块
+            # `_motion_rows` 的口径是「只丢这一对，其余对照常」。
             continue
         if newer is not None:
             try:

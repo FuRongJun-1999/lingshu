@@ -67,36 +67,56 @@ class TestVoxelWorldTreesBound(unittest.TestCase):
             n_over, n_cap,
             f"trees 未被钳：over={n_over} != cap={n_cap}")
 
-    def test_clamped_count_matches_formula(self):
+    def test_clamped_count_is_real_block_count(self):
+        """#1117：返回值改为**去重后的真实方块数**（旧口径是写入次数）。"""
         size = 8
-        n_over = _count(size, VoxelWorld.MAX_TREES + 1000)
-        self.assertEqual(n_over, 2 * size ** 2 + 12 * VoxelWorld.MAX_TREES,
-                         f"钳制点不符：count={n_over}")
+        w = VoxelWorld(size=size)
+        n = w.build_flatland(trees=VoxelWorld.MAX_TREES + 1000)
+        self.assertEqual(n, len(w.blocks),
+                         f"返回值应为真实方块数：n={n} len={len(w.blocks)}")
+        self.assertTrue(any(b == 2 for b in w.blocks.values()),
+                        "钳到 MAX_TREES 后仍应有树")
 
     def test_negative_trees_noop(self):
         w = VoxelWorld(size=8)
         n = w.build_flatland(trees=-5)
-        self.assertEqual(n, 2 * 8 ** 2, f"负 trees 应只出地面：count={n}")
+        self.assertEqual(n, len(w.blocks), f"负 trees 只出地面且计数一致：n={n}")
+        w0 = VoxelWorld(size=8)
+        self.assertEqual(n, w0.build_flatland(trees=0))
 
 
 class TestVoxelWorldTreesNormalIntact(unittest.TestCase):
     """G4/G5（正对照）：默认与恰在上界的行为不被误伤。"""
 
     def test_default_trees_intact(self):
-        """默认 trees=2 ⇒ count = 2·size² + 12·2（远低于上界，逐字同旧版）。"""
+        """#1117：返回值是**去重后的真实方块数**，不再等于 `2·size²+12·2`
+        ——两棵树的木/叶格在多数 seed 下会重叠（实测 size=8、trees=2、
+        seed=1..5 返回 146/149/150/148/150，公式值恒 152；默认 seed 恰好无碰撞
+        才让旧断言通过）。改断：返回 len(blocks)，地面完整，且不超过无重叠上限。
+        """
         size = 8
-        self.assertEqual(_count(size, 2), 2 * size ** 2 + 12 * 2)
+        w = VoxelWorld(size=size)
+        n = w.build_flatland(trees=2)
+        self.assertEqual(n, len(w.blocks))
+        self.assertGreaterEqual(n, 2 * size ** 2)
+        self.assertLessEqual(n, 2 * size ** 2 + 12 * 2)
 
     def test_trees_at_cap_preserved(self):
-        """恰在上界的 trees 不被误钳。"""
+        """恰在上界的 trees 不被误钳（#1117：按真实方块数口径判定）。
+
+        原断言钉的是写入次数；4096 棵树在 size=8 上只有 16 个可能落点 ⇒
+        真实方块数远小于该式（实测 212）。改断：与「超上界 1000」读数相同。
+        """
         size = 8
         self.assertEqual(_count(size, VoxelWorld.MAX_TREES),
-                         2 * size ** 2 + 12 * VoxelWorld.MAX_TREES)
+                         _count(size, VoxelWorld.MAX_TREES + 1000))
 
     def test_default_signature_unchanged(self):
-        """默认入参 trees=2 仍生效（不改默认行为）。"""
+        """默认入参 trees=2 仍生效（#1117：返回值语义改为真实方块数）。"""
         w = VoxelWorld(size=8)
-        self.assertEqual(w.build_flatland(), 2 * 8 ** 2 + 12 * 2)
+        n = w.build_flatland()
+        self.assertEqual(n, len(w.blocks))
+        self.assertGreaterEqual(n, 2 * 8 ** 2)
 
 
 if __name__ == "__main__":

@@ -220,7 +220,7 @@
     {
      "file": "voxel_world.py",
      "src": "aeis.voxel_world",
-     "sha256": "c96c94ee03354211",
+     "sha256": "f46f2f8b48f1cf10",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,

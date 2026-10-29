@@ -107,7 +107,16 @@ class VoxelWorld:
     # ---- 世界构建 ----
 
     def build_flatland(self, trees: int = 2, water: bool = True) -> int:
-        """生成平地世界：地面（草/土）+ 可选树 + 可选水。返回方块数。"""
+        """生成平地世界：地面（草/土）+ 可选树 + 可选水。返回**方块数**。
+
+        #1117：返回值是**去重后的真实方块数**（`len(self.blocks)`），不是写入
+        次数。旧实现逐次 `count += 1`，而树/叶/水会互相覆盖（同 seed 下两棵
+        树的 `tx/tz` 相距 ≤ 2 时木叶格重叠；size=5 时 `randint(2,2)` 只能出
+        (2,2) ⇒ 两棵树必然完全重合），导致返回值偏大（size=5/seed=0 实测
+        74 vs 真实 62；扫 2000 个 seed 有 1522 个不符）。门面
+        `core.voxel_world("build")` 曾在同一返回 dict 里给出两个矛盾读数
+        （`"blocks": 248` vs `"world": {"blocks": …}` 合计 236）。
+        """
         trees = min(int(trees), self.MAX_TREES)  # 放树数（钳到 MAX_TREES）
         count = 0
         for x in range(self.size):
@@ -136,7 +145,8 @@ class VoxelWorld:
             for dx in range(2):
                 for dz in range(3):
                     self.blocks[(3 + dx, self.ground_level, 5 + dz)] = BLOCK_WATER
-        return count
+        # #1117：返回去重后的真实方块数（`count` 是写入次数，含被覆盖的格子）。
+        return len(self.blocks)
 
     def set_block(self, x: int, y: int, z: int, block_type: int) -> None:
         self.blocks[(int(x), int(y), int(z))] = block_type
