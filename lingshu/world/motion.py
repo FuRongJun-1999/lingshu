@@ -279,8 +279,12 @@ class ObservationWindow:
         """
         if not self.start:
             return points, 0
-        need = max(0, 2 - len(points))
-        if points and len(points) < len(self.frames):
+        # #1117：need 按窗口内**有限**点数算——非有限读数不是可用证据
+        # （docstring「不进估计、也不静默」）；旧实现 len(points) 把含 NaN
+        # 的观测也算数 ⇒ 该补的上下文不补、evidence/window_points 读数失真。
+        n_finite = sum(1 for _t, p in points if _finite_pos(p))
+        need = max(0, 2 - n_finite)
+        if n_finite and n_finite < len(self.frames):
             need = max(need, 1)
         if need <= 0:
             return points, 0
@@ -325,6 +329,10 @@ class ObservationWindow:
         """
         if eid not in self._details:
             window_points = self.points.get(eid, [])
+            # #1117：`window_points` 读数与证据判定同改**有限口径**——非有限
+            # 读数不是可用证据（与 need 的有限口径一致；`nonfinite_points`
+            # 字段照旧把坏读数如实带出，不静默）。
+            window_finite = sum(1 for _t, p in window_points if _finite_pos(p))
             points, n_context, detail = self._motion_estimate(eid)
             nonfinite = _nonfinite_points(points)
             last_obs = points[-1][0] if points else None
@@ -333,7 +341,7 @@ class ObservationWindow:
                      else None)
             out = {
                 "schema": MOTION_SCHEMA, "eid": eid,
-                "window_points": len(window_points),
+                "window_points": window_finite,
                 "context_points": n_context,
                 "interval_limit": self.interval_limit,
                 "last_obs_tick": last_obs, "stale_ticks": stale,
@@ -361,9 +369,9 @@ class ObservationWindow:
                     "confidence": detail["confidence"],
                     "adopted": True,
                 })
-                if len(window_points) >= 2:
+                if window_finite >= 2:
                     out["evidence"] = "window"
-                elif window_points:
+                elif window_finite:
                     out["evidence"] = "window+context"
                 else:
                     out["evidence"] = "context_only"
@@ -425,7 +433,14 @@ class ObservationWindow:
 
 
 def recent_direction(history, eid, nested=False) -> Optional[Tuple[float, float, float]]:
-    """Latest nonzero displacement, without fabricating missing observations."""
+    """Latest nonzero displacement, without fabricating missing observations.
+
+    #1117：坏读数（非有限坐标）按「**跳过该帧**」处理（与 missing 帧同路径，
+    不重置 `newer`）——docstring 的「不补造缺失帧」是说缺失帧不补造，不是「坏
+    读数清空历史」：改前形态一次坏读数丢掉两侧有限观测构成的真实方向（NaN 夹
+    心场景 `None`，而同构的缺失帧场景正常返回方向）。`_motion_rows` 对坏读数
+    同为「只丢这一对，其余对照常」——两处口径就此一致。
+    """
     newer = None
     for rec in reversed(history):
         cur = rec["entities"].get(eid)
@@ -433,8 +448,7 @@ def recent_direction(history, eid, nested=False) -> Optional[Tuple[float, float,
             continue
         pos = cur["pos"] if nested else cur
         if not _finite_pos(pos):
-            newer = None
-            continue
+            continue                     # #1117：跳过，不重置 newer
         if newer is not None:
             try:
                 dx, dz = newer[0] - pos[0], newer[2] - pos[2]

@@ -136,7 +136,10 @@ class VoxelWorld:
             for dx in range(2):
                 for dz in range(3):
                     self.blocks[(3 + dx, self.ground_level, 5 + dz)] = BLOCK_WATER
-        return count
+        # #1117：docstring 承诺「返回方块数」——返回**去重后的实际方块数**
+        # （旧实现累计写入次数：树/水覆盖同一格时重复计数，size=5 默认参数即偏
+        # 12，门面同 dict 里 `blocks` 与 `world.blocks` 两读数互相矛盾）。
+        return len(self.blocks)
 
     def set_block(self, x: int, y: int, z: int, block_type: int) -> None:
         self.blocks[(int(x), int(y), int(z))] = block_type

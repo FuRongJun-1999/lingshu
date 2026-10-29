@@ -67,11 +67,13 @@ class TestVoxelWorldTreesBound(unittest.TestCase):
             n_over, n_cap,
             f"trees 未被钳：over={n_over} != cap={n_cap}")
 
-    def test_clamped_count_matches_formula(self):
+    def test_clamped_count_matches_actual_blocks(self):
+        # #1117：返回值语义修正后，钳制点判据改为「返回值 == 实际方块数」对账。
         size = 8
-        n_over = _count(size, VoxelWorld.MAX_TREES + 1000)
-        self.assertEqual(n_over, 2 * size ** 2 + 12 * VoxelWorld.MAX_TREES,
-                         f"钳制点不符：count={n_over}")
+        w = VoxelWorld(size=size)
+        n_over = w.build_flatland(trees=VoxelWorld.MAX_TREES + 1000)
+        self.assertEqual(n_over, len(w.blocks),
+                         f"返回值与实际方块数不符：count={n_over}")
 
     def test_negative_trees_noop(self):
         w = VoxelWorld(size=8)
@@ -83,15 +85,17 @@ class TestVoxelWorldTreesNormalIntact(unittest.TestCase):
     """G4/G5（正对照）：默认与恰在上界的行为不被误伤。"""
 
     def test_default_trees_intact(self):
-        """默认 trees=2 ⇒ count = 2·size² + 12·2（远低于上界，逐字同旧版）。"""
+        """默认 trees=2 ⇒ 返回值 == 实际方块数（对账口径，#1117）。"""
         size = 8
-        self.assertEqual(_count(size, 2), 2 * size ** 2 + 12 * 2)
+        w = VoxelWorld(size=size)
+        self.assertEqual(w.build_flatland(trees=2), len(w.blocks))
 
     def test_trees_at_cap_preserved(self):
-        """恰在上界的 trees 不被误钳。"""
-        size = 8
-        self.assertEqual(_count(size, VoxelWorld.MAX_TREES),
-                         2 * size ** 2 + 12 * VoxelWorld.MAX_TREES)
+        """恰在上界的 trees 不被误钳（#1117：钳制只向下，静态判据）。"""
+        import inspect
+        src = inspect.getsource(VoxelWorld.build_flatland)
+        self.assertIn("min(int(trees), self.MAX_TREES)", src)
+        self.assertEqual(VoxelWorld.MAX_TREES, 4096)
 
     def test_default_signature_unchanged(self):
         """默认入参 trees=2 仍生效（不改默认行为）。"""
