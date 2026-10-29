@@ -9,5 +9,51 @@
     "docs/intake/body-export-v0.1/_export_manifest.json": "4bb959481e8469fc01e526d2debe35fa7ccc6b7084f8d60801c55b1272bc32f7"
   },
   "scope": "Only SimulationLoop._growth_tick subject-observation gate; existing mutation locator and manifest follow it.",
-  "initial_guard_correction": "Initial guard compared full WMNode; final guard checks hypothesis verification fields while allowing normal behavior inference."
+  "initial_guard_correction": "Initial guard compared full WMNode; final guard checks hypothesis verification fields while allowing normal behavior inference.",
+  "paired_reproduction": {
+    "baseline": [
+      {
+        "phase": "candidate",
+        "total": 0,
+        "active": false,
+        "confidence": null,
+        "events": [
+          "growth",
+          "revert"
+        ]
+      },
+      {
+        "phase": "confirmed",
+        "total": 0,
+        "active": true,
+        "confidence": 0.6,
+        "events": [
+          "growth"
+        ]
+      }
+    ],
+    "fixed": [
+      {
+        "phase": "candidate",
+        "total": 0,
+        "active": true,
+        "confidence": 0.3,
+        "events": [
+          "growth"
+        ]
+      },
+      {
+        "phase": "confirmed",
+        "total": 0,
+        "active": true,
+        "confidence": 0.5,
+        "events": [
+          "growth"
+        ]
+      }
+    ],
+    "baseline_commit": "7a8ef6bd71b570eadf69c3ef311db3f433cd1a34",
+    "validated_commit": "2fc6434b21fc6b1d9784dbd59facf9888cb0153b",
+    "ast_outside_growth_tick_unchanged": true
+  }
 }
