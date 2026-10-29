@@ -95,15 +95,19 @@ def accept(out=None, brief=None, sample=5):
 
 
 def summarize(oracle_doc):
-    """一行汇总（判据票型 + 是否全绿）。"""
-    from ._det import gates
-    counts = {}
-    for c in oracle_doc.get("checks") or []:
-        counts[c.get("verdict")] = counts.get(c.get("verdict"), 0) + 1
-    return {"counts": counts,
-            "blocking": [c["name"] for c in oracle_doc.get("checks") or []
-                         if c.get("verdict") in ("REJECT",)],
-            "thresholds": len(gates.all_thresholds())}
+    """一行汇总（判据票型 + 是否可放行）。
+
+    `blocking` 与 `film.oracle.gates_passed` **同源**：REJECT 与 BLINDSPOT 都拦，
+    DEFER 只登记不拦。本函数不再维护第二套票型口径 —— 口径漂移会让「判据出结论、
+    闸却不拦」在同一仓里各说各话。
+    """
+    from .. import oracle as _oracle
+    n = _oracle.normalize_oracle(oracle_doc)
+    ok, bad = _oracle.gates_passed(n)
+    return {"counts": _oracle.counts_by_verdict(n),
+            "blocking": bad,
+            "gates_passed": ok,
+            "thresholds": len(n.get("thresholds") or [])}
 
 
 def _default_out() -> str:
