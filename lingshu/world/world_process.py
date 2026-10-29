@@ -497,8 +497,12 @@ def transfer_demonstration(record: Dict, actor: str, ref: str, *,
     samples = record.get("samples") or []
     if not samples:
         raise ValueError("相对轨迹记录没有采样，无法迁移")
-    if scale <= 0.0:
-        raise ValueError("尺度必须为正数")
+    # #1136：`nan <= 0.0` 与 `inf <= 0.0` 均为 False ⇒ NaN/inf 曾穿透此门，
+    # 产出 transform.scale=NaN/inf 的「生成帧」原样回填（下游无法察觉失败）。
+    # 与本仓同类数值门（Environment 的 math.isfinite 族）同口径收口。
+    scale = float(scale)
+    if not math.isfinite(scale) or scale <= 0.0:
+        raise ValueError("尺度必须为正的有限数，收到 %r" % (scale,))
     tx, ty, tz = (float(v) for v in translation)
     cos_y, sin_y = math.cos(float(yaw)), math.sin(float(yaw))
     ox0, oy0, oz0 = (float(v) for v in samples[0]["ref"])
