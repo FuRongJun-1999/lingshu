@@ -15,11 +15,23 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
-sys.path.insert(0, os.path.join(REPO, "tests"))
 
-from test_structure_writer import actor, host  # noqa: E402
-from lingshu.core.structure_writer import (Conflict, EventInput,  # noqa: E402
-                                           ProposalInput, StructureWriter)
+from lingshu.core.core import LayeredStore, Role, SpacetimeMemoryEngine  # noqa: E402
+from lingshu.core.structure_writer import (ActorContext, Conflict,  # noqa: E402
+                                           EventInput, ProposalInput,
+                                           StructureWriter)
+
+
+def host(path):
+    # 内联构造（依赖闭包守卫：不跨测试文件 import test_structure_writer）
+    engine = SpacetimeMemoryEngine.__new__(SpacetimeMemoryEngine)
+    engine.role = Role.PRIMARY
+    engine.store = LayeredStore(str(path), role=Role.PRIMARY)
+    return engine
+
+
+def actor(subject, *capabilities):
+    return ActorContext(subject, "lab", subject, frozenset(capabilities))
 
 
 @pytest.fixture
