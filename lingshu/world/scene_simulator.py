@@ -158,7 +158,10 @@ class Environment:
     def __post_init__(self):
         if self.gravity is None:
             self.gravity = default_gravity()
-        if isinstance(self.up, bool) or self.up not in (0, 1, 2):
+        # #1136：`1.0 in (0,1,2)` 为 True（float == int）⇒ 浮点轴曾漏到内核才抛
+        # （PhysicsError 延后到 step、set_environment 已登记污染状态）——收口为
+        # 结构化拒绝（bool 另拒）。
+        if isinstance(self.up, bool) or not isinstance(self.up, int) or self.up not in (0, 1, 2):
             raise ValueError("Environment.up 需为 0/1/2（轴索引），收到 %r" % (self.up,))
         for name in ("gravity", "slope_deg", "mu_s", "mu_k", "drag_c", "mass", "dt"):
             v = getattr(self, name)
@@ -181,7 +184,8 @@ class Environment:
         if not (0.0 <= self.slope_deg < 90.0):
             raise ValueError("Environment.slope_deg 需在 [0, 90) 度（垂直不是坡度）：%r"
                              % (self.slope_deg,))
-        if isinstance(self.incline_axis, bool) or self.incline_axis not in (0, 1, 2):
+        if (isinstance(self.incline_axis, bool) or not isinstance(self.incline_axis, int)
+                or self.incline_axis not in (0, 1, 2)):
             raise ValueError("Environment.incline_axis 需为 0/1/2，收到 %r"
                              % (self.incline_axis,))
         if self.incline_axis == self.up:
@@ -285,6 +289,13 @@ class SceneEntity:
 
     def to_dict(self) -> Dict:
         return asdict(self)
+
+
+def _deep_copy_readout(readout):
+    """#1136：`environment_readout` 承诺读数是**副本**——深拷贝物理读数
+    （dict/list 嵌套），外部改读数不再污染 `attrs["physics_readout"]`。"""
+    import copy
+    return copy.deepcopy(readout) if isinstance(readout, dict) else readout
 
 
 class SceneSimulator:
@@ -551,12 +562,18 @@ class SceneSimulator:
         """登记**每实体级**环境覆盖（字段级，优先级高于整场级）。返回该实体生效值。
 
         实体不在场景中 / 字段非法 ⇒ `ValueError`（不静默忽略）。
+        #1135：与 `set_environment` 同为「字段级」语义 ⇒ **累积合并**——本次
+        覆盖基于该实体**已登记**的覆盖（无则整场级）叠加，不再整份替换（旧形态
+        连续登记 `slope_deg` 与 `mu_k` 两个合法字段，后者把前者静默抹掉退回
+        整场缺省，直接影响动力学轨迹）。
         """
         if entity_id not in self.entities:
             raise ValueError("实体 %r 不在场景中（现有：%s）"
                              % (entity_id, "/".join(sorted(self.entities))))
-        base = self._environment.merged(**kw)              # 复用同一套字段校验
-        merged = {k: base.to_dict()[k] for k in kw}        # 只留被覆盖的字段
+        prev = self.entities[entity_id].attrs.get("environment") or {}
+        base = self._environment.merged(**{**prev, **kw})   # 先叠已登记覆盖，再套本次
+        merged = {**{k: v for k, v in prev.items()},        # 保留此前已登记字段
+                  **{k: base.to_dict()[k] for k in kw}}     # 只留被本次覆盖的字段
         self.entities[entity_id].attrs["environment"] = merged
         return dict(merged)
 
@@ -585,7 +602,7 @@ class SceneSimulator:
         if entity_id is None:
             out["entities"] = {eid: {"effective_environment": self._env_for(e).to_dict(),
                                      "physics": self._physics_mode(e),
-                                     "readout": e.attrs.get("physics_readout")}
+                                     "readout": _deep_copy_readout(e.attrs.get("physics_readout"))}
                                for eid, e in self.entities.items()}
             return out
         e = self.entities.get(entity_id)
@@ -595,7 +612,9 @@ class SceneSimulator:
         out["entity"] = entity_id
         out["effective_environment"] = self._env_for(e).to_dict()
         out["physics"] = self._physics_mode(e)
-        out["readout"] = e.attrs.get("physics_readout")
+        # #1136：docstring 承诺读数是**副本**——旧实现返回活引用，外部改读数
+        # 会永久污染 `attrs["physics_readout"]`（审计读数失真）。
+        out["readout"] = _deep_copy_readout(e.attrs.get("physics_readout"))
         return out
 
     def _physics_mode(self, e: SceneEntity) -> str:
@@ -1114,10 +1133,14 @@ class SceneSimulator:
         for _ in range(n):
             self.tick_count += 1
             actions = []
+            # #1135：帧首记录**全部实体** pos（不再只在有碰撞箱时记录）——
+            # `actions` 按「tick 前后真实 pos 变化」计数（#193-A 口径落地：
+            # 钳制与碰撞推离都算真位移；speed=0/边界钳回原地/零位移不算）。
+            tick_start = {eid: e.pos for eid, e in self.entities.items()}
             # 碰撞层（本件）：**只在有碰撞箱时**记录 tick 起始位置（缺省零开销、
             # 不触碰任何既有状态 ⇒ 逐位不变）。
             if self._collision_boxes:
-                self._tick_start_pos = {eid: e.pos for eid, e in self.entities.items()}
+                self._tick_start_pos = dict(tick_start)
             for eid, e in self.entities.items():
                 # F08：受控动作优先——登记的动作在本 tick 消费一次，且**不**走
                 # 自主行为分支（不调用 _decide ⇒ 不消耗共享 _rng、不读目标规则）。
@@ -1174,7 +1197,16 @@ class SceneSimulator:
             # 缺省（无碰撞箱）⇒ 整段不执行 ⇒ 既有行为逐位不变（硬判据）。
             if self._collision_boxes:
                 self._resolve_collisions()
-            acted = len(actions)
+            else:
+                # #1135：本 tick 无碰撞面 ⇒ 接触清单清空（`collision_report`
+                # docstring「本 tick 的接触/分离读数」——tick 前进而 contacts
+                # 冻结在拆箱前，上游按 n_contacts 判「本 tick 有接触」被永久误导）。
+                self._collision_last = []
+            # #1135：`actions` 改按真实位移计数（含受控动作/自主行为/钳制/碰撞
+            # 推离后的净效果）——此前数「行动记录条数」，speed=0 记 1、边界钳回
+            # 原地记 2、碰撞双推离记 1，三种方向都与「实际发生位移的实体数」不符。
+            acted = sum(1 for eid, e in self.entities.items()
+                        if e.pos != tick_start.get(eid, e.pos))
             # 场景演化记录（4D 占用序列）
             self._history.append({"tick": self.tick_count,
                                   "entities": self.entity_positions()})
