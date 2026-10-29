@@ -7,7 +7,7 @@
     # 快速探针（只渲 8 帧）
     python3 -m wm_bridge.factory.film.mv.make --max-frames 8 --size 320x180 --jobs 4
 
-    # 只重跑判据（不重渲，秒级）
+    # 只重跑判据（不重渲，秒级）；可放行=0，有 REJECT/BLINDSPOT=1
     python3 -m wm_bridge.factory.film.mv.make --judge
 
     # 冻结态验收（复算清单 / 确定性 / 判据不变式 / 字幕 / 契约）
@@ -32,7 +32,7 @@ def _parse_size(s):
 
 
 def main(argv=None) -> int:
-    from . import DEFAULT_BRIEF, accept, judge, make_mv
+    from . import DEFAULT_BRIEF, accept, judge, make_mv, summarize
     from ._det import paths, preview
 
     ap = argparse.ArgumentParser(description="wm_bridge.factory.film.mv · MV 制作插件")
@@ -54,8 +54,12 @@ def main(argv=None) -> int:
 
     if a.judge:
         r = judge(out=out, brief=a.brief)
-        print(json.dumps({"out": out, "tally": r["tally"]}, ensure_ascii=False, indent=2))
-        return 0
+        s = summarize(r["oracle"])
+        print(json.dumps({"out": out, "tally": r["tally"],
+                          "gates_passed": s["gates_passed"],
+                          "blocking": s["blocking"]},
+                         ensure_ascii=False, indent=2))
+        return 0 if s["gates_passed"] else 1
     if a.accept:
         r = accept(out=out, brief=a.brief)
         for c in r["checks"]:
