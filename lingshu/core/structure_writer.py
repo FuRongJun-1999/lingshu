@@ -92,6 +92,16 @@ def _json(value: dict) -> str:
         raise WriteError("payload must be JSON serializable") from exc
 
 
+def _canon_payload(obj) -> str:
+    """#1108：payload 的规范序列化（键序归一、**JSON 类型敏感**）。
+
+    幂等重放判等不能直接用 Python 真值相等——`True == 1`、`1 == 1.0` 在 Python
+    成立，但它们是**不同的 JSON 正文**（序列化结果不同、库内原文不同）：按契约
+    正文变化须抛 `Conflict` 要求「追加纠正事件」，不是静默重放旧记录。键序差异
+    不算正文变化（`sort_keys` 归一）。"""
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True)
+
+
 def _time(value: str | None) -> str | None:
     if value is None:
         return None
@@ -252,7 +262,7 @@ class StructureWriter:
                 (actor.namespace, actor.source, event.source_event_id)).fetchone()
             if old is not None:
                 if (old["kind"] != event.kind or old["origin"] != origin
-                        or json.loads(old["payload"]) != json.loads(payload)):
+                        or _canon_payload(json.loads(old["payload"])) != _canon_payload(json.loads(payload))):
                     raise Conflict("event ID holds different content; append a correction")
                 return self._event_view(old, replayed=True)
             node = self.store._record_structure_event(
@@ -301,7 +311,7 @@ class StructureWriter:
         payload = _json(request.payload)
         end = _time(request.valid_until)
         snapshot = (
-            request.aggregate_key, request.kind, request.operation, json.loads(payload),
+            request.aggregate_key, request.kind, request.operation, _canon_payload(json.loads(payload)),
             request.expected_revision, request.event_id, request.prior_proposal_id, end)
         with self._transaction():
             old = self._db.execute(
@@ -310,7 +320,7 @@ class StructureWriter:
             if old is not None:
                 previous = (
                     old["aggregate_key"], old["kind"], old["operation"],
-                    json.loads(old["payload"]), old["expected_revision"],
+                    _canon_payload(json.loads(old["payload"])), old["expected_revision"],
                     old["event_id"], old["prior_proposal_id"], old["valid_until"])
                 if previous != snapshot:
                     raise Conflict("request ID already holds another proposal")
