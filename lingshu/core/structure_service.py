@@ -48,13 +48,21 @@ def _receive(connection):
         size = struct.unpack("!I", _read_exact(connection, 4, deadline=deadline))[0]
         if size > MAX_MESSAGE:
             raise WriteError("message exceeds the service limit; use history pagination")
-        return json.loads(_read_exact(connection, size, deadline=deadline).decode("utf-8"))
+        try:
+            return json.loads(_read_exact(connection, size, deadline=deadline).decode("utf-8"))
+        except RecursionError as exc:
+            raise WriteError("message is too deeply nested") from exc
+        except json.JSONDecodeError as exc:
+            raise WriteError("message is not valid JSON") from exc
     finally:
         connection.settimeout(timeout)
 
 
 def _send(connection, value):
-    payload = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    try:
+        payload = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except RecursionError as exc:
+        raise WriteError("response is too deeply nested") from exc
     if len(payload) > MAX_MESSAGE:
         raise WriteError("response exceeds the service limit; request a smaller page")
     connection.sendall(struct.pack("!I", len(payload)) + payload)
@@ -114,6 +122,10 @@ def dispatch(writer, actor, request):
         return result
     except TypeError as exc:
         raise WriteError("arguments do not match this business command") from exc
+    except (OverflowError, RecursionError) as exc:
+        # #1106：合法 JSON 也能让 sqlite3/astimezone 溢出或递归过深；不能让它
+        # 穿过 handler（客户端只会收到 EOF，无法区分成功与失败）。
+        raise WriteError("arguments are out of range or too deeply nested") from exc
 
 
 class _Handler(socketserver.BaseRequestHandler):

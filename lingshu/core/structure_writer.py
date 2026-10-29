@@ -13,6 +13,10 @@ import uuid
 from .core import Role
 
 
+#: 与服务端 MAX_MESSAGE（1 MiB）同值，留出外层 JSON/帧头开销。
+MAX_RECORD_BYTES = 1024 * 1024 - 4096
+
+
 class WriteError(Exception):
     """A request the caller must fix or resubmit explicitly."""
 
@@ -99,6 +103,19 @@ def _optional_integer(value, name: str, *, minimum: int = 1,
 
 def _optional_text(value, name: str) -> str | None:
     return None if value is None else _text(value, name)
+
+
+def _require_readable(value, what: str = "record") -> None:
+    """#1106：写入前按**读取视图**估算响应尺寸，保证「可写入 ⊆ 可读出」。"""
+    try:
+        size = len(json.dumps({"ok": True, "result": value}, ensure_ascii=False,
+                              allow_nan=False).encode("utf-8"))
+    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+        raise WriteError(f"{what} cannot be serialized for read-back") from exc
+    if size > MAX_RECORD_BYTES:
+        raise WriteError(
+            f"{what} is too large to be read back within the service limit; "
+            "split the payload")
 
 
 def _json(value: dict) -> str:
@@ -299,7 +316,9 @@ class StructureWriter:
                  event.occurred_at, _now(), json.dumps(warnings)))
             self._audit(actor, "event.recorded", event_id)
             row = self._db.execute("SELECT * FROM structure_events WHERE id=?", (event_id,)).fetchone()
-            return self._event_view(row)
+            item = self._event_view(row)
+            _require_readable([item], "event")
+            return item
 
     def record_version_result(self, actor: ActorContext, result: VersionResult) -> dict:
         """Record an authenticated executor's actual result; no code is executed."""
@@ -373,6 +392,10 @@ class StructureWriter:
                  request.expected_revision, event_id,
                  prior_proposal_id, end, _now(), "pending"))
             self._audit(actor, "proposal.created", proposal_id)
+            item = dict(self._db.execute(
+                "SELECT * FROM structure_proposals WHERE id=?", (proposal_id,)).fetchone())
+            item["payload"] = json.loads(item["payload"])
+            _require_readable(item, "proposal")
             return {"proposal_id": proposal_id, "state": "pending", "replayed": False}
 
     def get_proposal(self, actor: ActorContext, proposal_id: str) -> dict:
