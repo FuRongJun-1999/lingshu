@@ -13323,6 +13323,17 @@ class SpacetimeMemoryEngine:
         # 之后，读到的是已落定状态。不覆盖 set_context_cap 的显式设置语义，也不改
         # enforce_context_cap 的裁剪判据。判据来源：公开 issue #493。
         self._context_max = self._load_context_max()
+        # #1141（与上方 #493 同一条口径的漏网面）：`gap_history` 已进 `M13_TABLES`
+        # 且上方分支已把备份行落库（`imported["gap_history"]` 如实计数），但
+        # `self._gap_history` 仍是构造期 `_load_gap_history()` 读到的那份（`__init__`
+        # 一次性装载）⇒ **灾备恢复到同一进程**时表有 N 行、内存 0 行，
+        # `get_gap_trend()` 读内存窗口（`_gap_history`）返回 `trend="insufficient"`，
+        # 长期记忆门的 Δ²D 特征同步归零，**必须重启进程**才回到盘面读数（同一份库
+        # 两个读数，且导入返回值无任何提示）。修法与 #493 逐字同款：复用构造期读数
+        # 路径 `_load_gap_history()`（只读、尾 100 条窗口、不触发写入），读点置于
+        # 本次写事务提交之后，读到的是已落定状态；不覆盖 `record_info_gap` 的追加
+        # 语义，也不动 100 条窗口上限。判据来源：公开 issue #1141（`#270` 余项）。
+        self._gap_history = self._load_gap_history()
         # 恢复自检：导入后跑 `PRAGMA foreign_key_check` 体检。经上方 #93 预筛，正常
         # 路径下应恒为空；保留本步作为「白名单列裁剪后仍出现悬挂」的兜底观测
         # （不拦写入，随返回值交付）。
