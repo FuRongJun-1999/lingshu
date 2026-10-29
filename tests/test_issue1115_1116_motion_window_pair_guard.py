@@ -43,6 +43,21 @@ def test_nan_pair_chain_keeps_previous_link():
     assert samples == 1 and intervals == 1   # NaN 对不计，有限对正常计
 
 
+def test_huge_int_and_huge_float_pairs_rejected():
+    # #1115 现象三/二：超出 float 的超大 int 与 1e154 量级——前者 `_finite_pos`
+    # 拒绝（裸 math.isfinite 对 10**400 会自己抛 OverflowError），后者经溢出
+    # 链拒绝后不产出 NaN 分数（NaN 分数是「抹掉已学关系」的根因）。
+    huge = [{'tick': 1, 'entities': {'a': (0, 1, 0), 'b': (10 ** 400, 1, 0)}},
+            {'tick': 2, 'entities': {'a': (1, 1, 0), 'b': (10 ** 400, 1, 0)}}]
+    assert ObservationWindow(huge, 2).pair('a', 'b') == (0.0, 0, 0)
+    for scale in (1e154, 1e160):
+        h = [{'tick': i, 'entities': {'a': (scale * i + 3.0, 1.5, 2.0),
+                                      'b': (scale * i + 8.0, 1.5, 2.0)}}
+             for i in range(4)]
+        mean, samples, intervals = ObservationWindow(h, 4).pair('a', 'b')
+        assert mean == mean, "NaN 分数（#1115 现象二）"
+
+
 # ---- #1116：window<=0 与 window_start=None ----
 
 @pytest.mark.parametrize("w", [0, -1, -5])
