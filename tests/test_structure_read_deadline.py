@@ -122,7 +122,8 @@ def test_real_mtls_slow_peer_releases_the_only_connection_slot(tmp_path):
         purpose = "serverAuth" if name == "server" else "clientAuth"
         extension = tmp_path / (name + ".ext")
         extension.write_text("basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n"
-                             + "extendedKeyUsage=" + purpose + "\nsubjectAltName=" + san + "\n", encoding="utf-8")
+                             + "extendedKeyUsage=" + purpose + "\nsubjectAltName=" + san
+                             + "\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n", encoding="utf-8")
         openssl("x509", "-req", "-in", name + ".csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial",
                 "-out", name + ".pem", "-days", "1", "-extfile", extension)
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=str(tmp_path / "ca.pem"))
@@ -155,10 +156,7 @@ def test_real_mtls_slow_peer_releases_the_only_connection_slot(tmp_path):
                             {"urn:lingshu:worker": actor}, max_connections=1)
     serving = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.02))
     serving.start()
-    client = service.StructureClient(*server.server_address, ca=str(tmp_path / "ca.pem"),
-        certificate=str(tmp_path / "worker.pem"), key=str(tmp_path / "worker.key"), timeout=3)
-    raw = socket.create_connection(server.server_address, timeout=3)
-    slow = client.tls.wrap_socket(raw, server_hostname="localhost")
+    raw = slow = sender = None
     sent, failures = [], []
 
     def drip():
@@ -176,9 +174,13 @@ def test_real_mtls_slow_peer_releases_the_only_connection_slot(tmp_path):
         except BaseException as exc:
             failures.append(exc)
 
-    sender = threading.Thread(target=drip)
-    sender.start()
     try:
+        client = service.StructureClient(*server.server_address, ca=str(tmp_path / "ca.pem"),
+            certificate=str(tmp_path / "worker.pem"), key=str(tmp_path / "worker.key"), timeout=3)
+        raw = socket.create_connection(server.server_address, timeout=3)
+        slow = client.tls.wrap_socket(raw, server_hostname="localhost")
+        sender = threading.Thread(target=drip)
+        sender.start()
         assert established.wait(3)
         assert finished.wait(2), "slow TLS peer retained the service connection slot beyond its read budget"
         assert not failures and 0 < len(sent) < 100
@@ -189,8 +191,12 @@ def test_real_mtls_slow_peer_releases_the_only_connection_slot(tmp_path):
         assert store.conn.execute("SELECT COUNT(*) FROM structure_events").fetchone()[0] == 0
     finally:
         stop.set()
-        slow.close()
-        sender.join(timeout=3)
+        if slow is not None:
+            slow.close()
+        elif raw is not None:
+            raw.close()
+        if sender is not None:
+            sender.join(timeout=3)
         server.shutdown()
         serving.join(timeout=3)
         server.server_close()
