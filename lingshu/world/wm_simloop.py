@@ -403,9 +403,9 @@ class SimulationLoop:
             if H is None:                       # 被外部移除 → 清账
                 self._hypotheses.pop(subject, None)
                 continue
-            if (self.wm.identity_policy == "conservative"
-                    and subject not in (self.wm._obs_snapshot or {})):
-                # 身份未决/缺观测不是预测失败；验证窗口与假设置信均等待新证据。
+            if subject not in (self.wm._obs_snapshot or {}):
+                # 两种身份策略都只消费主体观测：遮挡/身份未决不算一次失败，
+                # 也不能支持确认或增加置信；验证窗口等待主体的新证据。
                 continue
             hit = self._hit_for(verify_result, subject)
             node_A = self.wm.nodes.get(subject)

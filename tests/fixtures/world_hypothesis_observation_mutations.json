@@ -1,0 +1,46 @@
+{
+  "guard": "tests/test_world_hypothesis_observation.py",
+  "total": 11,
+  "sources": ["lingshu/world/wm_simloop.py"],
+  "baseline_failures": [
+    "test_missing_subject_preserves_candidate_window[legacy]",
+    "test_missing_subject_preserves_confirmed_confidence[legacy]",
+    "test_other_observed_entity_cannot_validate_the_subject[legacy]",
+    "test_reappearance_resumes_confirmation_and_confidence[legacy]",
+    "test_core_step_keeps_masked_subject_pending"
+  ],
+  "mutations": [
+    {
+      "name": "restore_legacy_bypass",
+      "test": "test_missing_subject_preserves_candidate_window[legacy]",
+      "assertion": "missing subject consumed candidate evidence window",
+      "changes": [{"file": "lingshu/world/wm_simloop.py", "class": "SimulationLoop", "method": "_growth_tick",
+        "old": "if subject not in (self.wm._obs_snapshot or {}):",
+        "new": "if self.wm.identity_policy == \"conservative\" and subject not in (self.wm._obs_snapshot or {}):"}]
+    },
+    {
+      "name": "pause_candidates_only",
+      "test": "test_missing_subject_preserves_confirmed_confidence[legacy]",
+      "assertion": "missing subject increased confirmed confidence",
+      "changes": [{"file": "lingshu/world/wm_simloop.py", "class": "SimulationLoop", "method": "_growth_tick",
+        "old": "if subject not in (self.wm._obs_snapshot or {}):",
+        "new": "if h[\"phase\"] == \"candidate\" and subject not in (self.wm._obs_snapshot or {}):"}]
+    },
+    {
+      "name": "accept_other_entity_evidence",
+      "test": "test_other_observed_entity_cannot_validate_the_subject[legacy]",
+      "assertion": "another entity substituted for subject evidence",
+      "changes": [{"file": "lingshu/world/wm_simloop.py", "class": "SimulationLoop", "method": "_growth_tick",
+        "old": "if subject not in (self.wm._obs_snapshot or {}):",
+        "new": "if not self.wm._obs_snapshot:"}]
+    },
+    {
+      "name": "freeze_observed_subjects",
+      "test": "test_reappearance_resumes_confirmation_and_confidence[legacy]",
+      "assertion": "fresh subject failed to resume verification",
+      "changes": [{"file": "lingshu/world/wm_simloop.py", "class": "SimulationLoop", "method": "_growth_tick",
+        "old": "if subject not in (self.wm._obs_snapshot or {}):",
+        "new": "if True:"}]
+    }
+  ]
+}

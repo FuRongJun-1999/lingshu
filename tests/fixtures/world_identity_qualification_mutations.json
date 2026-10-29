@@ -85,7 +85,7 @@
           "file": "lingshu/world/wm_simloop.py",
           "class": "SimulationLoop",
           "method": "_growth_tick",
-          "old": "if (self.wm.identity_policy == \"conservative\"\n                    and subject not in (self.wm._obs_snapshot or {})):",
+          "old": "if subject not in (self.wm._obs_snapshot or {}):",
           "new": "if False:"
         }
       ]
