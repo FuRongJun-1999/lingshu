@@ -14,6 +14,7 @@ import sqlite3
 import ssl
 import struct
 import threading
+import time
 
 from .core import LayeredStore, Role
 from .structure_permissions import check_protected_directory
@@ -23,9 +24,14 @@ from .structure_writer import (ActorContext, Conflict, EventInput, PermissionDen
 MAX_MESSAGE = 1024 * 1024
 
 
-def _read_exact(connection, size):
+def _read_exact(connection, size, *, deadline=None):
     parts = []
     while size:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("message read deadline exceeded")
+            connection.settimeout(remaining)
         part = connection.recv(size)
         if not part:
             raise EOFError("connection ended before the response")
@@ -35,10 +41,16 @@ def _read_exact(connection, size):
 
 
 def _receive(connection):
-    size = struct.unpack("!I", _read_exact(connection, 4))[0]
-    if size > MAX_MESSAGE:
-        raise WriteError("message exceeds the service limit; use history pagination")
-    return json.loads(_read_exact(connection, size).decode("utf-8"))
+    # 每次 recv 的超时不是整帧预算：持续发小片段的连接不能一直占住服务槽。
+    timeout = connection.gettimeout()
+    deadline = time.monotonic() + timeout if timeout is not None and timeout > 0 else None
+    try:
+        size = struct.unpack("!I", _read_exact(connection, 4, deadline=deadline))[0]
+        if size > MAX_MESSAGE:
+            raise WriteError("message exceeds the service limit; use history pagination")
+        return json.loads(_read_exact(connection, size, deadline=deadline).decode("utf-8"))
+    finally:
+        connection.settimeout(timeout)
 
 
 def _send(connection, value):

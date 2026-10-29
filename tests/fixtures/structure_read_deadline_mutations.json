@@ -1,0 +1,25 @@
+{
+  "guard": "tests/test_structure_read_deadline.py",
+  "total": 9,
+  "sources": ["lingshu/core/structure_service.py"],
+  "baseline_failures": [
+    "test_fragmented_header_cannot_renew_the_deadline",
+    "test_fragmented_body_uses_remaining_budget",
+    "test_header_and_body_share_one_budget",
+    "test_real_mtls_slow_peer_releases_the_only_connection_slot"
+  ],
+  "mutations": [
+    {"name": "remove_frame_deadline", "test": "test_fragmented_header_cannot_renew_the_deadline", "assertion": "DID NOT RAISE",
+      "changes": [{"file": "lingshu/core/structure_service.py", "method": "_receive",
+        "old": "deadline = time.monotonic() + timeout if timeout is not None and timeout > 0 else None", "new": "deadline = None"}]},
+    {"name": "renew_budget_for_body", "test": "test_header_and_body_share_one_budget", "assertion": "DID NOT RAISE",
+      "changes": [{"file": "lingshu/core/structure_service.py", "method": "_receive",
+        "old": "_read_exact(connection, size, deadline=deadline)", "new": "_read_exact(connection, size, deadline=time.monotonic() + timeout)"}]},
+    {"name": "keep_per_fragment_timeout", "test": "test_fragmented_body_uses_remaining_budget", "assertion": "DID NOT RAISE",
+      "changes": [{"file": "lingshu/core/structure_service.py", "method": "_read_exact",
+        "old": "connection.settimeout(remaining)", "new": "pass"}]},
+    {"name": "leak_remaining_timeout", "test": "test_original_timeout_is_restored_after_a_complete_frame", "assertion": "framed reader changed the caller socket timeout",
+      "changes": [{"file": "lingshu/core/structure_service.py", "method": "_receive",
+        "old": "connection.settimeout(timeout)", "new": "pass"}]}
+  ]
+}
