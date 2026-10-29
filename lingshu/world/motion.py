@@ -113,12 +113,54 @@ def observed_positions(history, eid, window=None, nested=False):
     return kept[::-1] + points
 
 
+def _clamp_window(window, history):
+    """把 `window` 钳成 `None`（无窗口）或 `1..len(history)`（#1116）。
+
+    为什么需要：`window` 是公开入参（`WorldLearner.learn` / `infer_patterns`
+    的透传面），`window=0` 与负值是合法整数；旧实现里
+    `start = max(0, len(history) - window)` 在 `window<=0` 时得到
+    `start >= len(history)`，随后 `history[start]` 越界（IndexError）。
+    另外 `window=0` 会使 `window_start=None`，让「窗口外」的位移对
+    满足 `t1 >= window_start` 恒真 ⇒ 被记成 `samples=1`，绕过
+    「不得用上下文证据覆盖已学估计」的闸（world_model.py:338-341）。
+    这里统一成：`None` 原样，其余钳到 `[0, len(history)]` 且 `0 -> None`。
+    """
+    if window is None:
+        return None
+    try:
+        n = int(window)
+    except (TypeError, ValueError):
+        return 0                         # 非法类型 ⇒ 空窗口（不静默取全历史）
+    if n <= 0:
+        # 0/负 ⇒ **空窗口**（不是「无窗口」）：窗口内一帧都看不见 ⇒ samples=0
+        # ⇒ 按 world_model.py:338-341 保留已学估计，而不是用全历史当新证据
+        # 覆盖它（旧实现 window=0 时 window_start=None 使「窗口外」位移对它
+        # 恒真，speed_est 从 1.0 被覆盖成 10.0）。
+        return 0
+    return min(n, len(history))
+
+
 def estimate_motion(history, eid, window, nested=False):
-    """Return (persistence, speed, samples, last moving direction), or None."""
-    points = observed_positions(history, eid, window, nested)
-    start = max(0, len(history) - window) if window is not None else 0
-    w_start = history[start]["tick"] if history else None
-    return _estimate_points(points, w_start, interval_limit(window))
+    """Return (persistence, speed, samples, last moving direction), or None.
+
+    #1116：`window <= 0` 是合法整数入参（`world_learner.learn(window=)`
+    / `infer_patterns(window=)` 直接透传），旧实现 `start = max(0, len-window)`
+    在 window=0/负值时 `start >= len(history)` ⇒ `history[start]` IndexError。
+    钳到 `[0, len(history)]`——0 视为「无窗口」（与 `window=None` 同路径）。
+    """
+    limit = _clamp_window(window, history)
+    points = observed_positions(history, eid, limit, nested)
+    if limit is None:
+        start, w_start = 0, (history[0]["tick"] if history else None)
+    elif limit <= 0:
+        # 空窗口：window_start 取最后一帧的下一 tick，使任何位移对都不满足
+        # `t1 >= window_start` ⇒ samples=0（保留已学估计）。
+        w_start = history[-1]["tick"] + 1 if history else None
+        return _estimate_points(points, w_start, interval_limit(limit))
+    else:
+        start = max(0, len(history) - limit)
+        w_start = history[start]["tick"] if history else None
+    return _estimate_points(points, w_start, interval_limit(limit))
 
 
 def _motion_rows(points, window_start=None, limit=None):
@@ -222,7 +264,16 @@ class ObservationWindow:
 
     def __init__(self, history, window, nested=False):
         self.history = history
-        self.start = max(0, len(history) - window)
+        # #1116：同 `_clamp_window`——`window<=0` 会让 `start >= len(history)`
+        # 并在 `_context_points` 的 `self.history[index]` 处 IndexError；
+        # 且 `window_start=None` 会把窗口外位移对记成 samples=1。
+        _w = _clamp_window(window, history)
+        if _w is None:
+            self.start = 0
+        elif _w <= 0:
+            self.start = len(history)          # 空窗口：无帧可看
+        else:
+            self.start = max(0, len(history) - _w)
         self.nested = nested
         self.frames = []
         self.points = {}
@@ -232,8 +283,14 @@ class ObservationWindow:
         self._details = {}
         self._pairs = {}
         #: 窗口首帧 tick（判"新证据"用）与最后一帧 tick（判陈旧度用）
-        self.window_start = (history[self.start]['tick']
-                             if self.start < len(history) else None)
+        # #1116：空窗口时 `window_start` 不能是 None——`_motion_rows` 的
+        # `window_start is None or t1 >= window_start` 会因前半为真而放行全部
+        # 位移对（把全历史当新证据）。取「最后一帧 + 1」使判据恒假。
+        if _w is not None and _w <= 0:
+            self.window_start = history[-1]['tick'] + 1 if history else None
+        else:
+            self.window_start = (history[self.start]['tick']
+                                 if self.start < len(history) else None)
         self.last_tick = history[-1]['tick'] if history else None
         #: 配对有效期（长间隔按 limit/dt 降权，读数见 motion_detail）
         self.interval_limit = interval_limit(window)
