@@ -740,6 +740,11 @@ class STNode:
         边界（削掉的判别力）：`created_at` 为 0/None 的极端节点仍会落 0.0，
         不另造第三种兜底——保持「写侧只归一、兜底真源唯一」。
         """
+        # #279：spatial_coordinates 必须是 dict 或 None——list/标量会原样落库，
+        # 下次启动迁移虽已容错跳过，但坏形态会扩散到备份/其它读取面。
+        if self.spatial_coordinates is not None and not isinstance(
+                self.spatial_coordinates, dict):
+            raise TypeError("spatial_coordinates must be a dict or None")
         return (
             self.id, self.content, self.modality,
             _dumps_json(self.spatial_coordinates, where="spatial_coordinates"),
@@ -2488,12 +2493,16 @@ class LayeredStore:
         `layer_writable_by_role`（与 `add_node` 同源）。跳过数经既有
         `warnings.warn` 面上报（不静默），返回值形状不变。
         """
+        # #279：迁移完成后再构造直接返回（标记只在真实迁移后写）。
+        if self.get_meta("_v17_migrated"):
+            return {"migrated_nodes": 0}
         # 常规启动通常已无旧字段：先做只读候选检查，避免每次启动争写锁。
         candidates = self.conn.execute(
             "SELECT spatial_coordinates FROM nodes WHERE "
+            "instr(COALESCE(tags, ''), '\"v17_native\"') = 0 AND ("
             "instr(spatial_coordinates, '\"protocol_') > 0 OR "
             "instr(spatial_coordinates, '\"radical_') > 0 OR "
-            "instr(spatial_coordinates, '\"neural_') > 0").fetchall()
+            "instr(spatial_coordinates, '\"neural_') > 0)").fetchall()
         has_valid_candidate = False
         for row in candidates:
             try:
@@ -2511,10 +2520,14 @@ class LayeredStore:
         skipped_bad_rows = 0
         skipped_shared_rows = 0
         with self._structure_event_transaction() as c:
-            c.execute("SELECT id, spatial_coordinates, semantic_coordinates, layer FROM nodes")
+            c.execute("SELECT id, spatial_coordinates, semantic_coordinates, layer, "
+                      "tags FROM nodes")
             for row in c.fetchall():
                 nid, sp_json, se_json = row[0], row[1], row[2]
                 nid_layer = row[3]
+                nid_tags = row[4] or ""
+                if "v17_native" in nid_tags:
+                    continue
                 # #691 P1-c：坏行跳过并计数（构造期不再崩）。
                 try:
                     sp = json.loads(sp_json or "{}")
@@ -2561,6 +2574,10 @@ class LayeredStore:
                     f"v1.7 坐标字段分离：{migrated} 节点语义键迁移至 semantic_coordinates",
                     "migration", extra_tags=["v1.7"], source="migrate_v17_coordinates",
                     metadata={"version": "v1.7", "migrated_nodes": migrated}, _cursor=c)
+        # #279：完成一次真实迁移后写标记，后续构造直接返回（性能面）；
+        # 空库/仅新格式节点不写标记，避免与「构造后补写旧格式」的既有回归冲突。
+        if self.role == Role.PRIMARY and not skipped_shared_rows:
+            self.set_meta("_v17_migrated", "1")
         if skipped_bad_rows:
             # #691 P1-c：坏行**不静默吞**——经既有告警面上报（`warn` 属既有审计动作，
             # 不改返回值形状、不加宽 except 计数）。这些行原文未被改写，仍是待修数据。
@@ -7236,6 +7253,11 @@ class SpacetimeMemoryEngine:
                 "#331 add_perception 拒绝非字符串 content（收到 %s）：非 str 会绕过"
                 "去重、并以 BLOB/NULL 静默落库，进而毒化检索面"
                 % type(content).__name__)
+        # #279：空间坐标必须是 dict（或 None=未提供）——list/标量/字符串列表
+        # 写入时一切正常，重启后旧迁移虽已容错，但坏形态会随 export_all 扩散。
+        if spatial_coordinates is not None and not isinstance(
+                spatial_coordinates, dict):
+            raise TypeError("spatial_coordinates must be a dict")
         # ---- #805：tags/entities/modality 入参验证（fail-closed，先判后写）----
         # 在 `_interaction_count` / `_note_action` / 任何 SQL 之前（与 #331 同款
         # 「零副作用」理由）：旧形态 tags=12345 的报错发生在副作用之后（半截写入面）。
@@ -7243,6 +7265,10 @@ class SpacetimeMemoryEngine:
         # `set(tags or [])` / 合并路径 `for t in (tags or [])` 均按原语义工作。
         tags = _validated_str_items("tags", tags)
         entities = _validated_str_items("entities", entities)
+        # #279：带空间坐标的新写入节点打内部标记，v1.7 迁移器不再把它当旧格式
+        # 候选搬走（迁移只处理升级前的遗留行）。
+        if spatial_coordinates:
+            tags = list(tags) + ["v17_native"]
         if not isinstance(modality, str):
             raise TypeError(
                 "#805 add_perception 拒绝非字符串 modality（收到 %s）：int 会被 "
