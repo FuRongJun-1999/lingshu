@@ -202,7 +202,8 @@ class Provenance:
         if self.source not in ("user", "assistant", "unknown"):
             return True            # 系统日志 / 夹具：不必回溯到会话
         if self.source != "unknown" and bool(self.session_id) \
-                and self.observation_tool != "unknown" and self.time_window[0] > 0:
+                and self.observation_tool != "unknown" \
+                and _window_start_is_positive(self.time_window):
             return True
         return self.strength() == "strong"   # #20-B 强验证豁免
 
@@ -237,6 +238,8 @@ class Provenance:
         tw = self.time_window
         if not (isinstance(tw, (tuple, list)) and len(tw) == 2):
             p.append("time_window 必须是 [start, end]")
+        elif not _is_numeric_window(tw):
+            p.append(f"time_window 元素必须是数值: {tw}")
         elif tw[0] > tw[1]:
             p.append(f"time_window 起点晚于终点: {tw}")
         elif tw[0] <= 0:
@@ -322,6 +325,29 @@ def _safe_window(tw: Any) -> Optional[Tuple[float, float]]:
     if start <= 0:
         return None
     return (start, end)
+
+
+def _is_number(v: Any) -> bool:
+    """真数值（bool 是 int 的子类，但对时间窗不算数值）。"""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _is_numeric_window(tw: Any) -> bool:
+    """time_window 是否为「两个元素都是真数值」的形状（#1962）。"""
+    return (isinstance(tw, (tuple, list)) and len(tw) == 2
+            and _is_number(tw[0]) and _is_number(tw[1]))
+
+
+def _window_start_is_positive(tw: Any) -> bool:
+    """time_window[0] 是否为正数值——取不到数值就返回 False，不抛（#1962）。
+
+    与 `_safe_window` 同口径：形状/类型不合法一律落到「无观测时刻」。
+    只判定**起点**：终点是坏值时 `is_traceable()` 的既有口径（只看起点）
+    不在 #1962 范围内，不在此收紧。
+    """
+    if not (isinstance(tw, (tuple, list)) and len(tw) == 2):
+        return False
+    return _is_number(tw[0]) and tw[0] > 0
 
 
 def from_legacy(tags: Any, created_at: Optional[float] = None,
