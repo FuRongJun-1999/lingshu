@@ -1,0 +1,13 @@
+{
+  "baseline": "7a8ef6bd71b570eadf69c3ef311db3f433cd1a34",
+  "validated_production_commit": "2fc6434b21fc6b1d9784dbd59facf9888cb0153b",
+  "sha256_lf": {
+    "lingshu/world/wm_simloop.py": "4453730bbdb4a52f61b70f6691d581e045eb91957a76679304f5a955739a1d30",
+    "tests/test_world_hypothesis_observation.py": "fd7acc387bfb7b14ccdeeb9631d8bbfb325893f59f3ce9f50759495a10e2a76b",
+    "tests/fixtures/world_hypothesis_observation_mutations.json": "80e6ef6b8984c931cc8b0d9f43a73aa2ef7eaf4ec97775c68fa617633212b347",
+    "tests/fixtures/world_identity_qualification_mutations.json": "7d59a93cfbedf51e3b4f7c1d185003d94acbb08afff105053d01b5b1c960876c",
+    "docs/intake/body-export-v0.1/_export_manifest.json": "4bb959481e8469fc01e526d2debe35fa7ccc6b7084f8d60801c55b1272bc32f7"
+  },
+  "scope": "Only SimulationLoop._growth_tick subject-observation gate; existing mutation locator and manifest follow it.",
+  "initial_guard_correction": "Initial guard compared full WMNode; final guard checks hypothesis verification fields while allowing normal behavior inference."
+}

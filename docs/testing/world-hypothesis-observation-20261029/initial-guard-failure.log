@@ -1,0 +1,67 @@
+FFFFFF....F                                                              [100%]
+================================== FAILURES ===================================
+___________ test_missing_subject_preserves_candidate_window[legacy] ___________
+tests\test_world_hypothesis_observation.py:42: in test_missing_subject_preserves_candidate_window
+    assert _evidence(loop, subject, hid) == before, "missing subject consumed candidate evidence window"
+E   AssertionError: missing subject consumed candidate evidence window
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: WMNode(eid='hyp_scene_e9fc0597_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='wander', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_e9fc0597', 'born_tick': 1, 'phase': 'candidate'}) != WMNode(eid='hyp_scene_e9fc0597_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='unknown', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_e9fc0597', 'born_tick': 1, 'phase': 'candidate'})
+E     Use -v to get more diff
+________ test_missing_subject_preserves_candidate_window[conservative] ________
+tests\test_world_hypothesis_observation.py:42: in test_missing_subject_preserves_candidate_window
+    assert _evidence(loop, subject, hid) == before, "missing subject consumed candidate evidence window"
+E   AssertionError: missing subject consumed candidate evidence window
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: WMNode(eid='hyp_scene_91c67096_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='wander', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_91c67096', 'born_tick': 1, 'phase': 'candidate'}) != WMNode(eid='hyp_scene_91c67096_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='unknown', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_91c67096', 'born_tick': 1, 'phase': 'candidate'})
+E     Use -v to get more diff
+_________ test_missing_subject_preserves_confirmed_confidence[legacy] _________
+tests\test_world_hypothesis_observation.py:53: in test_missing_subject_preserves_confirmed_confidence
+    assert _evidence(loop, subject, hid) == before, "missing subject increased confirmed confidence"
+E   AssertionError: missing subject increased confirmed confidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: WMNode(eid='hyp_scene_c6517175_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.5, behavior_inferred='wander', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_c6517175', 'born_tick': 1, 'phase': 'candidate'}) != WMNode(eid='hyp_scene_c6517175_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.5, behavior_inferred='unknown', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_c6517175', 'born_tick': 1, 'phase': 'candidate'})
+E     Use -v to get more diff
+______ test_missing_subject_preserves_confirmed_confidence[conservative] ______
+tests\test_world_hypothesis_observation.py:53: in test_missing_subject_preserves_confirmed_confidence
+    assert _evidence(loop, subject, hid) == before, "missing subject increased confirmed confidence"
+E   AssertionError: missing subject increased confirmed confidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: WMNode(eid='hyp_scene_6d544089_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.5, behavior_inferred='wander', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_6d544089', 'born_tick': 1, 'phase': 'candidate'}) != WMNode(eid='hyp_scene_6d544089_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.5, behavior_inferred='unknown', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_6d544089', 'born_tick': 1, 'phase': 'candidate'})
+E     Use -v to get more diff
+_______ test_other_observed_entity_cannot_validate_the_subject[legacy] ________
+tests\test_world_hypothesis_observation.py:65: in test_other_observed_entity_cannot_validate_the_subject
+    assert _evidence(loop, subject, hid) == before, "another entity substituted for subject evidence"
+E   AssertionError: another entity substituted for subject evidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: WMNode(eid='hyp_scene_8119720c_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='wander', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_8119720c', 'born_tick': 1, 'phase': 'candidate'}) != WMNode(eid='hyp_scene_8119720c_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='unknown', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_8119720c', 'born_tick': 1, 'phase': 'candidate'})
+E     Use -v to get more diff
+____ test_other_observed_entity_cannot_validate_the_subject[conservative] _____
+tests\test_world_hypothesis_observation.py:65: in test_other_observed_entity_cannot_validate_the_subject
+    assert _evidence(loop, subject, hid) == before, "another entity substituted for subject evidence"
+E   AssertionError: another entity substituted for subject evidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: WMNode(eid='hyp_scene_bca31754_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='wander', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_bca31754', 'born_tick': 1, 'phase': 'candidate'}) != WMNode(eid='hyp_scene_bca31754_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='unknown', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_bca31754', 'born_tick': 1, 'phase': 'candidate'})
+E     Use -v to get more diff
+_________________ test_core_step_keeps_masked_subject_pending _________________
+tests\test_world_hypothesis_observation.py:113: in test_core_step_keeps_masked_subject_pending
+    assert _evidence(loop, subject, hid) == before, "core step consumed unobserved subject evidence"
+E   AssertionError: core step consumed unobserved subject evidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: WMNode(eid='hyp_scene_a68a1af3_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='wander', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_a68a1af3', 'born_tick': 1, 'phase': 'candidate'}) != WMNode(eid='hyp_scene_a68a1af3_1', category='hidden_target', pos=(20, 1.5, 2), confidence=0.3, behavior_inferred='unknown', first_seen=1, last_seen=1, attrs={'hypothesis': True, 'subject': 'scene_a68a1af3', 'born_tick': 1, 'phase': 'candidate'})
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_candidate_window[legacy]
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_candidate_window[conservative]
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_confirmed_confidence[legacy]
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_confirmed_confidence[conservative]
+FAILED tests/test_world_hypothesis_observation.py::test_other_observed_entity_cannot_validate_the_subject[legacy]
+FAILED tests/test_world_hypothesis_observation.py::test_other_observed_entity_cannot_validate_the_subject[conservative]
+FAILED tests/test_world_hypothesis_observation.py::test_core_step_keeps_masked_subject_pending
+7 failed, 4 passed, 9 warnings in 0.66s

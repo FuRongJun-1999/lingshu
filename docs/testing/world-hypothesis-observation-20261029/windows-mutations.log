@@ -1,0 +1,72 @@
+restore_legacy_bypass
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_missing_subject_preserves_candidate_window[legacy] ___________
+tests\test_world_hypothesis_observation.py:46: in test_missing_subject_preserves_candidate_window
+    assert _evidence(loop, subject, hid) == before, "missing subject consumed candidate evidence window"
+E   AssertionError: missing subject consumed candidate evidence window
+E   assert (None, None, ...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 0 diff: None != {'_subject': 'scene_42acd88a', 'node': 'hyp_scene_42acd88a_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 0, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_candidate_window[legacy]
+1 failed in 0.29s
+
+pause_candidates_only
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_missing_subject_preserves_confirmed_confidence[legacy] _________
+tests\test_world_hypothesis_observation.py:57: in test_missing_subject_preserves_confirmed_confidence
+    assert _evidence(loop, subject, hid) == before, "missing subject increased confirmed confidence"
+E   AssertionError: missing subject increased confirmed confidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: ((20, 1.5, 2), 0.6500000000000001, 1) != ((20, 1.5, 2), 0.5, 1)
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_confirmed_confidence[legacy]
+1 failed in 0.31s
+
+accept_other_entity_evidence
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______ test_other_observed_entity_cannot_validate_the_subject[legacy] ________
+tests\test_world_hypothesis_observation.py:69: in test_other_observed_entity_cannot_validate_the_subject
+    assert _evidence(loop, subject, hid) == before, "another entity substituted for subject evidence"
+E   AssertionError: another entity substituted for subject evidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 0 diff: {'_subject': 'scene_d48b780d', 'node': 'hyp_scene_d48b780d_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 1, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)} != {'_subject': 'scene_d48b780d', 'node': 'hyp_scene_d48b780d_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 0, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_hypothesis_observation.py::test_other_observed_entity_cannot_validate_the_subject[legacy]
+1 failed in 0.27s
+
+freeze_observed_subjects
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_reappearance_resumes_confirmation_and_confidence[legacy] ________
+tests\test_world_hypothesis_observation.py:83: in test_reappearance_resumes_confirmation_and_confidence
+    assert loop._hypotheses[subject]["ticks"] == 2, "fresh subject failed to resume verification"
+E   AssertionError: fresh subject failed to resume verification
+E   assert 0 == 2
+=========================== short test summary info ===========================
+FAILED tests/test_world_hypothesis_observation.py::test_reappearance_resumes_confirmation_and_confidence[legacy]
+1 failed in 0.29s
+
+existing_identity_advance_unresolved_hypothesis
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate] _
+tests\test_world_identity_qualification.py:206: in test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis
+    assert loop._hypotheses == before, "unresolved subject advanced hypothesis verification"
+E   AssertionError: unresolved subject advanced hypothesis verification
+E   assert {'a': {'_subj...ick': 1, ...}} == {'a': {'_subj...ick': 1, ...}}
+E
+E     Differing items:
+E     {'a': {'_subject': 'a', 'node': 'hyp_a_1', 'phase': 'confirmed', 'born_tick': 1, ...}} != {'a': {'_subject': 'a', 'node': 'hyp_a_1', 'phase': 'candidate', 'born_tick': 1, ...}}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_identity_qualification.py::test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]
+1 failed in 0.29s

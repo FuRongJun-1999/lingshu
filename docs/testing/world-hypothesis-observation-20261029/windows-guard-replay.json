@@ -1,0 +1,127 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "7a8ef6bd71b570eadf69c3ef311db3f433cd1a34",
+  "guard_sha256": "fd7acc387bfb7b14ccdeeb9631d8bbfb325893f59f3ce9f50759495a10e2a76b",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 11,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "11 passed, 9 warnings in 0.49s",
+      "source_sha256": {
+        "lingshu/world/wm_simloop.py": "4453730bbdb4a52f61b70f6691d581e045eb91957a76679304f5a955739a1d30"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 6,
+      "failed_tests": [
+        "test_core_step_keeps_masked_subject_pending",
+        "test_missing_subject_preserves_candidate_window[legacy]",
+        "test_missing_subject_preserves_confirmed_confidence[legacy]",
+        "test_other_observed_entity_cannot_validate_the_subject[legacy]",
+        "test_reappearance_resumes_confirmation_and_confidence[legacy]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_missing_subject_preserves_candidate_window[legacy]",
+        "test_missing_subject_preserves_confirmed_confidence[legacy]",
+        "test_other_observed_entity_cannot_validate_the_subject[legacy]",
+        "test_reappearance_resumes_confirmation_and_confidence[legacy]",
+        "test_core_step_keeps_masked_subject_pending"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "5 failed, 6 passed, 9 warnings in 0.57s",
+      "source_sha256": {
+        "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c"
+      }
+    },
+    {
+      "case": "restore_legacy_bypass",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_missing_subject_preserves_candidate_window[legacy]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_missing_subject_preserves_candidate_window[legacy]"
+      ],
+      "expected_assertion": "missing subject consumed candidate evidence window",
+      "pytest_summary": "1 failed in 0.29s",
+      "source_sha256": {
+        "lingshu/world/wm_simloop.py": "5ecaf357f846489cf8e7cafb9e17e2617fee9a23da6fb808b7b10bb2fdcf61d5"
+      }
+    },
+    {
+      "case": "pause_candidates_only",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_missing_subject_preserves_confirmed_confidence[legacy]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_missing_subject_preserves_confirmed_confidence[legacy]"
+      ],
+      "expected_assertion": "missing subject increased confirmed confidence",
+      "pytest_summary": "1 failed in 0.31s",
+      "source_sha256": {
+        "lingshu/world/wm_simloop.py": "6352932c02eeb6b89eecf58d622775e99577d2e5805a320a013df0adecd057a7"
+      }
+    },
+    {
+      "case": "accept_other_entity_evidence",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_other_observed_entity_cannot_validate_the_subject[legacy]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_other_observed_entity_cannot_validate_the_subject[legacy]"
+      ],
+      "expected_assertion": "another entity substituted for subject evidence",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/wm_simloop.py": "d23898be9d2ca85db4eef12d63b8c19220bba75ec0a4b19f688d2f94fa024eec"
+      }
+    },
+    {
+      "case": "freeze_observed_subjects",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_reappearance_resumes_confirmation_and_confidence[legacy]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_reappearance_resumes_confirmation_and_confidence[legacy]"
+      ],
+      "expected_assertion": "fresh subject failed to resume verification",
+      "pytest_summary": "1 failed in 0.29s",
+      "source_sha256": {
+        "lingshu/world/wm_simloop.py": "a4f4be67e857b1d24071ce2a369939b16e255023f0c040099640bee172caa1ee"
+      }
+    }
+  ]
+}

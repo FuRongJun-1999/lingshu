@@ -1,0 +1,49 @@
+F.F.F.F...F                                                              [100%]
+================================== FAILURES ===================================
+___________ test_missing_subject_preserves_candidate_window[legacy] ___________
+tests\test_world_hypothesis_observation.py:46: in test_missing_subject_preserves_candidate_window
+    assert _evidence(loop, subject, hid) == before, "missing subject consumed candidate evidence window"
+E   AssertionError: missing subject consumed candidate evidence window
+E   assert (None, None, ...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 0 diff: None != {'_subject': 'scene_a9177939', 'node': 'hyp_scene_a9177939_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 0, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)}
+E     Use -v to get more diff
+_________ test_missing_subject_preserves_confirmed_confidence[legacy] _________
+tests\test_world_hypothesis_observation.py:57: in test_missing_subject_preserves_confirmed_confidence
+    assert _evidence(loop, subject, hid) == before, "missing subject increased confirmed confidence"
+E   AssertionError: missing subject increased confirmed confidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 1 diff: ((20, 1.5, 2), 0.6500000000000001, 1) != ((20, 1.5, 2), 0.5, 1)
+E     Use -v to get more diff
+_______ test_other_observed_entity_cannot_validate_the_subject[legacy] ________
+tests\test_world_hypothesis_observation.py:69: in test_other_observed_entity_cannot_validate_the_subject
+    assert _evidence(loop, subject, hid) == before, "another entity substituted for subject evidence"
+E   AssertionError: another entity substituted for subject evidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 0 diff: {'_subject': 'scene_47867a80', 'node': 'hyp_scene_47867a80_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 1, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)} != {'_subject': 'scene_47867a80', 'node': 'hyp_scene_47867a80_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 0, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)}
+E     Use -v to get more diff
+________ test_reappearance_resumes_confirmation_and_confidence[legacy] ________
+tests\test_world_hypothesis_observation.py:80: in test_reappearance_resumes_confirmation_and_confidence
+    assert _evidence(loop, subject, hid) == before, "occlusion changed the partial verification window"
+E   AssertionError: occlusion changed the partial verification window
+E   assert (None, None, ...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 0 diff: None != {'_subject': 'scene_08a6a8f5', 'node': 'hyp_scene_08a6a8f5_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 1, 'hits': 1, 'toward': 1, 'away_streak': 0, 'last_pos': (2.25, 1.5, 2.0)}
+E     Use -v to get more diff
+_________________ test_core_step_keeps_masked_subject_pending _________________
+tests\test_world_hypothesis_observation.py:117: in test_core_step_keeps_masked_subject_pending
+    assert _evidence(loop, subject, hid) == before, "core step consumed unobserved subject evidence"
+E   AssertionError: core step consumed unobserved subject evidence
+E   assert ({'_subject':...: 'e2', ...}]) == ({'_subject':...: 'e2', ...}])
+E
+E     At index 0 diff: {'_subject': 'scene_259b7ee2', 'node': 'hyp_scene_259b7ee2_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 2, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)} != {'_subject': 'scene_259b7ee2', 'node': 'hyp_scene_259b7ee2_1', 'phase': 'candidate', 'born_tick': 1, 'ticks': 0, 'hits': 0, 'toward': 0, 'away_streak': 0, 'last_pos': (2.0, 1.5, 2.0)}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_candidate_window[legacy]
+FAILED tests/test_world_hypothesis_observation.py::test_missing_subject_preserves_confirmed_confidence[legacy]
+FAILED tests/test_world_hypothesis_observation.py::test_other_observed_entity_cannot_validate_the_subject[legacy]
+FAILED tests/test_world_hypothesis_observation.py::test_reappearance_resumes_confirmation_and_confidence[legacy]
+FAILED tests/test_world_hypothesis_observation.py::test_core_step_keeps_masked_subject_pending
+5 failed, 6 passed, 9 warnings in 0.57s
