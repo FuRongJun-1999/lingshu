@@ -844,10 +844,14 @@ class SceneSimulator:
         if self._physics_mode(e) != PHYSICS_DYNAMICS:
             return
         env = self._env_for(e)
+        spec = self._collision_boxes.get(entity_id)
+        if spec is not None and spec["static"]:
+            return  # static=True ⇒ 它的 `physics_state` 不被重播种
+        old_state = e.attrs["physics_state"]          # 先取旧值，再整体覆盖
         e.attrs["physics_state"] = {
             "p0": tuple(e.pos), "v0": tuple(e.velocity), "t_ref": self.tick_count * env.dt}
         for name in ("beta", "radius", "mass"):
-            old = e.attrs.get("physics_state", {}).get(name)
+            old = old_state.get(name)
             if old is not None:
                 e.attrs["physics_state"][name] = old
 
