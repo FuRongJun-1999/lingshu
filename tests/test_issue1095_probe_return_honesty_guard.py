@@ -98,3 +98,13 @@ def test_count_anomalies_next_tick_counts_again():
     assert ex.nodes[eid].last_seen == ex.tick
     assert ex._count_anomalies([eid]) == 1
     assert ex._anomaly_counts[eid] == 2
+
+
+def test_next_state_loss_zero_ticks_advances_nothing():
+    # #1103 净增量（镜像自 PR #1103 的 g3b）：next_state_loss 是 #497 族
+    # 漏网入口——eval_ticks=0 时旧 max(1,...) 偷跑一步（world 0→1）。
+    ex = _mk_explorer()
+    w0 = ex.world.tick_count
+    r = ex.next_state_loss(0)
+    assert ex.world.tick_count == w0, "next_state_loss(0) 偷跑一步"
+    assert r is None or r.get("loss") is None or "loss" in r
