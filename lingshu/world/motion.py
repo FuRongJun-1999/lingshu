@@ -398,14 +398,13 @@ class ObservationWindow:
                     continue
                 pa, pb = frame[a], frame[b]
                 if previous is not None:
-                    # #1115：非有限读数的位移对**不是已测间隔**（模块口径
-                    # motion.py「非有限坐标一律拒绝」）——不计 intervals、
-                    # 不进 scores，且**不更新链**（与「缺观测不计」一致：
-                    # 后续有限对的位移仍以上一有限帧为参照，否则 NaN 会
-                    # 污染整条链）。改前形态：NaN 端点对计入 intervals/
-                    # samples ⇒ 下游 `motion(a)[3]` 在 None 上下标崩溃。
-                    if not all(math.isfinite(v) for v in
-                               (pa[0], pa[2], pb[0], pb[2])):
+                    # #1115：每一对坐标先过 `_finite_pos`（与 `_motion_rows`
+                    # 同口径——非有限/不可解包/**超出 float 的超大 int** 一律
+                    # 拒绝；裸 `math.isfinite(v)` 对 10**400 会自己抛
+                    # OverflowError）——不计 intervals、不进 scores，且**不
+                    # 更新链**（与「缺观测不计」一致：后续有限对的位移仍以
+                    # 上一有限帧为参照，NaN 不污染整条链）。
+                    if not (_finite_pos(pa) and _finite_pos(pb)):
                         continue
                     intervals += 1
                     tx, tz = pb[0] - pa[0], pb[2] - pa[2]
