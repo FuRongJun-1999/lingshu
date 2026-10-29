@@ -122,19 +122,33 @@ class StableLease:
         的情况下 renew() 就能「无证据复活」一个 weak 租约，3.2.2 的 ¬conflict 合取项
         形同虚设（与同模块 check() 忽略 lease["state"] 是同一根）。
         已有 stable 租约无新证据续期不降级（本就有效，非「提升」，不需要证据）。
+
+        #1956（本方法的判据来历）：旧实现自算「`age >= ttl` + 读缓存
+        `lease["state"]`」，不走本模块唯一的谓词 `_stable_now()`——于是 (a) 已过
+        `t_weak`（confidence 衰减至弱阈值，默认参数下 2407.9s < TTL 3600s）、仍
+        未超 TTL 的租约，无证据续期仍判 stable 并把衰减时钟无条件清零（续期本身
+        就把 `t_verified`/`confidence` 刷满）；且 (b) 同一份状态「直接 renew」与
+        「先 check 再 renew」结论相反（后者读到 check 落下的 weak）——与 #458 在
+        `acquire()` 侧修掉的是同一根，`renew()` 侧漏修。(c) 还漏掉 #729 的负 age
+        闸：`age < 0` 时 `age >= ttl` 恒 False ⇒ 判 stable。
+        现改为：**先**求值 `_stable_now()`（check/state/_acquire_ok 的同一谓词，
+        含衰减闸与负 age 闸），**再**刷新时间戳与确认度——无证据续期只在「谓词现算
+        成立」时维持 stable；带证据（evidence=True）的恢复路径不变。
         """
         lease = self._leases.get(key)
         if lease is None:
             return self.acquire(key, confidence=confidence)
         now = time.time()
-        age = now - lease["t_verified"]
-        expired = age >= lease["ttl"]
+        # 谓词必须在刷新 t_verified/confidence **之前**求值：#1956 的「无证据续期
+        # 把衰减时钟清零」正来自「先刷新、后用刷新后的读数/缓存 state 判」。
+        ok, _reason, _extra = self._stable_now(lease, now=now)
         params_ok = self._params_ok(lease["ttl"], confidence)
         lease["t_verified"] = now
         lease["confidence"] = confidence
-        # 无证据（evidence=False）时只在「原本就 stable 且未超时」才维持 stable；
-        # 已降级或已超时的租约一律回落 weak，须带证据方可回 stable（#101）。
-        if params_ok and (evidence or (lease["state"] == "stable" and not expired)):
+        # 无证据（evidence=False）时只在「谓词现算成立（本就有效）」才维持 stable；
+        # 已降级/已超时/已衰减至弱阈值/时间戳不可判的租约一律回落 weak，须带证据
+        # 方可回 stable（#101 + #1956）。
+        if params_ok and (evidence or ok):
             lease["state"] = "stable"
         else:
             lease["state"] = "weak"
