@@ -403,9 +403,13 @@ class SimulationLoop:
             if H is None:                       # 被外部移除 → 清账
                 self._hypotheses.pop(subject, None)
                 continue
-            if (self.wm.identity_policy == "conservative"
-                    and subject not in (self.wm._obs_snapshot or {})):
-                # 身份未决/缺观测不是预测失败；验证窗口与假设置信均等待新证据。
+            if subject not in (self.wm._obs_snapshot or {}):
+                # #1111：主体缺观测（被遮挡、真实观测快照没有它）时，验证窗口与
+                # 假设置信均**等待新证据**——此时 verify() 正确返回 total=0，
+                # 没有外部验证样本，推进窗口（candidate 假 revert / confirmed
+                # 凭空加置信）都让假设验证失去「外部证据」锚。原门槛只覆盖
+                # `conservative`，默认 `legacy` 未覆盖（issue 实测：candidate
+                # 被 revert、confirmed 0.5→0.6）。
                 continue
             hit = self._hit_for(verify_result, subject)
             node_A = self.wm.nodes.get(subject)
