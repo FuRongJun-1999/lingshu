@@ -264,8 +264,12 @@ def group_347_nonfinite_rejected():
        stc.consistency_report()["invariant_violations"])
 
     # 3) 影子同式：NaN 位置下预测不得把实体搬到角落
+    #    （#1134 起 add_entity 拒非有限 pos——NaN 实体改由直接注入 scene）
     stc2 = SpacetimeConsistency(size=24)
-    e2 = stc2.add_entity("w2", behavior="wander", pos=(NAN, 1.5, NAN), speed=0.3)
+    from lingshu.world.scene_simulator import SceneEntity as _SE
+    e2 = "w2_nan"
+    stc2.scene.entities[e2] = _SE(category="w2", pos=(NAN, 1.5, NAN),
+                                  behavior="wander", speed=0.3)
     np_ = stc2._apply_move_at((NAN, 1.5, NAN), 0.3, (1.0, 0.0, 1.0))
     ok("#347-C1 _apply_move_at 对非有限输入返回原值（不夹到 23.5）",
        math.isnan(np_[0]) and math.isnan(np_[2]), np_)
