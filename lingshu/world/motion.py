@@ -382,6 +382,25 @@ class ObservationWindow:
                 if not (common & (1 << index)):
                     continue
                 pa, pb = frame[a], frame[b]
+                # #1115：非有限/不可解包坐标按 `_finite_pos` 同口径**拒绝**——
+                # 旧实现把它们当作「已测位移」计入 `intervals`/`samples`：
+                #   · 双实体场景下 samples>=3 且 directional==0 成立，下游
+                #     `world_model.infer_patterns` / `world_learner.learn` 去索引
+                #     `motion(a)[3]`（此时 motion() 正确返回 None）⇒ TypeError；
+                #   · 1e154 量级有限坐标使 `dx*dx_t + dz*dz_t` 溢出成 inf、再除
+                #     得 NaN ⇒ `directional>=3` 仍成立、`sufficient` 为真，但
+                #     `abs(nan) > abs(best)` 恒 False ⇒ best=None ⇒ 已学关系被
+                #     **静默移除**（违反 world_model「只有测得静止才能撤回关系」）。
+                # 与 `_motion_rows`（:145）和 `recent_direction`（:412）的既有
+                # 闸同款：坏读数既不进 samples，也不算「测得静止」。
+                if not (_finite_pos(pa) and _finite_pos(pb)):
+                    self._nonfinite_pairs = getattr(self, "_nonfinite_pairs", 0) + 1
+                    previous = None
+                    continue
+                if previous is not None and not (_finite_pos(previous[0])
+                                                 and _finite_pos(previous[1])):
+                    previous = pa, pb
+                    continue
                 if previous is not None:
                     intervals += 1
                     tx, tz = pb[0] - pa[0], pb[2] - pa[2]
@@ -393,7 +412,16 @@ class ObservationWindow:
                             dx, dz = pos[0] - old[0], pos[2] - old[2]
                             movement = math.hypot(dx, dz)
                             if movement > 1e-6:
-                                scores.append((dx * dx_target + dz * dz_target) / (movement * length))
+                                dot = dx * dx_target + dz * dz_target
+                                denom = movement * length
+                                # #1115：乘积溢出得 inf 时 dot/denom 为 nan 或
+                                # inf——NaN 分数会静默抹掉已学关系（见上）。按
+                                # `_motion_rows` 的同款手法先归一化再点乘。
+                                if not math.isfinite(dot) or not math.isfinite(denom):
+                                    ux, uz = dx / movement, dz / movement
+                                    vx, vz = dx_target / length, dz_target / length
+                                    dot, denom = ux * vx + uz * vz, 1.0
+                                scores.append(dot / denom)
                 previous = pa, pb
             for key, scores in (((a, b), scores_a), ((b, a), scores_b)):
                 mean = round(sum(scores) / len(scores), 3) if scores else 0.0
