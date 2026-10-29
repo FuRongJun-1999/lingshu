@@ -92,7 +92,13 @@ def observed_positions(history, eid, window=None, nested=False):
     受影响）。窗口内 0 个观测时保持原样（**不**回填）——那条路径由
     `ObservationWindow._context_points` 负责，且 `_traj` 等消费方依赖"窗口内观测"
     的原义，不在此处改变语义。
+    #1116：`window<=0` 曾直接 `IndexError`（`start = len(history) - window` 越界，
+    `history[start]` 崩）——与 `ObservationWindow.__init__` 同一套语义的两个入口，
+    一个有保护一个没有。现所有入口统一 `max(1, int(window))` 钳制（`window=None`
+    保留「全历史」语义不变）。
     """
+    if window is not None:
+        window = max(1, int(window))
     start = max(0, len(history) - window) if window is not None else 0
     points = []
     for rec in history[start:]:
@@ -116,8 +122,12 @@ def observed_positions(history, eid, window=None, nested=False):
 def estimate_motion(history, eid, window, nested=False):
     """Return (persistence, speed, samples, last moving direction), or None."""
     points = observed_positions(history, eid, window, nested)
+    if window is not None:
+        window = max(1, int(window))           # #1116：与 observed_positions 同钳制
     start = max(0, len(history) - window) if window is not None else 0
-    w_start = history[start]["tick"] if history else None
+    # #1116：start 越界（钳制前形态）或 history 空时 w_start=None——窗口起点未知，
+    # `_motion_rows` 不再把窗口外位移对计入 samples（见该函数 #1116 注）。
+    w_start = history[start]["tick"] if (history and start < len(history)) else None
     return _estimate_points(points, w_start, interval_limit(window))
 
 
@@ -162,7 +172,10 @@ def _motion_rows(points, window_start=None, limit=None):
             arithmetic += 1
             continue
         rows.append((dt, dx, dz, length, weight,
-                     window_start is None or t1 >= window_start))
+                     # #1116：window_start 未知（None）时窗口外/内无从判定 ⇒
+                     # 不计 samples（旧实现 `window_start is None or` 全放行，
+                     # 窗口外位移对混进 samples 计数）。
+                     window_start is not None and t1 >= window_start))
     return rows, nonfinite, arithmetic
 
 
@@ -222,7 +235,9 @@ class ObservationWindow:
 
     def __init__(self, history, window, nested=False):
         self.history = history
-        self.start = max(0, len(history) - window)
+        # #1116：与 estimate_motion 同钳制（window<=0 曾使 start 越界 IndexError）
+        window = max(1, int(window)) if window is not None else None
+        self.start = max(0, len(history) - window) if window is not None else 0
         self.nested = nested
         self.frames = []
         self.points = {}
@@ -383,6 +398,15 @@ class ObservationWindow:
                     continue
                 pa, pb = frame[a], frame[b]
                 if previous is not None:
+                    # #1115：非有限读数的位移对**不是已测间隔**（模块口径
+                    # motion.py「非有限坐标一律拒绝」）——不计 intervals、
+                    # 不进 scores，且**不更新链**（与「缺观测不计」一致：
+                    # 后续有限对的位移仍以上一有限帧为参照，否则 NaN 会
+                    # 污染整条链）。改前形态：NaN 端点对计入 intervals/
+                    # samples ⇒ 下游 `motion(a)[3]` 在 None 上下标崩溃。
+                    if not all(math.isfinite(v) for v in
+                               (pa[0], pa[2], pb[0], pb[2])):
+                        continue
                     intervals += 1
                     tx, tz = pb[0] - pa[0], pb[2] - pa[2]
                     length = math.hypot(tx, tz)
