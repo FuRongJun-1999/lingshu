@@ -7,8 +7,11 @@
     # 快速探针（只渲 8 帧）
     python3 -m wm_bridge.factory.film.mv.make --max-frames 8 --size 320x180 --jobs 4
 
-    # 只重跑判据（不重渲，秒级）
+    # 只重跑判据（不重渲，秒级）；有 REJECT ⇒ 1（与 --accept 同口径）
     python3 -m wm_bridge.factory.film.mv.make --judge
+
+    # 发布放行：REJECT 或 BLINDSPOT 任一存在 ⇒ 1
+    python3 -m wm_bridge.factory.film.mv.make --strict
 
     # 冻结态验收（复算清单 / 确定性 / 判据不变式 / 字幕 / 契约）
     python3 -m wm_bridge.factory.film.mv.make --accept
@@ -32,7 +35,7 @@ def _parse_size(s):
 
 
 def main(argv=None) -> int:
-    from . import DEFAULT_BRIEF, accept, judge, make_mv
+    from . import DEFAULT_BRIEF, accept, judge, make_mv, summarize
     from ._det import paths, preview
 
     ap = argparse.ArgumentParser(description="wm_bridge.factory.film.mv · MV 制作插件")
@@ -44,7 +47,10 @@ def main(argv=None) -> int:
     ap.add_argument("--no-gif", action="store_true")
     ap.add_argument("--max-shots", type=int, default=None, help="只渲前 N 镜（探针）")
     ap.add_argument("--max-frames", type=int, default=None, help="总共只渲前 N 帧（探针）")
-    ap.add_argument("--judge", action="store_true", help="只重跑判据（不重渲）")
+    ap.add_argument("--judge", action="store_true",
+                    help="只重跑判据（不重渲）；有 REJECT 时退出码 1（与 --accept 同口径）")
+    ap.add_argument("--strict", action="store_true",
+                    help="与 --judge 同口径，并按发布放行再要求无 BLINDSPOT（REJECT 或 BLINDSPOT 均退出码 1）")
     ap.add_argument("--accept", action="store_true", help="冻结态验收")
     ap.add_argument("--preview", action="store_true", help="生成预览 GIF")
     a = ap.parse_args(argv)
@@ -52,10 +58,18 @@ def main(argv=None) -> int:
     out = a.out or paths.out_dir()
     size = _parse_size(a.size) if a.size else None
 
-    if a.judge:
+    if a.judge or a.strict:
         r = judge(out=out, brief=a.brief)
-        print(json.dumps({"out": out, "tally": r["tally"]}, ensure_ascii=False, indent=2))
-        return 0
+        s = summarize(r["oracle"])
+        print(json.dumps({"out": out, "tally": r["tally"],
+                          "blocking": s["blocking"],
+                          "gates_passed": s["gates_passed"],
+                          "release_blocking": s["release_blocking"],
+                          "strict": bool(a.strict)},
+                         ensure_ascii=False, indent=2))
+        if a.strict:
+            return 0 if s["gates_passed"] else 1
+        return 1 if s["blocking"] else 0
     if a.accept:
         r = accept(out=out, brief=a.brief)
         for c in r["checks"]:

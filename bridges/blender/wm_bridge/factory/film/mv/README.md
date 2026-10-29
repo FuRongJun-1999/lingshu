@@ -17,8 +17,11 @@ export WM_LINGSHU_ROOT=/path/to/lingshu          # 上游仓根（见 factory/_d
 # 1) 产出整支 MV（默认简报：夜行 · 24s / 960x540 / 24fps）
 PYTHONPATH=. python3 -X utf8 -m wm_bridge.factory.film.mv.make --jobs 8
 
-# 2) 只看判据（不重渲，秒级）——判据口径改了也不必重渲全片
+# 2) 只看判据（不重渲，秒级）——判据口径改了也不必重渲全片；有 REJECT ⇒ 退出码 1
 PYTHONPATH=. python3 -X utf8 -m wm_bridge.factory.film.mv.make --judge
+
+# 2b) 发布放行：REJECT 或 BLINDSPOT 任一存在 ⇒ 退出码 1（日常回归看 2，发布前跑这条）
+PYTHONPATH=. python3 -X utf8 -m wm_bridge.factory.film.mv.make --strict
 
 # 3) 冻结态验收（复算清单 / 确定性 / 判据不变式 / 字幕 / 契约）
 PYTHONPATH=. python3 -X utf8 -m wm_bridge.factory.film.mv.make --accept
@@ -189,6 +192,10 @@ PYTHONPATH=. python3 -X utf8 -m wm_bridge.factory.film.mv.make --max-frames 8 --
 5. **`mv.mp4` 非逐字节确定**（H.264 编码器多线程/版本差异）；确定性以 AVI/帧序列/WAV/清单为准。
 6. **GIF 时间粒度是厘秒**：24fps 请求 42 ms、盘上实为 40 ms（格式固有限制）。
 7. **单机内存**：`--jobs` 过大（本机 12）会 OOM；960×540 建议 `--jobs 8`（实测 worker ≈250 MB/个）。
+8. **K2/K3/K5 常态 BLINDSPOT**：默认简报在这三条上如实 BLINDSPOT（见上面 1、2 条），
+   所以日常回归用 `--judge`（只把 REJECT 当失败，与 `--accept` 的 E 组同口径，
+   有 REJECT ⇒ 退出码 1），发布放行用 `--strict`（REJECT 或 BLINDSPOT 任一存在 ⇒ 退出码 1，
+   走 `film.oracle.gates_passed()`）。两档分开是为了不让「验收口径」和「发布放行」混成一个数。
 
 ---
 
