@@ -402,7 +402,7 @@ def main():
         print(f"    ③ 件内方差/类间差 中位比 **{w['median_ratio']}**"
               f"（最差 5 维 {w['worst_dims']}）")
         er = s["empty_rate"]
-    print(f"    ④ 空读件 {s['n_img_empty']}/{s['n_img']}（" + (f"{er:.1%}" if er is not None else "无样本") + "）")
+        print(f"    ④ 空读件 {s['n_img_empty']}/{s['n_img']}（" + (f"{er:.1%}" if er is not None else "无样本") + "）")
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with io.open(a.out, "w", encoding="utf-8") as f:
         json.dump(rep, f, ensure_ascii=False, indent=1,
