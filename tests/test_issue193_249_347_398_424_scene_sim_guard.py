@@ -228,7 +228,12 @@ def group_347_nonfinite_rejected():
     # 1) 世界侧：NaN 实体原地不动、追逐者不被传染
     s = SceneSimulator(size=24, seed=42)
     w = s.add_entity("wolf", behavior="seek", pos=(5.0, 1.5, 5.0), speed=0.3)
-    g = s.add_entity("ghost", behavior="wander", pos=(NAN, 1.5, NAN), speed=0.3)
+    # #1134 起 add_entity 拒非有限 pos（fail-closed）——NaN 实体改由直接注入
+    # 构造（判据「clamp 不改写 NaN」原样：NaN 实体入库后原地不动、不传染）。
+    from lingshu.world.scene_simulator import SceneEntity
+    g = "ghost_nan"
+    s.entities[g] = SceneEntity(category="ghost", pos=(NAN, 1.5, NAN),
+                                behavior="wander", speed=0.3)
     s.entities[w].goal = g
     _, msgs = _quiet(s.step, 1)
     gp = s.entities[g].pos

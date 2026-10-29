@@ -366,8 +366,17 @@ class SceneSimulator:
     def add_entity(self, category: str, behavior: str = "wander",
                    pos: Tuple[float, float, float] = (2, 1.5, 2),
                    speed: float = 0.3, goal: str = "") -> str:
-        """添加自主行为实体。返回 entity_id。"""
-        e = SceneEntity(category=category, pos=tuple(float(v) for v in pos),
+        """添加自主行为实体。返回 entity_id。
+
+        #1134：`pos` 做**维度与有限性 fail-closed 校验**（与 `add_path` 的
+        #398 同款）——2D/超维 pos 此前照单全收，之后每次 `step` 在
+        `bx, by, bz = e.pos` 抛 ValueError：实体与路径常驻 ⇒ **一次合法调用
+        把永久崩溃注入模拟器**（坏实体踢不掉、好实体跟着停、evolution 清零）。"""
+        p = tuple(float(v) for v in pos)
+        if len(p) != 3 or not all(math.isfinite(v) for v in p):
+            raise ValueError(
+                "pos 需为 (x, y, z) 有限坐标三元组，收到 %r" % (pos,))
+        e = SceneEntity(category=category, pos=p,
                         behavior=behavior, speed=speed, goal=goal)
         self.entities[e.id] = e
         return e.id
@@ -936,26 +945,32 @@ class SceneSimulator:
             #   法向 = (d·n)n；切向 = d − (d·n)n（与朝向无关，故两侧同一式）。
             #   旧实现按"整 tick"施加切向分量并覆盖了 toi 推进 ⇒ 正面相撞时被推回起点、
             #   永久冻结（靠不近也停不下）；且对一侧用了 `comp > 0` 门控 ⇒ 另一侧完全不动。
-            # ★分离态不拦停：`sweep_aabb` 对"起始相切"一律报 hit（t=0 确实接触），
-            # 但若两者相对速度沿法向**离开**对方（dn_a 与 dn_b 同号且背向），拦停会把正在
-            # 分离的实体冻住 ⇒ 此处跳过（只处理"相向/相切且相向"）。
+            # ★分离态不拦停（#1133 门语义，按**实测 n 约定**修正）：`sweep_aabb`
+            # 返回的 `normal` 实测从 a 指向 b（本 tick 实测：a 在西 b 在东 ⇒
+            # `axis=(1,0,0)`；报告「n 让 a 离开 b」的前提与实测相反）。故：
+            #   相向接近（a 朝 b、b 朝 a）⇒ dn_a>0、dn_b<0 ⇒ `dn_a − dn_b > 0`
+            #     ⇒ **走进拦停**；
+            #   分离/同向同速 ⇒ dn_a ≤ dn_b ⇒ 跳过拦停，**落到下方 resolve 推离**
+            #     ——旧实现 `dn_a − dn_b <= 0 ⇒ 记录并 return` 把 resolve 推离
+            #     一并跳了 ⇒ 出生重叠 + 同向同速永久穿透（gap 恒 0.1，#1133 现象 A）；
+            #     而 `> 0`（相向）走进拦停时 toi 回退 + 切向滑行本就把两实体停在
+            #     接触面 ⇒ 相背初始重叠的"自由分离"不该拦停（报告现象 B）——
+            #     实测该形态 diff=−2 ⇒ 走 resolve，不重叠 ⇒ 不推离，自然分离。
             dn_a = sum(da[i] * n[i] for i in range(3))
             dn_b = sum(db[i] * n[i] for i in range(3))
-            if dn_a - dn_b <= 0.0:
-                self._collision_last.append(rec)
-                return
-            for eid, d in ((ia, da), (ib, db)):
-                if self._collision_boxes[eid]["static"]:
-                    continue
-                dn = sum(d[i] * n[i] for i in range(3))
-                tang = tuple(d[i] - dn * n[i] for i in range(3))
-                norm = tuple(dn * n[i] for i in range(3))
-                # 合规范式（本仓 time_core_lint 禁互补权重写法 `a·t + b·(1−t)` ⇒ 写 `b + (a−b)·t`）：
-                new_d = tuple(tang[i] + (norm[i] - tang[i]) * toi for i in range(3))
-                disp[eid] = new_d
-                e = self.entities[eid]
-                e.pos = tuple(self._tick_start_pos.get(eid, e.pos)[i] + new_d[i]
-                              for i in range(3))
+            if dn_a - dn_b > 0.0:
+                for eid, d in ((ia, da), (ib, db)):
+                    if self._collision_boxes[eid]["static"]:
+                        continue
+                    dn = sum(d[i] * n[i] for i in range(3))
+                    tang = tuple(d[i] - dn * n[i] for i in range(3))
+                    norm = tuple(dn * n[i] for i in range(3))
+                    # 合规范式（本仓 time_core_lint 禁互补权重写法 `a·t + b·(1−t)` ⇒ 写 `b + (a−b)·t`）：
+                    new_d = tuple(tang[i] + (norm[i] - tang[i]) * toi for i in range(3))
+                    disp[eid] = new_d
+                    e = self.entities[eid]
+                    e.pos = tuple(self._tick_start_pos.get(eid, e.pos)[i] + new_d[i]
+                                  for i in range(3))
         # 仍重叠（含 toi==0 的初始重叠）⇒ 推离
         wa, wb = self._world_box(ia), self._world_box(ib)
         over = (physics.obb_overlap(wa, wb) if is_obb else physics.aabb_overlap(wa, wb))
