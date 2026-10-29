@@ -417,7 +417,21 @@ class ObservationWindow:
                             dx, dz = pos[0] - old[0], pos[2] - old[2]
                             movement = math.hypot(dx, dz)
                             if movement > 1e-6:
-                                scores.append((dx * dx_target + dz * dz_target) / (movement * length))
+                                # #1115 残留面：坐标全有限但量级大（实测 1e154）
+                                # 时 `dx*dx_target + dz*dz_target` 溢出成 inf、
+                                # 再除得 **nan** —— 而 nan 参与 `abs(nan) > abs(best)`
+                                # 恒 False ⇒ best=None ⇒ 已学关系被**静默移除**
+                                # （违反 world_model「Only measured zero motion
+                                # is stop evidence」）。非有限时改用单位向量点乘
+                                # （参照同文件 `_motion_rows` 的「先除真实间隔再
+                                # 相减」同款手法）。
+                                dot = dx * dx_target + dz * dz_target
+                                denom = movement * length
+                                if math.isfinite(dot) and math.isfinite(denom):
+                                    scores.append(dot / denom)
+                                else:
+                                    scores.append((dx / movement) * (dx_target / length)
+                                                  + (dz / movement) * (dz_target / length))
                 previous = pa, pb
             for key, scores in (((a, b), scores_a), ((b, a), scores_b)):
                 mean = round(sum(scores) / len(scores), 3) if scores else 0.0
