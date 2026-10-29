@@ -23,6 +23,15 @@ from .structure_writer import (ActorContext, Conflict, EventInput, PermissionDen
 MAX_MESSAGE = 1024 * 1024
 
 
+def _grant_names(grant, field):
+    """启动配置的名单必须是 JSON 数组；字符串不得被拆成逐字符授权。"""
+    value = grant.get(field, [] if field == "instances" else None)
+    if not isinstance(value, list) or not all(
+            isinstance(item, str) and item.strip() for item in value):
+        raise WriteError(f"grant {field} must be an array of nonempty strings")
+    return frozenset(value)
+
+
 def _read_exact(connection, size):
     parts = []
     while size:
@@ -177,7 +186,7 @@ def load_service(config_file, *, bind_and_activate=True):
             raise WriteError("grant subject, namespace and source must be configured")
         principals[identity] = ActorContext(
             grant["subject"], grant["namespace"], grant["source"],
-            frozenset(grant["capabilities"]), frozenset(grant.get("instances", ())))
+            _grant_names(grant, "capabilities"), _grant_names(grant, "instances"))
     tls = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=str(files["ca"]))
     tls.keylog_filename = None
     tls.minimum_version = ssl.TLSVersion.TLSv1_2

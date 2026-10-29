@@ -1,0 +1,25 @@
+{
+  "guard": "tests/test_structure_grant_arrays.py",
+  "total": 13,
+  "sources": ["lingshu/core/structure_service.py"],
+  "baseline_failures": [
+    "test_malformed_grant_is_rejected_before_startup[instances-string]",
+    "test_malformed_grant_is_rejected_before_startup[instances-object]",
+    "test_malformed_grant_is_rejected_before_startup[instances-nested]",
+    "test_malformed_grant_is_rejected_before_startup[instances-null]",
+    "test_malformed_grant_is_rejected_before_startup[instances-empty]",
+    "test_malformed_grant_is_rejected_before_startup[capabilities-string]",
+    "test_malformed_grant_is_rejected_before_startup[capabilities-object]",
+    "test_malformed_grant_is_rejected_before_startup[capabilities-nested]",
+    "test_malformed_grant_is_rejected_before_startup[capabilities-null]",
+    "test_malformed_grant_is_rejected_before_startup[capabilities-empty]"
+  ],
+  "mutations": [
+    {"name": "split_instance_string", "test": "test_malformed_grant_is_rejected_before_startup[instances-string]", "assertion": "DID NOT RAISE",
+      "changes": [{"file": "lingshu/core/structure_service.py", "method": "_grant_names", "old": "    if not isinstance(value, list)", "new": "    if field == \"instances\" and isinstance(value, str):\n        return frozenset(value)\n    if not isinstance(value, list)"}]},
+    {"name": "split_capability_string", "test": "test_malformed_grant_is_rejected_before_startup[capabilities-string]", "assertion": "DID NOT RAISE",
+      "changes": [{"file": "lingshu/core/structure_service.py", "method": "_grant_names", "old": "    if not isinstance(value, list)", "new": "    if field == \"capabilities\" and isinstance(value, str):\n        return frozenset(value)\n    if not isinstance(value, list)"}]},
+    {"name": "allow_empty_names", "test": "test_malformed_grant_is_rejected_before_startup[instances-empty]", "assertion": "DID NOT RAISE",
+      "changes": [{"file": "lingshu/core/structure_service.py", "method": "_grant_names", "old": "isinstance(item, str) and item.strip()", "new": "isinstance(item, str)"}]}
+  ]
+}
