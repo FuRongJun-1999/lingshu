@@ -72,6 +72,30 @@ def _send(connection, value):
     connection.sendall(struct.pack("!I", len(payload)) + payload)
 
 
+def _parse_grant(grant):
+    """#1107：启动期 grant 必须是显式类型——字符串会被 frozenset() 拆成单字符集。"""
+    if not isinstance(grant, dict):
+        raise WriteError("grant must be a JSON object")
+    identity = grant.get("identity")
+    if not isinstance(identity, str) or not identity.startswith("urn:lingshu:"):
+        raise WriteError("configure a unique certificate identity")
+    for name in ("subject", "namespace", "source"):
+        value = grant.get(name)
+        if not isinstance(value, str) or not value.strip():
+            raise WriteError("grant subject, namespace and source must be configured")
+    capabilities = grant.get("capabilities")
+    if not isinstance(capabilities, list) or not all(
+            isinstance(item, str) and item.strip() for item in capabilities):
+        raise WriteError("grant capabilities must be a list of text")
+    instances = grant.get("instances", [])
+    if not isinstance(instances, list) or not all(
+            isinstance(item, str) and item.strip() for item in instances):
+        raise WriteError("grant instances must be a list of text")
+    return identity, ActorContext(
+        grant["subject"], grant["namespace"], grant["source"],
+        frozenset(capabilities), frozenset(instances))
+
+
 def dispatch(writer, actor, request):
     """Explicit business commands; no SQL, paths, imports or caller-supplied roles."""
     if not isinstance(request, dict) or set(request) != {"command", "arguments"}:
@@ -193,15 +217,10 @@ def load_service(config_file, *, bind_and_activate=True):
     check_protected_directory(root, [*files.values(), *extra])
     principals = {}
     for grant in config["principals"]:
-        identity = grant["identity"]
-        if not identity.startswith("urn:lingshu:") or identity in principals:
+        identity, actor = _parse_grant(grant)
+        if identity in principals:
             raise WriteError("configure a unique certificate identity")
-        if not all(isinstance(grant.get(name), str) and grant[name].strip()
-                   for name in ("subject", "namespace", "source")):
-            raise WriteError("grant subject, namespace and source must be configured")
-        principals[identity] = ActorContext(
-            grant["subject"], grant["namespace"], grant["source"],
-            _grant_names(grant, "capabilities"), _grant_names(grant, "instances"))
+        principals[identity] = actor
     tls = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=str(files["ca"]))
     tls.keylog_filename = None
     tls.minimum_version = ssl.TLSVersion.TLSv1_2
