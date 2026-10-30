@@ -54,15 +54,20 @@ from lingshu.world.scene_simulator import (  # noqa: E402
     Environment, PHYSICS_DYNAMICS, PHYSICS_KINEMATIC, SceneSimulator)
 
 # ---------------------------------------------------------------------------
-# 改动前实测的**冻结摘要**（与本文件同一批场景、同一规范化口径）
+# 冻结摘要（与本文件同一批场景、同一规范化口径）。
+# 2026-10-30 基线滚动：wander 方向归一化（issue 补丁 #27/#289 存档件）有意改变
+# 含 wander 实体的三例轨迹（wander_seek_follow/flee_avoid/boundary）——修前
+# wander 方向未归一化，单 tick 位移可达 sqrt(2)*speed，突破 speed 声明上限；
+# unresolved/commanded 两例不含 wander，摘要不变。守卫的**性质断言**（环境
+# opt-in、非动力学实体轨迹逐位一致）未动，D2 三断言实测仍全 True。
 # ---------------------------------------------------------------------------
-FROZEN_DIGEST = "7c2a467e0b5c4839b0944c26e3494c02e408a2caff3944dde81ac89fc6eb318b"
+FROZEN_DIGEST = "e143495ff167e5a7b17608dc4b5e1ee22dc5cc1644e30e1369c3aa18453fc85e"
 FROZEN_PER_CASE = {
-    "wander_seek_follow": "c55bd0d64dc37a64ead904fb8786058cdaf869858ec3c2ee3aea446cb9c8aea9",
-    "flee_avoid": "1d2773f0e296900bc986aef975054614fc9df1a2e8811b26636dc4a54a65acc6",
+    "wander_seek_follow": "e7b9e7e91e8201051afef40d4ddc2874ed65e3fe8b04ff7f892e7ff9fa28c819",
+    "flee_avoid": "3ed444c9aa0fcca5d773459c6eca8f1f2d7e7f3e4ffa6c02682b140a839e0ed6",
     "unresolved": "0ba6d74f59b40ab58e77990d73c2baa7975fbc275f93558fcc3af0330b331540",
     "commanded": "5ef12982a2182e47693992a1069d83164d8a56db7001b0a4ebbbcc865a65cf84",
-    "boundary": "891a034ae2d887943b4b4fc5aeffea78bc04c59891d83cfdeb0fe3bf8d1fb33b",
+    "boundary": "4143b66b5782dec53f95ebdc5d26d0a1983587684fc1b39e070b3ed1eb773fe0",
 }
 
 
