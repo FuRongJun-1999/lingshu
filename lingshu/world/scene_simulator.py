@@ -865,6 +865,10 @@ class SceneSimulator:
         """碰撞修正后**重播种**动力学初值（否则闭式解会从旧初值再穿一次）。
 
         运动学实体（`kinematic`）不重播种（它的 `velocity` 就是本 tick 实际位移）。
+        #1959（#1125）：beta/radius/mass 的保留必须取**覆盖前**的旧 state——
+        旧实现先整体替换再从新 dict 里读，三者恒 None，`set_entity_physics`
+        承诺的"原样透传给 simulate"失效（physics_readout.kind 从 rolling
+        退化 slope_friction）。
         """
         e = self.entities[entity_id]
         if "physics_state" not in e.attrs:
@@ -872,10 +876,14 @@ class SceneSimulator:
         if self._physics_mode(e) != PHYSICS_DYNAMICS:
             return
         env = self._env_for(e)
+        spec = self._collision_boxes.get(entity_id)
+        if spec is not None and spec["static"]:
+            return  # static=True ⇒ 它的 `physics_state` 不被重播种
+        old_state = e.attrs["physics_state"]          # #1125：先取旧值，再整体覆盖
         e.attrs["physics_state"] = {
             "p0": tuple(e.pos), "v0": tuple(e.velocity), "t_ref": self.tick_count * env.dt}
         for name in ("beta", "radius", "mass"):
-            old = e.attrs.get("physics_state", {}).get(name)
+            old = old_state.get(name)
             if old is not None:
                 e.attrs["physics_state"][name] = old
 
