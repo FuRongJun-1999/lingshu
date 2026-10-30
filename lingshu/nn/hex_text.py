@@ -270,9 +270,15 @@ def multimodal_check(net: HexHierNet, lat: np.ndarray, text: str,
         hits = 0
         for cl in clauses:
             for det in detections:
+                # #1957：子句只陈述形状或只陈述颜色时另一属性为 None
+                # （parse_description 收录 shape/color/pos 任一非空即收，
+                #  render_clause 亦把缺失属性渲染成空串）。原写法无条件写
+                #  `cl["shape"] in det["obj"]`，None 作左操作数直接抛 TypeError。
+                # 口径与 fuse_consistency→_attr_support 一致：未陈述的属性
+                # 不计入、也不判负，仅已陈述属性参与对齐。
                 if (cl["pos"] == det["pos"]
-                        and cl["shape"] in det["obj"]
-                        and cl["color"] in det["obj"]):
+                        and (cl["shape"] is None or cl["shape"] in det["obj"])
+                        and (cl["color"] is None or cl["color"] in det["obj"])):
                     hits += 1
                     break
         align = hits / len(clauses)
