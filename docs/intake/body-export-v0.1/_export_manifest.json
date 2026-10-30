@@ -508,7 +508,7 @@
     {
      "file": "hex_text.py",
      "src": "aeis.hex_text",
-     "sha256": "38bdec2a6bce3d0e",
+     "sha256": "330269be933d1949",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
