@@ -14350,6 +14350,31 @@ class SpacetimeMemoryEngine:
 
     # ---- P1-3 技能获取闭环 ----
 
+    #: #200 ③：技能成功/失败计数的 `engine_meta` 键前缀。
+    #: 用 KV 表而非新增列 ⇒ 不动 `SCHEMA_VERSION`、不碰 skills 表结构。
+    _SKILL_OK_KEY = "skill_ok:"
+    _SKILL_FAIL_KEY = "skill_fail:"
+
+    def _bump_skill_counter(self, prefix: str, skill_hint: str) -> int:
+        """把 `prefix + hint` 的计数 +1，返回**加完之后**的值（#200 ③）。"""
+        key = prefix + skill_hint
+        old = self.store.merge_meta(key, lambda v: int(v or 0) + 1)
+        return int(old or 0) + 1
+
+    def _skill_counts(self, skill_hint: str) -> "tuple[int, int]":
+        """读 (成功数, 失败数)；缺键即 0（#200 ③）。"""
+        meta = self.store.get_meta()
+        return (int(meta.get(self._SKILL_OK_KEY + skill_hint) or 0),
+                int(meta.get(self._SKILL_FAIL_KEY + skill_hint) or 0))
+
+    @staticmethod
+    def _smoothed_confidence(ok: int, fail: int) -> float:
+        """Beta(1,1) 先验下的成功率后验均值：`(ok+1) / (ok+fail+2)`。
+
+        `ok=fail=0` ⇒ **0.5**（与建卡默认值一致，故既有「无历史失败」断言不变）。
+        """
+        return (ok + 1.0) / (ok + fail + 2.0)
+
     def record_action_sequence(self, actions: List[str], outcome: str, success: bool,
                                skill_hint: str = None) -> Optional[STNode]:
         """P1-3：记录操作序列（成功 → 技能提取/强化）
@@ -14406,12 +14431,23 @@ class SpacetimeMemoryEngine:
             # 的 LIKE 子串召回——hint「备份」会命中「删除备份」并把备份步骤拼进
             # 删除技能、为删除技能增信（分诊表行 200 第 1 条）。
             existing = self.store.get_skill_by_name(skill_hint)
+            ok_n = self._bump_skill_counter(self._SKILL_OK_KEY, skill_hint)
             if existing:
-                self.store.update_skill_confidence(existing["id"], 0.05)
+                # #200 ③：置信度改为**平滑成功率估计**，不再是无条件的 +0.05。
+                # 旧实现只按成功次数线性增信、且建卡前的失败一次都不计 ⇒
+                # 「50 败 10 胜」的技能反而升到 0.95（issue 判据要求 < 0.5）。
+                _ok_before, fail_n = self._skill_counts(skill_hint)
+                target = self._smoothed_confidence(ok_n, fail_n)
+                self.store.update_skill_confidence(
+                    existing["id"], target - float(existing["confidence"]))
                 self.store.append_skill_procedure(existing["id"], " > ".join(actions[:3]))
             else:
+                # 建卡：把**建卡之前**的失败历史折进初始置信度。
+                # 用建卡前计数（ok 计 0）⇒ 无历史失败时恰为 0.5（旧行为不变）。
+                _ok_before, fail_n = self._skill_counts(skill_hint)
+                init_conf = self._smoothed_confidence(0, max(0, fail_n))
                 self.store_skill(skill_hint, f"从操作序列提取（{outcome[:40]}）",
-                                 " > ".join(actions[:5]), confidence=0.5)
+                                 " > ".join(actions[:5]), confidence=init_conf)
         elif not success:
             # A-1：失败操作序列 → 被拒绝路径资产（防重复失败）
             self.register_rejected_path(
@@ -14421,6 +14457,8 @@ class SpacetimeMemoryEngine:
             # #200：失败且带 hint ⇒ 对**精确同名**技能降信（旧实现失败从不降信，
             # 频繁失败的技能照样升到高置信——分诊表行 200 第 3 条）。
             if skill_hint:
+                # #200 ③：失败计数落库（供建卡时折算初始置信度）。
+                self._bump_skill_counter(self._SKILL_FAIL_KEY, skill_hint)
                 failed_skill = self.store.get_skill_by_name(skill_hint)
                 if failed_skill:
                     self.store.update_skill_confidence(failed_skill["id"], -0.05)
