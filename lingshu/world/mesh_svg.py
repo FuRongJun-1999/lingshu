@@ -323,6 +323,29 @@ def _darken(rgb, k: float = 0.42):
     return (max(0, int(rgb[0] * k)), max(0, int(rgb[1] * k)), max(0, int(rgb[2] * k)))
 
 
+def _lum(rgb) -> float:
+    """Rec.709 相对亮度（只用于「最暗材质色」的排序，不参与着色）。"""
+    return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+
+
+def _darkest_face_color(faces, default=(40, 44, 52)):
+    """`faces` 的**去重材质色集合**里最暗的一个（#1961）。
+
+    ★ 为什么按集合取而不是按 `faces[0]`：`STYLE["outline_color"]` 的契约是
+    「该物体最暗材质色」（见 `STYLE` 注释），与面的先后顺序无关；取首面会让同一
+    几何仅因 OBJ 里面块顺序不同就换线稿色，破坏「同样场景两次导出逐字节相同」的
+    确定性。同亮度时按 RGB 分量序定序，保证与面序无关；空网格回落 `default`。
+    """
+    cols = []
+    for f in faces:
+        c = tuple(f.color)
+        if c not in cols:
+            cols.append(c)
+    if not cols:
+        return default
+    return min(cols, key=lambda c: (_lum(c), c))
+
+
 def _hex(rgb) -> str:
     return "#%02x%02x%02x" % (max(0, min(255, int(rgb[0]))),
                               max(0, min(255, int(rgb[1]))),
@@ -533,8 +556,7 @@ def _emit_mesh(backend, world, obj, mesh, cam, sw, sh, st, scale, counts, layers
     if st.get("outline"):
         ocol = st.get("outline_color")
         if ocol is None:
-            base = mesh.faces[0].color if mesh.faces else (40, 44, 52)
-            ocol = _darken(base, 0.42)
+            ocol = _darken(_darkest_face_color(mesh.faces), 0.42)
         #: ★ 自适应折角阈值 + 屏幕最短边过滤（本件）：
         #: 固定 34° 在 12668 面上会产出 923 条折角线糊成一片；按面数抬高阈值，
         #: 再把投影后短于 `min_edge_px` 的折角线丢掉（轮廓线不丢）。
