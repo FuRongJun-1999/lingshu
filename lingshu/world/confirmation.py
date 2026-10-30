@@ -120,9 +120,30 @@ class ConfirmationEvaluator:
         ch_ok = bool(channel_creds) and all(
             _cred_ok(c) for c in channel_creds.values())
         # 条件②：至少一次强验证命中（realized_KL > θ_g）
-        strong_ok = realized_kl > self.kl_threshold
+        # #1958：非数值/非有限 realized_kl 按「无强验证」处理——与条件①（#1075①）
+        # 及同文件 kl_binary/gain_task/value（#402）同一 fail-closed 口径。旧实现
+        # 直接比较：`inf > θ` 恒真 ⇒ 非有限读数静默换到 ACCEPT_stable（比「零证据」
+        # 更宽松）；`str`/`None` 抛 TypeError 打断整次评估；`nan` 原样回填 values
+        # （下游 json.dumps(allow_nan=False) 即炸）。
+        try:
+            kl_value = float(realized_kl)
+        except (TypeError, ValueError):
+            kl_value = 0.0
+        if not math.isfinite(kl_value):
+            kl_value = 0.0
+        strong_ok = kl_value > self.kl_threshold
         # 条件③：跨时间稳定
-        stable_ok = stable_rounds >= self.stable_rounds
+        # #1958：同款前置校验——非数值/非有限轮数按 0 处理（`inf >= θ` 恒真会把
+        # 「跨时间稳定」判成已达成，`str` 抛 TypeError）。合法值原样回填。
+        try:
+            rounds_value = float(stable_rounds)
+            rounds_valid = math.isfinite(rounds_value)
+        except (TypeError, ValueError):
+            rounds_value = 0.0
+            rounds_valid = False
+        if not rounds_valid:
+            rounds_value = 0.0
+        stable_ok = rounds_value >= self.stable_rounds
         # 条件④：无内部矛盾
         no_conflict = not contradiction
 
@@ -138,6 +159,11 @@ class ConfirmationEvaluator:
         else:
             tier = "NOT_ACCEPTED"
 
+        # 回填守卫后的读数（#1958）：nan/inf/非数值不得进入返回体——该返回体是逐行
+        # JSON-RPC 观测面，`json.dumps(..., allow_nan=False)` 遇 nan/inf 直接抛
+        # ValueError，整条链路会在序列化处炸。合法输入原样回填（形态不变）：int 轮数仍回填 int。
+        kl_out = round(kl_value, 6)
+        rounds_out = int(rounds_value) if type(stable_rounds) is int else rounds_value
         return {
             "confirmed": confirmed,
             "tier": tier,
@@ -148,7 +174,7 @@ class ConfirmationEvaluator:
                 "no_contradiction": no_conflict,
             },
             "values": {
-                "realized_kl": round(realized_kl, 6),
-                "stable_rounds": stable_rounds,
+                "realized_kl": kl_out,
+                "stable_rounds": rounds_out,
             },
         }
