@@ -29,8 +29,6 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from . import hexgen_self_source as S          # noqa: E402
 
 SIZE = S.SIZE
