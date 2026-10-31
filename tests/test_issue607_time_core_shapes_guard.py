@@ -47,10 +47,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL = REPO_ROOT / "tools" / "time_core_lint.py"
 BASELINE = REPO_ROOT / "tools" / "time_core_lint_baseline.txt"
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# 按文件路径加载（lingshu #288 补报帖 · 2026-10-31 收口）：本件不 import lingshu，
+# 但与 import lingshu 的测试件**同进程收集**时，pathguard 的解析期拒绝 finder
+# （#150A 语义）会把「cwd 面才能解析的裸顶层名」拒掉——`from tools import …`
+# 在该时序下收集期 ImportError（各自单跑均绿）。仓根自足 sys.path 头部**救不了**
+# 它（REPO_ROOT realpath 归一后就是 cwd，属拒绝面）。故按文件路径直接加载工具
+# 模块，绕开包名解析（不碰 pathguard，符合 #273 裁定）。
+import importlib.util as _ilu
 
-from tools import time_core_lint as T  # noqa: E402
+_spec = _ilu.spec_from_file_location("time_core_lint_under_test", str(TOOL))
+T = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(T)
 
 
 def run_lint(*args, cwd=None, timeout=300):
