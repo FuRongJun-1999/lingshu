@@ -34,6 +34,7 @@
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Dict, List, Tuple
 
 
@@ -207,7 +208,8 @@ for _cat, _parts in SHAPE_LIBRARY.items():
 
 def get_shape(category: str) -> List[Part]:
     """查询类别形状；未注册 → 空列表（调用方用默认单一图元回退）。"""
-    return SHAPE_LIBRARY.get(category, [])
+    parts = SHAPE_LIBRARY.get(category)
+    return deepcopy(parts) if parts is not None else []
 
 
 def has_shape(category: str) -> bool:
