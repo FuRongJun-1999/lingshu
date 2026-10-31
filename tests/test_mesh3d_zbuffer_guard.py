@@ -76,6 +76,12 @@ HEX01_TRIS = 12668
 #: 相同。所以表按 Pillow 主版本分档；遇到没登记过的版本 ⇒ **skip 并给出复核命令**，
 #: 而不是假红/假绿（假红会让人以为重构改坏了像素）。
 #:
+#: ⚠ **2026-10-30 基线滚动（仅 `shapes` 场景）**：形状库内容有意修复（lingshu
+#: issue #231-②③——喙移到头前方、猫尾贴身、person 头/臂贴合、chair 腿插座面；
+#: #231-④ get_shape 深拷贝）⇒ `shapes` 场景渲染像素改变。渲染引擎未动；旧基线
+#: 两档 shapes 值相同（该场景跨 Pillow 版本像素一致的历史事实），新值以
+#: Pillow 12.3.0 实测同值登记两档。其它四场景（empty/boxes/posed/rot）不受影响。
+#:
 #: 复核（仓根 wm-verify/lingshu）：
 #:     python3 -X utf8 ../_evidence/world3d-refactor/baseline_hash.py --check \
 #:         ../_evidence/world3d-refactor/b1_orig_pil<主版本>.json
@@ -85,14 +91,14 @@ BASELINE_RGB_SHA256 = {
     "10.2.0": {
         "empty": "448ff689d9fd4291ed5a0e4aa97250363ee63af74a6a0ec47ec193e808e0f8e0",
         "boxes": "18cdf98eeb2c5d698533d9a36ab45c014fefded8b1c2b189903bd62d63db5230",
-        "shapes": "50b39cbe86cb0a30a384f3ed2c5cd195f0828fae4846df35db5baa47af1b113b",
+        "shapes": "829617fc00e03bb56092356713b0aed66e25eb38c8c5035c88ea0638744e5acc",
         "posed": "28b1d72c6f998dcefc7890138e7dbe2b908043b18e544cd29443534e4c78748a",
         "rot": "6754787690a3c3196a20a5dd2385dd757bad74f3f7028779cc7c8afb1d256f24",
     },
     "12.3.0": {
         "empty": "448ff689d9fd4291ed5a0e4aa97250363ee63af74a6a0ec47ec193e808e0f8e0",
         "boxes": "c5ff6805be1cb8439a83ca02e45149357509a5a6495df3b52e9e227eb09fe392",
-        "shapes": "50b39cbe86cb0a30a384f3ed2c5cd195f0828fae4846df35db5baa47af1b113b",
+        "shapes": "829617fc00e03bb56092356713b0aed66e25eb38c8c5035c88ea0638744e5acc",
         "posed": "3e71309ac58a0c7d605406d6c611510336fce09a06d6818f8524f802c39bafa6",
         "rot": "c7319779d33cb304469aea61ce1b6d75739e31989748849ea924d29153c2c293",
     },
