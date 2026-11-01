@@ -5910,6 +5910,10 @@ class LayeredStore:
             "conditions": cond_pack,
             "verification": {"level": None, "evidence": [], "status": "pending", "updated_at": now},
             "source": source,
+            # #281（附带 3）：REFUTED 时要能回落到**记录时的初始值**——
+            # 旧实现只在 verified 时把 importance 抬到 0.9，之后即使被证伪也不回落，
+            # 被证伪的洞见继续以高重要度排在检索前面。初始值随快照落库。
+            "initial_importance": importance,
         }}
         node = STNode(
             id=nid, content=f"【洞见事件】{content}", modality="text",
@@ -6020,6 +6024,16 @@ class LayeredStore:
         new_imp = node.importance
         if status == "verified" and (new_imp is None or new_imp < 0.9):
             new_imp = 0.9
+        # #281（附带 3）：被证伪的洞见回落到记录时的初始重要度——旧实现
+        # 只抬不落，refuted 的洞见仍以 0.9 排在检索前面（实测 20 条 refuted
+        # 全部保持 importance=0.9）。没有初始值记录（旧库样本/裸 SQL 构造）时
+        # 回落到 insight_record 的默认 0.7。
+        if status == "refuted":
+            try:
+                _base = float(ins.get("initial_importance", 0.7))
+            except (TypeError, ValueError):
+                _base = 0.7
+            new_imp = min(node.importance if node.importance is not None else 0.9, _base)
         c = self.conn.cursor()
         c.execute("UPDATE nodes SET state_attributes=?, tags=?, importance=? WHERE id=?",
                   (_dumps_json(sa, ensure_ascii=False, where="state_attributes"),
@@ -6080,6 +6094,13 @@ class LayeredStore:
         cer = nv / n if n else 0.0
         se = math.sqrt(cer * (1 - cer) / n) if n else 0.0
         layer_status = "degraded" if n < 20 else ("watch" if n < 40 else "reliable")
+        # #281（根因 2/3）：`pressure` / `tone` 是**分类条件**——真值分组会把
+        # low/medium/high 全并进同一组，「低压力 vs 非低压力」这个对比在分组方式上
+        # 就做不出来；且 `_normalize_conditions` 的默认值是恒真字符串（medium /
+        # calm），without 组永远是 0 条 ⇒ 这两个条件**永远不出统计**。分类条件改按
+        # **取值**分组：每个出现 ≥5 的取值 vs「显式提供且取值为其它值」的样本；
+        # 布尔条件保持真值分组。判据来源：公开 issue #281「修复建议 1」。
+        _CATEGORICAL_CONDS = ("pressure", "tone")
         cond_stats = []
         for k in ("premise_questioned", "externalized", "pressure", "tone", "cross_domain"):
             # #281：旧实现 `x["conditions"].get(k)` 按**真值**分组，把「键存在但值为
@@ -6097,13 +6118,35 @@ class LayeredStore:
                         return False
                 return _k in (x["conditions"] or {})     # 回落：旧库样本 / 裸 SQL 构造
             present = [x for x in candidates if _explicit(x)]
+
+            def _rate(rows):
+                p = sum(1 for x in rows if x["status"] == "verified") / len(rows)
+                se_ = math.sqrt(max(p * (1 - p) / len(rows), 1e-4))
+                return p, se_
+
+            if k in _CATEGORICAL_CONDS:
+                values = sorted({str(x["conditions"].get(k)) for x in present})
+                for _val in values:
+                    grp = [x for x in present if str(x["conditions"].get(k)) == _val]
+                    rest = [x for x in present if str(x["conditions"].get(k)) != _val]
+                    if len(grp) < 5 or len(rest) < 5:
+                        continue
+                    p1, se1 = _rate(grp)
+                    p0, se0 = _rate(rest)
+                    diff = p1 - p0
+                    sig = abs(diff) >= 2 * math.sqrt(se1 ** 2 + se0 ** 2)
+                    cond_stats.append({
+                        "condition": k, "value": _val,
+                        "n_with": len(grp), "n_without": len(rest),
+                        "cer_with": round(p1, 3), "cer_without": round(p0, 3),
+                        "diff": round(diff, 3), "significant": sig,
+                        "judge": "确认" if (sig and diff > 0) else ("反证" if sig else "不判定")})
+                continue
             with_ = [x for x in present if x["conditions"].get(k)]
             without = [x for x in present if not x["conditions"].get(k)]
             if len(with_) >= 5 and len(without) >= 5:
-                p1 = sum(1 for x in with_ if x["status"] == "verified") / len(with_)
-                p0 = sum(1 for x in without if x["status"] == "verified") / len(without)
-                se1 = math.sqrt(max(p1 * (1 - p1) / len(with_), 1e-4))
-                se0 = math.sqrt(max(p0 * (1 - p0) / len(without), 1e-4))
+                p1, se1 = _rate(with_)
+                p0, se0 = _rate(without)
                 diff = p1 - p0
                 sig = abs(diff) >= 2 * math.sqrt(se1 ** 2 + se0 ** 2)
                 cond_stats.append({
@@ -6111,7 +6154,11 @@ class LayeredStore:
                     "cer_with": round(p1, 3), "cer_without": round(p0, 3),
                     "diff": round(diff, 3), "significant": sig,
                     "judge": "确认" if (sig and diff > 0) else ("反证" if sig else "不判定")})
-        return {"total": n, "verified": nv, "pending": n - nv,
+        # #281（附带 1）：`pending = n - nv` 把被证伪的洞见也算成 pending（实测
+        # 20 条 refuted 全报 pending，报告没有 refuted 计数）。现按状态分计。
+        n_ref = sum(1 for x in candidates if x["status"] == "refuted")
+        n_pending = sum(1 for x in candidates if x["status"] == "pending")
+        return {"total": n, "verified": nv, "refuted": n_ref, "pending": n_pending,
                 "cer": round(cer, 3), "se": round(se, 4),
                 "layer_status": layer_status,
                 "note": "样本<20 不判定（与迁移测试同标准）" if n < 20 else "样本达标，可出显著性",
