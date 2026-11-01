@@ -7645,6 +7645,17 @@ class SpacetimeMemoryEngine:
         ③`LayeredStore.add_edge(STEdge)` 直写面不去重（同步/导入路径须保真，非本件
         收口面）；④查重是 check-then-act，与 `add_node` 的旧行检查同款并发口径。"""
         rt = relation_type if isinstance(relation_type, EdgeType) else EdgeType(relation_type)
+        # 自主发现（端点存在性）：旧实现把两端 id 直接交给 `LayeredStore.add_edge`
+        # 的 `INSERT OR REPLACE`，不存在的一端由 SQLite 外键约束抛裸
+        # `sqlite3.IntegrityError: FOREIGN KEY constraint failed`——调用方无法区分
+        # 「节点不存在」与其它完整性错误，且异常类型泄漏存储实现（同仓
+        # `TruthMaintenance.add_justification` 对同一形态已用
+        # `KeyError("节点不存在：...")"` 先行判存在性）。此处**先判后写**：两端
+        # 任一缺失即 KeyError，零落库。`store.add_edge(STEdge)` 直写面（同步/导入
+        # 路径，须允许「先边后节点」的批量导入顺序）**不改**。
+        for _nid in (source_id, target_id):
+            if self.store.get_node(_nid) is None:
+                raise KeyError("节点不存在：%r（add_edge 需要两端节点都已落库）" % (_nid,))
         if dedup:
             row = self.store.conn.execute(
                 "SELECT * FROM edges WHERE source_id=? AND target_id=? AND relation_type=? "
