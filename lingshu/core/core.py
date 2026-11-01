@@ -3853,6 +3853,25 @@ class LayeredStore:
         """
         if x is None:
             return 0.0
+        # 自主发现（衰减因子值域）：`factor` 是**每周期衰减量**，契约 ∈[0,1]
+        # （见 `time_core.cred_step` docstring「decay 是每周期衰减量」），但本入口
+        # 旧实现不做任何值域闸：
+        #   · factor < 0 ⇒ ratio > 1 ⇒ gamma < 0 ⇒ cred 按 e^{+|γ|dt} **放大**，
+        #     confidence/importance 越过 [0,1] 上界（实测 factor=-0.5 把 0.8 抬到
+        #     1.2，随后阈值/排序都把它当「最高可信」）；
+        #   · factor = NaN ⇒ ratio = NaN ⇒ gamma = NaN ⇒ cred 返回 NaN ⇒ 写库为
+        #     NULL——本函数**自己造出** #185 那类坏行（该 issue 的前提正是「不得让
+        #     已入库数据把整轮衰减打断」）；
+        #   · factor > 1 经 `ratio <= 0` 分支静默归 0 ⇒ 一次调用清空全部置信度，
+        #     调用方无法察觉参数写错。
+        # 现 fail-loud：非有限或越界一律拒绝（零写入），合法 [0,1] 行为不变。
+        try:
+            _f = float(factor)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("decay factor 必须是实数，收到 %r" % (factor,)) from exc
+        if not math.isfinite(_f) or not (0.0 <= _f <= 1.0):
+            raise ValueError("decay factor 必须是 [0, 1] 内的有限值，收到 %r" % (factor,))
+        factor = _f
         ratio = 1.0 - factor
         if ratio <= 0.0:
             return 0.0
