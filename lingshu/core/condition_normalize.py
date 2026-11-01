@@ -6,6 +6,7 @@
 白箱 · 确定性 · 零LLM(D-005)。
 """
 import hashlib, json
+from collections.abc import Mapping
 from typing import Dict, List
 
 # 图像大域语义卡 v0.2 的 canonical 域(枚举取值) —— 归一化骨架
@@ -80,6 +81,18 @@ def canonical_condition(domains: Dict[str, str]) -> Dict:
     削掉的判别力：旧口径下「非法值」与「未声明」不可分辨；新口径下二者 hash 不同，
     故依赖「非法值≡未声明」的历史读数会变（仓内无此类调用方，见 tests 回归面）。
     """
+    # 非字典输入（None / list / str / JSON 解码后的数组）此前没有任何类型闸：
+    # None 在 `k not in domains` 处抛不可读的 TypeError，list 则被 `in` 当成
+    # 「逐元素比较」静默视作空映射（全部落 UNASSERTED）——两种行为都不在契约里，
+    # 且前者会连带把 cond_hash / validate_edges / invalid_domains 一起炸掉。
+    # 契约（模块头 `domains: Dict[str, str]`）：None 表示「无条件声明」，
+    # 与空 dict 同义（P2-001「未声明无可校验」）；其余非映射类型是调用方 bug，
+    # 显式报 TypeError 并说明期望类型（fail-loud，不静默改写语义）。
+    if domains is None:
+        domains = {}
+    elif not isinstance(domains, Mapping):
+        raise TypeError("domains 必须是映射（dict/Mapping），收到 %s"
+                        % type(domains).__name__)
     canon = {}
     for k, allowed in IMAGE_DOMAINS.items():
         if k not in domains:
@@ -109,7 +122,8 @@ def canonical_condition(domains: Dict[str, str]) -> Dict:
 def invalid_domains(domains: Dict[str, str]) -> Dict:
     """#138：返回 {域: 原值}——本次输入里被判为非法（≠未声明）的域。"""
     canon = canonical_condition(domains)
-    return {k: domains.get(k) for k, v in canon.items() if v == INVALID}
+    source = domains if isinstance(domains, Mapping) else {}
+    return {k: source.get(k) for k, v in canon.items() if v == INVALID}
 
 
 def canonical_sourced(domains: Dict[str, str],
