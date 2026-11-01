@@ -23,6 +23,7 @@
     整数边界（与 #196 的 NaN 面独立），判据：条件冲突 ⇒ REJECT（四态语义同源）。
 """
 import math
+from collections.abc import Mapping
 from typing import Dict
 
 from .condition_normalize import INVALID, UNASSERTED
@@ -45,6 +46,28 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
     数值非有限（NaN/±Inf）→ BLINDSPOT（#196）：此类输入下全部阈值比较恒为
     False，会静默落进 ACCEPT 分支；这里先拦，不把「数值坏了」翻成「质量门通过」。
     """
+    # 自主发现（输入契约）：`part` / `image_domains` 此前被直接当 dict 用——
+    # `part={}` 抛不可读的 `KeyError: 'type'`；`part=None` 抛 `TypeError`；
+    # `image_domains=None` 抛 `AttributeError: 'NoneType' object has no attribute 'get'`；
+    # `part_fg_px="x"` 抛 `TypeError`（`math.isfinite` 只认数值）。本模块自己的
+    # 口径是「非有限/不可判 ⇒ BLINDSPOT，不给 ACCEPT」（#196/#296）——先把**类型**
+    # 面收进同一口径：非映射是调用方 bug（fail-loud TypeError/ValueError），
+    # `image_domains=None` 等价「无大域声明」，非数值像素量落 BLINDSPOT。
+    if not isinstance(part, Mapping):
+        raise TypeError("part 必须是映射（含 type 键），收到 %s" % type(part).__name__)
+    if "type" not in part:
+        raise ValueError("part 缺少 type 键（部件类型）")
+    if image_domains is None:
+        image_domains = {}
+    elif not isinstance(image_domains, Mapping):
+        raise TypeError("image_domains 必须是映射或 None，收到 %s"
+                        % type(image_domains).__name__)
+    try:
+        part_fg_px = float(part_fg_px)
+        part_area = float(part_area)
+    except (TypeError, ValueError):
+        return {"verdict": "BLINDSPOT", "reason": "non-numeric input",
+                "fg_ratio": None}
     name = part["type"]
     if not (math.isfinite(part_fg_px) and math.isfinite(part_area)):
         return {"verdict": "BLINDSPOT", "reason": "non-finite input",
