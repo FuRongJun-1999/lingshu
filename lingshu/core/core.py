@@ -5310,6 +5310,12 @@ class LayeredStore:
         #   `_lay[nid] is None` ⇔ 该 id 不存在（与旧 `get_node(...) is None` 同义）。
         # `MemoryLayer(...)` 与 `STNode.from_row` 同款裸露转换 ⇒ 非法 layer 的
         # 失败语义一致。
+        # 自主发现（自冲突）：两端同一 id 时旧实现照建 `OPPOSITE` 自环边并把该节点
+        # 打上 `conflict` 标签——「X 与 X 矛盾」没有语义，却让节点永久带冲突标记
+        # （`delete_node` 的标签清理只在对端边消失时移除，自环边自己就是两端）。
+        # 现 fail-loud：自冲突一律 ValueError，零写入。
+        if a_id == b_id:
+            raise ValueError("冲突两端不能是同一节点：%r" % (a_id,))
         _c0 = self.conn.cursor()
         _lay: Dict[str, Optional[MemoryLayer]] = {}
         for _nid0 in (a_id, b_id):
