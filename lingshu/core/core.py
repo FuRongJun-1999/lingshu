@@ -4734,6 +4734,19 @@ class LayeredStore:
         建议 3（`add_node` 拒绝未来时间戳）与建议 4（可注入时钟）——那是另两条
         独立面；③`created_at` 仍是 `created_at` 列的值，未改其语义。
         """
+        # 自主发现（负上限）：`max_size < 0` 时旧实现照走 `ids[:len - max_size]`
+        # ——切片上界超出列表长度 ⇒ **删除全部情境节点**（实测 -5 ⇒ 5 条清空），
+        # 而 docstring 的语义是「情境层 FIFO 上限」（负上限无语义），且同一参数的
+        # `set_context_cap` 已被 `_to_int_or(..., lo=1)` 夹到 ≥1：两条路径对同一
+        # 参数结论相反。现 fail-loud：非整数类型 TypeError、负值 ValueError，
+        # 零删除；0 与正数行为不变（0 = 清空，是明确可表达的语义）。
+        try:
+            _cap = int(max_size)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("情境层上限必须是整数，收到 %r" % (max_size,)) from exc
+        if _cap < 0:
+            raise ValueError("情境层上限不能为负，收到 %r" % (max_size,))
+        max_size = _cap
         c = self.conn.cursor()
         c.execute("SELECT id FROM nodes WHERE layer='context' ORDER BY rowid ASC")
         ids = [r[0] for r in c.fetchall()]

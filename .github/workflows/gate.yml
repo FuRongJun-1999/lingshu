@@ -76,6 +76,8 @@ env:
     tests/test_issue454_unpack_out_guard.py
     tests/test_issue_auto_decay_interval_guard.py
     tests/test_issue_conflict_self_guard.py
+    tests/test_issue_context_cap_negative_guard.py
+    tests/test_issue_verdict_input_guard.py
     tests/test_issue274_structural_influence_guard.py
     tests/test_issue521_activation_conflict_veto.py
     tests/test_issue481_snapshot_divergence.py
