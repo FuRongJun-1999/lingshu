@@ -3924,6 +3924,18 @@ class LayeredStore:
         ③仅把「周期」钉为 `_DECAY_PERIOD_SECONDS`（默认 60s，与
         `start_auto_decay` 默认 interval 同源），未把 γ 拆成独立配置项。
         """
+        # 自主发现（删除阈值值域）：`min_confidence` 是「低于即删」的阈值，契约
+        # ∈[0,1]；旧实现不校验——`>1` 时 `new_conf < min_confidence` 恒真 ⇒ 一次
+        # 删光全部未验证边与低于阈值的节点（实测 5 ⇒ 边 1→0、情境节点 3→0）；
+        # `<0` 时永不删除，遗忘机制整体失效且无任何信号。现 fail-loud：非实数
+        # TypeError、非有限或越界 ValueError（零写入）。
+        try:
+            _mc = float(min_confidence)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("min_confidence 必须是实数，收到 %r" % (min_confidence,)) from exc
+        if not math.isfinite(_mc) or not (0.0 <= _mc <= 1.0):
+            raise ValueError("min_confidence 必须是 [0, 1] 内的有限值，收到 %r" % (min_confidence,))
+        min_confidence = _mc
         dt = self._decay_dt(now)
         # #720：本轮逐行容错计数（写路径也刷新一次；语义＝「本次调用跳过的坏行 id」，
         # 与装载面 `_tolerant_nodes` 的刷新口径同名同义）。下方情境段/知识段遇到
