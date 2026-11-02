@@ -475,7 +475,7 @@
     {
      "file": "hex_query.py",
      "src": "aeis.hex_query",
-     "sha256": "824fb8c4e94140f5",
+     "sha256": "073cddf4d56284ca",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
