@@ -76,6 +76,7 @@ env:
     tests/test_issue454_unpack_out_guard.py
     tests/test_issue_auto_decay_interval_guard.py
     tests/test_issue_conflict_self_guard.py
+    tests/test_issue_decay_factor_range_guard.py
     tests/test_issue_min_confidence_range_guard.py
     tests/test_issue_scene_speed_negative_guard.py
     tests/test_issue_time_core_arg_types_guard.py
