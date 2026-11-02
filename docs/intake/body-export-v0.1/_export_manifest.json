@@ -420,7 +420,7 @@
     {
      "file": "hex_composite.py",
      "src": "aeis.hex_composite",
-     "sha256": "a538e0340874fab4",
+     "sha256": "dbf37d6b0f370591",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
