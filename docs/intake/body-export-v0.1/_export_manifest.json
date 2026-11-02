@@ -43,7 +43,7 @@
     {
      "file": "confirmation.py",
      "src": "aeis.confirmation",
-     "sha256": "3274294f0e1a6f0f",
+     "sha256": "e4048246b7fd6c23",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -431,7 +431,7 @@
     {
      "file": "hex_gen.py",
      "src": "aeis.hex_gen",
-     "sha256": "b18f474ba9433337",
+     "sha256": "f5bc3b8a13facd94",
      "rewrites": 3,
      "sanitized": 0,
      "patches": 0,
