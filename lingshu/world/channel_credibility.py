@@ -209,8 +209,13 @@ class ChannelCredibilityRegistry:
         # #402：NaN/±inf 不得被钳制表达式放行——实测 Python 的 min(1.0, nan)=1.0
         #   会把 NaN 置信度抬成 1.0，注入满额伪样本量（n_eff）。非有限值一律
         #   fail-closed 归零（零伪样本量，后验不动）。
-        conf = float(conf)
-        if not math.isfinite(conf):
+        # #2217：大整数（10**309/10**400/2**2000）在 float() 处抛 OverflowError，
+        #   且字符串/None 等非数值抛 TypeError/ValueError。包 try 归零与 #402 统一。
+        try:
+            conf = float(conf)
+            if not math.isfinite(conf):
+                conf = 0.0
+        except (TypeError, ValueError, OverflowError):
             conf = 0.0
         conf = max(0.0, min(1.0, conf))
         alpha = ALPHA_STRONG if strong else ALPHA_WEAK
