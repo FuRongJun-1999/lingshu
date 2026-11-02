@@ -170,10 +170,14 @@ _GOLDEN_PIXELS = {
 #   （不静默通过、也不误红）。像素层（上方 `_GOLDEN_PIXELS`）在任何组合下都恒验。
 _ZLIB_VERSION = getattr(Image.core, "zlib_version", "unknown")
 _GOLDEN_PNG = {
-    # 记录机（Lead 出值的环境）：stock zlib
+    # 记录机（Lead 出值的环境）：stock zlib。
+    # 2026-11-01 CI runner 轮更新：同 ('12.3.0', '1.3.1') 组合下 skeleton_demo.png
+    # 字节 4068 → 4213（像素层金标 0a7b79bf… **恒验仍过**；同 run 里 skeleton_walk.png
+    # 与金标逐字节一致 ⇒ 渲染未变，变的只是打包轮的 IDAT 编码——即 :151 「版本串相同
+    # 而打包后端不同 ⇒ 字节仍变」的再现）。demo 档按 CI 新实测更新；walk 档不变。
     ("12.3.0", "1.3.1"): {
         "skeleton_walk.png": ("9fd99af8acf41522b7687b812712f55e573bb7df2ee95309558f0a9b4c38ad00", 3465),
-        "skeleton_demo.png": ("59ba23047da29e96d82ace9221ca5e99764992e6aab45bcc8836126eefa2ecbe", 4068),
+        "skeleton_demo.png": ("435cb60d6e7fa23d9be0a6fa458964c40553273146a009564e51ba0ed1e6a7ee", 4213),
     },
     # 本机（Windows / zlib-ng 构建的 Pillow 轮）：2026-10-27 #1066 后实测
     # `skeleton_walk.png` 未变；`skeleton_demo.png` 因关节半径修正而重压。
