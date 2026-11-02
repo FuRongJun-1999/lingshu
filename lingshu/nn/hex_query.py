@@ -167,13 +167,19 @@ def extract_relations(detections: List[Dict]) -> List[Dict]:
     for i in range(len(detections)):
         for j in range(i + 1, len(detections)):
             a, b = detections[i], detections[j]
-            qa, qax = divmod(int(a["pos"][1:]), 3)
-            qb, qbx = divmod(int(b["pos"][1:]), 3)
-            rel = {"from": a["pos"], "to": b["pos"],
-                   "type_a": a["obj"].split("|")[0],
-                   "type_b": b["obj"].split("|")[0],
-                   "color_a": a["obj"].split("|")[1],
-                   "color_b": b["obj"].split("|")[1]}
+            axes_a = _det_axes(a)
+            axes_b = _det_axes(b)
+            if axes_a is None or axes_b is None:
+                continue
+            qa, qax = axes_a
+            qb, qbx = axes_b
+            a_obj = str(a.get("obj", "")).split("|")
+            b_obj = str(b.get("obj", "")).split("|")
+            rel = {"from": a.get("pos"), "to": b.get("pos"),
+                   "type_a": a_obj[0],
+                   "type_b": b_obj[0],
+                   "color_a": a_obj[1] if len(a_obj) > 1 else "",
+                   "color_b": b_obj[1] if len(b_obj) > 1 else ""}
             # 空间关系
             if qa < qb:
                 rel["spatial"] = "above"
@@ -262,12 +268,14 @@ def query_match(detections: List[Dict], lib: ConnectionLibrary,
 
 def _conn_matches(conn: Dict, det: Dict) -> bool:
     """单条 conn 与单个检测是否匹配（类型/方位/颜色判据）。"""
-    det_obj = det["obj"].split("|")
-    det_shape, det_color, det_pos = det_obj[0], det_obj[1], det["pos"]
+    det_obj = str(det.get("obj", "")).split("|")
+    det_shape = det_obj[0]
+    det_color = det_obj[1] if len(det_obj) > 1 else ""
+    det_pos = det.get("pos")
     if det_shape != conn["type"]:
         return False
     zone = conn.get("zone", "*")
-    if zone != "*" and det_pos not in _ZONES.get(zone, set()):
+    if zone != "*" and (det_pos is None or det_pos not in _ZONES.get(zone, set())):
         return False
     color = conn.get("color", "*")
     if color != "*" and det_color != color:
