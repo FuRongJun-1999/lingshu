@@ -55,7 +55,7 @@ PKG = os.path.join(REPO, "lingshu")
 README = os.path.join(REPO, "README.md")
 ARCH = os.path.join(REPO, "docs", "architecture.md")
 
-LAYERS = ("core", "nn", "gen", "world")
+LAYERS = ("core", "nn", "gen", "world", "vision")
 
 
 # ---------------------------------------------------------------- 实读计数
@@ -89,10 +89,12 @@ _README_RE = {
     "world": r"world 世界模型 (\d+) 件",
     "nn": r"nn 自研神经网络 (\d+) 件",
     "gen": r"gen 图像生成 (\d+) 件",
+    "vision": r"vision 视觉线稿 (\d+) 件",
 }
 _ARCH_TOTAL_RE = r"\*\*(\d+)\*\* 个 `\.py`"
 _ARCH_NONINIT_RE = r"\*\*(\d+)\*\* 个非 `__init__` 模块"
-_ARCH_PER_RE = r"core (\d+) / nn (\d+) / gen (\d+) / world (\d+) / 包根 (\d+)"
+_ARCH_PER_RE = (r"core (\d+) / nn (\d+) / gen (\d+) / world (\d+) / "
+                r"vision (\d+) / 包根 (\d+)")
 _ARCH_SMOKE_RE = r"import 冒烟 \*\*(\d+)/(\d+)\*\*"
 
 
@@ -117,8 +119,8 @@ def _arch_counts(text):
         out["noninit_total"] = int(m.group(1))
     m = re.search(_ARCH_PER_RE, text)
     if m:
-        out["core"], out["nn"], out["gen"], out["world"], out["root"] = (
-            int(g) for g in m.groups())
+        (out["core"], out["nn"], out["gen"], out["world"], out["vision"],
+         out["root"]) = (int(g) for g in m.groups())
     m = re.search(_ARCH_SMOKE_RE, text)
     if m:
         out["smoke_num"], out["smoke_den"] = int(m.group(1)), int(m.group(2))
@@ -141,6 +143,7 @@ def _mismatches(readme_text, arch_text, actual):
         "noninit_total": actual["noninit_total"],
         "core": actual["per"]["core"], "nn": actual["per"]["nn"],
         "gen": actual["per"]["gen"], "world": actual["per"]["world"],
+        "vision": actual["per"]["vision"],
         "root": actual["root"],
         "smoke_num": actual["all_py"], "smoke_den": actual["all_py"],
     }
