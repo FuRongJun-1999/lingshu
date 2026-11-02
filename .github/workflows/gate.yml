@@ -76,6 +76,7 @@ env:
     tests/test_issue454_unpack_out_guard.py
     tests/test_issue_auto_decay_interval_guard.py
     tests/test_issue_conflict_self_guard.py
+    tests/test_issue_condition_normalize_nondict_guard.py
     tests/test_issue281_insight_report_conditions_guard.py
     tests/test_issue_context_cap_negative_guard.py
     tests/test_issue_verdict_input_guard.py
