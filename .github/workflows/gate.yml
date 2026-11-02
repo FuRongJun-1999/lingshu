@@ -76,6 +76,14 @@ env:
     tests/test_issue454_unpack_out_guard.py
     tests/test_issue_auto_decay_interval_guard.py
     tests/test_issue_conflict_self_guard.py
+    tests/test_issue_min_confidence_range_guard.py
+    tests/test_issue_scene_speed_negative_guard.py
+    tests/test_issue_time_core_arg_types_guard.py
+    tests/test_issue_gap_dual_arg_types_guard.py
+    tests/test_issue_protect_reason_empty_guard.py
+    tests/test_issue_blindspot_input_guard.py
+    tests/test_issue_hex_extract_args_guard.py
+    tests/test_issue_insight_level_type_guard.py
     tests/test_issue_add_edge_missing_endpoint_guard.py
     tests/test_issue_condition_normalize_nondict_guard.py
     tests/test_issue281_insight_report_conditions_guard.py

@@ -288,6 +288,19 @@ def extract_attributes(img: np.ndarray, quadrant: str, color: str,
     尺寸档只在圆形部件上定义(配方语义如此;三角/条纹面积尺度不同,
     混标会扭曲分割点)——shape_hint 非 circle 时 size=None(诚实不猜)。
     """
+    # 自主发现（参数契约）：入口此前直接下标 `quadrant[1]` 并查 `_COLORS_RGB[color]`——
+    # `quadrant=None` 抛不可读 TypeError（'NoneType' object is not subscriptable）、
+    # `color="nope"` 抛裸 KeyError、`calib="x"` 抛 TypeError。现 fail-loud 且可读：
+    # quadrant 必须形如 r0/r1/r2；color 必须在 _COLORS_RGB；calib 必须是 dict/None。
+    if not isinstance(quadrant, str) or len(quadrant) < 2 or quadrant[0] != "r" \
+            or not quadrant[1].isdigit():
+        raise ValueError("quadrant 需形如 r0/r1/r2（象限 0-2），收到 %r" % (quadrant,))
+    if not isinstance(color, str) or color not in _COLORS_RGB:
+        raise ValueError("color 必须是 _COLORS_RGB 中的颜色，收到 %r" % (color,))
+    if calib is not None and not isinstance(calib, dict):
+        raise TypeError("calib 必须是 dict 或 None，收到 %s" % type(calib).__name__)
+    if not hasattr(img, "shape") or len(img.shape) != 3:
+        raise TypeError("img 必须是 HxWxC 的 numpy 数组")
     qy, qx = divmod(int(quadrant[1]), 3)
     h, w = img.shape[0] // 3, img.shape[1] // 3
     crop = img[qy * h:(qy + 1) * h, qx * w:(qx + 1) * w].astype(int)
