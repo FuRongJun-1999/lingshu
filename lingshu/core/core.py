@@ -5185,6 +5185,12 @@ class LayeredStore:
         保护名单可被非属主单向扩张却无留痕。审计只加在**本方法**与 `tag_node` 的
         `no_forget` 一支，**不**扩到全部标签面（避免大面积行为变更）。
         """
+        # 自主发现（空理由）：`reason` 是保护登记的**唯一审计理由**（protections
+        # 表第二列，供事后追「为什么不可遗忘」）；旧实现照收空串/None/纯空白，
+        # 登记行成为无可解释的永久保护。现 fail-loud：非 str 或纯空白 ValueError。
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("protect_node 需要非空理由（记入 protections.reason），"
+                             "收到 %r" % (reason,))
         own_tx = not self.conn.in_transaction
         if own_tx:
             self.conn.execute("BEGIN IMMEDIATE")
