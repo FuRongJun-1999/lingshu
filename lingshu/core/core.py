@@ -5996,6 +5996,12 @@ class LayeredStore:
             for e in add:
                 if e not in ev:
                     ev.append(e)
+        # 自主发现（参数类型）：level 此前直接 `.upper()`——传非字符串（数字/列表）
+        # 抛不可读 AttributeError（'int' object has no attribute 'upper'）。现 fail-loud：
+        # 非 str 且非 None → 可读 TypeError（None 仍按既有语义归一为空串）。
+        if level is not None and not isinstance(level, str):
+            raise TypeError("insight_verify 的 level 必须是字符串或 None，收到 %s"
+                            % type(level).__name__)
         level = (level or "").upper()
         status = "pending"
         if level in ("REFUTED", "X"):
