@@ -14764,6 +14764,20 @@ class SpacetimeMemoryEngine:
         卡死的衰减周期下本方法仍会在上界后继续启动新线程，代价是那种情况下仍可能
         短暂并存（与 `close()` 的同一取舍：生命周期收尾不得被单个后台任务无限拖住）。
         """
+        # 自主发现（采样周期值域）：`interval` 是 `Event.wait` 的超时秒数，旧实现
+        # 不校验——`interval=0` 让 wait 立即返回 False，循环体**连续**跑
+        # `decay_cycle()`（忙循环：CPU 占满 + 反复抢写锁，实测两线程叠加后
+        # `export_all` 抛 `database table is locked`）；`interval<0` 同效
+        # （负超时被 wait 当 0）；`interval=NaN` 在**线程内**抛 ValueError，
+        # 异常落在 daemon 线程里无人回收，而 `start_auto_decay` 已返回成功。
+        # 现 fail-loud：非实数 TypeError、非有限或 ≤0 ValueError，零线程启动。
+        try:
+            _iv = float(interval)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("采样周期 interval 必须是实数，收到 %r" % (interval,)) from exc
+        if not math.isfinite(_iv) or _iv <= 0.0:
+            raise ValueError("采样周期 interval 必须是正的有限秒数，收到 %r" % (interval,))
+        interval = _iv
         # #265：先停旧（含 join）再起新 ⇒ 任意次 stop→start 后最多一条线程，
         # 且新 interval 立即生效（不再被旧线程的闭包 interval 拖住）。
         self.stop_auto_decay()
