@@ -12,8 +12,23 @@
 import math
 
 
+def _as_floats(name, *values):
+    """把入口参数统一转为 float；非数值抛可读 TypeError（核形状不变）。"""
+    out = []
+    for v in values:
+        try:
+            out.append(float(v))
+        except (TypeError, ValueError) as exc:
+            raise TypeError("%s 的参数必须是实数，收到 %r" % (name, v)) from exc
+    return tuple(out)
+
+
 def cred(x0: float, x_inf: float, gamma: float, dt: float) -> float:
     """连续指数核：状态从 x0 向终值 x_inf 衰减，速率 γ，历时 dt。"""
+    # 自主发现（参数类型）：入口此前无类型转换——传非数值（如 dt="x"）时在
+    # math.exp 处抛不可读的 TypeError（"can't multiply sequence by non-int"）。
+    # 现统一转 float 并把失败转成可读 TypeError；数值语义不变。
+    x0, x_inf, gamma, dt = _as_floats("cred", x0, x_inf, gamma, dt)
     return x_inf + (x0 - x_inf) * math.exp(-gamma * dt)
 
 
@@ -29,6 +44,7 @@ def cred_factor(gamma: float, dt: float, floor: float = 0.0, ceil: float = 1.0) 
     `min(1.0, nan) == 1.0` 会把 NaN 抬成满额保持（完全不衰减），与 #196/#402
     「非有限不得给出对己有利结论」相反；此处与 #402 同向取最保守端。
     """
+    gamma, dt = _as_floats("cred_factor", gamma, dt)
     f = math.exp(-gamma * dt)
     if not math.isfinite(f):
         return floor
