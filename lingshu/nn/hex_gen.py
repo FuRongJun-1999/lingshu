@@ -578,7 +578,7 @@ def verify_readback(img: np.ndarray, parts: List[Dict], log: List[Dict],
                 size_misses.append({"part": rec["part"], "spec_size": rec["size_spec"],
                                     "read": read.get("size"), "span": read.get("span"),
                                     "zone": rec["zone"]})
-    return {"pattern_acc": round(pat_ok / max(1, pat_n), 4), "n_pattern": pat_n,
+    return {"pattern_acc": round(pat_ok / pat_n, 4) if pat_n else None, "n_pattern": pat_n,
             "size_acc": round(size_ok / max(1, size_n), 4) if size_n else None,
             "n_size": size_n, "misses": misses, "size_misses": size_misses}
 
