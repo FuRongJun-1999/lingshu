@@ -151,6 +151,19 @@ class GapDual:
         衰减」的旧行为被契约方向取代，指数衰减在读数上不可再观测。
         """
         # 结构性增长：盲区/新条件暴露 → 增长（时间衰减只决定吸收速度）
+        # 自主发现（参数类型）：new_conditions_seen 此前无类型闸——传字符串时
+        # `growth += "x" * 0.5` 抛不可读 TypeError（"can't multiply sequence by
+        # non-int of type 'float'"）；传负数会把 growth 拉负并让单调包络吞掉。
+        # 现 fail-loud：非数值 TypeError、负数/非有限 ValueError。
+        try:
+            _nc = int(new_conditions_seen)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("new_conditions_seen 必须是整数，收到 %r"
+                            % (new_conditions_seen,)) from exc
+        if _nc < 0:
+            raise ValueError("new_conditions_seen 不能为负，收到 %r"
+                             % (new_conditions_seen,))
+        new_conditions_seen = _nc
         growth = 0.0
         if blindspot:
             growth += 1.0                     # 盲区暴露 → 未建模总量增加

@@ -3924,6 +3924,18 @@ class LayeredStore:
         ③仅把「周期」钉为 `_DECAY_PERIOD_SECONDS`（默认 60s，与
         `start_auto_decay` 默认 interval 同源），未把 γ 拆成独立配置项。
         """
+        # 自主发现（删除阈值值域）：`min_confidence` 是「低于即删」的阈值，契约
+        # ∈[0,1]；旧实现不校验——`>1` 时 `new_conf < min_confidence` 恒真 ⇒ 一次
+        # 删光全部未验证边与低于阈值的节点（实测 5 ⇒ 边 1→0、情境节点 3→0）；
+        # `<0` 时永不删除，遗忘机制整体失效且无任何信号。现 fail-loud：非实数
+        # TypeError、非有限或越界 ValueError（零写入）。
+        try:
+            _mc = float(min_confidence)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("min_confidence 必须是实数，收到 %r" % (min_confidence,)) from exc
+        if not math.isfinite(_mc) or not (0.0 <= _mc <= 1.0):
+            raise ValueError("min_confidence 必须是 [0, 1] 内的有限值，收到 %r" % (min_confidence,))
+        min_confidence = _mc
         dt = self._decay_dt(now)
         # #720：本轮逐行容错计数（写路径也刷新一次；语义＝「本次调用跳过的坏行 id」，
         # 与装载面 `_tolerant_nodes` 的刷新口径同名同义）。下方情境段/知识段遇到
@@ -4787,6 +4799,14 @@ class LayeredStore:
         `e.store.add_blindspot(category='meta')` 原样把元盲区落库（宣称的「零记录」
         约束可被绕过）。现与门面同闸：`_is_meta_category` 命中即 `ValueError`。
         """
+        # 自主发现（空标识）：code/description 是盲区注册表的**标识与说明**，旧实现
+        # 照收空串（实测 add_blindspot("", "") 返回 bs_xxx）——一条无代码、无说明
+        # 的盲区记录既无法被 resolve 引用，也无法被人读懂。现 fail-loud：非 str 或
+        # 纯空白 ValueError（零写入）。
+        if not isinstance(code, str) or not code.strip():
+            raise ValueError("add_blindspot 需要非空 code，收到 %r" % (code,))
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError("add_blindspot 需要非空 description，收到 %r" % (description,))
         if _is_meta_category(category):
             raise ValueError(
                 "元盲区零记录（#386）：拒绝把 category 规范化后为 meta 的盲区写入注册表")
@@ -5198,6 +5218,12 @@ class LayeredStore:
         保护名单可被非属主单向扩张却无留痕。审计只加在**本方法**与 `tag_node` 的
         `no_forget` 一支，**不**扩到全部标签面（避免大面积行为变更）。
         """
+        # 自主发现（空理由）：`reason` 是保护登记的**唯一审计理由**（protections
+        # 表第二列，供事后追「为什么不可遗忘」）；旧实现照收空串/None/纯空白，
+        # 登记行成为无可解释的永久保护。现 fail-loud：非 str 或纯空白 ValueError。
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("protect_node 需要非空理由（记入 protections.reason），"
+                             "收到 %r" % (reason,))
         own_tx = not self.conn.in_transaction
         if own_tx:
             self.conn.execute("BEGIN IMMEDIATE")
@@ -6019,6 +6045,12 @@ class LayeredStore:
             for e in add:
                 if e not in ev:
                     ev.append(e)
+        # 自主发现（参数类型）：level 此前直接 `.upper()`——传非字符串（数字/列表）
+        # 抛不可读 AttributeError（'int' object has no attribute 'upper'）。现 fail-loud：
+        # 非 str 且非 None → 可读 TypeError（None 仍按既有语义归一为空串）。
+        if level is not None and not isinstance(level, str):
+            raise TypeError("insight_verify 的 level 必须是字符串或 None，收到 %s"
+                            % type(level).__name__)
         level = (level or "").upper()
         status = "pending"
         if level in ("REFUTED", "X"):
