@@ -93,7 +93,7 @@ def normalize_source(source: Optional[str]) -> str:
 def _check_weight(weight) -> float:
     try:
         w = float(weight)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ValueError(f"evidence weight 必须是数值，收到 {weight!r}")
     if not math.isfinite(w) or w <= 0.0 or w > 1.0:
         raise ValueError(f"evidence weight 须在 (0, 1] 且有限，收到 {weight!r}")
