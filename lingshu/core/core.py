@@ -4774,6 +4774,14 @@ class LayeredStore:
         `e.store.add_blindspot(category='meta')` 原样把元盲区落库（宣称的「零记录」
         约束可被绕过）。现与门面同闸：`_is_meta_category` 命中即 `ValueError`。
         """
+        # 自主发现（空标识）：code/description 是盲区注册表的**标识与说明**，旧实现
+        # 照收空串（实测 add_blindspot("", "") 返回 bs_xxx）——一条无代码、无说明
+        # 的盲区记录既无法被 resolve 引用，也无法被人读懂。现 fail-loud：非 str 或
+        # 纯空白 ValueError（零写入）。
+        if not isinstance(code, str) or not code.strip():
+            raise ValueError("add_blindspot 需要非空 code，收到 %r" % (code,))
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError("add_blindspot 需要非空 description，收到 %r" % (description,))
         if _is_meta_category(category):
             raise ValueError(
                 "元盲区零记录（#386）：拒绝把 category 规范化后为 meta 的盲区写入注册表")
