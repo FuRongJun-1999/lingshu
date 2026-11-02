@@ -5,26 +5,26 @@
 # ── 2026-10-23（#505 工作集 query 落库）后重编号：activation.py 348 → 355 ──
 # 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。
 lingshu/core/activation.py:355:R3      # 形状级命中（**非**时间衰减）：issue #53 的节点对级条件衰减修正
-lingshu/world/physics.py:359:R1      # 物理阻尼：`fit_damped` 代价函数的基函数 exp(-k·x)（线性阻尼振子闭式解），非时间核
-lingshu/world/physics.py:387:R1      # 物理阻尼：`fit_damped` 代价函数的基函数 exp(-k·x)（线性阻尼振子闭式解），非时间核
-lingshu/world/physics.py:504:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
-lingshu/world/physics.py:508:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
-lingshu/world/physics.py:512:R1      # 物理阻尼：`predict_at('damped')` 的解析解 exp(-kk·τ)，非时间核
-lingshu/world/physics.py:512:R3      # 与本行已登记 R1 同一阻尼式的 `* tau` 名字形状命中，非独立违规
-lingshu/world/physics.py:519:R3      # 运动学外推：圆周角度推进 θ=θ0+ω·τ，tau 非保持率
-lingshu/world/physics.py:522:R3      # 运动学外推：圆周竖直漂移 z=z0+v_up·τ，tau 非保持率
-lingshu/world/physics.py:539:R3      # 运动学外推：drag2 的 tanh 参数 u=u0+g·τ/v_t，tau 非保持率
-lingshu/world/physics.py:548:R3      # 运动学外推：横向匀速漂移/世界坐标分解 p=p0+drift·τ，tau 非保持率
-lingshu/world/physics.py:563:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
-lingshu/world/physics.py:564:R3      # 运动学外推：slope_friction 沿坡速度 v_s=v_s0+a·τ，tau 非保持率
-lingshu/world/physics.py:566:R3      # 运动学外推：横向匀速漂移/世界坐标分解 p=p0+drift·τ，tau 非保持率
-lingshu/world/physics.py:969:R1      # 物理量：`_log_cosh`（softplus）用于 drag2 位置闭式，纯函数无时间衰减语义
-lingshu/world/physics.py:2453:R1      # 物理阻尼：欠阻尼振子包络 exp(-ζωt)，非时间核
-lingshu/world/physics.py:2456:R1      # 物理阻尼：临界阻尼响应 (1+ωt)·exp(-ωt)，非时间核
-lingshu/world/physics.py:2458:R1      # 物理阻尼：欠阻尼振子包络 exp(-ζωt)，非时间核
-lingshu/world/physics.py:2474:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
-lingshu/world/physics.py:2573:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
-lingshu/world/physics.py:2605:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
+lingshu/world/physics.py:373:R1      # 物理阻尼：`fit_damped` 代价函数的基函数 exp(-k·x)（线性阻尼振子闭式解），非时间核
+lingshu/world/physics.py:401:R1      # 物理阻尼：`fit_damped` 代价函数的基函数 exp(-k·x)（线性阻尼振子闭式解），非时间核
+lingshu/world/physics.py:518:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
+lingshu/world/physics.py:522:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
+lingshu/world/physics.py:526:R1      # 物理阻尼：`predict_at('damped')` 的解析解 exp(-kk·τ)，非时间核
+lingshu/world/physics.py:526:R3      # 与本行已登记 R1 同一阻尼式的 `* tau` 名字形状命中，非独立违规
+lingshu/world/physics.py:533:R3      # 运动学外推：圆周角度推进 θ=θ0+ω·τ，tau 非保持率
+lingshu/world/physics.py:536:R3      # 运动学外推：圆周竖直漂移 z=z0+v_up·τ，tau 非保持率
+lingshu/world/physics.py:553:R3      # 运动学外推：drag2 的 tanh 参数 u=u0+g·τ/v_t，tau 非保持率
+lingshu/world/physics.py:562:R3      # 运动学外推：横向匀速漂移/世界坐标分解 p=p0+drift·τ，tau 非保持率
+lingshu/world/physics.py:593:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率（#2088 修法：stopping 分支 stop 前的二次式，第二处同形态）
+lingshu/world/physics.py:594:R3      # 运动学外推：slope_friction 沿坡速度 v_s=v_s0+a·τ，tau 非保持率（同上第二处）
+lingshu/world/physics.py:596:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
+lingshu/world/physics.py:999:R1      # 物理量：`_log_cosh`（softplus）用于 drag2 位置闭式，纯函数无时间衰减语义
+lingshu/world/physics.py:2519:R1      # 物理阻尼：欠阻尼振子包络 exp(-ζωt)，非时间核
+lingshu/world/physics.py:2522:R1      # 物理阻尼：临界阻尼响应 (1+ωt)·exp(-ωt)，非时间核
+lingshu/world/physics.py:2524:R1      # 物理阻尼：欠阻尼振子包络 exp(-ζωt)，非时间核
+lingshu/world/physics.py:2540:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
+lingshu/world/physics.py:2639:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
+lingshu/world/physics.py:2671:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
 lingshu/world/shade_paint.py:215:R1      # 色调映射：软肩曲线 1-exp(-(v-S)/S)（呈现层光学变换），非时间演化
 # ── 2026-10-22（#859 acquire history 落盘）后重编号：stable_lease.py 222 → 250 ──
 # ── 2026-10-24（#101 state() 现算谓词）后重编号：stable_lease.py 250 → 265 ──
@@ -138,3 +138,8 @@ lingshu/world/stable_lease.py:279:R1      # 既有：手写同核 exp(-γ·t)（
 # 并重新补写性质注释」）。本次为**单条行号同步**：条目**数与性质均未变**（23 条 → 23 条，
 # 性质注释逐字保留）；**不是**新增豁免、**不是**放宽判据。该行仍是运动学外推
 # （`tau = float(t) - t0` 是流逝时间，不是保持率），未走 time_core 统一核。
+# ── 2026-10-31 修法重编号（dsh-bounty #2053/#2054/#2062/#2088/#2090/#2091，fix/physics-batch）：
+#   physics.py fit_uniform/fit_accelerated/fit_projectile tau 化 + predict_at slope 分支
+#   重构（held/stopping/sliding 三支，钳位折进 tau_eff/a_eff）+ simulate 两分支收口 ⇒
+#   全部 physics 条目行号现算平移；旧 564（`v_s = v_s0 + a * tau`）形状随 tau_eff 重写
+#   消失（不再命中），563 形状并入 596 的世界坐标分解行。行号集与 live 恰等。
