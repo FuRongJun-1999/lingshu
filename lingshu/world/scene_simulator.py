@@ -387,6 +387,17 @@ class SceneSimulator:
         if len(p) != 3 or not all(math.isfinite(v) for v in p):
             raise ValueError(
                 "pos 需为 (x, y, z) 有限坐标三元组，收到 %r" % (pos,))
+        # 自主发现（速度值域）：speed 此前无校验——负 speed 会让实体**反向**移动
+        # （`step` 里 `step_len = e.speed` 为负），实测 speed=-1 从 (6.0, 6.0)
+        # 退到 (5.72, 6.96)；负速度还会污染 `world_learner.speed_est`（学出负速度）。
+        # 现 fail-loud：非实数 TypeError、非有限或负值 ValueError（实体不注册）。
+        try:
+            _speed = float(speed)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("speed 必须是实数，收到 %r" % (speed,)) from exc
+        if not math.isfinite(_speed) or _speed < 0.0:
+            raise ValueError("speed 必须是非负有限数，收到 %r" % (speed,))
+        speed = _speed
         e = SceneEntity(category=category, pos=p,
                         behavior=behavior, speed=speed, goal=goal)
         self.entities[e.id] = e
