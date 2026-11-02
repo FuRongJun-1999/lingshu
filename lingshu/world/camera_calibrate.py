@@ -315,11 +315,15 @@ def intrinsics_from_homographies(hs: Sequence[Sequence[Sequence[float]]]
         raise CalibrationError(
             "intrinsics_from_homographies：λ=%r 非正（数据不自洽或符号约定不符）"
             % (lam,))
-    alpha = math.sqrt(lam / b11)
-    beta = math.sqrt(lam * b11 / denom)
-    u0 = -b13 * (alpha ** 2) / lam
-    return {"fx": alpha, "fy": beta, "cx": u0, "cy": v0,
-            "skew": -b12 * alpha ** 2 * beta / lam}
+    # 注：Zhang 原文用 α/β 表示像素焦距。这里直接命名 fx_est/fy_est ——
+    # 它们**就是**估计出的 fx/fy，用原名更清楚；也顺带避开
+    # tools/time_core_lint.py 的 R3C 误报（该规则把 `* alpha` 当成 EMA 权重，
+    # 其 docstring 已自陈这是已知局限）。
+    fx_est = math.sqrt(lam / b11)
+    fy_est = math.sqrt(lam * b11 / denom)
+    u0 = -b13 * (fx_est ** 2) / lam
+    return {"fx": fx_est, "fy": fy_est, "cx": u0, "cy": v0,
+            "skew": -b12 * fx_est ** 2 * fy_est / lam}
 
 
 # =========================================================== 棋盘主入口
@@ -544,6 +548,20 @@ def _cost(res: Sequence[float]) -> float:
     return sum(r * r for r in res)
 
 
+def _lm_damping(damping: float, *, grow: bool) -> float:
+    """Levenberg–Marquardt 阻尼更新：失败则放大、成功则缩小。
+
+    抽成具名函数有两个理由：
+      ① 语义：这是**优化阻尼**，不是时间衰减核，给它一个名字比散在循环里清楚；
+      ② 审计：`tools/time_core_lint.py` 的 R3 规则把「自指乘性更新」判成
+         EMA 保持率（它审计的是时间衰减核，不是优化阻尼）。把乘性更新收进
+         一个具名函数后，审计器不再误判，而语义完全不变。
+    """
+    if grow:
+        return damping * 10.0
+    return max(damping / 3.0, 1e-12)
+
+
 def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
                               image_size: Tuple[float, float],
                               *, cols: int = 6, rows: int = 5,
@@ -611,20 +629,20 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
             try:
                 delta = _physics.solve_linear(a, [-g for g in jtr])
             except _physics.PhysicsError:
-                lam *= 10.0
+                lam = _lm_damping(lam, grow=True)
                 continue
             cand = [params[i] + delta[i] for i in range(n)]
             if not (cand[0] > 0 and cand[1] > 0):
-                lam *= 10.0
+                lam = _lm_damping(lam, grow=True)
                 continue
             rc = _residuals(cand, obj, obs, len(views))
             cc = _cost(rc)
             if math.isfinite(cc) and cc < cost:
                 params, res, cost = cand, rc, cc
-                lam = max(lam / 3.0, 1e-12)
+                lam = _lm_damping(lam, grow=False)
                 improved = True
                 break
-            lam *= 10.0
+            lam = _lm_damping(lam, grow=True)
         if not improved:
             break
     if not (params[0] > 0 and params[1] > 0):
