@@ -74,7 +74,7 @@ _POSES = [(0.20, 0.10, 0.05, [-2.5, -2.0, 9.0]),
           (-0.30, 0.40, -0.10, [-2.0, -3.0, 8.5])]
 
 
-def _project_independent(rot, tv, p, k1, k2):
+def _project_independent(rot, tv, p, k1, k2, p1=0.0, p2=0.0):
     """★ **独立实现**的投影（不调用被测模块的任何函数）。
 
     为什么必须独立：若夹具用 `CC.project_with_distortion` 造数据，就是
@@ -89,12 +89,14 @@ def _project_independent(rot, tv, p, k1, k2):
     xn, yn = x / z, y / z
     r2 = xn * xn + yn * yn
     scale = 1.0 + k1 * r2 + k2 * r2 * r2      # Brown–Conrady 径向 2 项
-    xd, yd = xn * scale, yn * scale
+    # 切向 2 项（p1 = p2 = 0 时退化为纯径向）
+    xd = xn * scale + 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
+    yd = yn * scale + p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
     return (TRUE_K["fx"] * xd + TRUE_K["skew"] * yd + TRUE_K["cx"],
             TRUE_K["fy"] * yd + TRUE_K["cy"])
 
 
-def _make_views(k1=0.0, k2=0.0, noise=0.0, poses=None):
+def _make_views(k1=0.0, k2=0.0, noise=0.0, poses=None, p1=0.0, p2=0.0):
     """按给定真值造视图。`noise` 为像素均匀噪声幅度（确定性 LCG，不用 random）。"""
     obj = CC.chessboard_object_points(COLS, ROWS, SQUARE)
     views = []
@@ -103,7 +105,7 @@ def _make_views(k1=0.0, k2=0.0, noise=0.0, poses=None):
         rot = _rot(rx, ry, rz)
         px = []
         for p in obj:
-            u, v = _project_independent(rot, tv, p, k1, k2)
+            u, v = _project_independent(rot, tv, p, k1, k2, p1, p2)
             if noise:
                 # 确定性 LCG（不用 random 模块，避免全局状态）
                 rng = (1103515245 * rng + 12345) % (2 ** 31)
@@ -308,3 +310,67 @@ def test_e_reuses_physics_solve_linear_not_a_second_copy():
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "lingshu", "world", "camera_calibrate.py"), encoding="utf-8").read()
     assert "def solve_linear" not in src, "本模块不应另写高斯消元（应复用 physics）"
+
+
+# ===========================================================================
+# C2 组：切向畸变（完整 Brown–Conrady）
+# ===========================================================================
+TRUE_P1, TRUE_P2 = 0.0012, -0.0009
+
+
+def test_c2_tangential_recovered_exactly():
+    """★ 已知 (k1,k2,p1,p2) 的无噪声数据 ⇒ 四个系数全部吻合（< 1e-6）。
+
+    缺陷态对照：切向项写成 `2·p1·x² + p2·r²`（漏掉 xy 交叉项）⇒ C2 红。
+    """
+    views = _make_views(k1=TRUE_K1, k2=TRUE_K2, p1=TRUE_P1, p2=TRUE_P2)
+    rep = CC.calibrate_with_distortion(views, IMAGE_SIZE,
+                                       cols=COLS, rows=ROWS, square=SQUARE,
+                                       iters=40, tangential=True)
+    d = rep["distortion"]
+    assert rep["tangential"] is True
+    assert d["k1"] == pytest.approx(TRUE_K1, abs=1e-6)
+    assert d["k2"] == pytest.approx(TRUE_K2, abs=1e-6)
+    assert d["p1"] == pytest.approx(TRUE_P1, abs=1e-6)
+    assert d["p2"] == pytest.approx(TRUE_P2, abs=1e-6)
+    assert rep["residual_px"] < 1e-6
+
+
+def test_c2_radial_only_cannot_fit_tangential_data():
+    """★ 反向自证：数据**含**切向畸变时，只估径向必须**拟合不了**（残差显著 > 0）。
+
+    这条证明切向项不是摆设：不加它，残差降不下去。
+    """
+    views = _make_views(k1=TRUE_K1, k2=TRUE_K2, p1=TRUE_P1, p2=TRUE_P2)
+    radial = CC.calibrate_with_distortion(views, IMAGE_SIZE,
+                                          cols=COLS, rows=ROWS, square=SQUARE,
+                                          iters=40, tangential=False)
+    full = CC.calibrate_with_distortion(views, IMAGE_SIZE,
+                                        cols=COLS, rows=ROWS, square=SQUARE,
+                                        iters=40, tangential=True)
+    assert radial["residual_px"] > 1e-3, (
+        "只估径向竟也能拟合切向数据（残差 %.3e）—— 切向项可能没生效"
+        % radial["residual_px"])
+    assert full["residual_px"] < radial["residual_px"] * 1e-6
+
+
+def test_c2_radial_only_is_backward_compatible():
+    """★ 向后兼容：`tangential=False` 时返回值里**没有** p1/p2，行为与改造前一致。"""
+    views = _make_views(k1=TRUE_K1, k2=TRUE_K2)
+    rep = CC.calibrate_with_distortion(views, IMAGE_SIZE,
+                                       cols=COLS, rows=ROWS, square=SQUARE,
+                                       iters=40)
+    assert rep["tangential"] is False
+    assert "p1" not in rep["distortion"]
+    assert "p2" not in rep["distortion"]
+    assert rep["distortion"]["k1"] == pytest.approx(TRUE_K1, abs=1e-6)
+
+
+def test_c2_zero_tangential_stays_zero():
+    """★ 反向自证：真值无切向时，估出的 p1/p2 必须接近 0（不能凭空造）。"""
+    views = _make_views(k1=TRUE_K1, k2=TRUE_K2)
+    rep = CC.calibrate_with_distortion(views, IMAGE_SIZE,
+                                       cols=COLS, rows=ROWS, square=SQUARE,
+                                       iters=40, tangential=True)
+    assert abs(rep["distortion"]["p1"]) < 1e-6
+    assert abs(rep["distortion"]["p2"]) < 1e-6

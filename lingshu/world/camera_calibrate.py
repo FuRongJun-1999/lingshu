@@ -456,30 +456,38 @@ def _mat_to_rodrigues(r: Sequence[Sequence[float]]) -> List[float]:
 
 
 # =========================================================== Brown–Conrady 畸变
-def distort_normalized(xn: float, yn: float, k1: float, k2: float
+def distort_normalized(xn: float, yn: float, k1: float, k2: float,
+                       p1: float = 0.0, p2: float = 0.0
                        ) -> Tuple[float, float]:
-    """归一化像平面坐标 → 畸变后坐标（Brown–Conrady **径向 2 项**）。
+    """归一化像平面坐标 → 畸变后坐标（Brown–Conrady：径向 2 项 + 切向 2 项）。
 
-    `r² = xn²+yn²`；`scale = 1 + k1·r² + k2·r⁴`；`(xd,yd) = scale·(xn,yn)`。
-    只做径向，不做切向（p1/p2）——见模块 docstring 的诚实边界。
+    径向：`r² = xn²+yn²`，`radial = 1 + k1·r² + k2·r⁴`；
+    切向：`xd += 2·p1·xn·yn + p2·(r² + 2xn²)`，
+          `yd += p1·(r² + 2yn²) + 2·p2·xn·yn`。
+
+    `p1 = p2 = 0` 时与"只做径向"完全等价（向后兼容）。
+    切向项来自镜头与传感器不平行，手机/工业相机通常很小。
     """
     r2 = xn * xn + yn * yn
-    s = 1.0 + k1 * r2 + k2 * r2 * r2
-    return xn * s, yn * s
+    radial = 1.0 + k1 * r2 + k2 * r2 * r2
+    xd = xn * radial + 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
+    yd = yn * radial + p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
+    return xd, yd
 
 
 def project_with_distortion(k: Dict[str, float], rvec: Sequence[float],
                             tvec: Sequence[float], p: Sequence[float],
-                            k1: float = 0.0, k2: float = 0.0
+                            k1: float = 0.0, k2: float = 0.0,
+                            p1: float = 0.0, p2: float = 0.0
                             ) -> Optional[Tuple[float, float]]:
-    """世界点 → 像素（含径向畸变）。相机后方返回 None。"""
+    """世界点 → 像素（含径向 + 切向畸变）。相机后方返回 None。"""
     rot = _rodrigues(rvec)
     x = rot[0][0] * p[0] + rot[0][1] * p[1] + rot[0][2] * p[2] + tvec[0]
     y = rot[1][0] * p[0] + rot[1][1] * p[1] + rot[1][2] * p[2] + tvec[1]
     z = rot[2][0] * p[0] + rot[2][1] * p[1] + rot[2][2] * p[2] + tvec[2]
     if z <= 1e-9:
         return None
-    xd, yd = distort_normalized(x / z, y / z, k1, k2)
+    xd, yd = distort_normalized(x / z, y / z, k1, k2, p1, p2)
     return (k["fx"] * xd + k["skew"] * yd + k["cx"],
             k["fy"] * yd + k["cy"])
 
@@ -521,19 +529,28 @@ def _pose_from_homography(h: Sequence[Sequence[float]],
 
 def _residuals(params: Sequence[float], obj: Sequence[Sequence[float]],
                obs: Sequence[Sequence[Sequence[float]]],
-               n_views: int) -> List[float]:
-    """参数向量 → 残差向量（每点 2 维：预测 − 观测）。"""
+               n_views: int, tangential: bool = False) -> List[float]:
+    """参数向量 → 残差向量（每点 2 维：预测 − 观测）。
+
+    参数布局：`[fx, fy, cx, cy, k1, k2]` +（切向时追加 `[p1, p2]`）
+              + 每视图 `[rvec(3), tvec(3)]`。
+    """
     k = {"fx": params[0], "fy": params[1], "cx": params[2], "cy": params[3],
          "skew": 0.0}
     k1, k2 = params[4], params[5]
+    if tangential:
+        p1, p2 = params[6], params[7]
+        base = 8
+    else:
+        p1 = p2 = 0.0
+        base = 6
     out: List[float] = []
-    base = 6
     for vi in range(n_views):
         o = base + 6 * vi
         rvec = params[o:o + 3]
         tvec = params[o + 3:o + 6]
         for p, px in zip(obj, obs[vi]):
-            pred = project_with_distortion(k, rvec, tvec, p, k1, k2)
+            pred = project_with_distortion(k, rvec, tvec, p, k1, k2, p1, p2)
             if pred is None:
                 # 相机后方：给一个大残差把参数推回去（不是静默丢弃）
                 out.append(1e4)
@@ -567,9 +584,14 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
                               *, cols: int = 6, rows: int = 5,
                               square: float = 1.0,
                               iters: int = 60,
+                              tangential: bool = False,
                               fd_abs: float = 1e-6,
                               fd_rel: float = 1e-5) -> Dict[str, Any]:
-    """棋盘 + Brown–Conrady 径向畸变 → 内参 + (k1, k2) + 重投影残差。
+    """棋盘 + Brown–Conrady 畸变 → 内参 + 畸变系数 + 重投影残差。
+
+    `tangential=False`（默认）：只估径向 `(k1, k2)`——多数相机的切向项很小，
+    少估 2 个参数更稳。`tangential=True`：同时估切向 `(p1, p2)`（完整
+    Brown–Conrady），需要更多视图/更高角点精度，否则切向项容易与主点耦合。
 
     两步：
       1. 用 `calibrate_from_chessboards` 得内参初值，由单应分解得各视图位姿初值；
@@ -594,12 +616,14 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
                                       square=square)
     kb = base["intrinsics"]
     params: List[float] = [kb["fx"], kb["fy"], kb["cx"], kb["cy"], 0.0, 0.0]
+    if tangential:
+        params.extend([0.0, 0.0])          # p1, p2 初值 0
     for i, h in enumerate(base["homographies"]):
         rvec, tvec = _pose_from_homography(h, kb)
         params.extend(rvec)
         params.extend(tvec)
 
-    res = _residuals(params, obj, obs, len(views))
+    res = _residuals(params, obj, obs, len(views), tangential)
     cost = _cost(res)
     if not math.isfinite(cost):
         raise CalibrationError("calibrate_with_distortion：初值残差非有限")
@@ -614,8 +638,8 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
             pp[j] += step
             pm = list(params)
             pm[j] -= step
-            rp = _residuals(pp, obj, obs, len(views))
-            rm = _residuals(pm, obj, obs, len(views))
+            rp = _residuals(pp, obj, obs, len(views), tangential)
+            rm = _residuals(pm, obj, obs, len(views), tangential)
             jac.append([(rp[k] - rm[k]) / (2.0 * step) for k in range(len(res))])
         # 正规方程 JᵀJ δ = −Jᵀr（J 按列存 ⇒ 转置后按行）
         jtj = [[sum(jac[a][k] * jac[b][k] for k in range(len(res)))
@@ -635,7 +659,7 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
             if not (cand[0] > 0 and cand[1] > 0):
                 lam = _lm_damping(lam, grow=True)
                 continue
-            rc = _residuals(cand, obj, obs, len(views))
+            rc = _residuals(cand, obj, obs, len(views), tangential)
             cc = _cost(rc)
             if math.isfinite(cc) and cc < cost:
                 params, res, cost = cand, rc, cc
@@ -652,14 +676,20 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
         raise CalibrationError("calibrate_with_distortion：优化后主点落在图像外"
                                "（%.2f, %.2f）" % (params[2], params[3]))
     rms = math.sqrt(cost / max(len(res), 1))
+    pbase = 8 if tangential else 6
+    dist: Dict[str, float] = {"k1": params[4], "k2": params[5]}
+    if tangential:
+        dist["p1"] = params[6]
+        dist["p2"] = params[7]
     return {
         "intrinsics": {"fx": params[0], "fy": params[1], "cx": params[2],
                        "cy": params[3], "skew": 0.0},
-        "distortion": {"k1": params[4], "k2": params[5]},
+        "distortion": dist,
         "residual_px": rms,
         "n_views": len(views), "n_points": len(res) // 2,
         "initial_residual_px": base["residual_px"],
-        "poses": [{"rvec": params[6 + 6 * i:9 + 6 * i],
-                   "tvec": params[9 + 6 * i:12 + 6 * i]}
+        "tangential": bool(tangential),
+        "poses": [{"rvec": params[pbase + 6 * i:pbase + 3 + 6 * i],
+                   "tvec": params[pbase + 3 + 6 * i:pbase + 6 + 6 * i]}
                   for i in range(len(views))],
     }
