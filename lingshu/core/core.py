@@ -12986,6 +12986,12 @@ class SpacetimeMemoryEngine:
         （与 #586/#478/#771 的「整批拒」取舍逐字一致，不提供自动清洗）。
         """
         # #789：utf-8-sig 对无 BOM 备份逐字节等价、BOM 在场时剥掉（见 docstring）。
+        # 自主发现（路径类型）：input_path 此前直接进 open()——传 int 会被当成**文件
+        # 描述符**（CPython 语义），实测 import_all(456) 抛 OSError [WinError 6] 句柄无效；
+        # 传其它非路径类型也会泄漏实现错误。现 fail-loud：非 str/PathLike → 可读 TypeError。
+        if not isinstance(input_path, (str, os.PathLike)):
+            raise TypeError("import_all 的 input_path 必须是字符串或 PathLike，"
+                            "收到 %s" % type(input_path).__name__)
         with open(input_path, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         # ① 不可变层覆盖闸（先判后写，fail-closed）。
