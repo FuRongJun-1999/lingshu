@@ -25,6 +25,7 @@ from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，
 
 import sqlite3
 import json
+from collections.abc import Mapping
 import time
 import math
 import uuid
@@ -6240,6 +6241,12 @@ class LayeredStore:
 
         conditions 传入当前会话快照；缺省字段不参与判定。
         """
+        # 自主发现（参数类型）：conditions 此前直接当映射用——传 str/list 抛不可读
+        # AttributeError（'str' object has no attribute 'get'）。现 fail-loud：非映射
+        # 且非 None → 可读 TypeError；None 仍等价「未提供」（缺省字段不参与判定）。
+        if conditions is not None and not isinstance(conditions, Mapping):
+            raise TypeError("insight_window conditions 必须是映射或 None，收到 %s"
+                            % type(conditions).__name__)
         cond = conditions or {}
         c1 = cond.get("memory_retrievability")
         c3 = cond.get("cross_domain")
