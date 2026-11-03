@@ -12700,6 +12700,13 @@ class SpacetimeMemoryEngine:
         即使位于配置的白名单根内也拒绝；普通备份覆盖语义不变。
         """
         # 旧备份仍可覆盖（#698）；源库及 WAL/SHM/journal 即使落在白名单根内也须拒绝。
+        # 自主发现（路径类型）：output_path 此前直接交给 path 归一——传 int 时抛
+        # 不可读 TypeError（`_path_normpath: path should be string, bytes or
+        # os.PathLike, not int`，泄漏实现细节）。现 fail-loud：非 str/PathLike
+        # → 可读 TypeError（零写入）。
+        if not isinstance(output_path, (str, os.PathLike)):
+            raise TypeError("export_all 的 output_path 必须是字符串或 PathLike，"
+                            "收到 %s" % type(output_path).__name__)
         output_path = self._confine_export_out_path(output_path)
         target_path = os.path.realpath(output_path)
         self._guard_export_source_path(target_path)
