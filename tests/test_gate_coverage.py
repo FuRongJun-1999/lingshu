@@ -368,7 +368,59 @@ def test_every_test_file_is_covered():
         "覆盖集与 tests/ 实况不符：未覆盖 %s" % sorted(all_rel - covered))
 
 
+# ---------------------------------------------------------------- 名单基线
+
+#: 守卫名单基线（#2294）：tests/ 下全部测试件的**冻结清单**（仓内相对 POSIX 路径，
+#: 每行一条，`#` 开头为注释）。
+#:
+#: 本守卫的三视野枚举源与被检面**同源** ⇒ 文件级消失（PR 误删 / git rm / 重构
+#: 挪出 tests/）对枚举不可见，守卫面可静默缩水（#2294 实测：把一件守卫 mv 到
+#: scripts/ 后本守卫仍 rc=0、盲区 0 件——文件消失这件「事」三个视野都看不见）。
+#: 基线反着钉：**清单里每一件都必须仍被枚举为测试件**，缺员即红。
+#: 纪律（只增不减，同 time_core_lint_baseline 手法）：新增测试件时追加进基线；
+#: 删除基线条目必须是有意的可审 diff（有意删除 ⇒ 同步改基线；误删 ⇒ 恢复文件）。
+BASELINE_REL = "tests/gate_baseline.txt"
+
+
+def _read_baseline():
+    """读基线名册；文件缺失 / 为空 / 有重复条目一律 fail-closed。"""
+    path = os.path.join(REPO, BASELINE_REL)
+    if not os.path.isfile(path):
+        raise AssertionError(
+            "守卫名单基线 %s 缺失 ⇒ #2294 判据失效（fail-closed）。"
+            "重新生成：把 tests/ 下全部测试件的仓内相对路径写入该文件"
+            "（每行一条）。" % BASELINE_REL)
+    with open(path, encoding="utf-8") as fh:
+        names = [ln.strip() for ln in fh
+                 if ln.strip() and not ln.strip().startswith("#")]
+    assert names, "基线为空 ⇒ 判据无判别力（fail-closed）"
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert not dupes, "基线含重复条目：%r" % (dupes,)
+    return names
+
+
+def test_guard_roster_baseline_no_member_disappears():
+    """#2294：基线名册每一件必须仍被枚举为测试件——缺员即红。
+
+    「枚举源 = 被检面」的结构性自指 ⇒ 文件级消失对三视野不可见；本判据把
+    枚举结果与冻结名册比对，任何一件缺席都点名。
+    """
+    names = _read_baseline()
+    actual = set(_test_files())
+    missing = sorted(n for n in names if n not in actual)
+    assert not missing, (
+        "守卫名单基线缺员 %d 件（文件级消失对三视野枚举不可见，#2294）：\n"
+        "%s\n若是有意删除/挪动：同步更新 %s（只增不减纪律）；若是误删：恢复文件。"
+        % (len(missing), "\n".join("  · %s" % m for m in missing), BASELINE_REL))
+
+
 if __name__ == "__main__":
     _rep = _coverage_report()
     _print_report(_rep)
-    sys.exit(1 if _rep["uncovered"] else 0)
+    _rc = 1 if _rep["uncovered"] else 0
+    try:
+        test_guard_roster_baseline_no_member_disappears()
+    except AssertionError as _ex:
+        print("[GAP] %s" % _ex)
+        _rc = 1
+    sys.exit(_rc)

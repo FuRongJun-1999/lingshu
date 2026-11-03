@@ -26,6 +26,9 @@
   K3 **正对照（防过度收紧）**：绝对路径的合法受控目录（`PYTHONPATH` 指向的
       组件目录）**仍被接受**——组件照常装配、无「组件缺失」告警。
   K4 启动后新插入的条目不进受控面（受控面 = 启动时刻确定，非「当前 sys.path」）。
+  K5（#2292）幂等冻结：`startup_controlled_entries()` 任意次调用同一快照——
+      把**启动期 cwd**（绝对路径、经 PYTHONPATH）放进枚举面，chdir 后重调；
+      冻结被删（M17）时该条目复活 ⇒ 红（K1 造不出此判别面，M17 曾全绿）。
 
 定点变异自证（见 `__main__` 提示）：
   把 `safe_search_path()` 改回「逐条吃 cwd」的旧实现 ⇒ K1/K2 必红并点名；
@@ -97,6 +100,19 @@ print("##P##" + json.dumps({
     "search_count": len(__import__("lingshu.core.component_resolver",
                                    fromlist=["safe_search_path"]).safe_search_path()),
 }, ensure_ascii=False))
+'''
+
+# K5（#2292）探针：把**启动期 cwd 本身**（绝对路径，经 PYTHONPATH 进 sys.path）
+# 放进枚举面——启动捕获按 `_is_cwd_entry`（吃**当前** cwd）排除它；chdir 之后若
+# 发生重捕获（幂等冻结被删的 M17 形态），它不再匹配当前 cwd ⇒ 复活进受控面。
+_PROBE_K5 = '''# -*- coding: utf-8 -*-
+import json, os, sys
+import lingshu._pathguard as pg
+before = sorted(pg._norm(p) for p in pg.startup_controlled_entries())
+os.chdir("sub")                            # 启动后 chdir：work 不再是 cwd
+after = sorted(pg._norm(p) for p in pg.startup_controlled_entries())
+print("##P##" + json.dumps({"before": before, "after": after},
+                           ensure_ascii=False))
 '''
 
 _STUB_SCE = '''class SelfCognitionEngine:
@@ -180,6 +196,34 @@ def k4_surface_is_startup_snapshot_not_live_syspath(base):
        "before=%r post=%r" % (payload["before"]["search"], payload["post"]["search"]))
 
 
+def k5_idempotent_freeze_survives_recapture_after_chdir(base):
+    """K5（#2292）幂等冻结：startup_controlled_entries() 任意次调用同一快照。
+
+    判别器：启动期把 **cwd 本身**（绝对路径，经 PYTHONPATH 进入 sys.path）放进
+    枚举面——启动捕获按 `_is_cwd_entry` 排除它（它就是当时的 cwd）；chdir 之后
+    若发生重捕获（`_capture_controlled_surface` 的 `if _SNAPSHOT_DONE: return`
+    被删的 M17 实测形态），它不再匹配**当前** cwd ⇒ 复活进受控面 ⇒ 与启动快照
+    不等 ⇒ 红。K1 的探针造不出这个判别面（其 sys.path 只有 REPO，chdir 前后
+    判定不变），故 M17 当时全绿——幂等冻结此前零覆盖。
+    """
+    print("== K5：幂等冻结——启动期 cwd 面条目不因 chdir 后重捕获而复活 ==")
+    work = os.path.join(base, "k5")
+    os.makedirs(os.path.join(work, "sub"), exist_ok=True)
+    payload, r = _run(["-c", _PROBE_K5], work, path=work + os.pathsep + REPO)
+    ok(r.returncode == 0 and payload is not None,
+       "K5a 子进程取到前后快照", (r.stderr or "")[:400])
+    if payload is None:
+        return
+    before, after = payload["before"], payload["after"]
+    revived = sorted(set(after) - set(before))
+    ok(before == after,
+       "K5b chdir 后再调 startup_controlled_entries() 仍等于启动快照（幂等冻结）",
+       "复活条目=%r" % (revived,))
+    ok(not revived,
+       "K5c 启动期 cwd 面条目未在 chdir 后复活（冻结被删时它必复活）",
+       "复活条目=%r" % (revived,))
+
+
 def k3_positive_control_legal_absolute_dir_still_accepted(base):
     """K3 正对照：绝对路径的合法受控目录仍被接受（防过度收紧）。"""
     print("== K3：正对照——绝对路径合法受控目录仍被接受（组件照常装配） ==")
@@ -227,6 +271,7 @@ def main() -> int:
         k1_controlled_surface_is_frozen_across_chdir(base)
         k2_relative_entry_is_not_controlled(base)
         k4_surface_is_startup_snapshot_not_live_syspath(base)
+        k5_idempotent_freeze_survives_recapture_after_chdir(base)
         k3_positive_control_legal_absolute_dir_still_accepted(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
