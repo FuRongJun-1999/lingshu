@@ -8543,6 +8543,21 @@ class SpacetimeMemoryEngine:
     # ==================== 去重配置（M5 · D-004 动态阈值） ====================
 
     def set_dedup_config(self, static_threshold: float = 0.85, window: int = 30):
+        # 自主发现（参数类型）：阈值/窗口此前直接参与 min/max——传字符串抛不可读
+        # TypeError（'>' not supported between 'float' and 'str'）。现 fail-loud：
+        # 非实数 TypeError、非有限阈值 ValueError、非整数窗口 TypeError。
+        try:
+            _st = float(static_threshold)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("static_threshold 必须是实数，收到 %r"
+                            % (static_threshold,)) from exc
+        if not math.isfinite(_st):
+            raise ValueError("static_threshold 必须是有限值，收到 %r" % (static_threshold,))
+        try:
+            _win = int(window)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("window 必须是整数，收到 %r" % (window,)) from exc
+        static_threshold, window = _st, _win
         self._dedup_static = min(0.95, max(0.5, static_threshold))
         self._dedup_window = max(5, window)
 
