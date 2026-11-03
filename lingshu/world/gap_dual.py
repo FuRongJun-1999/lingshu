@@ -156,10 +156,14 @@ class GapDual:
         # non-int of type 'float'"）；传负数会把 growth 拉负并让单调包络吞掉。
         # 现 fail-loud：非数值 TypeError、负数/非有限 ValueError。
         try:
-            _nc = int(new_conditions_seen)
-        except (TypeError, ValueError) as exc:
+            _nc_f = float(new_conditions_seen)
+        except (TypeError, ValueError, OverflowError) as exc:
             raise TypeError("new_conditions_seen 必须是整数，收到 %r"
                             % (new_conditions_seen,)) from exc
+        if not math.isfinite(_nc_f) or _nc_f != int(_nc_f):
+            raise ValueError("new_conditions_seen 必须是非负整数，收到 %r"
+                             % (new_conditions_seen,))
+        _nc = int(_nc_f)
         if _nc < 0:
             raise ValueError("new_conditions_seen 不能为负，收到 %r"
                              % (new_conditions_seen,))

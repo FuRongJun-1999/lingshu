@@ -18,6 +18,8 @@ from typing import Dict, List, Optional, Tuple
 
 import math
 
+import re
+
 import numpy as np
 
 ALGO = "hex_composite-0.1"
@@ -292,8 +294,8 @@ def extract_attributes(img: np.ndarray, quadrant: str, color: str,
     # `quadrant=None` 抛不可读 TypeError（'NoneType' object is not subscriptable）、
     # `color="nope"` 抛裸 KeyError、`calib="x"` 抛 TypeError。现 fail-loud 且可读：
     # quadrant 必须形如 r0/r1/r2；color 必须在 _COLORS_RGB；calib 必须是 dict/None。
-    if not isinstance(quadrant, str) or len(quadrant) < 2 or quadrant[0] != "r" \
-            or not quadrant[1].isdigit():
+    if not isinstance(quadrant, str) or not re.fullmatch(r"r[0-8]", quadrant):
+        raise ValueError("quadrant 需为 9 宫格 pos（r0-r8），收到 %r" % (quadrant,))
         raise ValueError("quadrant 需形如 r0/r1/r2（象限 0-2），收到 %r" % (quadrant,))
     if not isinstance(color, str) or color not in _COLORS_RGB:
         raise ValueError("color 必须是 _COLORS_RGB 中的颜色，收到 %r" % (color,))

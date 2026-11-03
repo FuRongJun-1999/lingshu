@@ -71,6 +71,17 @@ def _assertions():
            and ("映射" in msg or "Mapping" in msg),
            msg)
 
+    # #2289 变异抽查补钉：str 形态（新闸宽收家族的实锤变异面——闸若放行 str，
+    # downstream source=domains if isinstance(domains, Mapping) else {} 会静默当
+    # 「全未声明」）。tuple/None 同批再钉一次防回归。
+    for bad in ("abc", ("a",), 3.5):
+        msg_b = _raises(lambda b=bad: CN.canonical_condition(b), TypeError)
+        _check("A02b 非映射 %s 必须显式 TypeError（#2289 变异补钉）"
+               % type(bad).__name__,
+               msg_b is not None and not msg_b.startswith("__WRONG__")
+               and ("映射" in msg_b or "Mapping" in msg_b),
+               msg_b)
+
     _check("A03 cond_hash(None) == cond_hash({})",
            _safe(lambda: CN.cond_hash(None)) == CN.cond_hash({}))
 

@@ -4783,10 +4783,9 @@ class LayeredStore:
         # `set_context_cap` 已被 `_to_int_or(..., lo=1)` 夹到 ≥1：两条路径对同一
         # 参数结论相反。现 fail-loud：非整数类型 TypeError、负值 ValueError，
         # 零删除；0 与正数行为不变（0 = 清空，是明确可表达的语义）。
-        try:
-            _cap = int(max_size)
-        except (TypeError, ValueError) as exc:
-            raise TypeError("情境层上限必须是整数，收到 %r" % (max_size,)) from exc
+        if not isinstance(max_size, int) or isinstance(max_size, bool):
+            raise TypeError("情境层上限必须是整数，收到 %r" % (max_size,))
+        _cap = max_size
         if _cap < 0:
             raise ValueError("情境层上限不能为负，收到 %r" % (max_size,))
         max_size = _cap
@@ -8596,11 +8595,9 @@ class SpacetimeMemoryEngine:
                             % (static_threshold,)) from exc
         if not math.isfinite(_st):
             raise ValueError("static_threshold 必须是有限值，收到 %r" % (static_threshold,))
-        try:
-            _win = int(window)
-        except (TypeError, ValueError) as exc:
-            raise TypeError("window 必须是整数，收到 %r" % (window,)) from exc
-        static_threshold, window = _st, _win
+        if not isinstance(window, int) or isinstance(window, bool):
+            raise TypeError("window 必须是整数，收到 %r" % (window,))
+        static_threshold = _st
         self._dedup_static = min(0.95, max(0.5, static_threshold))
         self._dedup_window = max(5, window)
 
