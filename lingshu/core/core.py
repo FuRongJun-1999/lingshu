@@ -7762,6 +7762,12 @@ class SpacetimeMemoryEngine:
         ③`LayeredStore.add_edge(STEdge)` 直写面不去重（同步/导入路径须保真，非本件
         收口面）；④查重是 check-then-act，与 `add_node` 的旧行检查同款并发口径。"""
         rt = relation_type if isinstance(relation_type, EdgeType) else EdgeType(relation_type)
+        # 自主发现（参数类型）：condition_space 此前直接交给 STEdge.to_row 调 `.to_json()`——
+        # 传字符串抛不可读 AttributeError（'str' object has no attribute 'to_json'）。
+        # 现 fail-loud：非 ConditionSpace 且非 None → 可读 TypeError（零落库）。
+        if condition_space is not None and not isinstance(condition_space, ConditionSpace):
+            raise TypeError("condition_space 必须是 ConditionSpace 或 None，收到 %s"
+                            % type(condition_space).__name__)
         # 自主发现（端点存在性）：旧实现把两端 id 直接交给 `LayeredStore.add_edge`
         # 的 `INSERT OR REPLACE`，不存在的一端由 SQLite 外键约束抛裸
         # `sqlite3.IntegrityError: FOREIGN KEY constraint failed`——调用方无法区分
