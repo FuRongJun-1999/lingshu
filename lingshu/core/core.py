@@ -5389,6 +5389,12 @@ class LayeredStore:
                         f"{_l0.value}）的冲突，共享层由父节点主控（#234）")
         if _lay[a_id] is None or _lay[b_id] is None:
             return None
+        # 自主发现（参数类型）：condition_space 此前直接进 STEdge，落库时 `.to_json()`
+        # 对非 ConditionSpace 抛不可读 AttributeError。现 fail-loud：非 ConditionSpace
+        # 且非 None → 可读 TypeError（零写入）。
+        if condition_space is not None and not isinstance(condition_space, ConditionSpace):
+            raise TypeError("register_conflict condition_space 必须是 ConditionSpace 或 None，"
+                            "收到 %s" % type(condition_space).__name__)
         edge = STEdge(
             id=f"edge_{uuid.uuid4().hex[:8]}_{int(time.time()*1000)}",
             source_id=a_id, target_id=b_id,
