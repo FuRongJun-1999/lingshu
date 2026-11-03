@@ -4267,6 +4267,12 @@ class LayeredStore:
         打分输入（检索只计数、不刷新近因），分数即成为固定输入的纯函数。"""
         # dsh-bounty #1795：#658「None／-1＝全量」口径在此入口收口（FTS 腿
         # `int(limit)` 对 None 崩、两腿 `scored[:limit]` 对 -1 负切片丢尾条）。
+        # 自主发现（参数类型）：query 此前直接 `.strip()`——传 None/非字符串抛不可读
+        # AttributeError（'NoneType' object has no attribute 'strip'）。现 fail-loud：
+        # 非字符串 → 可读 TypeError（空串语义不变：返回空列表）。
+        if not isinstance(query, str):
+            raise TypeError("search_content 的 query 必须是字符串，收到 %s"
+                            % type(query).__name__)
         limit = _normalize_limit(limit)
         q = query.strip()
         if not q:
