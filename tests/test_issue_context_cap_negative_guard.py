@@ -84,6 +84,15 @@ def _assertions():
     _check("E01 钉子：非整数 TypeError 文案", "情境层上限必须是整数" in text)
     _check("E02 钉子：负值 ValueError 文案", "情境层上限不能为负" in text)
 
+    # #2290 变异抽查补钉：类型闸运行级——int()→int(float()) 宽收变异
+    # （str/浮点/bool 静默收编）必须变红。文案钉子对此无判别力。
+    e_t = _engine()
+    for bad in ("10", 2.9, True):
+        msg_t = _err(lambda b=bad: e_t.store.enforce_context_cap(b), TypeError)
+        _check("E03 运行级钉：非整数上限 %r ⇒ TypeError（#2290 补钉）" % (bad,),
+               msg_t is not None and not msg_t.startswith("__WRONG__")
+               and "整数" in msg_t, msg_t)
+
 
 def _run_assertions():
     global FAILS

@@ -117,7 +117,13 @@ def camera3d_from_intrinsics(intr: Any, *, eye: Sequence[float],
     dy = k.cy - k.height / 2.0
     off_px = math.hypot(dx, dy)
     off_frac = off_px / max(float(k.width), 1.0)
-    if off_px > 1e-9:
+    if not math.isfinite(off_px):
+        msg = ("主点非有限：cx=%r cy=%r —— Camera3D 无法表达非有限主点"
+               % (k.cx, k.cy))
+        if strict:
+            raise BridgeError("camera3d_from_intrinsics：" + msg)
+        lossy.append(msg)
+    elif off_px > 1e-9:
         lossy.append(
             "主点偏离画幅中心：cx=%.3f cy=%.3f（中心 %.1f,%.1f），偏移 %.3f px "
             "（%.3f%% 画幅宽）——Camera3D 无主点字段，按中心处理"
