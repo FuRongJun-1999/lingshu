@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
-"""MV 判据闸的退出码契约 —— `--judge` 必须把「不可放行」透出到进程退出码
+"""MV 判据入口的退出码契约 —— `--judge` 与 `--accept` 同口径，`--strict` 才是发布放行
 
 运行方式：
-    python -X utf8 -m pytest tests/test_film_mv_judge_exit.py -v
+    python -X utf8 -m pytest tests/test_film_mv_judge_exit.py -q
 
 缺陷（本守卫防的是什么）：
-    `make.py` 的 `--judge` 分支只打印 `tally` 后返回 0——判据出 REJECT / BLINDSPOT
-    时进程退出码仍是 0。README §一 把 `--judge` 定位成"不重渲就能跑"的判据入口，
-    于是任何拿退出码判闸的流水线都会**假绿**：判据有结论，闸不拦。
+    `make.py` 的 `--judge` 分支只打印 `tally` 后返回 0——判据出 REJECT 时进程退出码
+    仍是 0。README §一 把 `--judge` 定位成"不重渲就能跑"的判据入口，于是拿退出码
+    判闸的流水线会**假绿**：判据有结论，闸不拦。
 
-    同一处还有第二份口径：`mv.summarize()` 的 `blocking` 只认 REJECT，而仓内
-    `film.oracle.gates_passed()` 的放行规则是"无 REJECT 且无 BLINDSPOT"，
-    `_det/gate_all.summarize()` 也按后者的口径。两套口径并存 ⇒ 判据层说"拦"、
-    CLI 层说"过"。
+两档口径必须分开（仓内既有，不是本件的发明）：
+
+  · `_det/acceptance.py` E 组：失败条件只有 REJECT；K2 的 BLINDSPOT 是**必须如实
+    出现**才过（默认简报在 K2/K3/K5 上本就 BLINDSPOT）。
+  · `film/oracle.py:gates_passed()`：**发布放行**要"无 REJECT 且无 BLINDSPOT"。
+
+所以 `--judge` 用第一档（与 `--accept` 同结论），`--strict` 用第二档。若把发布放行
+硬塞进 `--judge`，默认简报的小样会恒判红，而同一目录 `--accept` 判定通过——同一支
+片子两个结论，正是 `_det/gates.py` 开头警告的那件事。
 
 断言组（抽掉修复 ⇒ 哪条红）：
-    [A] 可放行的裁定 ⇒ 退出码 0                   退回 `return 0` ⇒ B 不红、A 仍绿（故须 B 兜底）
-    [B] BLINDSPOT 的裁定 ⇒ 退出码 1 且 blocking 点名  退回 `return 0` ⇒ B 红
-    [C] summarize 与 film.oracle.gates_passed 同源   只认 REJECT ⇒ C 红
+    [A] 可放行（只有 ACCEPT）⇒ --judge 退出码 0
+    [B] 有 BLINDSPOT、无 REJECT ⇒ --judge 0（与验收同口径）；--strict 1
+    [C] 有 REJECT ⇒ --judge 1 且点名；--strict 1
+    [D] summarize 的两档各自与 gates_passed / REJECT 名单一致
 """
 import importlib.util
 import json
@@ -52,15 +58,28 @@ def _oracle(bundle, oracle_id="oracle_main"):
     return MVG.build_oracle(bundle, oracle_id, "mv-judge-contract", "a" * 64)
 
 
-def _releasable(doc):
-    """只保留 ACCEPT 的裁定：用于「可放行 ⇒ 退出码 0」这一侧。
-
-    默认夹具（以及默认简报的小样）在 K2/K3/K5 上是 BLINDSPOT，按仓内放行规则本就
-    不可放行 —— 那是判据该有的结论，不是本守卫要修的东西。这里只切出可放行的子集，
-    两侧都仍走 `film.oracle` 的契约校验，不自造文档形状。
-    """
+def _only_accept(doc):
+    """只保留 ACCEPT 的裁定：可放行样本。"""
     out = dict(doc)
     out["checks"] = [c for c in doc["checks"] if c["verdict"] == "ACCEPT"]
+    return out
+
+
+def _with_reject(doc):
+    """把一个 ACCEPT 判据改成 REJECT（保留 measured/threshold ⇒ 仍是合法裁定）。
+
+    这里测的是 CLI 的退出码映射，不是判据本身能否判红：判据的判红能力由
+    `tests/test_film_mv_plugin.py` 与 gates_k/gates_e 自己的用例覆盖。
+    """
+    checks = [dict(c) for c in doc["checks"]]
+    for c in checks:
+        if c["verdict"] == "ACCEPT":
+            c["verdict"] = "REJECT"
+            break
+    else:                                                      # pragma: no cover
+        raise AssertionError("夹具前提：样本里应有 ACCEPT 判据可改")
+    out = dict(doc)
+    out["checks"] = checks
     return out
 
 
@@ -74,61 +93,95 @@ def _tally(doc):
 @pytest.fixture(scope="module")
 def docs():
     sib = _sibling_tests()
-    ok = _releasable(_oracle(sib._bundle()))
-    blind = _oracle(sib._bundle(axis=False))     # 主体沿视线前行 ⇒ K1 按设计 BLINDSPOT
-    return ok, blind
+    blind = _oracle(sib._bundle(axis=False))    # K1 按设计 BLINDSPOT，其余是默认夹具票型
+    return {"blind": blind,
+            "releasable": _only_accept(blind),
+            "reject": _with_reject(blind)}
 
 
 @pytest.fixture(scope="module")
-def judge_stub(docs):
-    ok, blind = docs
-    return {"ok": {"oracle": ok, "tally": _tally(ok)},
-            "blind": {"oracle": blind, "tally": _tally(blind)}}
+def stubs(docs):
+    return {k: {"oracle": v, "tally": _tally(v)} for k, v in docs.items()}
 
 
-# ══════════════════════════════════════════════════ [A] 可放行 ⇒ 0
-def test_a_releasable_oracle_exits_zero(monkeypatch, tmp_path, judge_stub):
-    ok, _ = FO.gates_passed(judge_stub["ok"]["oracle"])
-    assert ok, "夹具前提：该输入束应可放行"
-    monkeypatch.setattr(mv, "judge", lambda **kw: judge_stub["ok"])
-    assert MAKE.main(["--judge", "--out", str(tmp_path)]) == 0
+def _run(monkeypatch, stubs, key, tmp_path, *flags):
+    monkeypatch.setattr(mv, "judge", lambda **kw: stubs[key])
+    return MAKE.main([*flags, "--out", str(tmp_path)])
 
 
-# ══════════════════════════════════════════════════ [B] BLINDSPOT ⇒ 1
-def test_b_blindspot_oracle_exits_one(monkeypatch, tmp_path, judge_stub):
-    ok, bad = FO.gates_passed(judge_stub["blind"]["oracle"])
-    assert not ok and bad, "夹具前提：该输入束应被 BLINDSPOT 拦下"
-    monkeypatch.setattr(mv, "judge", lambda **kw: judge_stub["blind"])
-    assert MAKE.main(["--judge", "--out", str(tmp_path)]) == 1
+# ══════════════════════════════════════════ [A] 可放行 ⇒ 0
+def test_a_releasable_exits_zero(monkeypatch, tmp_path, stubs):
+    assert _run(monkeypatch, stubs, "releasable", tmp_path, "--judge") == 0
 
 
-def test_b2_cli_reports_which_checks_block(monkeypatch, tmp_path, judge_stub, capsys):
-    monkeypatch.setattr(mv, "judge", lambda **kw: judge_stub["blind"])
-    assert MAKE.main(["--judge", "--out", str(tmp_path)]) == 1
+# ══════════════════════════════════════════ [B] 只有 BLINDSPOT ⇒ judge 0、strict 1
+def test_b_blindspot_only_is_not_a_judge_failure(monkeypatch, tmp_path, docs, stubs):
+    ok, _ = FO.gates_passed(docs["blind"])
+    assert not ok, "夹具前提：该样本在发布放行档下应被拦"
+    assert _run(monkeypatch, stubs, "blind", tmp_path, "--judge") == 0, (
+        "BLINDSPOT 不是验收失败（acceptance E 组只把 REJECT 当失败）")
+    assert _run(monkeypatch, stubs, "blind", tmp_path, "--strict") == 1, (
+        "发布放行档必须拦 BLINDSPOT")
+
+
+# ══════════════════════════════════════════ [C] 有 REJECT ⇒ 1
+def test_c_reject_exits_one(monkeypatch, tmp_path, docs, stubs):
+    reject = FO.failed_checks(docs["reject"])
+    assert reject, "夹具前提：样本里应有 REJECT"
+    assert _run(monkeypatch, stubs, "reject", tmp_path, "--judge") == 1
+    assert _run(monkeypatch, stubs, "reject", tmp_path, "--strict") == 1
+
+
+def test_c2_payload_names_blocking_checks(monkeypatch, tmp_path, docs, stubs, capsys):
+    expected = FO.failed_checks(docs["reject"])
+    assert _run(monkeypatch, stubs, "reject", tmp_path, "--judge") == 1
     payload = json.loads(capsys.readouterr().out)
+    assert payload["blocking"] == expected
+    assert payload["tally"] == stubs["reject"]["tally"], "tally 仍须原样透出"
     assert payload["gates_passed"] is False
-    assert payload["blocking"], "不可放行时必须点名是哪几条判据"
-    assert payload["tally"] == judge_stub["blind"]["tally"], "tally 仍须原样透出"
+    assert payload["strict"] is False
 
 
-# ══════════════════════════════════════════════════ [C] 口径同源
-def test_c_summarize_shares_gates_passed(docs):
-    ok_doc, blind_doc = docs
-    for doc in (ok_doc, blind_doc):
-        ok, bad = FO.gates_passed(doc)
+# ══════════════════════════════════════════ [D] 两档各连各的口径
+def test_d_summarize_lanes_match_repo_rules(docs):
+    for key, doc in docs.items():
         s = mv.summarize(doc)
-        assert s["gates_passed"] is ok
-        assert s["blocking"] == bad
+        assert s["blocking"] == FO.failed_checks(doc), "%s：judge 档应为 REJECT 名单" % key
         assert s["counts"] == FO.counts_by_verdict(doc)
+        ok, release_bad = FO.gates_passed(doc)
+        assert s["gates_passed"] is ok, "%s：strict 档应与 gates_passed 一致" % key
+        assert s["release_blocking"] == release_bad
 
 
-def test_c2_blindspot_is_blocking(docs):
-    _, blind_doc = docs
-    s = mv.summarize(blind_doc)
-    verdicts = {c["name"]: c["verdict"] for c in blind_doc["checks"]}
-    blind_names = sorted(n for n, v in verdicts.items() if v == "BLINDSPOT")
+def test_d2_strict_lane_names_blindspot(docs):
+    s = mv.summarize(docs["blind"])
+    blind_names = sorted(c["name"] for c in docs["blind"]["checks"]
+                         if c["verdict"] == "BLINDSPOT")
     assert blind_names, "夹具前提：应有 BLINDSPOT 判据"
-    assert set(blind_names) <= set(s["blocking"]), "BLINDSPOT 必须计入 blocking"
+    assert set(blind_names) <= set(s["release_blocking"])
+    assert not (set(blind_names) & set(s["blocking"])), "BLINDSPOT 不该进 --judge 档"
+
+
+# ══════════════════════════════════════════ [E] 契约错 ⇒ stderr 可读、非零退出
+def test_e_contract_error_is_loud_on_stderr(monkeypatch, tmp_path, capsys):
+    """旧行为：`--judge` 只打印 tally 就 return 0，畸形裁定静默 exit 0。
+
+    新行为：`normalize_oracle()` 抛 `ContractError`（`OracleError` 的父类），CLI 抓它，
+    往 **stderr** 打一行 `judge error [<类型>]: <原因>` 并退出 1 —— fail-loud，但不把
+    traceback 当报错界面；stdout 不被污染（正常时那里是 JSON）。只抓契约错。
+
+    这条只可能由公共 API `mv.summarize()` 或手工篡改的 oracle.json 触发；
+    `--judge` 正常路径的裁定由 `build_oracle()` 现造，走不到这里。
+    """
+    bad = {"oracle": {"checks": "not-a-list"}, "tally": {}}
+    monkeypatch.setattr(mv, "judge", lambda **kw: bad)
+    assert MAKE.main(["--judge", "--out", str(tmp_path)]) == 1
+    assert MAKE.main(["--strict", "--out", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "", "stdout 是干净 JSON 的位置，报错不能混进去"
+    assert "judge error" in captured.err, "契约错要打可读原因，不能静默"
+    assert "ContractError" in captured.err, "报错要带异常类型，分清产物坏还是判据没过"
+    assert "schema" in captured.err, "报错要能定位到不合契约的字段"
 
 
 if __name__ == "__main__":
