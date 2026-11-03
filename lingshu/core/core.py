@@ -25,6 +25,7 @@ from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，
 
 import sqlite3
 import json
+from collections.abc import Mapping
 import time
 import math
 import uuid
@@ -2311,6 +2312,11 @@ class LayeredStore:
         实例写治理键 ⇒ `PermissionError`（判据与边界见
         `_assert_meta_key_writable` docstring）。非治理键照旧放行。
         """
+        # 自主发现（key 类型）：set_meta 此前不校验 key——传 int 可把非字符串键写进
+        # engine_meta（实测 set_meta(123, "v") 成功），此后按 str 键读取永远查不到，
+        # 形成不可见的脏行。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(key, str) or not key.strip():
+            raise TypeError("set_meta 的 key 必须是非空字符串，收到 %r" % (key,))
         self._assert_meta_key_writable(key)
         with self._lock:
             c = self.conn.cursor()
@@ -4267,6 +4273,12 @@ class LayeredStore:
         打分输入（检索只计数、不刷新近因），分数即成为固定输入的纯函数。"""
         # dsh-bounty #1795：#658「None／-1＝全量」口径在此入口收口（FTS 腿
         # `int(limit)` 对 None 崩、两腿 `scored[:limit]` 对 -1 负切片丢尾条）。
+        # 自主发现（参数类型）：query 此前直接 `.strip()`——传 None/非字符串抛不可读
+        # AttributeError（'NoneType' object has no attribute 'strip'）。现 fail-loud：
+        # 非字符串 → 可读 TypeError（空串语义不变：返回空列表）。
+        if not isinstance(query, str):
+            raise TypeError("search_content 的 query 必须是字符串，收到 %s"
+                            % type(query).__name__)
         limit = _normalize_limit(limit)
         q = query.strip()
         if not q:
@@ -5389,6 +5401,12 @@ class LayeredStore:
                         f"{_l0.value}）的冲突，共享层由父节点主控（#234）")
         if _lay[a_id] is None or _lay[b_id] is None:
             return None
+        # 自主发现（参数类型）：condition_space 此前直接进 STEdge，落库时 `.to_json()`
+        # 对非 ConditionSpace 抛不可读 AttributeError。现 fail-loud：非 ConditionSpace
+        # 且非 None → 可读 TypeError（零写入）。
+        if condition_space is not None and not isinstance(condition_space, ConditionSpace):
+            raise TypeError("register_conflict condition_space 必须是 ConditionSpace 或 None，"
+                            "收到 %s" % type(condition_space).__name__)
         edge = STEdge(
             id=f"edge_{uuid.uuid4().hex[:8]}_{int(time.time()*1000)}",
             source_id=a_id, target_id=b_id,
@@ -5951,6 +5969,12 @@ class LayeredStore:
 
     def _normalize_conditions(self, conditions: dict) -> dict:
         """规范化条件快照（C1–C8 + confidence）：显式提供=0.7，默认值=0.3（未自动提取）。"""
+        # 自主发现（参数类型）：conditions 此前直接 `.items()`——传 list/str 抛不可读
+        # AttributeError（'list' object has no attribute 'items'）。现 fail-loud：非映射
+        # 且非 None → 可读 TypeError；None 仍等价「未提供」。
+        if conditions is not None and not isinstance(conditions, Mapping):
+            raise TypeError("insight conditions 必须是映射或 None，收到 %s"
+                            % type(conditions).__name__)
         vals = dict(self.INSIGHT_DEFAULT_CONDITIONS)
         given = set()
         if conditions:
@@ -6240,6 +6264,12 @@ class LayeredStore:
 
         conditions 传入当前会话快照；缺省字段不参与判定。
         """
+        # 自主发现（参数类型）：conditions 此前直接当映射用——传 str/list 抛不可读
+        # AttributeError（'str' object has no attribute 'get'）。现 fail-loud：非映射
+        # 且非 None → 可读 TypeError；None 仍等价「未提供」（缺省字段不参与判定）。
+        if conditions is not None and not isinstance(conditions, Mapping):
+            raise TypeError("insight_window conditions 必须是映射或 None，收到 %s"
+                            % type(conditions).__name__)
         cond = conditions or {}
         c1 = cond.get("memory_retrievability")
         c3 = cond.get("cross_domain")
@@ -7381,6 +7411,13 @@ class SpacetimeMemoryEngine:
                 "#805 add_perception 拒绝非白名单 modality %r：合法值 "
                 "text/audio/image/code（感知通道模态，防下游按 modality 过滤出现"
                 "意外分组；白名单定义见 _PERCEPTION_MODALITIES 注释）" % (modality,))
+        # 自主发现（参数类型）：spatial_coordinates 此前不做类型闸——传 list 会被
+        # json.dumps 原样存成 `[1, 2, 3]`，读回成 list ⇒ 节点上的
+        # `spatial_coordinates.get(...)` 抛 AttributeError（坏行注入）。现 fail-loud：
+        # 非映射且非 None → 可读 TypeError（零落库）。
+        if spatial_coordinates is not None and not isinstance(spatial_coordinates, Mapping):
+            raise TypeError("spatial_coordinates 必须是映射或 None，收到 %s"
+                            % type(spatial_coordinates).__name__)
         self._interaction_count += 1
         self._note_action("perception", content, None,
                           {"importance": importance, "modality": modality})
@@ -7762,6 +7799,12 @@ class SpacetimeMemoryEngine:
         ③`LayeredStore.add_edge(STEdge)` 直写面不去重（同步/导入路径须保真，非本件
         收口面）；④查重是 check-then-act，与 `add_node` 的旧行检查同款并发口径。"""
         rt = relation_type if isinstance(relation_type, EdgeType) else EdgeType(relation_type)
+        # 自主发现（参数类型）：condition_space 此前直接交给 STEdge.to_row 调 `.to_json()`——
+        # 传字符串抛不可读 AttributeError（'str' object has no attribute 'to_json'）。
+        # 现 fail-loud：非 ConditionSpace 且非 None → 可读 TypeError（零落库）。
+        if condition_space is not None and not isinstance(condition_space, ConditionSpace):
+            raise TypeError("condition_space 必须是 ConditionSpace 或 None，收到 %s"
+                            % type(condition_space).__name__)
         # 自主发现（端点存在性）：旧实现把两端 id 直接交给 `LayeredStore.add_edge`
         # 的 `INSERT OR REPLACE`，不存在的一端由 SQLite 外键约束抛裸
         # `sqlite3.IntegrityError: FOREIGN KEY constraint failed`——调用方无法区分
@@ -8543,6 +8586,21 @@ class SpacetimeMemoryEngine:
     # ==================== 去重配置（M5 · D-004 动态阈值） ====================
 
     def set_dedup_config(self, static_threshold: float = 0.85, window: int = 30):
+        # 自主发现（参数类型）：阈值/窗口此前直接参与 min/max——传字符串抛不可读
+        # TypeError（'>' not supported between 'float' and 'str'）。现 fail-loud：
+        # 非实数 TypeError、非有限阈值 ValueError、非整数窗口 TypeError。
+        try:
+            _st = float(static_threshold)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("static_threshold 必须是实数，收到 %r"
+                            % (static_threshold,)) from exc
+        if not math.isfinite(_st):
+            raise ValueError("static_threshold 必须是有限值，收到 %r" % (static_threshold,))
+        try:
+            _win = int(window)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("window 必须是整数，收到 %r" % (window,)) from exc
+        static_threshold, window = _st, _win
         self._dedup_static = min(0.95, max(0.5, static_threshold))
         self._dedup_window = max(5, window)
 
@@ -12700,6 +12758,13 @@ class SpacetimeMemoryEngine:
         即使位于配置的白名单根内也拒绝；普通备份覆盖语义不变。
         """
         # 旧备份仍可覆盖（#698）；源库及 WAL/SHM/journal 即使落在白名单根内也须拒绝。
+        # 自主发现（路径类型）：output_path 此前直接交给 path 归一——传 int 时抛
+        # 不可读 TypeError（`_path_normpath: path should be string, bytes or
+        # os.PathLike, not int`，泄漏实现细节）。现 fail-loud：非 str/PathLike
+        # → 可读 TypeError（零写入）。
+        if not isinstance(output_path, (str, os.PathLike)):
+            raise TypeError("export_all 的 output_path 必须是字符串或 PathLike，"
+                            "收到 %s" % type(output_path).__name__)
         output_path = self._confine_export_out_path(output_path)
         target_path = os.path.realpath(output_path)
         self._guard_export_source_path(target_path)
@@ -12986,6 +13051,12 @@ class SpacetimeMemoryEngine:
         （与 #586/#478/#771 的「整批拒」取舍逐字一致，不提供自动清洗）。
         """
         # #789：utf-8-sig 对无 BOM 备份逐字节等价、BOM 在场时剥掉（见 docstring）。
+        # 自主发现（路径类型）：input_path 此前直接进 open()——传 int 会被当成**文件
+        # 描述符**（CPython 语义），实测 import_all(456) 抛 OSError [WinError 6] 句柄无效；
+        # 传其它非路径类型也会泄漏实现错误。现 fail-loud：非 str/PathLike → 可读 TypeError。
+        if not isinstance(input_path, (str, os.PathLike)):
+            raise TypeError("import_all 的 input_path 必须是字符串或 PathLike，"
+                            "收到 %s" % type(input_path).__name__)
         with open(input_path, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         # ① 不可变层覆盖闸（先判后写，fail-closed）。
