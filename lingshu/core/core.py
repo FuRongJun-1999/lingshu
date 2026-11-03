@@ -25,6 +25,7 @@ from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，
 
 import sqlite3
 import json
+from collections.abc import Mapping
 import time
 import math
 import uuid
@@ -5951,6 +5952,12 @@ class LayeredStore:
 
     def _normalize_conditions(self, conditions: dict) -> dict:
         """规范化条件快照（C1–C8 + confidence）：显式提供=0.7，默认值=0.3（未自动提取）。"""
+        # 自主发现（参数类型）：conditions 此前直接 `.items()`——传 list/str 抛不可读
+        # AttributeError（'list' object has no attribute 'items'）。现 fail-loud：非映射
+        # 且非 None → 可读 TypeError；None 仍等价「未提供」。
+        if conditions is not None and not isinstance(conditions, Mapping):
+            raise TypeError("insight conditions 必须是映射或 None，收到 %s"
+                            % type(conditions).__name__)
         vals = dict(self.INSIGHT_DEFAULT_CONDITIONS)
         given = set()
         if conditions:
