@@ -2311,6 +2311,11 @@ class LayeredStore:
         实例写治理键 ⇒ `PermissionError`（判据与边界见
         `_assert_meta_key_writable` docstring）。非治理键照旧放行。
         """
+        # 自主发现（key 类型）：set_meta 此前不校验 key——传 int 可把非字符串键写进
+        # engine_meta（实测 set_meta(123, "v") 成功），此后按 str 键读取永远查不到，
+        # 形成不可见的脏行。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(key, str) or not key.strip():
+            raise TypeError("set_meta 的 key 必须是非空字符串，收到 %r" % (key,))
         self._assert_meta_key_writable(key)
         with self._lock:
             c = self.conn.cursor()
