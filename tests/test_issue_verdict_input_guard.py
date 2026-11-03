@@ -70,6 +70,16 @@ def _assertions():
     _check("A05 非数值像素量 -> BLINDSPOT（不给 ACCEPT）",
            r4.get("verdict") == "BLINDSPOT", r4)
 
+    # #2293 变异抽查补钉：NaN/inf 形态（#196 闸的专属面——"x" 字符串由
+    # #2141 的类型转换层兜住，NaN 只有 #196 闸拦。删闸变异必须变红。）
+    for bad, tag in ((float("nan"), "NaN"), (float("inf"), "inf")):
+        try:
+            r7 = V.assess({"type": "head"}, {}, bad, 10000)
+        except Exception as ex:   # noqa: BLE001 - 断言用
+            r7 = {"verdict": "__EXC__%s" % type(ex).__name__}
+        _check("A05b 非有限像素量 %s -> BLINDSPOT（#196 闸运行级钉）" % tag,
+               r7.get("verdict") == "BLINDSPOT", r7)
+
     r5 = V.assess({"type": "head"}, {"occlusion": "无遮挡", "contrast": "清晰"}, 9000, 10000)
     _check("A06 正对照：正常输入 ACCEPT", r5.get("verdict") == "ACCEPT", r5)
 

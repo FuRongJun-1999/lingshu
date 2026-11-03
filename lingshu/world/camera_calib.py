@@ -235,6 +235,11 @@ def cross_check(*, sensor: str, lens_mm: float, resolution: Tuple[int, int],
     if claim_focal35_mm is None and claim_hfov_deg is None:
         raise SpecError("cross_check: 至少给 claim_focal35_mm 或 claim_hfov_deg 之一"
                         "（没有独立口径就无法校验）")
+    for _cname, _cv in (("claim_focal35_mm", claim_focal35_mm),
+                        ("claim_hfov_deg", claim_hfov_deg)):
+        if _cv is not None and _cv == 0:
+            raise SpecError("cross_check: %s 为 0（厂商字段缺失常填 0）——"
+                            "无独立口径可校验" % _cname)
     derived_f35 = focal35(lens_mm, w_mm, h_mm)
     derived_fov = hfov_deg(lens_mm, w_mm)
     out: Dict[str, Any] = {
