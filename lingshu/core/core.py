@@ -25,6 +25,7 @@ from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，
 
 import sqlite3
 import json
+from collections.abc import Mapping
 import time
 import math
 import uuid
@@ -7301,6 +7302,13 @@ class SpacetimeMemoryEngine:
                        skip_dedup: bool = False,
                        source: str = None,
                        self_generated: bool = False) -> STNode:
+        # 自主发现（参数类型）：spatial_coordinates 此前不做类型闸——传 list 会被
+        # json.dumps 原样存成 `[1, 2, 3]`，读回成 list ⇒ 节点上的
+        # `spatial_coordinates.get(...)` 抛 AttributeError（坏行注入）。现 fail-loud：
+        # 非映射且非 None → 可读 TypeError（零落库）。
+        if spatial_coordinates is not None and not isinstance(spatial_coordinates, Mapping):
+            raise TypeError("spatial_coordinates 必须是映射或 None，收到 %s"
+                            % type(spatial_coordinates).__name__)
         """
         添加一条感知（自动进入知识层）
 
