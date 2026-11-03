@@ -63,6 +63,7 @@ from . import physics as _physics
 
 __all__ = [
     "CalibrationError",
+    "RESIDUAL_PX_MAX",
     "homography_dlt",
     "intrinsics_from_homographies",
     "chessboard_object_points",
@@ -72,6 +73,12 @@ __all__ = [
     "calibrate_with_distortion",
     "reprojection_rms",
 ]
+
+# #2316：「残差过大 ⇒ 不返回可疑解」的默认上界（px）。**经验保守值，追不到理论
+# 出处**（同 #395 的 MAX_ROUTES 口径）：无噪合成标定 ~1e-6 px、带小噪实测 <2 px、
+# 劣质初值（视图与位姿错位但角点全在前方）实测 >100 px——5 px 卡掉后者、放过前
+# 两者。调用方可用 `max_residual_px=` 按次覆盖，不必改常量。
+RESIDUAL_PX_MAX = 5.0
 
 
 class CalibrationError(ValueError):
@@ -377,7 +384,9 @@ def reprojection_rms(k: Dict[str, float], views: Sequence[Dict[str, Any]],
 def calibrate_from_chessboards(views: Sequence[Dict[str, Any]],
                                image_size: Tuple[float, float],
                                *, cols: int = 6, rows: int = 5,
-                               square: float = 1.0) -> Dict[str, Any]:
+                               square: float = 1.0,
+                               max_residual_px: Optional[float] = None
+                               ) -> Dict[str, Any]:
     """多视角棋盘 → 内参 + 重投影残差。
 
     `views[i]` = {`pixels`: [[u,v],…], `R`: 3×3, `t`: [3]}，
@@ -385,6 +394,12 @@ def calibrate_from_chessboards(views: Sequence[Dict[str, Any]],
 
     返回 {intrinsics, residual_px, n_views, n_points, homographies}。
     主点落在图像外 / fx,fy 非正 / 残差过大 ⇒ 抛 `CalibrationError`（不返回可疑解）。
+
+    #2316：残差上界默认取模块常量 `RESIDUAL_PX_MAX`（修前 docstring 承诺了
+    「残差过大 ⇒ 抛错」但返回路径**没有任何 rms 比较**——劣质解实测 113 px
+    照常返回）；`max_residual_px` 供调用方按次覆盖（None ⇒ 用常量；内部
+    LM 初值路径显式传 inf 豁免，见 `calibrate_with_distortion`）。非有限 rms
+    与超上限同判（fail-closed）。
     """
     if len(views) < 3:
         raise CalibrationError("calibrate_from_chessboards：至少 3 个视图（得到 %d）"
@@ -410,6 +425,12 @@ def calibrate_from_chessboards(views: Sequence[Dict[str, Any]],
         raise CalibrationError("标定失败：主点落在图像外（%r，图像 %s）"
                                % (k, image_size))
     rms, n_pts = reprojection_rms(k, views, obj)
+    _rms_max = (RESIDUAL_PX_MAX if max_residual_px is None
+                else float(max_residual_px))
+    if (not math.isfinite(rms)) or rms > _rms_max:
+        raise CalibrationError(
+            "标定失败：重投影残差过大（rms=%.2f px > 上限 %.2f px）——"
+            "不返回可疑解（#2316）" % (rms, _rms_max))
     return {"intrinsics": {"fx": k["fx"], "fy": k["fy"], "cx": k["cx"],
                            "cy": k["cy"], "skew": k["skew"]},
             "residual_px": rms, "n_views": len(views), "n_points": n_pts,
@@ -612,8 +633,12 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
                                    % (i, len(obj), len(px)))
 
     # ---- 1) 初值 ----
+    # #2316：初值求解对残差闸**显式豁免**（max_residual_px=inf）——畸变数据上的
+    # 无畸变单应初值残差天然大（实测 48 px），这正是第 2 步 LM 联合优化的存在
+    # 理由；收敛质量由本函数 LM 阶段负责，返回体 `residual_px` 如实报告。
+    # 公共入口 `calibrate_from_chessboards` 的默认闸（RESIDUAL_PX_MAX）不受影响。
     base = calibrate_from_chessboards(views, image_size, cols=cols, rows=rows,
-                                      square=square)
+                                      square=square, max_residual_px=math.inf)
     kb = base["intrinsics"]
     params: List[float] = [kb["fx"], kb["fy"], kb["cx"], kb["cy"], 0.0, 0.0]
     if tangential:
