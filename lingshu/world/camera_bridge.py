@@ -130,12 +130,21 @@ def camera3d_from_intrinsics(intr: Any, *, eye: Sequence[float],
             % (k.cx, k.cy, k.width / 2.0, k.height / 2.0, off_px, off_frac * 100.0))
 
     # ---- ③ 畸变 ----
-    k1 = float((distortion or {}).get("k1", 0.0))
-    k2 = float((distortion or {}).get("k2", 0.0))
-    if abs(k1) > 1e-12 or abs(k2) > 1e-12:
+    # #2314：完整读五键 k1/k2/k3/p1/p2。修前只读 k1/k2——切向 p1/p2 与径向
+    # k3 被**静默丢弃**（不进 lossy、不进 report["distortion"]）⇒ 模块头
+    # 「给了畸变系数且非 0 ⇒ 记入 lossy」的承诺对自家标定链输出
+    # （camera_calibrate 产出的五键畸变 dict）失效：p1≠0 的视图走本桥时下游
+    # 拿到 representable_exactly=True 的假信号（实测 p1=0.02/p2=-0.01/k3=0.1
+    # ⇒ lossy=[]、representable_exactly=True）。非有限值同样点名：from_dict
+    # 收 "nan" 字符串可达，而 abs(nan)>1e-12 恒假，不点名就会静默当零。
+    dist = dict(distortion or {})
+    _dv = {key: float(dist.get(key, 0.0))
+           for key in ("k1", "k2", "k3", "p1", "p2")}
+    if any((not math.isfinite(v)) or abs(v) > 1e-12 for v in _dv.values()):
         lossy.append(
-            "径向畸变 k1=%.6g k2=%.6g —— Camera3D 无畸变模型，按无畸变处理"
-            % (k1, k2))
+            "畸变系数 k1=%.6g k2=%.6g k3=%.6g p1=%.6g p2=%.6g "
+            "—— Camera3D 无畸变模型，按无畸变处理"
+            % (_dv["k1"], _dv["k2"], _dv["k3"], _dv["p1"], _dv["p2"]))
 
     # ---- 换算：fov 由 fx 与画幅宽定（与 Camera3D.focal 严格互逆）----
     fov_deg = 2.0 * math.degrees(math.atan(k.width / (2.0 * k.fx)))
@@ -162,7 +171,7 @@ def camera3d_from_intrinsics(intr: Any, *, eye: Sequence[float],
         "aspect_rel_diff": aspect,
         "principal_point_offset_px": off_px,
         "principal_point_offset_frac": off_frac,
-        "distortion": {"k1": k1, "k2": k2},
+        "distortion": _dv,
         "lossy": lossy,
         "representable_exactly": not lossy,
     }
