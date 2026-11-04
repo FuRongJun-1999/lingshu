@@ -1,0 +1,87 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "guard_sha256": "43db8b30754bc2b5a274c6947002549e4ba4e3e32b63f4cdf8ecf157a3e7cbd1",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 7,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "7 passed in 0.15s",
+      "source_sha256": {
+        "lingshu/world/camera_bridge.py": "83657ef20ed1e8bb13d5a1afab1c206ca3772de17301d3e45a32de0b85d7ad62"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_projection_error_cannot_be_reported_as_exact",
+        "test_tolerated_anisotropy_is_reported[boundary]",
+        "test_tolerated_anisotropy_is_reported[larger]",
+        "test_tolerated_anisotropy_is_reported[smaller]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_tolerated_anisotropy_is_reported[smaller]",
+        "test_tolerated_anisotropy_is_reported[larger]",
+        "test_tolerated_anisotropy_is_reported[boundary]",
+        "test_projection_error_cannot_be_reported_as_exact"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "4 failed, 3 passed in 0.31s",
+      "source_sha256": {
+        "lingshu/world/camera_bridge.py": "29857637bb02f7c81c73d1da609f056f5efff2538f9eaa72a336a04a651e24e7"
+      }
+    },
+    {
+      "case": "omit_tolerated_focal_loss",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_tolerated_anisotropy_is_reported[larger]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_tolerated_anisotropy_is_reported[larger]"
+      ],
+      "expected_assertion": "tolerated fy loss must be explicit",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/camera_bridge.py": "fbb5cfda4398b1e33b336889d0c8baf02ebef462376890551a9a8ad81d40d050"
+      }
+    },
+    {
+      "case": "force_exact_report",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_projection_error_cannot_be_reported_as_exact"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_projection_error_cannot_be_reported_as_exact"
+      ],
+      "expected_assertion": "pixel residual forbids an exact report",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/camera_bridge.py": "549ef22636d9131381f5e1ab6ae41223c51cfb1903058193a5c1acd061b3c510"
+      }
+    }
+  ]
+}

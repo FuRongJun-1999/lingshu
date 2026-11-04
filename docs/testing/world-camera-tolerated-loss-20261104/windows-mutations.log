@@ -1,0 +1,23 @@
+omit_tolerated_focal_loss
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_tolerated_anisotropy_is_reported[larger] ________________
+tests\test_camera_tolerated_loss.py:27: in test_tolerated_anisotropy_is_reported
+    assert report['representable_exactly'] is False, 'tolerated fy loss must be explicit'
+E   AssertionError: tolerated fy loss must be explicit
+E   assert True is False
+=========================== short test summary info ===========================
+FAILED tests/test_camera_tolerated_loss.py::test_tolerated_anisotropy_is_reported[larger]
+1 failed in 0.27s
+
+force_exact_report
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_projection_error_cannot_be_reported_as_exact ______________
+tests\test_camera_tolerated_loss.py:43: in test_projection_error_cannot_be_reported_as_exact
+    assert report['representable_exactly'] is False, 'pixel residual forbids an exact report'
+E   AssertionError: pixel residual forbids an exact report
+E   assert True is False
+=========================== short test summary info ===========================
+FAILED tests/test_camera_tolerated_loss.py::test_projection_error_cannot_be_reported_as_exact
+1 failed in 0.27s

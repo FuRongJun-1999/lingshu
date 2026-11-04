@@ -1,0 +1,9 @@
+{
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "validated_production_commit": "5343b0e32a3c63c7a2367e54fd012ebe9fbc6cdb",
+  "sha256_lf": {
+    "lingshu/world/camera_bridge.py": "83657ef20ed1e8bb13d5a1afab1c206ca3772de17301d3e45a32de0b85d7ad62",
+    "tests/test_camera_tolerated_loss.py": "43db8b30754bc2b5a274c6947002549e4ba4e3e32b63f4cdf8ecf157a3e7cbd1",
+    "tests/fixtures/camera_tolerated_loss_mutations.json": "687a82822d67876f9342c269f14333afbe6cab51cc2d9119bd222988a03510a4"
+  }
+}
