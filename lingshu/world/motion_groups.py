@@ -248,6 +248,13 @@ def detect_motion_groups(history, window: int = 8, tol_pos: float = 0.05,
     返回 {"kind", "window", "ticks", "groups", "rejected"}；组字段见
     _fit_group，rejected 记下成员两两通过但共同采样不足的集合。
     """
+    # #2156：tol_pos 是「相对位置稳定」的**唯一**判据，NaN 使 `drift > tol_pos`
+    # 恒 False ⇒ 判据整条失效（实测两个反向发散实体被判 common_translation 同
+    # 组）。对齐同函数 window 的严格闸先例：非有限/负值显式拒收（不静默 clamp）。
+    if (isinstance(tol_pos, bool) or not isinstance(tol_pos, (int, float))
+            or not math.isfinite(tol_pos) or tol_pos < 0):
+        raise ValueError("detect_motion_groups：tol_pos 须为非负有限值，收到 %r"
+                         % (tol_pos,))
     records = _records(history, window)
     return _detect(records, window, tol_pos, min_samples, min_speed)
 
