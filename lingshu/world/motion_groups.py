@@ -33,6 +33,8 @@ predict_with_groups(history, ...)       检测后一次给出预测，供 core �
 actual 恒为 False，不写回观测历史。高度取已观测锚点的 y 加组内相对高度差，
 不把成员拉平到锚点高度。组内没有可见成员时不给坐标，只在 unresolved 里给原因。
 组速度只描述窗口内的共同运动，不用于外推。
+本帧多个可见成员的相对位置若违背组内偏移，则缺失成员记为 unresolved，
+不任选一个锚点给出相互矛盾的坐标；判据沿用组模型的 tol_pos。
 """
 from __future__ import annotations
 
@@ -286,6 +288,7 @@ def predict_group_members(group: dict, observed: dict, tick=None) -> dict:
     所以异高成员不会被拉平到锚点高度。
     返回 {"tick", "group_id", "predictions", "unresolved"}。
     predictions 每项含 source="motion_group" 与 actual=False。
+    多个可见成员先两两核对水平偏移；矛盾时不给缺失成员坐标。
     """
     if not isinstance(group, dict) or "members" not in group or "offsets" not in group:
         raise ValueError("group 必须是 detect_motion_groups 给出的组模型")
@@ -306,6 +309,26 @@ def predict_group_members(group: dict, observed: dict, tick=None) -> dict:
                                "group_id": group["group_id"]}
         return {"tick": tick, "group_id": group["group_id"],
                 "predictions": predictions, "unresolved": unresolved}
+    tol_pos = float(group["evidence"]["tol_pos"])
+    # _fit_group 的偏移按六位小数保存；两成员各一份偏移相减，每轴至多
+    # 1e-6 的舍入差，二维范数至多 sqrt(2)*1e-6。此预算只补偿序列化精度。
+    limit = tol_pos + math.sqrt(2.0) * 1e-6
+    for index, first in enumerate(visible):
+        for second in visible[index + 1:]:
+            expected = _offset_between(group, base, first, second)
+            actual = (float(observed[second][0]) - float(observed[first][0]),
+                      float(observed[second][2]) - float(observed[first][2]))
+            drift = math.hypot(actual[0] - expected[0], actual[1] - expected[2])
+            if drift > limit:
+                for eid in missing:
+                    unresolved[eid] = {
+                        "reason": "conflicting_observed_anchors",
+                        "group_id": group["group_id"],
+                        "observed_pair": [first, second],
+                        "offset_error": round(drift, 6), "tol_pos": tol_pos,
+                    }
+                return {"tick": tick, "group_id": group["group_id"],
+                        "predictions": predictions, "unresolved": unresolved}
     anchor = base if base in observed else visible[0]
     anchor_pos = [float(value) for value in observed[anchor]]
     offset_tick = group["window"]["end_tick"]
