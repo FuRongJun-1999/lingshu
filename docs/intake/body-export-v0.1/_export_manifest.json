@@ -43,7 +43,7 @@
     {
      "file": "confirmation.py",
      "src": "aeis.confirmation",
-     "sha256": "e4048246b7fd6c23",
+     "sha256": "2741c1011064d489",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -292,7 +292,7 @@
     {
      "file": "process_ops.py",
      "origin": "lingshu_native_development",
-     "sha256": "59cde8f925fac077"
+     "sha256": "e66d23aca99f599e"
     },
     {
      "file": "world_process.py",
@@ -329,7 +329,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "a78187ede4fa73f4",
+     "sha256": "5b5e0caad3becd3e",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,
