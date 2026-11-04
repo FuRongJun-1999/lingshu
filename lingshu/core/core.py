@@ -14562,7 +14562,22 @@ class SpacetimeMemoryEngine:
         ⇒ 库内超过 500 条时较早/低重要度的会话窗整批消失（实测最近窗口只含 500 条、
         遗漏关键事件）。现改按时间全量取数（`query_nodes_by_time`），分窗口径不变。
         判据来源：分诊表 `triage_lingshu_ALL.md` 行 179。
+
+        #2164：两个数值参数此前都无闸——①`limit=0` 时 `windows[-0:]` 等于
+        `windows[0:]` 把 limit 读成「无限」（同引擎 get_recent_context(0)/
+        get_action_log(0)/what_happened_at(0) 的 0 语义都是「返回 0 条」，本方法是
+        唯一反例）；②负/NaN `window_seconds` 造出 count=0 的幽灵窗口（空分组被
+        推入结果，实测 window_seconds=-1 产出 4 窗口含 1 空窗）。两处均 fail-closed。
         """
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise ValueError("session_summary：limit 必须是整数，收到 %r" % (limit,))
+        if limit < 1:
+            raise ValueError("session_summary：limit 必须不小于 1，收到 %r" % (limit,))
+        if (isinstance(window_seconds, bool)
+                or not isinstance(window_seconds, (int, float))
+                or not math.isfinite(window_seconds) or window_seconds <= 0):
+            raise ValueError("session_summary：window_seconds 必须为正有限数，收到 %r"
+                             % (window_seconds,))
         nodes = self.store.query_nodes_by_time()
         if not nodes:
             return []

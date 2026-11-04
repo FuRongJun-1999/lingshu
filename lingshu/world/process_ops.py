@@ -166,7 +166,15 @@ def _candidate(record: Dict, index: int, prefix: Sequence[Dict],
         cand["reason"] = "前缀与记录没有可比采样"
         return cand
     errors = [_offset_gap(prefix[i]["offset"], rec[i]["offset"]) for i in range(compared)]
-    geometry_hits = sum(1 for e in errors if e <= th.match_tol)
+    # #2159：非有限误差先过滤并显式上报丢弃数——修前同一条误差列表被两个聚合器
+    # 给出矛盾读数：`max(errors)` 从左折叠、NaN 只在首位才传播（在其它位置被
+    # `>` 比较比下去 ⇒ NaN 被静默丢弃返回 0.0），`sum(errors)` 必被任一 NaN
+    # 传染成 NaN ⇒ max=0.0 宣称「全部在容差内」、mean=nan 宣称「算不出来」，
+    # 两读数指相反方向（实测 max=0.0 / mean=nan / hit_frames=4 / matched=5）。
+    # 口径与 `motion.py` 的读噪声处理同款：显式丢弃 + 上报。
+    finite_errors = [e for e in errors if math.isfinite(e)]
+    dropped = len(errors) - len(finite_errors)
+    geometry_hits = sum(1 for e in finite_errors if e <= th.match_tol)
     timing = _timing_readings(prefix, rec, compared)
     timing_hits = [d == 0 for d in timing["deltas"]]
     hits = sum(1 for i in range(compared) if errors[i] <= th.match_tol and timing_hits[i])
@@ -175,8 +183,13 @@ def _candidate(record: Dict, index: int, prefix: Sequence[Dict],
     cand["timing"] = timing
     cand["hit_frames"] = hits
     cand["match_score"] = round(hits / compared, 6)
-    cand["max_frame_error"] = round(max(errors), 6)
-    cand["mean_frame_error"] = round(sum(errors) / compared, 6)
+    cand["dropped_nonfinite"] = dropped
+    if finite_errors:
+        cand["max_frame_error"] = round(max(finite_errors), 6)
+        cand["mean_frame_error"] = round(sum(finite_errors) / len(finite_errors), 6)
+    else:
+        cand["max_frame_error"] = None
+        cand["mean_frame_error"] = None
     if compared < max(1, int(th.min_match_samples)):
         cand["reason"] = "对比帧数 %d 少于下限 %d" % (compared, th.min_match_samples)
     elif hits / compared < th.min_hit_ratio:
