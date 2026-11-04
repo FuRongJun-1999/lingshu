@@ -404,6 +404,13 @@ def export_anim_document(draw_objs, cam_factory, path, keyframes=5, dur=14.0,
     不合格直接抛（不静默给一份看着能跑其实乱跳的文件）。
     """
     import math as _m
+    # #2117：keyframes=1 修后在机位插值第一行裸除零（`2*az_span*k/(keyframes-1)`
+    # 分母 0）——同函数对 morph 拓扑不合格已做「降级+计数+逐条原因」，唯独 keyframes
+    # 元数无任何下限声明。fail-closed：K=1（单帧静态环视）不支持即显式拒绝。
+    if isinstance(keyframes, bool) or not isinstance(keyframes, int) or keyframes < 2:
+        raise ValueError(
+            "export_anim_document：keyframes 须为 >= 2 的整数（机位插值需要两端"
+            "取样），得到 %r" % (keyframes,))
     targets = set(target or [])
     docs = []
     for k in range(keyframes):

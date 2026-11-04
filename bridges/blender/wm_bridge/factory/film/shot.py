@@ -219,7 +219,14 @@ def _norm_camera(cam):
     if pts[-1]["t"] != 1.0:
         raise ShotError("shot.camera.path 末点的 t 必须为 1.0，实为 %r" % (pts[-1]["t"],))
 
-    eas = C.opt_list(cam, "easing", "shot.camera") or list(DEFAULT_EASING)
+    # #2120：`or` 把「显式 easing: []」吞成默认——「不写时」的默认语义被扩到
+    # 「写了但为空」，既有 len != 4 报错分支对 0 永不可达；同仓 _common.opt_str
+    # 把同款 or 吞 falsy 模式明文记为历史缺陷族。opt_list 无法区分「没写」与
+    # 「显式 []」（都回 []），改按键存在性判默认；显式 [] 落入 len != 4 报错。
+    if "easing" in cam and cam["easing"] is not None:
+        eas = C.opt_list(cam, "easing", "shot.camera")
+    else:
+        eas = list(DEFAULT_EASING)
     if len(eas) != 4:
         raise ShotError("shot.camera.easing 须为 4 个控制点，实为 %d 个" % len(eas))
     for i, x in enumerate(eas):
