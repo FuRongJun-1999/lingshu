@@ -152,7 +152,11 @@ class ActionDecision:
         dx, dz = ACTION_DELTAS[action]
         nx = max(0.5, min(size - 0.5, pos[0] + dx * step_size))
         nz = max(0.5, min(size - 0.5, pos[2] + dz * step_size))
-        return [round(nx, 2), round(pos[1], 2), round(nz, 2)]
+        # #2129：y **直通**（不取整）——执行侧 _apply_command 的 y 就是直通口径，
+        # 且本动作模型里 y 是不变量（ACTION_DELTAS 只动 x/z），取整不减信息、只
+        # 制造校验噪声：受控体 y 带小数时 self_error 每 tick 影影非零（实测恰等于
+        # |y − round(y,2)|），「逐位一致」契约被预测侧单方面打破。
+        return [round(nx, 2), pos[1], round(nz, 2)]
 
     def forecast_target(self, explorer, predictions: Optional[Dict] = None
                         ) -> Optional[Dict]:

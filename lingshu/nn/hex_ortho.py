@@ -31,6 +31,7 @@ min_share 声明了却从未生效)。本模块把它显式化为可调用、可
 from __future__ import annotations
 from typing import Dict, List, Optional, Sequence, Tuple
 
+import math
 import numpy as np
 
 ALGO = "hex_ortho-0.1"
@@ -82,13 +83,22 @@ def gram_schmidt_kernels(kernels: Sequence[np.ndarray],
                 explainers.append(j)
             v = v - proj * u
         n1 = float(np.linalg.norm(v))
-        ratio = n1 / n0 if n0 > 1e-12 else 0.0
-        redundant = ratio < tol
+        # #2132：n0/n1 非有限时 ratio 落 0.0 会把损坏核报告成「完全重复解释」
+        # （new_info_ratio=0.0、redundant=True 无声剔除）——ratio 不可判时保持
+        # None 并点名，fail-closed 交给上层入口闸（本件 residual_pyramid 已在
+        # 入面拦截非有限）。
+        if not (math.isfinite(n0) and math.isfinite(n1)):
+            ratio = None
+        else:
+            ratio = n1 / n0 if n0 > 1e-12 else 0.0
+        redundant = ratio is not None and ratio < tol
         if not redundant:
             kept.append(v / (n1 + 1e-12))
             kept_idx.append(i)
         report.append({"idx": i, "name": kname(i, names),
-                       "norm": round(n0, 4), "new_info_ratio": round(ratio, 4),
+                       "norm": round(n0, 4),
+                       "new_info_ratio": (round(ratio, 4) if ratio is not None
+                                          else None),  # #2132
                        "redundant": bool(redundant),
                        "explained_by": explainers if redundant else []})
     return report
@@ -129,6 +139,17 @@ def residual_pyramid(lattice: np.ndarray, kernels: Sequence[np.ndarray],
         F0 = F0[0]
     flat0 = F0.ravel()
     norm0 = float(np.linalg.norm(flat0)) + 1e-12
+    # #2132：输入面 fail-closed——晶格/核含 NaN/inf 时 NaN 比较恒 False，两个
+    # 语义停因（orthogonal_exhausted/dead_zone）全部失效 ⇒ 逐层剥到核族耗尽并
+    # 误标良性 stop_reason="card_exhausted"（实测 NaN 晶格 + 2 核）、「判据已失效」
+    # 被伪装成正常耗尽；报告整体 NaN 化还静默违反声明值域 [0,1]。核族的 NaN 由
+    # gram_schmidt_kernels 的 ratio 判据另行消声（见下同票补钉）。
+    if not (np.isfinite(F0).all() and
+            all(np.isfinite(np.asarray(k, dtype=np.float64)).all() for k in kernels)):
+        return {"algo": ALGO, "layers": [], "depth": 0,
+                "stop_reason": "invalid_input", "energy_spectrum": [],
+                "orthogonality_audit": {}, "residual_share": None,
+                "error": "lattice/kernels 含非有限值（NaN/inf）——判据不可判（#2132）"}
     keep, ortho_report = (orthogonal_pool(kernels, tol, names)
                           if use_orthogonal_pool
                           else (list(range(len(kernels))), []))

@@ -295,6 +295,10 @@ class HexNet:
         return float(-logp[np.arange(len(y)), y].mean())
 
     def accuracy(self, x: np.ndarray, y: np.ndarray, batch: int = 256) -> float:
+        # #2127：空评估集此前 `correct / len(x)` 除零——同 four_state_accuracy
+        # 口径：无样本返回 None（不显示为 0 分）。
+        if len(x) == 0:
+            return None
         correct = 0
         for i in range(0, len(x), batch):
             logits, _ = self.forward(x[i:i + batch])
@@ -606,6 +610,13 @@ def four_state_accuracy(net: HexNet, x: np.ndarray, y: np.ndarray,
                 stats["ACCEPT_correct"] += int(r["class"] == y[i + j])
     acc_hits = stats["ACCEPT_correct"]
     acc_total = max(1, stats["ACCEPT"])
+    # #2127：空评估集此前在 accept_coverage 的 `stats["ACCEPT"] / len(x)` 处
+    # 除零（循环 0 次、stats 全 0；同函数 acc_total 的 max(1, …) 对「判了 0 个」
+    # 有防护、对 len(x)=0 没有——同行防护不一致即遗漏）。空集按本仓「无样本
+    # 不显示为满分/零分」口径返回 None，并带 n=0 显式标量。
+    if len(x) == 0:
+        return {"accept_precision": None, "accept_coverage": None,
+                "defer": 0, "blindspot": 0, "n": 0}
     return {"accept_precision": round(acc_hits / acc_total, 4),
             "accept_coverage": round(stats["ACCEPT"] / len(x), 4),
             "defer": stats["DEFER"], "blindspot": stats["BLINDSPOT"],
