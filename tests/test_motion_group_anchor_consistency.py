@@ -66,9 +66,12 @@ def test_no_anchor_still_has_no_coordinates():
 
 
 def test_serialized_offset_rounding_is_not_a_conflict():
-    model = MG.detect_motion_groups(history(0.1234564), tol_pos=0.0)['groups'][0]
+    # A binary-exact offset keeps the zero-tolerance learning stage exact, while
+    # its six-decimal JSON representation loses half a micro-unit.
+    model = MG.detect_motion_groups(history(0.0078125), tol_pos=0.0)['groups'][0]
+    assert model['members'] == ['a', 'b', 'c', 'd']
     result = MG.predict_group_members(json.loads(json.dumps(model)),
-                                      {'a': [5, 1, 0], 'b': [5.1234564, 3, 0]}, 5)
+                                      {'a': [5, 1, 0], 'b': [5.0078125, 3, 0]}, 5)
     assert 'd' in result['predictions'], 'six-decimal serialization must not invent conflict'
     assert not result['unresolved']
 
