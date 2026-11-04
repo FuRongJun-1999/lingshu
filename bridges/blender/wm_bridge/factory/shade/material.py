@@ -344,7 +344,16 @@ def _npr_recipe(role, d, color, roughness, bands=3, shadow=0.30):
     """
     if not (2 <= bands <= 8):
         raise RecipeError("bands 须在 2..8，实为 %r" % (bands,))
-    lo = round(max(0.0, shadow), QUANT)
+    # #2100：shadow 的 0..1 契约此前零校验——>1 时「最暗档」比基色还亮（语义
+    # 反转 + HDR 超白）、<0 静默钳 0 无报错；同函数 roughness/metallic 越界
+    # fail-closed（_unit01），shadow 例外无任何声明。现对齐 fail-closed。
+    try:
+        _sh = float(shadow)
+    except (TypeError, ValueError):
+        raise RecipeError("material.shadow 须为有限数值，实为 %r" % (shadow,))
+    if not math.isfinite(_sh) or _sh < 0.0 or _sh > 1.0:
+        raise RecipeError("material.shadow 须在 0..1，实为 %r" % (shadow,))
+    lo = round(_sh, QUANT)
     els = []
     for i in range(bands):
         t = i / float(bands - 1)
@@ -470,6 +479,14 @@ def outline_recipe(color=(0.010, 0.010, 0.012), thickness_m=0.006, style="npr"):
         ≈ 2*thickness_m / 物体特征尺寸 × 前景像素数，因此"描边像素占前景比例"才是个可信判据。
     返回的 props 里 `use_backface_culling=True` 是关键 —— 反壳的正面朝内，只有背面可见。
     """
+    # #2101（姊妹面）：validate_recipe 只查 style 闭集不查 thickness_m——负宽度
+    # 是反壳 Solidify 的反语义输入（修前照常入库），入口 fail-closed。
+    try:
+        _t = float(thickness_m)
+    except (TypeError, ValueError):
+        raise RecipeError("outline.thickness_m 须为有限数值，实为 %r" % (thickness_m,))
+    if not math.isfinite(_t) or _t <= 0:
+        raise RecipeError("outline.thickness_m 须为正有限值，实为 %r" % (thickness_m,))
     n = [
         {"id": "em", "type": "ShaderNodeEmission", "loc": [300, 0],
          "inputs": {"Color": list(_v(color, 3, "outline.color")), "Strength": 1.0}},
@@ -482,7 +499,12 @@ def outline_recipe(color=(0.010, 0.010, 0.012), thickness_m=0.006, style="npr"):
            "outline": {"thickness_m": round(float(thickness_m), QUANT),
                        "method": "inverted_hull"}}
     rec["digest"] = recipe_digest(rec)
-    validate_recipe(rec)
+    # #2101：自检的 (False, reason) 修前被丢弃——任意 style 字符串 / 负 thickness
+    # 静默返回带 digest 的无效配方，模块级「越界 ⇒ RecipeError（fail-closed）」
+    # 承诺被破坏（实测 style='pbr2' 照常入库）。现对自检结果 fail-closed。
+    _ok, _why = validate_recipe(rec)
+    if not _ok:
+        raise RecipeError("outline.%s" % _why)
     return rec
 
 

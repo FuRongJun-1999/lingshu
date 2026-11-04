@@ -279,8 +279,14 @@ def _add(dst: list, pos: int, src: list, limit: int = None) -> None:
             return
     if n < len(src):
         f = min(n, 220)
+        # #2113：修前在 src 上**原地**做截断淡出——_place 的 pan=0 路径把同一个
+        # list 先后传给左右两个 _add，右声道拿到已被左声道淡出一次的缓冲、再淡出
+        # 一次（居中乐器截断点尾部差 220 倍，实测 R/L=1/220）。淡出改在副本上做，
+        # src 保持只读契约。
+        tail = list(src[n - f:n])
         for j in range(f):
-            src[n - f + j] *= (f - j) / f
+            tail[j] *= (f - j) / f
+        src = src[:n - f] + tail
     seg = dst[pos:pos + n]
     dst[pos:pos + n] = [a + b for a, b in zip(seg, src[:n])]
 
@@ -324,7 +330,10 @@ def _norm_sections(raw, duration_s: float) -> list:
                              % (i, prev_end, a))
         prev_end = b
         out.append({"kind": kind, "start_s": a, "end_s": b})
-    if out[0]["start_s"] > 1e-6:
+    # #2119：「从 0 开始」修前只拦正偏移（`> 1e-6`）——负 start_s 静默通过，
+    # 渲染期整段样点被负索引切片静默丢弃（fail-open，模块 docstring 声明要杜绝
+    # 的「不静默降级」）。改用与衔接缝同款的绝对值判等。
+    if abs(out[0]["start_s"]) > 1e-6:
         raise AudioError("sections 须从 0 开始（得到 %r）" % out[0]["start_s"])
     if abs(out[-1]["end_s"] - duration_s) > 1e-3:
         raise AudioError("sections 末段 end_s(%r) 与时长(%r) 不符（> 1e-3）"

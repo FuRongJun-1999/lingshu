@@ -392,10 +392,12 @@ def render_track(tracks, size=(560, 560), scale=44.0, trail=24, grid=6.0,
     · `trail`：拖尾帧数（0 = 不画拖尾）。
     · 生效条件：`tracks` 非空、`size` 为正、`scale > 0`。
     """
-    Image, ImageDraw = _lazy_image(), None
+    # #2105（同函数第二处残留）：修前 `Image, ImageDraw = _lazy_image(), None` +
+    # `del Image` 让后续 `Image.new` 抛 UnboundLocalError（删掉调试行后露出的
+    # 下一层）——删 `del Image`，Image/ImageDraw 正常供给画布。
+    Image = _lazy_image()
     from PIL import ImageDraw as _ID  # noqa: PLC0415
     ImageDraw = _ID
-    del Image
     tr = list(tracks)
     if not tr:
         raise SeqError("render_track：tracks 为空 —— 不做 0 帧动画")
@@ -407,8 +409,9 @@ def render_track(tracks, size=(560, 560), scale=44.0, trail=24, grid=6.0,
     ys = [p[1] for _t, p, _v in tr]
     xs = [p[0] for _t, p, _v in tr]
     zs = [p[2] for _t, p, _v in tr]
-    ex = min(xs + zs * 0.0), max(xs + zs * 0.0)
-    del ex
+    # #2105：残留调试行 `ex = min(xs + zs * 0.0), max(...)` 已删——`zs` 是 list，
+    # `list * 0.0` 按语言规范必抛 TypeError（render_track 对任何合法输入 100% 崩，
+    # 且 ex 随即 del、无任何消费者）。
     cx = 0.5 * (min(xs) + max(xs))
     k = scale
     ox = w * 0.5 - (cx + 0.45 * 0.5 * (min(zs) + max(zs))) * k
