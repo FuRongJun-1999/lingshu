@@ -26,7 +26,7 @@
 -----------------------------
 | 情形 | 处理 |
 |---|---|
-| `|fx−fy|/fx > tol` | strict=True ⇒ **抛错**；strict=False ⇒ 用 fx 并记入 lossy |
+| `fx != fy` | 总是记入 lossy；相对差超 tol 且 strict=True 时抛错 |
 | 主点偏离中心 | 记入 lossy（Camera3D 无主点字段，按中心处理）|
 | 给了畸变系数且非 0 | 记入 lossy（Camera3D 无畸变模型）|
 
@@ -85,7 +85,8 @@ def camera3d_from_intrinsics(intr: Any, *, eye: Sequence[float],
     strict=True（默认）：`|fx−fy|/fx > tol_frac` ⇒ 抛 `BridgeError`
     ——`Camera3D` 只有一个 `fov_deg`，表达不了各向异性焦距，
     静默取 fx 会让下游**以为**在用标定值。
-    strict=False：允许，但差别写进 `report["lossy"]`。
+    strict=False：允许超容差。任何 fx/fy 差别都写进 `report["lossy"]`；
+    容差只决定是否拒绝转换，不把容差内的近似称为精确表示。
 
     返回 `(camera, report)`。
     """
@@ -103,12 +104,12 @@ def camera3d_from_intrinsics(intr: Any, *, eye: Sequence[float],
 
     # ---- ① 各向异性焦距 ----
     aspect = abs(k.fx - k.fy) / k.fx
-    if aspect > tol_frac:
-        msg = ("各向异性焦距：fx=%.4f fy=%.4f（相对差 %.2f%% > 容差 %.2f%%）——"
+    if aspect > 0.0:
+        msg = ("各向异性焦距：fx=%.4f fy=%.4f（相对差 %.2f%%，容差 %.2f%%）——"
                "Camera3D 只有一个 fov_deg，表达不了" % (k.fx, k.fy,
                                                        aspect * 100.0,
                                                        tol_frac * 100.0))
-        if strict:
+        if strict and aspect > tol_frac:
             raise BridgeError("camera3d_from_intrinsics：" + msg)
         lossy.append(msg)
 
