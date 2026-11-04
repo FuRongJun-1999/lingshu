@@ -1,0 +1,11 @@
+{
+  "guard": "tests/test_event_echo_unique_evidence.py",
+  "total": 7,
+  "sources": ["lingshu/world/world_process.py"],
+  "baseline_failures": ["test_duplicate_rows_cannot_manufacture_support", "test_associations_are_invariant_to_replayed_rows", "test_split_is_unchanged_by_replayed_source_rows", "test_evaluation_is_invariant_to_replayed_rows", "test_development_count_uses_same_event_identity_as_learning", "test_input_is_read_only_and_duplicate_keeps_first_payload"],
+  "mutations": [
+    {"name": "count_replayed_rows_again", "test": "test_duplicate_rows_cannot_manufacture_support", "assertion": "duplicate rows cannot manufacture independent support", "changes": [{"file": "lingshu/world/world_process.py", "method": "_echo_stream", "old": "return [unique[key] for key in sorted(unique)]", "new": "return sorted(events, key=_echo_key)"}]},
+    {"name": "report_raw_development_count", "test": "test_development_count_uses_same_event_identity_as_learning", "assertion": "reported development count must use unique identities", "changes": [{"file": "lingshu/world/world_process.py", "method": "evaluate_event_echo", "old": "\"dev_events\": len(dev_stream),", "new": "\"dev_events\": len(dev_events),"}]},
+    {"name": "collapse_distinct_same_tick_events", "test": "test_distinct_signatures_at_one_tick_are_preserved", "assertion": "distinct eid/event at one tick must survive", "changes": [{"file": "lingshu/world/world_process.py", "method": "_echo_stream", "old": "key = _echo_key(event)", "new": "key = (int(event['tick']),)"}]}
+  ]
+}
