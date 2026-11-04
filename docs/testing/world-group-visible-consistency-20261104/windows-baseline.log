@@ -1,0 +1,46 @@
+FFF.....F                                                                [100%]
+================================== FAILURES ===================================
+_______ test_conflicting_visible_members_withhold_missing[base_visible] _______
+tests\test_motion_group_anchor_consistency.py:31: in test_conflicting_visible_members_withhold_missing
+    assert result['predictions'] == {}, 'conflicting anchors must withhold coordinates'
+E   AssertionError: conflicting anchors must withhold coordinates
+E   assert {'c': {'pos':...4b569c', ...}} == {}
+E
+E     Left contains 2 more items:
+E     {'c': {'actual': False,
+E            'anchor': 'a',
+E            'gap': 1,
+E            'group_id': 'mg_0bbd674b569c',
+E            'offset': [4.0, 0.0],...
+E
+E     ...Full output truncated (14 lines hidden), use '-vv' to show
+_______ test_conflicting_visible_members_withhold_missing[base_hidden] ________
+tests\test_motion_group_anchor_consistency.py:31: in test_conflicting_visible_members_withhold_missing
+    assert result['predictions'] == {}, 'conflicting anchors must withhold coordinates'
+E   AssertionError: conflicting anchors must withhold coordinates
+E   assert {'a': {'pos':...4b569c', ...}} == {}
+E
+E     Left contains 2 more items:
+E     {'a': {'actual': False,
+E            'anchor': 'b',
+E            'gap': 1,
+E            'group_id': 'mg_0bbd674b569c',
+E            'offset': [-2.0, 0.0],...
+E
+E     ...Full output truncated (14 lines hidden), use '-vv' to show
+_____________________ test_all_visible_pairs_are_checked ______________________
+tests\test_motion_group_anchor_consistency.py:47: in test_all_visible_pairs_are_checked
+    assert not result['predictions'], 'noncanonical visible pair must also veto prediction'
+E   AssertionError: noncanonical visible pair must also veto prediction
+E   assert not {'d': {'pos': [11.0, 7.0, 0.0], 'source': 'motion_group', 'actual': False, 'group_id': 'mg_0bbd674b569c', ...}}
+___________ test_core_predict_groups_obeys_current_visible_evidence ___________
+tests\test_motion_group_anchor_consistency.py:93: in test_core_predict_groups_obeys_current_visible_evidence
+    assert not result['predictions'], 'core must not turn contradictory anchors into a prediction'
+E   AssertionError: core must not turn contradictory anchors into a prediction
+E   assert not {'c': {'pos': [9.0, 5.0, 0.0], 'source': 'motion_group', 'actual': False, 'group_id': 'mg_0bbd674b569c', ...}, 'd': {'pos': [11.0, 7.0, 0.0], 'source': 'motion_group', 'actual': False, 'group_id': 'mg_0bbd674b569c', ...}}
+=========================== short test summary info ===========================
+FAILED tests/test_motion_group_anchor_consistency.py::test_conflicting_visible_members_withhold_missing[base_visible]
+FAILED tests/test_motion_group_anchor_consistency.py::test_conflicting_visible_members_withhold_missing[base_hidden]
+FAILED tests/test_motion_group_anchor_consistency.py::test_all_visible_pairs_are_checked
+FAILED tests/test_motion_group_anchor_consistency.py::test_core_predict_groups_obeys_current_visible_evidence
+4 failed, 5 passed, 9 warnings in 0.67s

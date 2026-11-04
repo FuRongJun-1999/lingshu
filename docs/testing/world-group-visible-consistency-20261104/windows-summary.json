@@ -1,0 +1,37 @@
+{
+  "platform": "Windows",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "validated_commit": "38a0a1fc6a047f55990691d9c4531bd9ce8229b4",
+  "commands": [
+    {
+      "name": "replay",
+      "returncode": 0
+    },
+    {
+      "name": "related",
+      "returncode": 0
+    },
+    {
+      "name": "manifest",
+      "returncode": 0
+    },
+    {
+      "name": "time-core",
+      "returncode": 0
+    }
+  ],
+  "related_total": 47,
+  "related_passed": 46,
+  "related_skips": [
+    "test_h1_record_round_trips_through_brain"
+  ],
+  "sha256_lf": {
+    "lingshu/world/motion_groups.py": "e0d2d25dfc3056da3104e53fafcdcef48efaa126be95983bb3ab838f93da99ee",
+    "tests/test_motion_group_anchor_consistency.py": "2ce60b4273c6d11d201c271b95ccf93eba8869c3ec14a757308c19bdb6db7d3f",
+    "tests/fixtures/motion_group_anchor_consistency_mutations.json": "59cedea8be272feac7f9f5a4ba853030307d58f8468345f87fef173f4442e441",
+    "docs/intake/body-export-v0.1/_export_manifest.json": "3c1d3def41841f66dd88715f85b4cede0fee776ae6e791f5a0a8d0d1b3e5e1e9"
+  },
+  "owned_test_temp_cleaned": true
+}

@@ -1,0 +1,44 @@
+ignore_visible_conflict
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______ test_conflicting_visible_members_withhold_missing[base_visible] _______
+tests\test_motion_group_anchor_consistency.py:31: in test_conflicting_visible_members_withhold_missing
+    assert result['predictions'] == {}, 'conflicting anchors must withhold coordinates'
+E   AssertionError: conflicting anchors must withhold coordinates
+E   assert {'c': {'pos':...4b569c', ...}} == {}
+E
+E     Left contains 2 more items:
+E     {'c': {'actual': False,
+E            'anchor': 'a',
+E            'gap': 1,
+E            'group_id': 'mg_0bbd674b569c',
+E            'offset': [4.0, 0.0],...
+E
+E     ...Full output truncated (14 lines hidden), use '-vv' to show
+=========================== short test summary info ===========================
+FAILED tests/test_motion_group_anchor_consistency.py::test_conflicting_visible_members_withhold_missing[base_visible]
+1 failed in 0.52s
+
+check_canonical_anchor_only
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_all_visible_pairs_are_checked ______________________
+tests\test_motion_group_anchor_consistency.py:47: in test_all_visible_pairs_are_checked
+    assert not result['predictions'], 'noncanonical visible pair must also veto prediction'
+E   AssertionError: noncanonical visible pair must also veto prediction
+E   assert not {'d': {'pos': [11.0, 7.0, 0.0], 'source': 'motion_group', 'actual': False, 'group_id': 'mg_0bbd674b569c', ...}}
+=========================== short test summary info ===========================
+FAILED tests/test_motion_group_anchor_consistency.py::test_all_visible_pairs_are_checked
+1 failed in 0.53s
+
+forget_serialization_precision
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_serialized_offset_rounding_is_not_a_conflict ______________
+tests\test_motion_group_anchor_consistency.py:75: in test_serialized_offset_rounding_is_not_a_conflict
+    assert 'd' in result['predictions'], 'six-decimal serialization must not invent conflict'
+E   AssertionError: six-decimal serialization must not invent conflict
+E   assert 'd' in {}
+=========================== short test summary info ===========================
+FAILED tests/test_motion_group_anchor_consistency.py::test_serialized_offset_rounding_is_not_a_conflict
+1 failed in 0.51s

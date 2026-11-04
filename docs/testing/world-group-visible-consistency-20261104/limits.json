@@ -1,0 +1,8 @@
+{
+  "local_linux_replay": "NOT_RUN",
+  "multi_OS_account_deployment": "NOT_TESTED",
+  "DSH": "NOT_TESTED",
+  "production_data": "NOT_TESTED",
+  "remote_CI": "reported separately",
+  "temporary_sandboxes_removed": true
+}

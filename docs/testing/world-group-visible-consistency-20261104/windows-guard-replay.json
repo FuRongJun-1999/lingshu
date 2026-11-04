@@ -1,0 +1,106 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "guard_sha256": "2ce60b4273c6d11d201c271b95ccf93eba8869c3ec14a757308c19bdb6db7d3f",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 9,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "9 passed, 9 warnings in 0.51s",
+      "source_sha256": {
+        "lingshu/world/motion_groups.py": "e0d2d25dfc3056da3104e53fafcdcef48efaa126be95983bb3ab838f93da99ee"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 5,
+      "failed_tests": [
+        "test_all_visible_pairs_are_checked",
+        "test_conflicting_visible_members_withhold_missing[base_hidden]",
+        "test_conflicting_visible_members_withhold_missing[base_visible]",
+        "test_core_predict_groups_obeys_current_visible_evidence"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_conflicting_visible_members_withhold_missing[base_visible]",
+        "test_conflicting_visible_members_withhold_missing[base_hidden]",
+        "test_all_visible_pairs_are_checked",
+        "test_core_predict_groups_obeys_current_visible_evidence"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "4 failed, 5 passed, 9 warnings in 0.67s",
+      "source_sha256": {
+        "lingshu/world/motion_groups.py": "c6822da32c1353f4088c2dae50e8b448663f8cdc4209708ee0dd79a89fa104b1"
+      }
+    },
+    {
+      "case": "ignore_visible_conflict",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_conflicting_visible_members_withhold_missing[base_visible]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_conflicting_visible_members_withhold_missing[base_visible]"
+      ],
+      "expected_assertion": "conflicting anchors must withhold coordinates",
+      "pytest_summary": "1 failed in 0.52s",
+      "source_sha256": {
+        "lingshu/world/motion_groups.py": "42316989f30a03a8ad3bf0d1567ad351e429fd4765a2b58b8a83f0a7055bf3fd"
+      }
+    },
+    {
+      "case": "check_canonical_anchor_only",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_all_visible_pairs_are_checked"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_all_visible_pairs_are_checked"
+      ],
+      "expected_assertion": "noncanonical visible pair must also veto prediction",
+      "pytest_summary": "1 failed in 0.53s",
+      "source_sha256": {
+        "lingshu/world/motion_groups.py": "b7da72f56e724171ef379ac78cca6163e7fd93847faec445e9a2ee58b95db005"
+      }
+    },
+    {
+      "case": "forget_serialization_precision",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_serialized_offset_rounding_is_not_a_conflict"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_serialized_offset_rounding_is_not_a_conflict"
+      ],
+      "expected_assertion": "six-decimal serialization must not invent conflict",
+      "pytest_summary": "1 failed in 0.51s",
+      "source_sha256": {
+        "lingshu/world/motion_groups.py": "7c2217b2dfa63487f51f39cadab2c4d81f164f9bc217677d034500508521a11f"
+      }
+    }
+  ]
+}
