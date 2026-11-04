@@ -252,12 +252,17 @@ class StructureWriter:
         if capability not in actor.capabilities:
             raise PermissionDenied(capability)
 
-    def _audit(self, actor: ActorContext, action: str, object_id: str, note=""):
+    def _audit(self, actor: ActorContext, action: str, object_id: str, note="",
+               outcome: str = "ok"):
+        # #2160：outcome 列修前恒写 "{}"——业务结果（review 的 decision 等）被塞
+        # 进 summary 列、outcome 列永远占位（实测 proposal.created/reviewed 两行
+        # outcome 全 '{}'）。审计列的语义是「业务结果」：outcome 形参默认 "ok"，
+        # 带真实结果的调用点显式传入。
         import time
         self._db.execute(
             "INSERT INTO action_logs(ts,action_type,summary,node_ids,outcome,context) "
             "VALUES (?,?,?,?,?,?)",
-            (time.time(), action, note, json.dumps([object_id]), "{}",
+            (time.time(), action, note, json.dumps([object_id]), outcome,
              json.dumps({"namespace": actor.namespace, "subject": actor.subject})))
 
     def _proposal(self, actor: ActorContext, proposal_id: str):
@@ -425,7 +430,8 @@ class StructureWriter:
                 "INSERT INTO structure_reviews VALUES (?,?,?,?,?,?)",
                 (_id(), proposal_id, actor.subject, decision, note, _now()))
             self._db.execute("UPDATE structure_proposals SET state=? WHERE id=?", (state, proposal_id))
-            self._audit(actor, "proposal.reviewed", proposal_id, decision)
+            self._audit(actor, "proposal.reviewed", proposal_id, decision,
+                        outcome=decision)
             return {"proposal_id": proposal_id, "state": state}
 
     def approve(self, actor: ActorContext, proposal_id: str) -> dict:
@@ -433,6 +439,18 @@ class StructureWriter:
         proposal_id = _text(proposal_id, "proposal_id")
         with self._transaction():
             proposal = self._proposal(actor, proposal_id)
+            # #2152：幂等早退（committed 直接回读）必须排在**三权互异校验之后**
+            # ——修前早退排在最前 ⇒ 「提报人/复核人/终裁人必须互异」的权限契约对
+            # 已提交提案整体失效：同一批主体在 reviewed 态被拒、在 committed 后
+            # 提报人/复核人/任意第三方全部拿到记录（实测 alice 提报后已提交态
+            # approve 直接返回 revision，未抛 PermissionDenied）——同一函数同一批
+            # 主体因状态不同给出相反的权限裁决。互异校验前置后，幂等回读仍合法
+            # （真正终裁人不在 proposer|reviewers 集合里）。
+            reviewers = {row["reviewer"] for row in self._db.execute(
+                "SELECT DISTINCT reviewer FROM structure_reviews WHERE proposal_id=?",
+                (proposal_id,))}
+            if actor.subject in {proposal["proposer"]} | reviewers:
+                raise PermissionDenied("proposer, reviewer and approver must be distinct")
             if proposal["state"] == "committed":
                 return dict(self._db.execute(
                     "SELECT * FROM structure_records WHERE proposal_id=?", (proposal_id,)).fetchone())

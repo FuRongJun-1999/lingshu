@@ -224,12 +224,23 @@ class EvidenceLedger:
         contra: Dict[str, float] = {}
         self_count = 0
         rows = self.entries(node_id)
+        # #2153：按**来源**去重（模块 docstring 契约「同一来源只取其最大一条」）
+        # ——修前在 (极性, 来源) 两桶各自去重，同一来源跨极性双边计数：S 与 C 同时
+        # 抬高、self-refutation 与他人反驳等价（实测 A=0.655172 B=0.633333 且
+        # 换源对照完全同值）、contested 误报（单来源自相矛盾被译成多源对立）、
+        # corroborated 计数被污染（contested 判定先于 corroborated 命中）。
+        # 现先在来源维取最大权重条目，再按其极性落桶。
+        per_source: dict = {}
         for e in rows:
             if e["self_generated"]:
                 self_count += 1
                 continue
+            cur = per_source.get(e["source"])
+            if cur is None or float(e["weight"]) > float(cur["weight"]):
+                per_source[e["source"]] = e
+        for src, e in per_source.items():
             bucket = support if e["polarity"] == SUPPORT else contra
-            bucket[e["source"]] = max(bucket.get(e["source"], 0.0), e["weight"])
+            bucket[src] = max(bucket.get(src, 0.0), e["weight"])
         S, C = sum(support.values()), sum(contra.values())
         conf = (PRIOR_A + S) / (PRIOR_A + PRIOR_B + S + C)
         if support and contra:
