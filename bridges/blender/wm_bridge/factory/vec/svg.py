@@ -485,7 +485,12 @@ class SVGDocument:
 
 
 def _esc(s):
-    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    # #2099：属性值双引号不转义 ⇒ label 含 `"` 产出 not well-formed 的 SVG
+    # （verify() 直接 ParseError，实测）。与姊妹实现 lingshu/world/svg_backend.py
+    # 的 _attr_escape 同款（#1091 已把「属性值破坏文档结构」定为红线）；文本面
+    # 上 &quot; 语义等价，统一转义无副作用。
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
 
 
 def _attrs_str(attrs, precision):

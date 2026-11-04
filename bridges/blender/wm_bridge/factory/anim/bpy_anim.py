@@ -331,6 +331,23 @@ def build_scene(spec, morphs=None, name="ANIM", ground=True, lights=True):
 
 
 # ---------------------------------------------------------------- 关键帧
+def _bezier_joint_links(nspec):
+    """spec 里 `easing="bezier"` 的解析式关节 link 列表（spec 顺序）。
+
+    #2097：rig 层把 bezier 解析式关节归入 **baked**（驱动器表达式只有线性/正弦
+    形态，表达不了 eval 的 smoothstep 逐周期缓动）——本模块的 bezier 通道因此
+    **不能**再从 `rdoc["driven"]` 里找 bezier 关节，改与 rig 分类解耦、直接读
+    spec（修前修后的 rig 文档形态都覆盖）。
+    """
+    out = []
+    for j in nspec["joints"]:
+        if (j.get("kind") or "") not in ("spin", "swing"):
+            continue
+        if (j.get("easing") or "linear") == "bezier":
+            out.append(j["link"])
+    return out
+
+
 def bake_keyframes(ctx, frames):
     """把 `eval_at` 的答案落到关键帧：烘焙关节 + bezier 关节（欧拉手柄）+ 非驱动形态键。"""
     _pkg()
@@ -384,19 +401,19 @@ def bake_keyframes(ctx, frames):
         del pose
 
     # bezier 关节：欧拉通道 + **显式 smoothstep 控制多边形手柄**
+    # #2097：遍历面从 `rdoc["driven"]` 改为 spec 的 bezier 关节（rig 层修后把
+    # bezier 归 baked，driven 里不再有它们）。
     n_bez = 0
-    for d in rdoc["driven"]:
-        j = joint_of.get(d["link"]) or {}
-        if (j.get("easing") or "linear") != "bezier":
-            continue
-        pb = arm.pose.bones[d["bone"]]
+    for ln in _bezier_joint_links(nspec):
+        j = joint_of.get(ln) or {}
+        pb = arm.pose.bones[ln]
         pb.rotation_mode = "XYZ"
         axis_idx = {"x": 0, "y": 1, "z": 2}[j.get("axis") or "z"]
         period_f = float(j["period_s"]) * fps
         phase = float(j.get("phase_deg") or 0.0)
         lo = min(frames) - int(math.ceil(period_f)) - 1
         hi = max(frames) + int(math.ceil(period_f)) + 1
-        path = "pose.bones[%r].rotation_euler" % d["bone"]
+        path = "pose.bones[%r].rotation_euler" % ln
         k = math.floor(lo / period_f)
         keys = []
         while k * period_f <= hi:

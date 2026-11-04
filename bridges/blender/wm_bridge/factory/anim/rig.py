@@ -275,7 +275,13 @@ def build_rig(spec, morphs=None, bone_len=0.25, name=None):
                       "rest_rot": "identity"})
         kind = (j or {}).get("kind") or "static"
         axis = (j or {}).get("axis") or "z"
-        if kind in DRIVEN_KINDS:
+        # #2097：spec 允许解析式关节带 easing="bezier"（spec.py 自注「复现既有件的
+        # 必要字段」），eval 对它按 smoothstep 逐周期缓动求值——而驱动器表达式只有
+        # 线性/正弦形态（driver_expression 与 eval 的线性公式一字不差）。bezier
+        # 关节归 baked（kind 记 "ease"：缓动烘焙），由 bpy_anim.bake_keyframes 为它
+        # 建欧拉 + smoothstep 控制多边形手柄通道——修前错编成线性驱动器，与 eval
+        # 真值偏差达 0.60 rad（demo 两节臂 frame 18 实测）。
+        if kind in DRIVEN_KINDS and (j or {}).get("easing") != "bezier":
             driven.append({
                 "link": nm, "bone": nm, "kind": kind, "axis": axis,
                 "period_s": float(j["period_s"]),
@@ -285,7 +291,13 @@ def build_rig(spec, morphs=None, bone_len=0.25, name=None):
                 "channels": driver_property_exprs(j, fps, "joints[link=%s]" % nm),
             })
         else:
-            baked.append({"link": nm, "bone": nm, "kind": kind, "axis": axis})
+            baked.append({
+                "link": nm, "bone": nm,
+                "kind": "ease" if kind in DRIVEN_KINDS else kind,
+                "axis": axis,
+                **({"easing": "bezier"} if (j or {}).get("easing") == "bezier"
+                   else {}),
+            })
 
     # ---- 形态键
     parts_by_name = {}

@@ -140,12 +140,15 @@ def parse_svg(svg_text):
     """
     root = ET.fromstring(svg_text)
     report = {"unsupported": {}, "gradients_approximated": 0, "elements_seen": 0}
-    vw, vh = 300.0, 150.0
+    # #2098：viewBox 的 min-x/min-y 不能丢——rasterize 的补偿项（-vx*s/-vy*s）
+    # 就是按「meta 带全四元组」设计的，meta 恒置 0 让带偏移 viewBox 的 SVG 整幅
+    # 错位一个偏移量（实测 min-x/min-y=(50,50) 时红色矩形错位 50px）。
+    vx, vy, vw, vh = 0.0, 0.0, 300.0, 150.0
     vb = root.get("viewBox")
     if vb:
         f = _floats(vb)
         if len(f) == 4:
-            vw, vh = f[2], f[3]
+            vx, vy, vw, vh = f
     defs = {}
 
     def scan_defs(e):
@@ -215,7 +218,7 @@ def parse_svg(svg_text):
     walk(root, _mat_identity(), {})
     meta = {"width": float(_floats(root.get("width"))[0]) if root.get("width") else vw,
             "height": float(_floats(root.get("height"))[0]) if root.get("height") else vh,
-            "viewbox": (0.0, 0.0, vw, vh)}
+            "viewbox": (vx, vy, vw, vh)}
     return shapes, meta, report
 
 
