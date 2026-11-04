@@ -1,0 +1,110 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "guard_sha256": "40c947f35874d099a354a9e3c331cd99d86d6bda8b621143a6c8bae58b4f59f9",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 7,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "7 passed in 0.13s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "4b6c10f105294e2cda1e8a3658fe3fb306508a4d2ff4e2b7d0932d416dea8105"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 1,
+      "failed_tests": [
+        "test_associations_are_invariant_to_replayed_rows",
+        "test_development_count_uses_same_event_identity_as_learning",
+        "test_duplicate_rows_cannot_manufacture_support",
+        "test_evaluation_is_invariant_to_replayed_rows",
+        "test_input_is_read_only_and_duplicate_keeps_first_payload",
+        "test_split_is_unchanged_by_replayed_source_rows"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_duplicate_rows_cannot_manufacture_support",
+        "test_associations_are_invariant_to_replayed_rows",
+        "test_split_is_unchanged_by_replayed_source_rows",
+        "test_evaluation_is_invariant_to_replayed_rows",
+        "test_development_count_uses_same_event_identity_as_learning",
+        "test_input_is_read_only_and_duplicate_keeps_first_payload"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "6 failed, 1 passed in 0.28s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "3c139755d49b5ee8b3f181a56240a6ee9930409a23c4828b4156eb3ed9f4342a"
+      }
+    },
+    {
+      "case": "count_replayed_rows_again",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_duplicate_rows_cannot_manufacture_support"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_duplicate_rows_cannot_manufacture_support"
+      ],
+      "expected_assertion": "duplicate rows cannot manufacture independent support",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "405175ff699b1f6f506275d1304dbdb183cbd37231f381247aba146c99e01779"
+      }
+    },
+    {
+      "case": "report_raw_development_count",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_development_count_uses_same_event_identity_as_learning"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_development_count_uses_same_event_identity_as_learning"
+      ],
+      "expected_assertion": "reported development count must use unique identities",
+      "pytest_summary": "1 failed in 0.23s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "92769e233794bb36735364151c32516267e68a6b3f43a131405058a421be77b4"
+      }
+    },
+    {
+      "case": "collapse_distinct_same_tick_events",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_distinct_signatures_at_one_tick_are_preserved"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_distinct_signatures_at_one_tick_are_preserved"
+      ],
+      "expected_assertion": "distinct eid/event at one tick must survive",
+      "pytest_summary": "1 failed in 0.23s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "bf8a0cb74a6920b9ca30d25cc1664cc55b100a1de4b85c480d83dba3dccbd0da"
+      }
+    }
+  ]
+}

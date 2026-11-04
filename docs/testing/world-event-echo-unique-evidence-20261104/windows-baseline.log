@@ -1,0 +1,61 @@
+FFFFF.F                                                                  [100%]
+================================== FAILURES ===================================
+_______________ test_duplicate_rows_cannot_manufacture_support ________________
+tests\test_event_echo_unique_evidence.py:28: in test_duplicate_rows_cannot_manufacture_support
+    assert result == [], 'duplicate rows cannot manufacture independent support'
+E   AssertionError: duplicate rows cannot manufacture independent support
+E   assert [{'after': 's... 'stop', ...}] == []
+E
+E     Left contains one more item: {'after': 'stop', 'before': 'turn', 'source_eid': 'a', 'source_event': 'stop', ...}
+E     Use -v to get more diff
+______________ test_associations_are_invariant_to_replayed_rows _______________
+tests\test_event_echo_unique_evidence.py:35: in test_associations_are_invariant_to_replayed_rows
+    assert WP.echo_lag_associations(unique * 3, max_lag=4) == expected
+E   AssertionError: assert [{'after': 's... 'stop', ...}] == [{'after': 's... 'stop', ...}]
+E
+E     At index 0 diff: {'after': 'stop', 'before': 'turn', 'source_eid': 'a', 'source_event': 'stop', 'target_eid': 'b', 'target_event': 'turn', 'lag': 2, 'count': 6, 'lag_counts': {2: 6}, 'triggers': 6, 'sources_total': 6, 'sources_with_pair': 6, 'consistency': 1.0, 'lag_consistency': 1.0} != {'after': 'stop', 'before': 'turn', 'source_eid': 'a', 'source_event': 'stop', 'target_eid': 'b', 'target_event': 'turn', 'lag': 2, 'count': 2, 'lag_counts': {2: 2}, 'triggers': 2, 'sources_total': 2, 'sources_with_pair': 2, 'consistency': 1.0, 'lag_consistency': 1.0}
+E     Use -v to get more diff
+_______________ test_split_is_unchanged_by_replayed_source_rows _______________
+tests\test_event_echo_unique_evidence.py:41: in test_split_is_unchanged_by_replayed_source_rows
+    assert WP.echo_split(unique + [unique[0]] * 8, 0.3) == expected
+E   AssertionError: assert {'events': 12...ents': 0, ...} == {'events': 4,...ents': 2, ...}
+E
+E     Omitting 2 identical items, use -vv to show
+E     Differing items:
+E     {'boundary_tick': 1} != {'boundary_tick': 11}
+E     {'holdout_first_tick': 1} != {'holdout_first_tick': 11}
+E     {'holdout_events': 12} != {'holdout_events': 2}
+E     {'dev': []} != {'dev': [{'tick': 1, 'eid': 'a', 'event': 'stop'}, {'tick': 3, 'eid': 'b', 'event': 'turn'}]}...
+E
+E     ...Full output truncated (5 lines hidden), use '-vv' to show
+________________ test_evaluation_is_invariant_to_replayed_rows ________________
+tests\test_event_echo_unique_evidence.py:50: in test_evaluation_is_invariant_to_replayed_rows
+    assert actual == expected, 'replay must not change held-out metrics or model selection'
+E   AssertionError: replay must not change held-out metrics or model selection
+E   assert {'kind': 'eve...port': 2, ...} == {'kind': 'eve...port': 2, ...}
+E
+E     Omitting 5 identical items, use -vv to show
+E     Differing items:
+E     {'no_delay_model': {'events': 15, 'predictions': 6, 'hits': 0, 'misses': 15, ...}} != {'no_delay_model': {'events': 5, 'predictions': 2, 'hits': 0, 'misses': 5, ...}}
+E     {'lag_model': {'events': 15, 'predictions': 6, 'hits': 6, 'misses': 9, ...}} != {'lag_model': {'events': 5, 'predictions': 2, 'hits': 2, 'misses': 3, ...}}
+E     {'holdout_events': 15} != {'holdout_events': 5}
+E     {'lag_readings': [{'tick': 21, 'eid': 'a', 'event': 'stop', 'after': 'stop', ...}, {'tick': 21, 'eid': 'a', 'event': '...d': 'b', 'event': 'turn', 'a...
+E
+E     ...Full output truncated (5 lines hidden), use '-vv' to show
+_________ test_development_count_uses_same_event_identity_as_learning _________
+tests\test_event_echo_unique_evidence.py:55: in test_development_count_uses_same_event_identity_as_learning
+    assert result['dev_events'] == 4, 'reported development count must use unique identities'
+E   AssertionError: reported development count must use unique identities
+E   assert 12 == 4
+__________ test_input_is_read_only_and_duplicate_keeps_first_payload __________
+tests\test_event_echo_unique_evidence.py:76: in test_input_is_read_only_and_duplicate_keeps_first_payload
+    assert result['events'] == 4
+E   assert 5 == 4
+=========================== short test summary info ===========================
+FAILED tests/test_event_echo_unique_evidence.py::test_duplicate_rows_cannot_manufacture_support
+FAILED tests/test_event_echo_unique_evidence.py::test_associations_are_invariant_to_replayed_rows
+FAILED tests/test_event_echo_unique_evidence.py::test_split_is_unchanged_by_replayed_source_rows
+FAILED tests/test_event_echo_unique_evidence.py::test_evaluation_is_invariant_to_replayed_rows
+FAILED tests/test_event_echo_unique_evidence.py::test_development_count_uses_same_event_identity_as_learning
+FAILED tests/test_event_echo_unique_evidence.py::test_input_is_read_only_and_duplicate_keeps_first_payload
+6 failed, 1 passed in 0.28s

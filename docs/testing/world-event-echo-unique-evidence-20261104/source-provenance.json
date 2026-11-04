@@ -1,0 +1,10 @@
+{
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "validated_production_commit": "8d0937751ae1a6f2b52508628b740a85037aadb9",
+  "sha256_lf": {
+    "lingshu/world/world_process.py": "4b6c10f105294e2cda1e8a3658fe3fb306508a4d2ff4e2b7d0932d416dea8105",
+    "tests/test_event_echo_unique_evidence.py": "40c947f35874d099a354a9e3c331cd99d86d6bda8b621143a6c8bae58b4f59f9",
+    "tests/fixtures/event_echo_unique_evidence_mutations.json": "445862fab994c1fe36a2088ca529d1c8bd9c03c95b6d1ffbcd1b27c634c1b291",
+    "docs/intake/body-export-v0.1/_export_manifest.json": "9db00fb93d9219e487de4b63087f2aebd10c966349264439343d11cfa642d4a6"
+  }
+}

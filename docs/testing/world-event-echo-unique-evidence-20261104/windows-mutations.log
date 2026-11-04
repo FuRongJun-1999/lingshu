@@ -1,0 +1,39 @@
+count_replayed_rows_again
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_duplicate_rows_cannot_manufacture_support ________________
+tests\test_event_echo_unique_evidence.py:28: in test_duplicate_rows_cannot_manufacture_support
+    assert result == [], 'duplicate rows cannot manufacture independent support'
+E   AssertionError: duplicate rows cannot manufacture independent support
+E   assert [{'after': 's... 'stop', ...}] == []
+E
+E     Left contains one more item: {'after': 'stop', 'before': 'turn', 'source_eid': 'a', 'source_event': 'stop', ...}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_event_echo_unique_evidence.py::test_duplicate_rows_cannot_manufacture_support
+1 failed in 0.27s
+
+report_raw_development_count
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_development_count_uses_same_event_identity_as_learning _________
+tests\test_event_echo_unique_evidence.py:55: in test_development_count_uses_same_event_identity_as_learning
+    assert result['dev_events'] == 4, 'reported development count must use unique identities'
+E   AssertionError: reported development count must use unique identities
+E   assert 12 == 4
+=========================== short test summary info ===========================
+FAILED tests/test_event_echo_unique_evidence.py::test_development_count_uses_same_event_identity_as_learning
+1 failed in 0.23s
+
+collapse_distinct_same_tick_events
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_distinct_signatures_at_one_tick_are_preserved ______________
+tests\test_event_echo_unique_evidence.py:64: in test_distinct_signatures_at_one_tick_are_preserved
+    assert len(keys) == 4, 'distinct eid/event at one tick must survive'
+E   AssertionError: distinct eid/event at one tick must survive
+E   assert 2 == 4
+E    +  where 2 = len({(1, 'a', 'stop'), (2, 'b', 'turn')})
+=========================== short test summary info ===========================
+FAILED tests/test_event_echo_unique_evidence.py::test_distinct_signatures_at_one_tick_are_preserved
+1 failed in 0.23s
