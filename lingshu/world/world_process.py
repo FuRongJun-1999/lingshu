@@ -492,8 +492,11 @@ def transfer_demonstration(record: Dict, actor: str, ref: str, *,
     ref 静止时 ref 位移为 0，此时只有 rel 随 yaw 与 scale 变化。
     角色变换只改帧里的 eid：记录本身不改写。
     translation 取 (0,0,0)、yaw 取 0、scale 取 1 时即原坐标回放。
-    scale 必须为正数；record 必须含至少 1 条采样；两条约束在此处只查一次。
+    actor 与 ref 必须绑定不同实体，否则 entities 字典会覆盖其中一条轨迹。
+    scale 必须为正数；record 必须含至少 1 条采样；约束在此处只查一次。
     """
+    if actor == ref:
+        raise ValueError("actor 与 ref 不得同名：帧里的 entities 会互相覆写")
     samples = record.get("samples") or []
     if not samples:
         raise ValueError("相对轨迹记录没有采样，无法迁移")
