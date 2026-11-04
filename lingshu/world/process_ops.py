@@ -391,12 +391,16 @@ def compose_processes(first: Dict, second: Dict, *,
                                   translation=second_shift, yaw=yaw, scale=scale,
                                   tick_offset=second_offset)
     tail_frames = tail["frames"]
-    # #2158：跨段首帧的 `dt` 修前继承源记录首帧的 dt（源首帧恒 0——它是自己那段
-    # 的起点）⇒ 「跨段 tick 差 = gap（≥1）而该帧 dt = 0」直接矛盾（tick 与 dt 是
-    # 同一份时间轴的两套记法）。连接点两侧的真实间隔正是 tick_gap ⇒ 显式改写为 gap。
+    # #2158：**顶层合并帧**的跨段首帧 `dt` 修前继承源记录首帧的 dt（源首帧恒 0
+    # ——它是自己那段的时间轴起点）⇒ 「跨段 tick 差 = gap（≥1）而该帧 dt = 0」
+    # 直接矛盾（tick 与 dt 是同一份时间轴的两套记法，tick 被 tick_offset 平移、
+    # dt 没跟着对齐）。连接点两侧的真实间隔正是 tick_gap ⇒ 顶层帧改写为 gap。
+    # 段级 `segments[*].frames` 保留源 dt 不动——那是各段自身时间轴的证据面
+    # （test_process_ops 的段级 `frame["dt"] == sample["dt"]` 契约不变），
+    # 故合并时浅拷贝 tail 帧、只改顶层副本。
+    frames = head_frames + [dict(f) for f in tail_frames]
     if tail_frames:
-        tail_frames[0]["dt"] = gap
-    frames = head_frames + tail_frames
+        frames[len(head_frames)]["dt"] = gap
 
     # 连接点读数：ref 锚定残差与 actor 衔接距离（含两侧相对偏移）。
     first_end_ref = head_frames[-1]["entities"][new_ref]
