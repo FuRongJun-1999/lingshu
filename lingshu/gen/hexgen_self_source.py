@@ -795,7 +795,12 @@ def _solve_placement(cells, n, rad, size, shape, constraint):
                     return False
         return True
 
-    m = max(0, n - len({cells[i % len(cells)] for i in range(n)}))
+    # #2130：cells 的入参语义就是集合（docstring「允许格集合 cells」；truth["cells"]
+    # 原生类型即 set）——同函数 R311 已确立「set ⇒ 先 sorted 再按序访问」先例
+    # （:760/:964），此处漏改 ⇒ spread/zone/hybrid 三档对 set 入参直接
+    # 'set' object is not subscriptable（实测）。排序后按序取模，与 R311 口径一致。
+    _cell_order = sorted(cells)
+    m = max(0, n - len({_cell_order[i % len(_cell_order)] for i in range(n)}))
     #   候选方向集：按「余量」排序（先试最能容纳的方向组合），取使 r 最大的那一组
     best = None
     for angs in _fan_dirs(max(1, m)):
