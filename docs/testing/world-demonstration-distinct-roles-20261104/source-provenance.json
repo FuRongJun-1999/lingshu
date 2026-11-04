@@ -1,0 +1,11 @@
+{
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "validated_production_commit": "5fd13c811a6da11afe5f26c361411da9ec6839f6",
+  "sha256_lf": {
+    "lingshu/world/world_process.py": "47fdbbe1d18dd2fe56eff5d589586c4f1dd9a977fc28267beae4c7df3c9a4846",
+    "tests/test_demonstration_distinct_roles.py": "45ee32cbad9bce1b57c0ce358128500d19420f35dcbf5ddb5010e4b501155270",
+    "tests/fixtures/demonstration_distinct_roles_mutations.json": "23c575dc784e08d709acb49d524edf3b8c10e35feb9140e697ab4fa672262fb0",
+    "tests/test_process_ops.py": "1f82ca5bd7699c2aed91546d49da92645ca53232ad389873b39c40efde902f05",
+    "docs/intake/body-export-v0.1/_export_manifest.json": "dd8f7232c6f69d208bafa90e0b1b424d261e35fe521b5107f0f7f00480414b9c"
+  }
+}

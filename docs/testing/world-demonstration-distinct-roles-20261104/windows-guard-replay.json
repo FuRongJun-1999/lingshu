@@ -1,0 +1,87 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "891c28a7471a31275cc6d37a4468b62e49fe0694",
+  "guard_sha256": "45ee32cbad9bce1b57c0ce358128500d19420f35dcbf5ddb5010e4b501155270",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 7,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "7 passed, 17 warnings in 0.60s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "47fdbbe1d18dd2fe56eff5d589586c4f1dd9a977fc28267beae4c7df3c9a4846"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_core_cannot_report_success_after_role_overwrite[direct]",
+        "test_core_cannot_report_success_after_role_overwrite[memory_id]",
+        "test_same_output_roles_are_rejected_without_changing_record[identity]",
+        "test_same_output_roles_are_rejected_without_changing_record[transformed]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_same_output_roles_are_rejected_without_changing_record[identity]",
+        "test_same_output_roles_are_rejected_without_changing_record[transformed]",
+        "test_core_cannot_report_success_after_role_overwrite[direct]",
+        "test_core_cannot_report_success_after_role_overwrite[memory_id]"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "4 failed, 3 passed, 17 warnings in 0.73s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "3c139755d49b5ee8b3f181a56240a6ee9930409a23c4828b4156eb3ed9f4342a"
+      }
+    },
+    {
+      "case": "allow_output_role_collision",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_same_output_roles_are_rejected_without_changing_record[identity]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_same_output_roles_are_rejected_without_changing_record[identity]"
+      ],
+      "expected_assertion": "DID NOT RAISE",
+      "pytest_summary": "1 failed in 0.50s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "628248d3f1d358a42a33d17e3120a31a385d0a66596766c98c0e3b3caaf2f7a9"
+      }
+    },
+    {
+      "case": "reject_distinct_source_name_reuse",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_reusing_distinct_original_names_is_still_valid"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_reusing_distinct_original_names_is_still_valid"
+      ],
+      "expected_assertion": "distinct role rebinding must remain usable",
+      "pytest_summary": "1 failed in 0.54s",
+      "source_sha256": {
+        "lingshu/world/world_process.py": "7d52de602cbbba6f3fae54248eefe2224cc2e8dcc4d65289e0ff1be5a24e3130"
+      }
+    }
+  ]
+}

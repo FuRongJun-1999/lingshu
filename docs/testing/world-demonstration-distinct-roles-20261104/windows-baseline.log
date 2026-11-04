@@ -1,0 +1,28 @@
+FFFF...                                                                  [100%]
+================================== FAILURES ===================================
+____ test_same_output_roles_are_rejected_without_changing_record[identity] ____
+tests\test_demonstration_distinct_roles.py:28: in test_same_output_roles_are_rejected_without_changing_record
+    with pytest.raises(ValueError, match='actor 与 ref 不得同名'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+__ test_same_output_roles_are_rejected_without_changing_record[transformed] ___
+tests\test_demonstration_distinct_roles.py:28: in test_same_output_roles_are_rejected_without_changing_record
+    with pytest.raises(ValueError, match='actor 与 ref 不得同名'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+________ test_core_cannot_report_success_after_role_overwrite[direct] _________
+tests\test_demonstration_distinct_roles.py:43: in test_core_cannot_report_success_after_role_overwrite
+    with pytest.raises(ValueError, match='actor 与 ref 不得同名'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+_______ test_core_cannot_report_success_after_role_overwrite[memory_id] _______
+tests\test_demonstration_distinct_roles.py:43: in test_core_cannot_report_success_after_role_overwrite
+    with pytest.raises(ValueError, match='actor 与 ref 不得同名'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/test_demonstration_distinct_roles.py::test_same_output_roles_are_rejected_without_changing_record[identity]
+FAILED tests/test_demonstration_distinct_roles.py::test_same_output_roles_are_rejected_without_changing_record[transformed]
+FAILED tests/test_demonstration_distinct_roles.py::test_core_cannot_report_success_after_role_overwrite[direct]
+FAILED tests/test_demonstration_distinct_roles.py::test_core_cannot_report_success_after_role_overwrite[memory_id]
+4 failed, 3 passed, 17 warnings in 0.73s

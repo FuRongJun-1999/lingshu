@@ -1,0 +1,30 @@
+allow_output_role_collision
+F                                                                        [100%]
+================================== FAILURES ===================================
+____ test_same_output_roles_are_rejected_without_changing_record[identity] ____
+tests\test_demonstration_distinct_roles.py:28: in test_same_output_roles_are_rejected_without_changing_record
+    with pytest.raises(ValueError, match='actor 与 ref 不得同名'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/test_demonstration_distinct_roles.py::test_same_output_roles_are_rejected_without_changing_record[identity]
+1 failed in 0.50s
+
+reject_distinct_source_name_reuse
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_reusing_distinct_original_names_is_still_valid _____________
+tests\test_demonstration_distinct_roles.py:80: in test_reusing_distinct_original_names_is_still_valid
+    moved = WP.transfer_demonstration(record(), 'old_ref', 'old_actor')
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lingshu\world\world_process.py:499: in transfer_demonstration
+    raise ValueError("actor 与 ref 不得同名：帧里的 entities 会互相覆写")
+E   ValueError: actor 与 ref 不得同名：帧里的 entities 会互相覆写
+
+During handling of the above exception, another exception occurred:
+tests\test_demonstration_distinct_roles.py:82: in test_reusing_distinct_original_names_is_still_valid
+    pytest.fail('distinct role rebinding must remain usable')
+E   Failed: distinct role rebinding must remain usable
+=========================== short test summary info ===========================
+FAILED tests/test_demonstration_distinct_roles.py::test_reusing_distinct_original_names_is_still_valid
+1 failed in 0.54s
