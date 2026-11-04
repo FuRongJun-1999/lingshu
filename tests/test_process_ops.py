@@ -870,15 +870,25 @@ _MUTATIONS = [
 ]
 
 
-def _load_mutant(source, tmp_path, index):
+def _load_mutant(source, tmp_path, index, *, disable_transfer_role_guard=False):
     """把变异源码放进临时包（连带 world_process 副本）导入；工作树不被改写。"""
     name = "process_ops_mutant_pkg_%d" % index
     root = tmp_path / ("mutant_%d" % index)
     package = root / name
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
-    shutil.copy2(os.path.join(REPO, "lingshu", "world", "world_process.py"),
-                 str(package / "world_process.py"))
+    with open(os.path.join(REPO, "lingshu", "world", "world_process.py"),
+              encoding="utf-8") as handle:
+        transfer_source = handle.read()
+    if disable_transfer_role_guard:
+        # M9 必须撤掉调用链上两处同名校验。否则 transfer 新增的入口闸会
+        # 兜住 compose 的变异，让“去掉同名保护”仍被 ValueError 拒绝。
+        # 仅改隔离副本；其它变异沿用完整的真实 transfer 实现。
+        gate = ('    if actor == ref:\n'
+                '        raise ValueError("actor 与 ref 不得同名：帧里的 entities 会互相覆写")\n')
+        assert transfer_source.count(gate) == 1
+        transfer_source = transfer_source.replace(gate, '', 1)
+    (package / "world_process.py").write_text(transfer_source, encoding="utf-8")
     (package / "process_ops.py").write_text(source, encoding="utf-8")
     sys.path.insert(0, str(root))
     try:
@@ -894,7 +904,7 @@ def _digest(path):
 
 
 def test_c_named_mutations_turn_isolation_red_without_touching_working_tree(tmp_path):
-    """M1 至 M6 各自在隔离副本里让目标断言变红；工作树源码不被改写。"""
+    """M1 至 M9 各自在隔离副本里让目标断言变红；工作树源码不被改写。"""
     import lingshu.world.process_ops as module
 
     before = _digest(MODULE_PATH)
@@ -904,7 +914,8 @@ def test_c_named_mutations_turn_isolation_red_without_touching_working_tree(tmp_
 
     for index, (name, title, old, new, expected) in enumerate(_MUTATIONS):
         assert source.count(old) == 1, "变异点 %s 在源码里不唯一：%r" % (name, old)
-        mutant = _load_mutant(source.replace(old, new), tmp_path, index)
+        mutant = _load_mutant(source.replace(old, new), tmp_path, index,
+                              disable_transfer_role_guard=(name == "M9"))
         with pytest.raises(AssertionError, match=expected):
             _mutation_scenario(mutant)
 

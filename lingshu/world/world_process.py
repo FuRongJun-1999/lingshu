@@ -492,8 +492,11 @@ def transfer_demonstration(record: Dict, actor: str, ref: str, *,
     ref 静止时 ref 位移为 0，此时只有 rel 随 yaw 与 scale 变化。
     角色变换只改帧里的 eid：记录本身不改写。
     translation 取 (0,0,0)、yaw 取 0、scale 取 1 时即原坐标回放。
-    scale 必须为正数；record 必须含至少 1 条采样；两条约束在此处只查一次。
+    actor 与 ref 必须绑定不同实体，否则 entities 字典会覆盖其中一条轨迹。
+    scale 必须为正数；record 必须含至少 1 条采样；约束在此处只查一次。
     """
+    if actor == ref:
+        raise ValueError("actor 与 ref 不得同名：帧里的 entities 会互相覆写")
     samples = record.get("samples") or []
     if not samples:
         raise ValueError("相对轨迹记录没有采样，无法迁移")
@@ -547,9 +550,12 @@ def transfer_demonstration(record: Dict, actor: str, ref: str, *,
 #   · 事件流里的位置间隔不参与统计，插入无关事件不改变同一签名对的 lag 计数。
 
 def _echo_stream(events: Sequence[Dict]) -> List[Dict]:
-    """事件流按 (tick, eid, event) 严格升序；只读输入，不改写。"""
-    return sorted(events, key=lambda e: (int(e["tick"]), str(e["eid"]),
-                                         str(e["event"])))
+    """按事件三键身份去重并严格升序；重复项保留首条正文，不改写输入。"""
+    unique = {}
+    for event in events:
+        key = _echo_key(event)
+        unique.setdefault(key, event)
+    return [unique[key] for key in sorted(unique)]
 
 
 def _echo_key(event: Dict) -> Tuple[int, str, str]:
@@ -807,6 +813,8 @@ def echo_lag_associations(events: Sequence[Dict], *,
     事件流里的位置间隔不参与统计，因此插入无关事件不改变同一签名对测到的 lag，
     同 tick 簇也不打断同一签名对的配对；同一 tick 上的多条事件按整组处理。
     lag=0（同 tick 的两条事件）不进入延迟统计。
+    同一 (tick, eid, event) 是同一个事件，重放行不增加支持数；
+    同 tick 的不同 eid 或 event 仍分别保留。
 
     输出条件（两条都要满足）：
       · count = 该签名对在主 lag 上的计数 ≥ min_support；
@@ -902,7 +910,7 @@ def _echo_inside_tick_group(stream: Sequence[Dict], index: int) -> bool:
 def echo_split(events: Sequence[Dict], holdout_fraction: float = 0.3) -> Dict:
     """把事件流按 tick 切成开发段与留出段；同一 tick 的事件整组进同一段。
 
-    留出段条数 holdout_count = ceil(事件数 × holdout_fraction)，
+    先按 (tick, eid, event) 去重。留出段条数 holdout_count = ceil(事件数 × holdout_fraction)，
     切分下标 split_index = 事件数 − holdout_count：留出段是流的最后 holdout_count 条。
     holdout_fraction=0 时留出段为空，=1 时全部进留出段。
     切分边界落在同一 tick 组内部（前一条与本条同 tick）时，边界向前移到该组首，
@@ -1003,8 +1011,10 @@ def evaluate_event_echo(dev_events: Sequence[Dict],
     所以触发集合、目标签名与偏差口径逐条可比；只有预测 tick 不同，
     因此 lag 模型的预测可能先越过观察尾部而记 beyond_window。
     同一输入重复调用返回相同结果，输入列表不改写。
+    开发/留出两段各按三键事件身份去重；计数、学习、评分使用同一口径。
     """
-    associations = echo_lag_associations(dev_events, max_lag=max_lag,
+    dev_stream = _echo_stream(dev_events)
+    associations = echo_lag_associations(dev_stream, max_lag=max_lag,
                                          min_support=min_support,
                                          min_consistency=min_consistency)
     stream = _echo_stream(holdout_events)
@@ -1015,7 +1025,7 @@ def evaluate_event_echo(dev_events: Sequence[Dict],
             "max_lag": int(max_lag),
             "min_support": int(min_support),
             "min_consistency": float(min_consistency),
-            "dev_events": len(dev_events),
+            "dev_events": len(dev_stream),
             "holdout_events": len(stream),
             "associations": associations,
             "lag_model": _echo_metrics(lag_rows),

@@ -76,6 +76,9 @@ env:
     tests/test_issue454_unpack_out_guard.py
     tests/test_issue_auto_decay_interval_guard.py
     tests/test_issue_conflict_self_guard.py
+    tests/test_motion_group_anchor_consistency.py
+    tests/test_demonstration_distinct_roles.py
+    tests/test_event_echo_unique_evidence.py
     tests/test_issue_insight_conditions_type_guard.py
     tests/test_issue_dedup_config_args_guard.py
     tests/test_issue_insight_window_type_guard.py
