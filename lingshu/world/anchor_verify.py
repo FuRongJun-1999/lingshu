@@ -175,8 +175,13 @@ class AnchorVerification:
         strong_evidence = [v for c, v in ev.items() if c in STRONG_CHANNELS]
         strong_ok = any(v > KL_THRESHOLD for v in strong_evidence) if strong_evidence else False
 
-        # ④ 无矛盾
-        no_conflict = len(rec["channel_conflicts"]) < CONFLICT_THRESHOLD
+        # ④ 无矛盾——资格契约（docstring「channel_conflicts 为空」＋模块头对齐
+        # confirmation.py 的零容忍条件④）是**空集**，实现却是 len < CONFLICT_
+        # THRESHOLD（=2，该常量自己的注释口径是「≥2 → 建议降级」，是建议线不是
+        # 资格线）⇒ 带着未消解的通道矛盾通过强确认（实测 1 个矛盾登记后仍
+        # ACCEPT_strong；且矛盾记录全文件无清除 API——不累积到 2 就永远带病）。
+        # #2126：对齐三处声明，零容忍。
+        no_conflict = not rec["channel_conflicts"]
 
         # ③ 新观测推进稳定轮数；重复读验证结果不得创造新证据。
         fresh = rec.get("_round") != rec.get("_verified_round")

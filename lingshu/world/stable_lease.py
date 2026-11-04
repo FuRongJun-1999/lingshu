@@ -229,6 +229,15 @@ class StableLease:
         `ttl_expires_at`（此时 `check()` 的非有限闸已把状态判为 weak，本字段仅作报时）。
         """
         ttl_exp = now + ttl
+        # #2121：confidence ≤ 0 时已然 weak（衰减至弱阈值的时刻在 now 或更早，
+        # decayed_conf=0 必落弱阈值）——修前落入「对数域非法」兜底 ⇒ weak_at/
+        # expires_at 报满 TTL，与同一返回体 check() 立即判 weak 自相矛盾
+        # （state="weak" 而 expires_at-now=3600）。兜底只留给「数值坏」（非有限/
+        # γ≤0/阈值非正），可判的 ≤0 显式落 now。
+        if (self._finite(ttl, confidence, self.gamma, self.weak_threshold)
+                and self.gamma > 0 and self.weak_threshold > 0
+                and confidence <= 0.0):
+            return {"expires_at": now, "ttl_expires_at": ttl_exp, "weak_at": now}
         weak_at = ttl_exp
         try:
             if (self._finite(ttl, confidence, self.gamma, self.weak_threshold)
@@ -276,6 +285,17 @@ class StableLease:
             return (False,
                     "t_verified 在未来（时钟回拨）——不可判，降级待重新验证",
                     {"age": round(age, 1)})
+        # #2122：γ≤0 是 docstring 已声明的预期输入类（_expiry_fields 兜底注释
+        # 「γ≤0 … 此时 check() 已判 weak」），但谓词路径漏防：γ<0 时 exp(-γ·age)
+        # 正指数，age 够大即 OverflowError；枠小负 γ 不溢出时 decayed_conf 随 age
+        # 增大、永不落弱阈值 ⇒ 永久 stable——同样与「γ≤0 ⇒ check() 判 weak」
+        # 矛盾。与 age<0 闸（#729）同款：闸落在 exp 计算**之前**，fail-closed
+        # 降级待重新验证。
+        if not (self.gamma > 0.0):
+            return (False,
+                    "gamma 需为正数（γ≤0 时衰减核不可判/反向）——降级待重新验证",
+                    {"gamma": self.gamma if self._finite(self.gamma)
+                     else repr(self.gamma)})
         decayed_conf = lease["confidence"] * math.exp(-self.gamma * age)
         if not self._finite(age, lease["ttl"], decayed_conf,
                             lease["confidence"], self.gamma,

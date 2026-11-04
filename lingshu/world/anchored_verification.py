@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import math
 from enum import Enum
 from typing import Dict, Optional
 
@@ -107,7 +108,15 @@ class AnchoredVerification:
         """
         baseline_ok = True
         notes = []
-        if hit_rate is not None and hit_rate < 0.4:
+        # #2125：hit_rate 非有限（NaN/inf——0/0 型比率：一次预测都没做即 NaN）
+        # 比较恒 False ⇒ 旗标不翻，不可判的命中率被译成「基底稳定」。基底层
+        # 旗标是其它确认判定的「世界可信」前提，恰是最不该 fail-open 的位置。
+        # 与 #196（不可判 ⇒ 降级）口径一致：非有限 ⇒ baseline_ok=False + 点名。
+        if hit_rate is not None and not math.isfinite(hit_rate):
+            baseline_ok = False
+            notes.append("预测命中率不可判（非有限 %r）——基底不稳，待重新验证"
+                         % (hit_rate,))
+        elif hit_rate is not None and hit_rate < 0.4:
             baseline_ok = False
             notes.append("预测命中率低于基线 0.4（D-006）——基底不稳")
         if stable_rounds < 3:
