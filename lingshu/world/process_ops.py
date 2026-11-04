@@ -391,6 +391,11 @@ def compose_processes(first: Dict, second: Dict, *,
                                   translation=second_shift, yaw=yaw, scale=scale,
                                   tick_offset=second_offset)
     tail_frames = tail["frames"]
+    # #2158：跨段首帧的 `dt` 修前继承源记录首帧的 dt（源首帧恒 0——它是自己那段
+    # 的起点）⇒ 「跨段 tick 差 = gap（≥1）而该帧 dt = 0」直接矛盾（tick 与 dt 是
+    # 同一份时间轴的两套记法）。连接点两侧的真实间隔正是 tick_gap ⇒ 显式改写为 gap。
+    if tail_frames:
+        tail_frames[0]["dt"] = gap
     frames = head_frames + tail_frames
 
     # 连接点读数：ref 锚定残差与 actor 衔接距离（含两侧相对偏移）。
