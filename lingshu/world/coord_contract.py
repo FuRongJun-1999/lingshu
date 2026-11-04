@@ -111,8 +111,16 @@ def apply_move(pos, speed, d, size, margin=BOUND_MARGIN, quant=QUANT,
         return tuple(round(float(v), quant if quant is not None else 6) for v in pos) \
             if quant is not None else tuple(float(v) for v in pos)
     step = speed if step_cap is None else min(speed, step_cap)
-    nx = pos[0] + d[0] * step
-    nz = pos[2] + d[2] * step
+    # #2151：step_cap 路径此前把非有限 speed 静默吃成有限值——`min(inf, cap)`
+    # 返回 cap ⇒ 同一份 `NF_REJECT_ROUND_ALL` 契约下，speed=inf 只因 step_cap
+    # 是否为 None 就得到「拒绝」与「移动满 cap」两种结果（实测后者 (4.0,1.0,1.0)）。
+    # 非有限 step 统一走既有拒绝闸（原位置），契约不分路径。
+    if (not math.isfinite(speed) or not math.isfinite(step))             and on_nonfinite is not NF_NONE:
+        nx = nz = float("nan")   # speed 非有限不可判（#2151：min(inf,cap)=cap
+                                 # 曾把拒绝路径吃成满 cap 移动）
+    else:
+        nx = pos[0] + d[0] * step
+        nz = pos[2] + d[2] * step
     if on_nonfinite is not NF_NONE and not (math.isfinite(nx) and math.isfinite(nz)):
         if on_nonfinite == NF_REJECT_XZ_ONLY:
             return (q(pos[0]), float(pos[1]), q(pos[2]))
