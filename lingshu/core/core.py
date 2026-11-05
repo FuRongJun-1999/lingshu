@@ -3280,7 +3280,11 @@ class LayeredStore:
                 out.append(_DEDUP_CAND(
                     id=row[0],
                     content=row[1],
-                    tags=json.loads(row[2]) if row[2] else [],
+                    # #2380：tags 列与 from_row 同口径（无条件 json.loads）——
+                    # 修前 `if row[2] else []` 对 tags=NULL 宽容收进候选，而
+                    # from_row 对同一行抛 TypeError 跳过 ⇒ 候选集合不等价、
+                    # M5 判同结果变化（违背 #1265「逐位不变」承诺）。
+                    tags=json.loads(row[2]),
                     condition_space=ConditionSpace.from_json(row[3]),
                 ))
             except (IndexError, ValueError, TypeError, KeyError):

@@ -163,3 +163,27 @@ def test_2167_point_vs_bound_semantics():
     assert rep["bound_coverage"] == 1.0, (
         "0.8 < 1.0 边界 ⇒ 覆盖命中（修前两字段同值，无法区分）：%r"
         % (rep["bound_coverage"],))
+# ---------------------------------------------------------------- #2380
+
+def test_2380_dedup_candidates_tags_null_consistent_with_from_row():
+    """#2380：_dedup_candidates 对 tags=NULL 行的容错与 from_row 同口径
+    （都跳过）——修前窄列装载宽容收进候选（tags=[]），候选集合不等价、
+    M5 判同结果变化（违背 #1265「逐位不变」承诺）。"""
+    from lingshu.core.core import SpacetimeMemoryEngine, MemoryLayer
+    e = SpacetimeMemoryEngine(db_path=":memory:")
+    e.add_perception("正常节点甲乙丙丁", importance=0.6)
+    c = e.store.conn.cursor()
+    c.execute(
+        "INSERT INTO nodes (id, content, modality, layer, importance,"
+        " last_access, tags, condition_space, spatial_coordinates,"
+        " semantic_coordinates, state_attributes)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        ("nulltags", "tags列NULL", "text", "knowledge", 0.6, 0.0,
+         None, "{}", "{}", "{}", "{}"))
+    e.store.conn.commit()
+    qn = e.store.query_nodes(layer=MemoryLayer.KNOWLEDGE, modality="text",
+                             limit=-1)
+    dc = e.store._dedup_candidates("text")
+    assert {n.id for n in qn} == {c.id for c in dc}, (
+        "窄列装载的候选集合须与全列装载一致（tags=NULL 行两面都跳过）：%r vs %r"
+        % (sorted(n.id for n in qn), sorted(c.id for c in dc)))
