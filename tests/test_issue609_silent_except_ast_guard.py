@@ -181,8 +181,10 @@ def test_g4_whole_repo_zero_over_baseline():
     #: （把计数调回高值或新增静默宽 except 都会立刻判红）。
     #: 该地板值**跟随每一次真实下降同步**：改基线文件而不动本行 ⇒ 本断言当场判红
     #: （`286b428` 就漏了这一步 ⇒ 三条 job 同时红，已补）。
-    assert data["actual_total"] >= 140, ("基线合计低于当前登记值 140"
-                                         "（#609 重测后 144 − #292 真实修复 4），"
+    #: ★2026-11-06（#170 清偿第一批）140 → 139：`lingshu/world/prediction.py`
+    #: 14 → 0（全 14 处补 logger 审计，控制流零变化；基线文件同步删行）。
+    assert data["actual_total"] >= 139, ("基线合计低于当前登记值 139"
+                                         "（#292 真实修复 4 ＋ #170 清偿第一批 prediction.py −14），"
                                          "判据可能被偷偷放宽")
     assert data["unparsable"] == [], data
     # #609 重测的落点：core.py 计数已同步进基线（46→76；#653 再 76→78，
