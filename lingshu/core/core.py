@@ -14126,6 +14126,13 @@ class SpacetimeMemoryEngine:
             if bound is not None:
                 if value is None:
                     continue          # 无值不可判：声明了数值界却未给值 ⇒ 不匹配
+                if (isinstance(value, float) and math.isnan(value)):
+                    continue          # #2162：NaN 无序 → 触发器语义不可判，按无值
+                                      # 处理（与 None 同口径）——修前 NaN 参与裸
+                                      # 比较恒 False，危机触发器静默跳过且与健康
+                                      # 值不可区分。±inf 的**有序**比较语义保留
+                                      # （-inf < 0.2 照常触发、inf < 0.2 不触发，
+                                      # IEEE 行为正确，票边界段明写不拦 ±inf）。
                 if not _eval_escalation_value_bound(bound[0], bound[1], value):
                     continue
             matches.append(point)
