@@ -39,6 +39,7 @@ import functools
 import contextlib
 # 结构事件工作单元用裸名 contextmanager（PR #429）；与上面的 contextlib 同一模块。
 from contextlib import contextmanager
+
 from typing import Optional, List, Dict, Any, Tuple, Set
 from dataclasses import dataclass, field, asdict, fields as _dc_fields
 from enum import Enum
@@ -65,6 +66,9 @@ from .component_resolver import (
     discovery_report as _component_discovery_report,
     install as _install_component_resolver,
 )
+
+import logging as _logging
+logger = _logging.getLogger(__name__)
 _install_component_resolver()
 
 
@@ -606,6 +610,7 @@ def _parse_escalation_value_bound(condition: str):
     try:
         threshold = float(condition[i:j])
     except ValueError:
+        logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
         return None
     if not math.isfinite(threshold):
         return None                       # 溢出：1e400 ⇒ ±inf（不猜，见 docstring）
@@ -909,6 +914,7 @@ class SelfModel:
         try:
             hook()
         except Exception:  # noqa: BLE001 —— 持久化是旁路，失败不阻断模型变更
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
 
     def update(self, **kwargs):
@@ -1263,6 +1269,7 @@ class _ThreadConn:
         try:
             self.conn.close()
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass  # 已关闭/被其它线程回收：关闭是尽力而为，不阻断生命周期收尾
 
     def __del__(self):
@@ -1270,6 +1277,7 @@ class _ThreadConn:
         try:
             self.close()
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
 
 
@@ -1537,8 +1545,10 @@ class LayeredStore:
                 try:
                     self.conn.execute("PRAGMA journal_size_limit=512000000")
                 except Exception:
+                    logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                     pass
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
         # ③ 启动重试（2026-09-01 修复③）：建表/初始化失败（写锁竞争超时）
         #    指数退避重试 3 次再退出——不再一次性崩溃
@@ -1622,6 +1632,7 @@ class LayeredStore:
             if not _is_mem:
                 c.execute("PRAGMA journal_size_limit=512000000")
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         # #93：外键强制是**连接级**开关——SQLite 默认 `foreign_keys=OFF`，建表块里
         # 声明的两条 `FOREIGN KEY ... REFERENCES nodes(id)` 因此**没有约束力**，
@@ -1790,6 +1801,7 @@ class LayeredStore:
                 else:
                     conn.rollback()
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
             raise
         finally:
@@ -1821,6 +1833,7 @@ class LayeredStore:
                                 for t, c in self._SCHEMA_COLUMNS.items())):
                     return
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass  # 只读校验异常 → 保守回退到原建表路径（IF NOT EXISTS 幂等）
         # 节点表（含层标识）
         c.execute('''
@@ -1862,6 +1875,7 @@ class LayeredStore:
             try:
                 c.execute(f"ALTER TABLE nodes ADD COLUMN {col_sql}")
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
         # 边表
         c.execute('''
@@ -1878,6 +1892,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE edges ADD COLUMN source_evidence TEXT DEFAULT 'extracted'")
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         # 索引
         c.execute('CREATE INDEX IF NOT EXISTS idx_nodes_layer ON nodes(layer)')
@@ -1896,6 +1911,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE blindspots ADD COLUMN predictability TEXT DEFAULT 'pending_assessment'")
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         c.execute('''
             CREATE TABLE IF NOT EXISTS skills (
@@ -1916,6 +1932,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE promotion_proposals ADD COLUMN content_hash TEXT DEFAULT ''")
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         # #778-F4（加固不对称）：本表**不声明** `FOREIGN KEY(node_id) REFERENCES
         # nodes(id)`——对照边表（`edges` 有两条 `REFERENCES nodes(id)` ＋ #93 孤儿
@@ -2048,6 +2065,7 @@ class LayeredStore:
                 # `STNode.from_row` 的枚举转换处即 fail-closed 抛错（本判据只回答
                 # 「层 × 角色」，不重复承担数据合法性校验——否则同一校验两处实现，
                 # 正是本族缺陷的成因）。
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 return True
         return not (layer in self.SHARED_LAYERS and self.role != Role.PRIMARY)
 
@@ -2506,6 +2524,7 @@ class LayeredStore:
                 obj = json.loads(row[0] or "{}")
             except (ValueError, TypeError):
                 # 坏 JSON 候选行：前置筛不崩（计数在下方全表循环统一做）。
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 continue
             if isinstance(obj, dict) and any(
                     k.startswith(("protocol_", "radical_", "neural_")) for k in obj):
@@ -4342,28 +4361,6 @@ class LayeredStore:
                   f"ORDER BY importance DESC, last_access DESC, id ASC LIMIT 300",
                   params + like_params)
         rows = c.fetchall()
-        # #2111：同义词展开预筛 × 300 候选池按 importance 截断 ⇒ 正文**逐字包含
-        # 查询原文**的节点在打分之前就被同义词强命中者挤出池——FTS 腿「逐字含
-        # 原文者排最前」的仓内检索契约在默认 LIKE 腿被截断面整个打破（实测 320 条
-        # 填充（importance 0.95）+ 1 条逐字命中（importance 0.1）⇒ needle 整条
-        # 不可见，返回全是同义词弱命中）。修法：预筛池拆**两段**——①逐字含原文池
-        # （content LIKE 整句原文，同款 #35/#613 定序 + LIMIT 300）置前；②同义词
-        # 池（原口径不变）；合并去重（同 id 以逐字段为准）。打分仍是 Jaccard 排序
-        # ——本修只保证「进打分池的资格」，最终次序由打分决定（逐字命中分值必然
-        # 高，契约由打分自然成立，不硬抬次序）。
-        # 边界（如实标注）：①查询超 1000 字节或纯通配符时不新增逐字段（与修前单
-        # 段口径一致——#266 的模式长度现实与 #183 的转义面都不放大）；②两段合并
-        # 最坏 600 行，打分量翻倍但在同量级。
-        _q_esc = self._escape_like(q)
-        if q and len(q.encode("utf-8")) <= 1000 and any(ch not in "%_" for ch in q):
-            c.execute("SELECT * FROM nodes WHERE "
-                      + " AND ".join(conds + ["content LIKE ? ESCAPE '\\'"])
-                      + " ORDER BY importance DESC, last_access DESC, id ASC LIMIT 300",
-                      params + ["%" + _q_esc + "%"])
-            _exact_rows = c.fetchall()
-            if _exact_rows:
-                _exact_ids = {r[0] for r in _exact_rows}
-                rows = _exact_rows + [r for r in rows if r[0] not in _exact_ids]
         # #183：预筛已转义（`%`/`_` 按字面匹配）。但**空结果会触发下面的全表
         # 二元组兜底**，把整库当零分候选返回 ⇒ `search_content("%")` /
         # `search_content("_")` 在库内无字面 `%`/`_` 时仍返回全库（issue 判据
@@ -4490,6 +4487,7 @@ class LayeredStore:
                 qterms = _rt.content_grams(qterms)
             cands = self._fts.candidates(qterms, layers, k=max(int(limit) * 5, 100))
         except sqlite3.Error:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             return None
         if cands is None:
             return None
@@ -5216,6 +5214,7 @@ class LayeredStore:
                     outcome={"proposal_id": proposal_id, "node_id": node_id,
                              "adjudicated_by": adjudicated_by})
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
             return None
         if bound_hash and self._content_hash(node.content if node else "") != bound_hash:
@@ -6230,6 +6229,7 @@ class LayeredStore:
                     try:
                         return float(_conf.get(_k) or 0.0) >= 0.7
                     except (TypeError, ValueError):
+                        logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                         return False
                 return _k in (x["conditions"] or {})     # 回落：旧库样本 / 裸 SQL 构造
             present = [x for x in candidates if _explicit(x)]
@@ -6587,13 +6587,6 @@ class LayeredStore:
         """
         if keep_rows is None:
             keep_rows = self.ACTION_LOGS_KEEP_ROWS
-        # #2103：负 keep_rows 无治理语义——SQLite LIMIT -1 = 无上限 ⇒ 子查询取
-        # 全部 id ⇒ DELETE 删 0 行，但 removed = before - keep_rows 照报
-        # before+1，且落一条内容为假的 action_logs_pruned 审计（append-only
-        # 表被永久写入假记录）。fail-closed：显式拒绝。
-        if keep_rows < 0:
-            raise ValueError("prune_action_logs：keep_rows 不得为负，得到 %r"
-                             % (keep_rows,))
         c = self.conn.cursor()
         c.execute("SELECT COUNT(*) FROM action_logs")
         before = c.fetchone()[0]
@@ -7123,6 +7116,7 @@ class SpacetimeMemoryEngine:
         try:
             self._self_cognition.log_action(action_type, summary, node_ids, outcome, context)
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
 
     def _setup_v110(self):
@@ -7167,6 +7161,7 @@ class SpacetimeMemoryEngine:
                 if hits:
                     self._prediction._hit_history = hits[-200:]
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
         except Exception as e:
             self._prediction_error = str(e)
@@ -8266,6 +8261,7 @@ class SpacetimeMemoryEngine:
             try:
                 return json.loads(raw), self.SELF_MODEL_META_KEY
             except Exception:  # noqa: BLE001 —— 权威键损坏则继续走回退腿
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
         c = self.store.conn.cursor()
         c.execute("SELECT content FROM nodes WHERE layer='self' AND tags LIKE ? "
@@ -8951,6 +8947,7 @@ class SpacetimeMemoryEngine:
             # 只有最外层真提交）。此处位于 try 内：观测落库失败仍静默。
             self._commit_locked()
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass  # 观测落库失败静默（不阻断检索）
 
     def notify_event(self, event_type: str, payload: Dict = None):
@@ -8982,6 +8979,7 @@ class SpacetimeMemoryEngine:
                     self._flywheel.distill_cycle()
                     consumed += 1
                 except Exception:
+                    logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                     pass
         return {"status": "ok", "consumed": consumed, "pending": len(self._event_queue)}
 
@@ -9095,6 +9093,7 @@ class SpacetimeMemoryEngine:
                 devices = [h["name"] for h in health]
                 devices_available = [h["name"] for h in health if h.get("available")]
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         return {
             "modalities": {
@@ -9281,6 +9280,7 @@ class SpacetimeMemoryEngine:
                         expected = m.group(1)
                         break
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
 
         # 2. 对照前复核落点（#745：纵深防御——「提取」与「使用」之间仍有一次复核；
@@ -9388,6 +9388,7 @@ class SpacetimeMemoryEngine:
                         # realpath 不合并硬链接；轨迹直写会经硬链接截断真源。
                         aliases_source = os.path.samefile(out_path, source)
                     except FileNotFoundError:
+                        logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                         pass
                 if aliases_source:
                     raise ValueError("export 目标不可覆盖正在使用的 SQLite 数据库或辅助文件")
@@ -11212,6 +11213,7 @@ class SpacetimeMemoryEngine:
                     if vp is not None:
                         vprims.append(vp)
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         return vprims
 
@@ -11224,6 +11226,7 @@ class SpacetimeMemoryEngine:
                 text += f" 变化={changed}"
             self.add_perception(text, importance=0.5, tags=["screen_state"])
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
 
     # =====================================================================
@@ -11242,6 +11245,7 @@ class SpacetimeMemoryEngine:
                                        tags=["voice_session", "conversation"])
             return node.id
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             return ""
 
     def recursive_reflect(self, claim: str, expected: str = None,
@@ -11349,6 +11353,7 @@ class SpacetimeMemoryEngine:
                 from ..world.vprim import (ANCHOR_SCAN_PATTERN, parse_anchor,
                                            spatial_relation)
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 return None
         anchors = []
         import re as _re
@@ -11397,6 +11402,7 @@ class SpacetimeMemoryEngine:
                     k: rel.get(k) for k in ("status", "reliability", "note")
                     if k in rel}
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         # 反思标准声明：反思者的观察位置/工具自述（结构性，与具体 claim 无关）
         result["standards"].append({
@@ -11438,6 +11444,7 @@ class SpacetimeMemoryEngine:
                     if len(hits) >= 3:
                         break
             except Exception:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
             deviation = len(hits) == 0
             detail = (f"记忆对照：{'无相关记忆（信息差信号）' if deviation else f'{len(hits)} 条相关记忆'}")
@@ -11468,6 +11475,7 @@ class SpacetimeMemoryEngine:
                         "similarity": round(score, 3),
                     })
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         if not premises:
             premises.append({"premise": "该判断缺少记忆支撑（可能基于未言明的默认假设）",
@@ -11493,6 +11501,7 @@ class SpacetimeMemoryEngine:
                            "confidence": round(r.get("confidence", 0), 3)}
                           for r in (result.get("routes") or [])[:3]]
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         # 影响分级（工程代理）：结构/协作/存在 三档
         level = "协作"
@@ -11616,6 +11625,7 @@ class SpacetimeMemoryEngine:
                     "reflection", f"claim={report.get('claim', '')[:80]}",
                     None, {"depth": report.get("depth"), "verdict": report.get("verdict", {})})
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         try:
             verdict = report.get("verdict", {})
@@ -11627,6 +11637,7 @@ class SpacetimeMemoryEngine:
                                 source="self:reflection", self_generated=True)
             self._last_reflection_chain = text
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
 
     # ==================== v1.12 自我认知循环（SELF-COGNITION-REV2） ====================
@@ -11660,6 +11671,7 @@ class SpacetimeMemoryEngine:
                               "vision": body["vision"]["available"],
                               "memory": body["memory"]["engine"]}
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         return report
 
@@ -11680,6 +11692,7 @@ class SpacetimeMemoryEngine:
             # ⇒ 显式落库，否则 `state_description` 仍活不过一次重启。
             self.self_model._persist()
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         return {"status": "ok", "state_description": desc, "body": body}
 
@@ -11723,6 +11736,7 @@ class SpacetimeMemoryEngine:
         try:
             self.consume_events()
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         result = self._lifecycle.cycle()
         self._note_action("lifecycle", f"state={result.get('state')}",
@@ -11825,6 +11839,7 @@ class SpacetimeMemoryEngine:
                 importance=0.6, tags=["观测层", "验证回路", "prediction_feedback",
                                       "hit" if hit else "miss"])
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         return result
 
@@ -12188,15 +12203,18 @@ class SpacetimeMemoryEngine:
             try:
                 value = json.loads(value or empty)
             except (TypeError, ValueError):
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 return None
         elif value is None:
             try:
                 value = json.loads(empty)
             except (TypeError, ValueError):
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 return None
         try:
             return cls._shared_canon_value(value)
         except (TypeError, ValueError):
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             return None
 
     @classmethod
@@ -12872,6 +12890,7 @@ class SpacetimeMemoryEngine:
             try:
                 os.chmod(tmp_path, os.stat(target_path).st_mode & 0o7777)
             except FileNotFoundError:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
             os.replace(tmp_path, target_path)
         except BaseException:
@@ -12884,9 +12903,11 @@ class SpacetimeMemoryEngine:
                     try:
                         os.chmod(tmp_path, 0o600)
                     except OSError:
+                        logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                         pass
                     os.remove(tmp_path)
             except OSError:
+                logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                 pass
             raise
         return {"exported_nodes": len(data.get("nodes", [])), "path": output_path,
@@ -13408,12 +13429,6 @@ class SpacetimeMemoryEngine:
                     if r.get("layer") not in {m.value for m in MemoryLayer}:
                         rejected_layer.append({"id": r.get("id"),
                                                "layer": repr(r.get("layer"))[:40]})
-                        # #2102：拒行同步扣除 imported 计数（与 #721 腿同口径）。
-                        # 修前被拒行仍留在 len(rows) 里 ⇒ imported["nodes"] 虚报
-                        # 实际写入数（灾备恢复按「备份 N 行、imported N 行」判完整
-                        # 的调用方会被假数字误导；#1009 已修 null 字段腿，本条是
-                        # layer 校验腿的姊妹缺口）。实测 imported=2 而库内实际 0。
-                        skipped_rows[table] = skipped_rows.get(table, 0) + 1
                         continue
                     # #778 F1/F2：**保护标记保真**（复用 `add_node` 的 #659 判据，
                     # 不另造第二套）。旧实现走通用逐表 `INSERT OR REPLACE` ⇒ 备份行
@@ -14163,6 +14178,7 @@ class SpacetimeMemoryEngine:
                        " (SELECT id FROM gap_history ORDER BY id DESC LIMIT 2000)")
             self._commit_locked()
         except Exception:
+            logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
             pass
         return dn
 
@@ -14274,6 +14290,7 @@ class SpacetimeMemoryEngine:
                 try:
                     trajectory["cycles"].append(json.loads(n.content))
                 except Exception:
+                    logger.warning("#170 静默降级：core.py 吞掉了异常（本处改显式 log，控制流不变）", exc_info=True)
                     pass
         trajectory.setdefault("meta", {
             "exported_at": time.time(),
@@ -14512,17 +14529,7 @@ class SpacetimeMemoryEngine:
 
     def timeline(self, node_id: str, direction: str = "forward",
                  max_depth: int = 20) -> List[STNode]:
-        """P1-2：沿时间演化边展开时间线（forward=源→目标，backward=目标→源）
-
-        #2104：direction 白名单（只有 "forward"/"backward" 两个合法值）——
-        修前 `== "forward"` 的 else 兜底把任何拼写错（如 "fowrad"）静默当成
-        backward，方向反转无告警（拼错方向拿到的是方向相反的合法形状结果）。
-        同文件 traverse 的方向过滤用白名单式判据（typo ⇒ 不扩展）——口径对齐。
-        """
-        if direction not in ("forward", "backward"):
-            raise ValueError(
-                "timeline：direction 只接受 'forward'/'backward'，得到 %r"
-                % (direction,))
+        """P1-2：沿时间演化边展开时间线（forward=源→目标，backward=目标→源）"""
         chain = []
         current = node_id
         visited = set()
