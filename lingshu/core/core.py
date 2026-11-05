@@ -8034,8 +8034,11 @@ class SpacetimeMemoryEngine:
           truncated；链尾遇回边/自环 ⇒ 存链并标 cyclic（可达部分不丢弃）；
           空列表=确无因果后果，不再混同于「链太长/有环」（issue #145）
         - max_depth：正整数=深度预算；**None=不限深度**（显式要求「必须找到」）
-        - causal_stats：可选出参 dict，两分支同口径填充
-          `{max_depth, truncated, complete, truncated_dropped}`——截断事实外传
+        - causal_stats：可选出参 dict，两分支填充——但**键集随是否传 `end_id`
+          而不同**（#2128 实测）：传 `end_id` 分支含 `budget_exhausted`/
+          `enumerated`；不传分支含 `cyclic`；共有四键为
+          `{max_depth, truncated, complete, truncated_dropped}`——截断事实外传。
+          调用方按单一键集读取会 KeyError（如无 `end_id` 时读 `budget_exhausted`）。
 
         #327：两个分支都受 `max_paths`（默认 `_CAUSAL_MAX_PATHS`）约束。旧实现
         无上限——同一条因果事实被记录 k 次时路径数是 k⁵，6 节点无环链 k=24 约
