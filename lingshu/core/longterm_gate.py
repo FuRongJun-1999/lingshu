@@ -24,6 +24,9 @@ import time
 _log = logging.getLogger(__name__)
 
 
+import math
+
+
 class LongTermMemoryGate:
     """长期记忆写入决策器（挂载于引擎，纯标准库）。"""
 
@@ -439,6 +442,15 @@ class LongTermMemoryGate:
         """
         if novelty is None:
             novelty = self._novelty(content, existing_id)
+        # #2379：调用方直传的 novelty 此前零校验——NaN 经 min(1.0, nan)=1.0
+        # 的语义陷阱被译成 imp=1.0 长期层满分（与 #2124/#457/#402 的「非有限
+        # 不得给出对己有利结论」相反），features.novelty=nan 还使返回体严格
+        # JSON 不可序列化；5.0/-1.0/inf 同样直通。内部自算路径 _novelty 有
+        # [0,1] 钳制（:403-404），调用方路径对齐同款值域（fail-closed）。
+        if isinstance(novelty, bool) or not isinstance(novelty, (int, float)):
+            raise ValueError("novelty 必须是数值，收到 %r" % (novelty,))
+        if not math.isfinite(novelty) or not (0.0 <= novelty <= 1.0):
+            raise ValueError("novelty 必须落在 [0,1]，收到 %r" % (novelty,))
         trust = self._trust()
         d2 = self._d_second()
         t2 = self._trust_second()
