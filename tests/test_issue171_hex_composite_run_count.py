@@ -116,20 +116,21 @@ def test_g3_dataset_solid_tx_is_one_and_default_prior_accurate():
     assert n > 0 and ok == n, f"缺省先验花纹提取精度 {ok}/{n}（应全中）"
 
 
-def test_g4_dual_copies_byte_identical():
-    """G4：gen/ 与 nn/ 的 hex_composite.py 逐字节相同（防只修一份）。"""
+def test_g4_dual_copies_have_been_merged():
+    """G4（#176 后）：副本已合一 —— gen/ 下不得再有 hex_composite.py。
+
+    改前本断言是「两份 sha256 相同」（防只修一份）。#176 建议3 要求从唯一位置
+    导入，故改为断言副本不再存在、真源仍在。
+    """
     gen = os.path.join(REPO, "lingshu", "gen", "hex_composite.py")
     nn = os.path.join(REPO, "lingshu", "nn", "hex_composite.py")
-    with open(gen, "rb") as f:
-        hg = hashlib.sha256(f.read()).hexdigest()
-    with open(nn, "rb") as f:
-        hn = hashlib.sha256(f.read()).hexdigest()
-    assert hg == hn, "双副本已漂移：只修了一份？"
+    assert os.path.isfile(nn), "唯一真源 lingshu/nn/hex_composite.py 缺失"
+    assert not os.path.exists(gen), "副本复现：lingshu/gen/hex_composite.py 不得存在（#176）"
 
 
 if __name__ == "__main__":
     test_g1_single_run_row_counts_one()
     test_g2_three_runs_count_three()
     test_g3_dataset_solid_tx_is_one_and_default_prior_accurate()
-    test_g4_dual_copies_byte_identical()
+    test_g4_dual_copies_have_been_merged()
     print("OK #171 守卫全过")

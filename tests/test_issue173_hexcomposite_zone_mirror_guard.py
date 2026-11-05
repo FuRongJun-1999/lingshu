@@ -48,7 +48,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
-MODS = ("lingshu.nn.hex_composite", "lingshu.gen.hex_composite")
+# #176 后副本已合一，只剩唯一真源 lingshu/nn/hex_composite.py
+MODS = ("lingshu.nn.hex_composite",)
 NN_PATH = os.path.join(REPO, "lingshu", "nn", "hex_composite.py")
 GEN_PATH = os.path.join(REPO, "lingshu", "gen", "hex_composite.py")
 RUN_TIMEOUT = 300
@@ -115,16 +116,12 @@ def test_z3_other_zones_unchanged(mod_name):
 
 _MUTATIONS = (
     # name, {path: line_to_write}, expected red nodeids
-    ("M1_nn_only", {NN_PATH: _GOOD_LINE, GEN_PATH: _BAD_LINE},
-     {"test_z1_bottom_right_is_mirror_value[lingshu.gen.hex_composite]",
-      "test_z2_bottom_pair_mirrors[lingshu.gen.hex_composite]"}),
-    ("M2_gen_only", {NN_PATH: _BAD_LINE, GEN_PATH: _GOOD_LINE},
+    # #176 后只剩一份 hex_composite.py：原先「只改 gen / 只改 nn」的交叉变异
+    # （M1/M2/M4 的形状）已不适用。保留单点变异，仍能证明「改坏必红」。
+    ("M1_nn_bad", {NN_PATH: _BAD_LINE},
      {"test_z1_bottom_right_is_mirror_value[lingshu.nn.hex_composite]",
       "test_z2_bottom_pair_mirrors[lingshu.nn.hex_composite]"}),
-    ("M3_both_good", {NN_PATH: _GOOD_LINE, GEN_PATH: _GOOD_LINE}, set()),
-    ("M4_one_good_one_bad", {NN_PATH: _GOOD_LINE, GEN_PATH: _BAD_LINE},
-     {"test_z1_bottom_right_is_mirror_value[lingshu.gen.hex_composite]",
-      "test_z2_bottom_pair_mirrors[lingshu.gen.hex_composite]"}),
+    ("M2_nn_good", {NN_PATH: _GOOD_LINE}, set()),
 )
 
 
@@ -153,7 +150,7 @@ def _run_pytest():
 
 
 def _mutate():
-    orig = {p: open(p, "rb").read() for p in (NN_PATH, GEN_PATH)}
+    orig = {p: open(p, "rb").read() for p in (NN_PATH,)}
     digests = {p: hashlib.sha256(d).hexdigest() for p, d in orig.items()}
     bad = 0
     for name, spec, expect in _MUTATIONS:

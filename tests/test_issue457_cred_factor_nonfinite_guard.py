@@ -11,9 +11,9 @@ import math
 import pytest
 
 from lingshu.core import time_core as core_tc
-from lingshu.world import time_core as world_tc
 
-MODULES = [core_tc, world_tc]
+# #176：world/time_core.py 副本已删，唯一真源为 lingshu/core/time_core.py
+MODULES = [core_tc]
 
 
 @pytest.mark.parametrize("tc", MODULES)

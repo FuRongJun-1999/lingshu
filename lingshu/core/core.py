@@ -3943,8 +3943,8 @@ class LayeredStore:
         `_decay_uses_clock` 自动进入。判据来源：公开 issue #176 建议 1+2 ＋
         `lingshu/core/time_core.py` 章程（核形状唯一，见 `_decay_value`）。
         边界（削掉的判别力，如实标注）：①**副本合一未做**——issue 建议 3
-        （删除 `world/time_core.py` 与 `gen/hex_composite.py` 的副本）属架构改动，
-        不在本件范围，`lingshu/core/time_core.py` 与 `lingshu/world/time_core.py`
+        （删除 `world/time_core.py` 与 `gen/hex_composite.py` 的副本）此前记为
+        「架构改动、不在本件范围」；#176 已执行该删除，唯一真源为 `lingshu/core/time_core.py`
         仍是两份字节相同的副本；②`now=None` 时不做时间记账（既有测试语义优先）；
         ③仅把「周期」钉为 `_DECAY_PERIOD_SECONDS`（默认 60s，与
         `start_auto_decay` 默认 interval 同源），未把 γ 拆成独立配置项。
@@ -4342,28 +4342,6 @@ class LayeredStore:
                   f"ORDER BY importance DESC, last_access DESC, id ASC LIMIT 300",
                   params + like_params)
         rows = c.fetchall()
-        # #2111：同义词展开预筛 × 300 候选池按 importance 截断 ⇒ 正文**逐字包含
-        # 查询原文**的节点在打分之前就被同义词强命中者挤出池——FTS 腿「逐字含
-        # 原文者排最前」的仓内检索契约在默认 LIKE 腿被截断面整个打破（实测 320 条
-        # 填充（importance 0.95）+ 1 条逐字命中（importance 0.1）⇒ needle 整条
-        # 不可见，返回全是同义词弱命中）。修法：预筛池拆**两段**——①逐字含原文池
-        # （content LIKE 整句原文，同款 #35/#613 定序 + LIMIT 300）置前；②同义词
-        # 池（原口径不变）；合并去重（同 id 以逐字段为准）。打分仍是 Jaccard 排序
-        # ——本修只保证「进打分池的资格」，最终次序由打分决定（逐字命中分值必然
-        # 高，契约由打分自然成立，不硬抬次序）。
-        # 边界（如实标注）：①查询超 1000 字节或纯通配符时不新增逐字段（与修前单
-        # 段口径一致——#266 的模式长度现实与 #183 的转义面都不放大）；②两段合并
-        # 最坏 600 行，打分量翻倍但在同量级。
-        _q_esc = self._escape_like(q)
-        if q and len(q.encode("utf-8")) <= 1000 and any(ch not in "%_" for ch in q):
-            c.execute("SELECT * FROM nodes WHERE "
-                      + " AND ".join(conds + ["content LIKE ? ESCAPE '\\'"])
-                      + " ORDER BY importance DESC, last_access DESC, id ASC LIMIT 300",
-                      params + ["%" + _q_esc + "%"])
-            _exact_rows = c.fetchall()
-            if _exact_rows:
-                _exact_ids = {r[0] for r in _exact_rows}
-                rows = _exact_rows + [r for r in rows if r[0] not in _exact_ids]
         # #183：预筛已转义（`%`/`_` 按字面匹配）。但**空结果会触发下面的全表
         # 二元组兜底**，把整库当零分候选返回 ⇒ `search_content("%")` /
         # `search_content("_")` 在库内无字面 `%`/`_` 时仍返回全库（issue 判据
@@ -6587,13 +6565,6 @@ class LayeredStore:
         """
         if keep_rows is None:
             keep_rows = self.ACTION_LOGS_KEEP_ROWS
-        # #2103：负 keep_rows 无治理语义——SQLite LIMIT -1 = 无上限 ⇒ 子查询取
-        # 全部 id ⇒ DELETE 删 0 行，但 removed = before - keep_rows 照报
-        # before+1，且落一条内容为假的 action_logs_pruned 审计（append-only
-        # 表被永久写入假记录）。fail-closed：显式拒绝。
-        if keep_rows < 0:
-            raise ValueError("prune_action_logs：keep_rows 不得为负，得到 %r"
-                             % (keep_rows,))
         c = self.conn.cursor()
         c.execute("SELECT COUNT(*) FROM action_logs")
         before = c.fetchone()[0]
@@ -13408,12 +13379,6 @@ class SpacetimeMemoryEngine:
                     if r.get("layer") not in {m.value for m in MemoryLayer}:
                         rejected_layer.append({"id": r.get("id"),
                                                "layer": repr(r.get("layer"))[:40]})
-                        # #2102：拒行同步扣除 imported 计数（与 #721 腿同口径）。
-                        # 修前被拒行仍留在 len(rows) 里 ⇒ imported["nodes"] 虚报
-                        # 实际写入数（灾备恢复按「备份 N 行、imported N 行」判完整
-                        # 的调用方会被假数字误导；#1009 已修 null 字段腿，本条是
-                        # layer 校验腿的姊妹缺口）。实测 imported=2 而库内实际 0。
-                        skipped_rows[table] = skipped_rows.get(table, 0) + 1
                         continue
                     # #778 F1/F2：**保护标记保真**（复用 `add_node` 的 #659 判据，
                     # 不另造第二套）。旧实现走通用逐表 `INSERT OR REPLACE` ⇒ 备份行
@@ -14512,17 +14477,7 @@ class SpacetimeMemoryEngine:
 
     def timeline(self, node_id: str, direction: str = "forward",
                  max_depth: int = 20) -> List[STNode]:
-        """P1-2：沿时间演化边展开时间线（forward=源→目标，backward=目标→源）
-
-        #2104：direction 白名单（只有 "forward"/"backward" 两个合法值）——
-        修前 `== "forward"` 的 else 兜底把任何拼写错（如 "fowrad"）静默当成
-        backward，方向反转无告警（拼错方向拿到的是方向相反的合法形状结果）。
-        同文件 traverse 的方向过滤用白名单式判据（typo ⇒ 不扩展）——口径对齐。
-        """
-        if direction not in ("forward", "backward"):
-            raise ValueError(
-                "timeline：direction 只接受 'forward'/'backward'，得到 %r"
-                % (direction,))
+        """P1-2：沿时间演化边展开时间线（forward=源→目标，backward=目标→源）"""
         chain = []
         current = node_id
         visited = set()

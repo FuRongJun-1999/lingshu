@@ -44,7 +44,7 @@ from __future__ import annotations
 import math
 import warnings
 from typing import Dict, List, Optional, Tuple
-from .time_core import cred_blend
+from lingshu.core.time_core import cred_blend
 
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 # （F08 起把原先重复两次的同一条导入回退合并为一处：静默宽 except 计数
@@ -152,11 +152,7 @@ class ActionDecision:
         dx, dz = ACTION_DELTAS[action]
         nx = max(0.5, min(size - 0.5, pos[0] + dx * step_size))
         nz = max(0.5, min(size - 0.5, pos[2] + dz * step_size))
-        # #2129：y **直通**（不取整）——执行侧 _apply_command 的 y 就是直通口径，
-        # 且本动作模型里 y 是不变量（ACTION_DELTAS 只动 x/z），取整不减信息、只
-        # 制造校验噪声：受控体 y 带小数时 self_error 每 tick 影影非零（实测恰等于
-        # |y − round(y,2)|），「逐位一致」契约被预测侧单方面打破。
-        return [round(nx, 2), pos[1], round(nz, 2)]
+        return [round(nx, 2), round(pos[1], 2), round(nz, 2)]
 
     def forecast_target(self, explorer, predictions: Optional[Dict] = None
                         ) -> Optional[Dict]:

@@ -37,8 +37,8 @@
      且 cred_step(x, cred_factor(γ,dt)) != x·cred_factor(γ,dt)（两者确非同一量）。
   G4 既有调用方语义不变（端到端）：引擎 `decay_cycle()` 默认参数下，知识层
      confidence 每轮 ×0.98（50 轮后仍 >0 且严格下降）——与 #29 W4 同形。
-  G5 双副本一致：`lingshu/core/time_core.py` 与 `lingshu/world/time_core.py`
-     逐字节相同（纪律 6；只改一侧 ⇒ 红）。
+  G5 副本唯一（#176 后）：`lingshu/core/time_core.py` 为唯一真源；
+     `lingshu/world/time_core.py` 已被删除且不得重新出现（纪律 6 的终点是合一，不是长存双份）。
 
 运行（仓根）：python -X utf8 -m pytest tests/test_issue180_cred_step_semantics_guard.py -q --no-header
              / python -X utf8 tests/test_issue180_cred_step_semantics_guard.py
@@ -115,11 +115,14 @@ def test_g4_existing_caller_semantics_unchanged():
     assert after < before and after > 0.0, (before, after)
 
 
-def test_g5_dual_copies_are_byte_identical():
-    """G5：双副本（core/world 两处 time_core.py）必须逐字节一致（纪律 6）。"""
-    a = open(_CORE_TC, "rb").read()
-    b = open(_WORLD_TC, "rb").read()
-    assert a == b, "lingshu/core/time_core.py 与 lingshu/world/time_core.py 已分叉"
+def test_g5_dual_copies_have_been_merged():
+    """G5（#176 后）：副本已合一 —— world/ 下不得再有 time_core.py。
+
+    改前本断言是「两份逐字节相同」（纪律 6）。#176 建议3 要求「改为从唯一位置
+    导入」，纪律 6 的终点即合一；故改为断言世界侧不再有该模块，且真源仍在。
+    """
+    assert os.path.isfile(_CORE_TC), "唯一真源 lingshu/core/time_core.py 缺失"
+    assert not os.path.exists(_WORLD_TC), "副本复现：lingshu/world/time_core.py 不得存在（#176）"
 
 
 def main():
@@ -127,7 +130,7 @@ def main():
            test_g2_docstrings_state_the_two_are_not_interchangeable,
            test_g3_behaviour_contract_unchanged,
            test_g4_existing_caller_semantics_unchanged,
-           test_g5_dual_copies_are_byte_identical]
+           test_g5_dual_copies_have_been_merged]
     failed = 0
     for fn in fns:
         try:

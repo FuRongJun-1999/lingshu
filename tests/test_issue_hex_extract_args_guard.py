@@ -33,7 +33,7 @@ def _err(fn, exc):
 
 def _assertions():
     import numpy as np
-    from lingshu.gen import hex_composite as H
+    from lingshu.nn import hex_composite as H
 
     img = np.zeros((96, 96, 3), np.uint8)
     H._paint(img, "circle", 48, 48, 9, H._COLORS_RGB["red"], "solid")
@@ -56,7 +56,7 @@ def _assertions():
     _check("A05 正对照：合法输入 tx=1.0 / solid",
            abs(r["tx"] - 1.0) < 1e-9 and r["pattern"] == "solid", r)
 
-    text = (_REPO / "lingshu/gen/hex_composite.py").read_text(encoding="utf-8")
+    text = (_REPO / "lingshu/nn/hex_composite.py").read_text(encoding="utf-8")
     _check("E01 钉子：quadrant 文案", "quadrant 需形如 r0/r1/r2" in text)
     _check("E02 钉子：color 文案", "color 必须是 _COLORS_RGB 中的颜色" in text)
 
@@ -71,10 +71,10 @@ def _run_assertions():
 
 
 _ARMS = {
-    "M1": ("lingshu/gen/hex_composite.py",
+    "M1": ("lingshu/nn/hex_composite.py",
            [('    if not isinstance(quadrant, str) or len(quadrant) < 2 or quadrant[0] != "r" \\', '    if False \\')],
            {"A01"}),
-    "M2": ("lingshu/gen/hex_composite.py",
+    "M2": ("lingshu/nn/hex_composite.py",
            [('    if not isinstance(color, str) or color not in _COLORS_RGB:', '    if False:')],
            {"A03"}),
 }

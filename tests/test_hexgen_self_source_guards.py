@@ -56,7 +56,7 @@ def _zc(rc, cc):
 def test_self_vocab_shape_names_are_all_known_to_extent_frac():
     """自家词表（SELF_TUPLES / enumerate_tuples / hex_composite.SHAPES）里的每个形状名，
     经 `_v3_shape` 归一后都必须能查到 `EXTENT_FRAC`（否则 `paint_extent` 抛 KeyError）。"""
-    from lingshu.gen.hex_composite import SHAPES as SELF_SHAPES
+    from lingshu.nn.hex_composite import SHAPES as SELF_SHAPES
     names = set(SELF_SHAPES) | {t[1] for t in S.SELF_TUPLES} | {t[1] for t in S.enumerate_tuples()}
     names |= set(S.SHAPES8)
     for sh in sorted(names):

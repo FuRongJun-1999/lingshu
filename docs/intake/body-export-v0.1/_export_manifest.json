@@ -8,7 +8,7 @@
     {
      "file": "anchor_verify.py",
      "src": "aeis.anchor_verify",
-     "sha256": "54834bab8158005c",
+     "sha256": "e2cab7b98c8eee9b",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -21,7 +21,7 @@
     {
      "file": "anchored_verification.py",
      "src": "aeis.anchored_verification",
-     "sha256": "ea368bff59409d0c",
+     "sha256": "c500b0b1482a2ad6",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -67,7 +67,7 @@
     {
      "file": "gap_dual.py",
      "src": "aeis.gap_dual",
-     "sha256": "97b73201d7b5433d",
+     "sha256": "099aa82e8fd798ea",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -78,7 +78,7 @@
     {
      "file": "motion_groups.py",
      "origin": "lingshu_native_development",
-     "sha256": "fa755466da9a4bab"
+     "sha256": "e0d2d25dfc3056da"
     },
     {
      "file": "multiview.py",
@@ -141,7 +141,7 @@
     {
      "file": "seven_layer_loop.py",
      "src": "aeis.seven_layer_loop",
-     "sha256": "1e2f02a796b8d2d9",
+     "sha256": "cd476a9d7b925953",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -198,18 +198,7 @@
     {
      "file": "stable_lease.py",
      "src": "aeis.stable_lease",
-     "sha256": "b2bfc226956d9a2e",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
-     "file": "time_core.py",
-     "src": "aeis.time_core",
-     "sha256": "b5c95047c9841025",
+     "sha256": "f9b0ada5be48adb4",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -329,7 +318,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "a78187ede4fa73f4",
+     "sha256": "8b6fb4ebdd20bae0",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,
@@ -464,7 +453,7 @@
     {
      "file": "hex_ortho.py",
      "src": "aeis.hex_ortho",
-     "sha256": "2af4dbd2d68866a6",
+     "sha256": "8dc0beee23f6d3f5",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -519,7 +508,7 @@
     {
      "file": "hex_train.py",
      "src": "aeis.hex_train",
-     "sha256": "1a443c27d8423b8e",
+     "sha256": "be3ff6a820018fbf",
      "rewrites": 2,
      "sanitized": 1,
      "patches": 0,
@@ -566,17 +555,6 @@
   "gen": {
    "files": [
     {
-     "file": "hex_composite.py",
-     "src": "aeis.hex_composite",
-     "sha256": "d448855fde51632a",
-     "rewrites": 0,
-     "sanitized": 0,
-     "patches": 0,
-     "hidden_refs": [],
-     "externals": [],
-     "unresolved_top": []
-    },
-    {
      "file": "hexgen_align_probe.py",
      "src": "experiments.hexgen_align_probe",
      "sha256": "4dced4c36731b7bb",
@@ -614,7 +592,7 @@
     {
      "file": "hexgen_pack_certify.py",
      "src": "experiments.hexgen_pack_certify",
-     "sha256": "87218d9932fa58e8",
+     "sha256": "08444667db6cd2be",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,
@@ -625,7 +603,7 @@
     {
      "file": "hexgen_self_source.py",
      "src": "experiments.hexgen_self_source",
-     "sha256": "2182e91584570d68",
+     "sha256": "9db68d2c0ec84cbd",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,

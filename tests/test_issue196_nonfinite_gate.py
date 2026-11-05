@@ -7,7 +7,7 @@
   控制流直落函数末尾的成功分支——损坏/未初始化的数值被静默判为「通过」：
 
     ① `lingshu/core/verdict.py`   assess(part_fg_px=NaN) → ACCEPT
-    ② `lingshu/nn/hex_composite.py`（及 gen/ 双副本）judge_density(density=NaN) → ACCEPT
+    ② `lingshu/nn/hex_composite.py` judge_density(density=NaN) → ACCEPT
     ③ `lingshu/world/stable_lease.py`  StableLease(confidence/ttl=NaN) → stable
 
   缺陷形态在 HEAD 实测（本仓 Python 3.12.10）：
@@ -18,13 +18,13 @@
 断言组（回退 / 放宽即红）：
   G1 `verdict.assess` 非有限输入 → **BLINDSPOT**（reason 钉死 'non-finite input'），
      绝非 ACCEPT；正对照：有限输入照旧走 REJECT / BLINDSPOT / ACCEPT 各档。
-  G2 `judge_density`（nn 与 gen **两份**副本）非有限 density/th_dense → **DEFER**，
+  G2 `judge_density`（#176 后仅 nn 一份实现）非有限 density/th_dense → **DEFER**，
      绝非 ACCEPT；正对照：有限输入照旧 ACCEPT / DEFER(依据不足)。
   G3 `StableLease` 非有限 confidence / ttl / gamma / weak_threshold（经 acquire /
      renew / check 三条入口）→ 一律 **weak** 且 `in_lease is False`，绝非 stable；
      正对照：全有限参数照旧 stable；降级只作用于状态、记录不删（P1-003）。
-  G4 双副本 `lingshu/gen/hex_composite.py` 与 `lingshu/nn/hex_composite.py`
-     逐字节相同（防只修一份）。
+  G4（#176 后由「双副本逐字节相同」改为唯一性）：`lingshu/gen/hex_composite.py`
+     不得存在，唯一真源 `lingshu/nn/hex_composite.py`（防副本回流）。
 
 判据来源（逐条写清出处，不编造理论依据）：
   · verdict → BLINDSPOT：理论只给了四态语义——`docs/theory/自研蜂窝CNN_理论稿_v0.1.md:33`
@@ -48,7 +48,7 @@
 
 定点变异自证（抽掉修复 ⇒ 必红）：
   删 `verdict.py:assess` 入口的 `math.isfinite` 闸 ⇒ G1 红（报 ACCEPT）；
-  删 `hex_composite.judge_density` 的同名闸 ⇒ G2 红（两份副本，报 ACCEPT）；
+  删 `hex_composite.judge_density` 的同名闸 ⇒ G2 红（报 ACCEPT）；
   删 `stable_lease.check` 的非有限闸 ⇒ G3 红（报 stable）。
 
 运行（仓根）：python -X utf8 tests/test_issue196_nonfinite_gate.py
@@ -67,7 +67,6 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
 from lingshu.core.verdict import assess                        # noqa: E402
-from lingshu.gen.hex_composite import judge_density as gen_jd   # noqa: E402
 from lingshu.nn.hex_composite import judge_density as nn_jd     # noqa: E402
 from lingshu.world.stable_lease import StableLease             # noqa: E402
 
@@ -113,7 +112,7 @@ class TestVerdictNonFiniteGate(unittest.TestCase):
 
 
 class TestJudgeDensityNonFiniteGate(unittest.TestCase):
-    """G2：judge_density（nn 与 gen 双副本）非有限输入 → DEFER（#196）。"""
+    """G2：judge_density（#176 后仅 nn 一份实现）非有限输入 → DEFER（#196）。"""
 
     def _check_copy(self, jd, label):
         self.assertEqual(jd({"composite": "car", "score": 1.0}, NAN, 3.0)["state"],
@@ -130,10 +129,10 @@ class TestJudgeDensityNonFiniteGate(unittest.TestCase):
         self.assertEqual(j2["reason"], "证据密度不足", j2)
 
     def test_nn_copy(self):
+        # #176 之后 hex_composite 只剩 lingshu/nn 一份实现（world/gen 副本已删），
+        # 不再有「第二份副本一致性」这条。唯一性由
+        # tests/test_issue176_no_duplicate_modules_guard.py 负责。
         self._check_copy(nn_jd, "nn")
-
-    def test_gen_copy(self):
-        self._check_copy(gen_jd, "gen")
 
 
 class TestStableLeaseNonFiniteGate(unittest.TestCase):
@@ -201,22 +200,20 @@ class TestStableLeaseNonFiniteGate(unittest.TestCase):
 
 
 class TestHexCompositeDualCopyIdentical(unittest.TestCase):
-    """G4：gen/ 与 nn/ 的 hex_composite.py 逐字节相同（防只修一份）。"""
+    """G4（#176 后）：副本已合一 —— gen/ 下不得再有 hex_composite.py。"""
 
     def test_byte_identical(self):
         gen = os.path.join(REPO, "lingshu", "gen", "hex_composite.py")
         nn = os.path.join(REPO, "lingshu", "nn", "hex_composite.py")
-        with open(gen, "rb") as f:
-            hg = hashlib.sha256(f.read()).hexdigest()
-        with open(nn, "rb") as f:
-            hn = hashlib.sha256(f.read()).hexdigest()
-        self.assertEqual(hg, hn, "双副本已漂移：只修了一份？")
+        self.assertTrue(os.path.isfile(nn), "唯一真源 lingshu/nn/hex_composite.py 缺失")
+        self.assertFalse(os.path.exists(gen),
+                         "副本复现：lingshu/gen/hex_composite.py 不得存在（#176）")
 
 
 if __name__ == "__main__":
     print("MUTATION：抽掉修复后本件必红——")
     print("  verdict.py:assess 去 isfinite 闸  ⇒ G1 报 ACCEPT")
-    print("  hex_composite.judge_density 去闸   ⇒ G2 报 ACCEPT（两份副本）")
+    print("  hex_composite.judge_density 去闸   ⇒ G2 报 ACCEPT")
     print("  stable_lease.check 去闸            ⇒ G3 报 stable")
     print("  stable_lease.acquire/renew 去参数闸 ⇒ G3 报 stable")
     unittest.main(verbosity=2)

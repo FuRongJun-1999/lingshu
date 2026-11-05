@@ -25,9 +25,9 @@ from typing import Dict, List, Optional
 
 # 统一时间核（钉死批条款3：衰减核形状唯一，实现收口 aeis/time_core.py）
 try:
-    from .time_core import cred_blend
+    from lingshu.core.time_core import cred_blend
 except ImportError:  # 直跑 fallback（裸名互导）
-    from .time_core import cred_blend
+    from lingshu.core.time_core import cred_blend
 
 
 class GapDual:

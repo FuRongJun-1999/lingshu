@@ -139,7 +139,7 @@ def test_2_every_registered_sha256_has_frozen_shape():
             assert isinstance(recorded, str), (path.as_posix(), relpath, recorded)
             assert SHA_SHAPE_RE.match(recorded), (path.as_posix(), relpath, recorded)
             checked += 1
-    assert checked == 64, checked
+    assert checked == 62, checked
 
 
 def test_3_every_registered_file_exists_on_disk():
@@ -151,7 +151,7 @@ def test_3_every_registered_file_exists_on_disk():
             checked += 1
             if not (REPO_ROOT / relpath).is_file():
                 missing.append((path.name, relpath))
-    assert checked == 64, checked
+    assert checked == 62, checked
     assert not missing, missing
 
 
@@ -160,7 +160,7 @@ def test_4_tool_exits_zero_on_real_repo():
     assert result.returncode == 0, result.stderr or result.stdout
     payload = json.loads(result.stdout)
     summary = payload["summary"]
-    assert summary["entries"] == 64, summary
+    assert summary["entries"] == 62, summary
     assert summary["missing"] == 0 and summary["malformed"] == 0, summary
     # 登记基准 = **LF 归一后的字节**（工具先 `\r\n`→`\n` 再实算 sha256/bytes）：
     # 登记件是文本、上游真源在 Linux 侧；本机 core.autocrlf=true 落成 CRLF 工作树、
@@ -462,13 +462,13 @@ def test_18_native_modules_are_registered_where_the_tool_parses_them():
          全仓 both == 0（无来源自相矛盾的记录）。
     """
     world = _block_entries(V01, "world")
-    assert len(world) == 27, len(world)
+    assert len(world) == 26, len(world)
     v01 = json.loads((REPO_ROOT / V01).read_text(encoding="utf-8"))
     v01_total = sum(len(node["files"]) for node in v01["blocks"].values())
-    assert v01_total == 55, v01_total
+    assert v01_total == 53, v01_total
     v02 = json.loads((REPO_ROOT / V02).read_text(encoding="utf-8"))
     assert len(v02["artifacts"]) + len(v02["tests"]) == 9, sorted(v02.keys())
-    assert v01_total + 9 == 64, v01_total
+    assert v01_total + 9 == 62, v01_total
 
     for path in NATIVE_MODULES:
         entry = world.get(path)
@@ -480,7 +480,7 @@ def test_18_native_modules_are_registered_where_the_tool_parses_them():
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)
     summary = payload["summary"]
-    assert summary["entries"] == 64, summary
+    assert summary["entries"] == 62, summary
     assert summary["origins"]["origin-only"] == 3, summary
     assert summary["origins"]["both"] == 0, summary
 

@@ -37,7 +37,7 @@ import numpy as np
 #   包内相对 import（`from . import ...`），不依赖这两个条目；`experiments/` 目录在本仓不存在。
 from . import hexgen_c1_real as C
 from . import hexgen_multi_seed as M
-from .hex_composite import _COLORS_RGB, _paint        # 只读复用（既有确定性画笔）
+from lingshu.nn.hex_composite import _COLORS_RGB, _paint        # 只读复用（既有确定性画笔）
 
 OUT = "data/hexgen_self_source.json"
 SIZE = 512
@@ -795,12 +795,7 @@ def _solve_placement(cells, n, rad, size, shape, constraint):
                     return False
         return True
 
-    # #2130：cells 的入参语义就是集合（docstring「允许格集合 cells」；truth["cells"]
-    # 原生类型即 set）——同函数 R311 已确立「set ⇒ 先 sorted 再按序访问」先例
-    # （:760/:964），此处漏改 ⇒ spread/zone/hybrid 三档对 set 入参直接
-    # 'set' object is not subscriptable（实测）。排序后按序取模，与 R311 口径一致。
-    _cell_order = sorted(cells)
-    m = max(0, n - len({_cell_order[i % len(_cell_order)] for i in range(n)}))
+    m = max(0, n - len({cells[i % len(cells)] for i in range(n)}))
     #   候选方向集：按「余量」排序（先试最能容纳的方向组合），取使 r 最大的那一组
     best = None
     for angs in _fan_dirs(max(1, m)):
@@ -1173,7 +1168,7 @@ CELLS_BY_N = {1: ("r4",), 2: ("r2", "r6"), 3: ("r0", "r4", "r8")}
 def enumerate_tuples():
     """**系统性枚举**自家词表配方（确定性；颜色按序循环以免「同形状同色」造成的假高读数）：
     形状 × 花纹 × 数量 ＝ 3×3×3 ＝ 27 条，方位格由数量决定（1→r4、2→r2/r6、3→r0/r4/r8）。"""
-    from .hex_composite import COLORS as _C, PATTERNS as _P, SHAPES as _S
+    from lingshu.nn.hex_composite import COLORS as _C, PATTERNS as _P, SHAPES as _S
     out, i = [], 0
     for shape in _S:
         for pattern in _P:

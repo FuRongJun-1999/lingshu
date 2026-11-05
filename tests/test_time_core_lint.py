@@ -370,7 +370,7 @@ def test_judgement_boundary_produces_zero_hits(lint_dir):
 def test_canonical_call_through_exempt(lint_dir):
     """`retain=1.0 - decay` 交给规范核 = 核的既定参数形态，不是同核重写（EX5）。"""
     body = (
-        "from lingshu.world.time_core import cred_blend\n"
+        "from lingshu.core.time_core import cred_blend\n"
         "\n"
         "\n"
         "def update(last, growth, decay):\n"
@@ -535,7 +535,7 @@ def test_comments_and_docstrings_are_masked(lint_dir):
 def test_canonical_modules_fully_exempt(tmp_path):
     """规范模块自身（唯一定义处）整文件豁免（EX0）。"""
     root = tmp_path / "repo"
-    for rel in ("lingshu/core/time_core.py", "lingshu/world/time_core.py"):
+    for rel in ("lingshu/core/time_core.py",):   # #176：world 副本已删，只核唯一真源
         write_module(root / Path(rel).parent, Path(rel).name,
                      "import math\n\n\n"
                      "def cred_factor(gamma, dt):\n"

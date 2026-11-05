@@ -55,7 +55,7 @@ def _assertions():
            abs(cred_factor(1.0, 0.0) - 1.0) < 1e-12
            and abs(cred_factor(1.0, 1.0) - 0.36787944117144233) < 1e-12)
 
-    for rel in ("lingshu/core/time_core.py", "lingshu/world/time_core.py"):
+    for rel in ("lingshu/core/time_core.py",):   # #176：world 副本已删，只核唯一真源
         text = (_REPO / rel).read_text(encoding="utf-8")
         _check("E01 钉子(%s)：可读 TypeError" % rel.split("/")[0],
                "的参数必须是实数" in text and "_as_floats" in text)
