@@ -3424,14 +3424,39 @@ class LayeredStore:
         200：总节点=200 找到目标，201 起一律找不到（9/9 与候选集一致）。
         改为全量候选（`limit=-1`，SQLite `LIMIT -1` = 不限条数，与同文件
         `get_layer_nodes` / #258 / #297 同款口径），本机实测总节点 502 时仍能命中。
+        if (isinstance(time_radius, bool) or not isinstance(time_radius, (int, float))
+                or not math.isfinite(time_radius) or time_radius < 0):
+            raise ValueError("spatiotemporal_query：time_radius 须为非负有限值，收到 %r"
+                             % (time_radius,))
+        if (isinstance(space_radius, bool) or not isinstance(space_radius, (int, float))
+                or not math.isfinite(space_radius) or space_radius < 0):
+            raise ValueError("spatiotemporal_query：space_radius 须为非负有限值，收到 %r"
+                             % (space_radius,))
         判据来源：公开 issue #264（「低 importance 但时空紧邻的记忆永远查不到」）
         ＋ 分诊表 `triage_lingshu_ALL.md` 行 264。
+
+        #2163：两半径此前零校验——`abs(...) > time_radius` 对 NaN 恒 False ⇒
+        半径传 NaN 等价于「无限大」（实测把时间相隔 365 天、空间相隔 1000 的节点
+        拉进结果）；±inf 时分数 `t_dist/radius + s_dist/radius` 的分母为 inf
         边界（削掉的判别力/代价，如实标注）：①全量候选使每次调用为 O(N) 全表
         扫描并逐行反序列化，代价随库规模线性增长（旧实现固定 ≤200 条）；②issue
         建议 1 的「几何/时间谓词下推 SQL」**未**采纳——那属取数路径的独立面，
         本件只做「候选视野与 docstring 声明对齐」这一最小修法；③仍不返回
         `truncated` 标记（issue 建议 2），因为本修法后已无截断。
+
+        #2163：两半径 fail-closed——`abs(...) > time_radius` 对 NaN 恒 False ⇒
+        半径传 NaN 等价于「无限大」（实测把时间相隔 365 天、空间相隔 1000 的节点
+        拉进结果）；±inf 时分数 `t_dist/radius + s_dist/radius` 分母为 inf ⇒
+        相隔一年的节点被评为 0.0 零距离排最前。半径必须非负有限。
         """
+        if (isinstance(time_radius, bool) or not isinstance(time_radius, (int, float))
+                or not math.isfinite(time_radius) or time_radius < 0):
+            raise ValueError("spatiotemporal_query：time_radius 须为非负有限值，收到 %r"
+                             % (time_radius,))
+        if (isinstance(space_radius, bool) or not isinstance(space_radius, (int, float))
+                or not math.isfinite(space_radius) or space_radius < 0):
+            raise ValueError("spatiotemporal_query：space_radius 须为非负有限值，收到 %r"
+                             % (space_radius,))
         center = self.get_node(center_node_id)
         if center is None:
             return []

@@ -75,6 +75,22 @@ def value(s_delta_d: float, gain: float, gain_gate: float = 0.05) -> float:
     σ 门控：Gain 低于 gain_gate → Value ≈ 0（验证不值钱）。
     gain=0（信念无改变）→ σ≈0 → Value≈0（自我应答/无目的猎奇出局）。"""
     # 门控：gain≤0 硬归零（信念无改变=无价值）；gain>0 用陡峭 sigmoid 软过渡
+    # #2124：非有限 gain/s_delta_d fail-closed 归零——修前 `gain <= 0.0` 对 NaN
+    # 恒 False（硬归零分支被绕过）、_sigmoid(nan) 返回 nan，value 透传 NaN。
+    # 同文件 kl_binary/gain_task 已按 #402 落地同款（"无信息=fail-closed，不得
+    # 被钳制表达式放行"），本函数是漏网的第三个。
+    try:
+        gain = float(gain)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if not math.isfinite(gain):
+        return 0.0
+    try:
+        s_delta_d = float(s_delta_d)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if not math.isfinite(s_delta_d):
+        return 0.0
     if gain <= 0.0:
         return 0.0
     gate = _sigmoid((gain - gain_gate) * 100.0)
