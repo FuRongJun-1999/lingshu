@@ -62,7 +62,7 @@ def _probe_index(net, cls_name):
     return int(net.mask.sum())          # UnitHeadNet 的 theta 段起点
 
 
-def _rmw_with_inner_barrier(idx, barrier, counters):
+def _rmw_with_inner_barrier(idx, barrier, counters, step=1.0):
     """返回一个 fn：在 RMW 正中间卡 Barrier，从而确定性放大交错窗口。"""
 
     def _fn(v):
@@ -73,13 +73,13 @@ def _rmw_with_inner_barrier(idx, barrier, counters):
             # 有锁时必然走到这里：其余线程被锁挡在临界区外 ⇒ Barrier 凑不齐
             counters["timeout"] += 1
         v = v.copy()
-        v[idx] = v[idx] + 1.0
+        v[idx] = v[idx] + step
         return v
 
     return _fn
 
 
-def _run_concurrent(cls_name, n_threads):
+def _run_concurrent(cls_name, n_threads, step=1.0):
     net = _mk(cls_name)
     idx = _probe_index(net, cls_name)
     v0 = float(net.get_vec()[idx])
@@ -87,7 +87,7 @@ def _run_concurrent(cls_name, n_threads):
     counters = {"released": 0, "timeout": 0}
 
     def worker():
-        net.apply_delta(_rmw_with_inner_barrier(idx, barrier, counters))
+        net.apply_delta(_rmw_with_inner_barrier(idx, barrier, counters, step))
 
     ts = [threading.Thread(target=worker) for _ in range(n_threads)]
     for t in ts:
@@ -125,9 +125,14 @@ def test_j1_two_threads_apply_delta_is_atomic_unitheadnet():
 def test_j2_many_threads_no_update_lost():
     n_threads = 8
     for name in CLASSES:
-        delta, counters = _run_concurrent(name, n_threads)
-        assert abs(delta - float(n_threads)) < 1e-9, (
-            f"{name}：{n_threads} 线程各 1 次 apply_delta，增量 = {delta}，"
+        # #2168：UnitHeadNet 全分量有界（±THETA_BOUND=±2）——8×1.0 的累加
+        # 会被 clip 钳断，改用界内步长 0.25（8×0.25=2.0 恰在界内，
+        # 「增量不丢失」的原子性验证语义保留）。
+        step = 0.25 if name == "UnitHeadNet" else 1.0
+        delta, counters = _run_concurrent(name, n_threads, step)
+        assert abs(delta - float(n_threads) * step) < 1e-9, (
+            f"{name}：{n_threads} 线程各 1 次 apply_delta(step={step})，"
+            f"增量 = {delta}，"
             f"期望 {n_threads}（counters={counters}）"
         )
 
