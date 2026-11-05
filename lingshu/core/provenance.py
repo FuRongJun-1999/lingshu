@@ -161,7 +161,7 @@ class Provenance:
         """
         try:
             d = json.loads(s or "{}")
-        except Exception:
+        except (ValueError, TypeError):
             d = {}
         if not isinstance(d, dict):
             d = {}
@@ -297,7 +297,7 @@ def _tags(tags: Any) -> List[str]:
     if isinstance(tags, str):
         try:
             tags = json.loads(tags)
-        except Exception:
+        except (ValueError, TypeError):
             return []
     if isinstance(tags, str):
         tags = [tags]                     # JSON 字符串标量 → 单标签，勿拆字符
@@ -380,7 +380,7 @@ def from_legacy(tags: Any, created_at: Optional[float] = None,
     if isinstance(cs, str):
         try:
             cs = json.loads(cs or "{}")
-        except Exception:
+        except (ValueError, TypeError):
             cs = {}
     if not isinstance(cs, dict):      # #342：JSON 数组/标量 → 视同未声明
         cs = {}
@@ -444,7 +444,7 @@ def is_default_cs(cs: Any) -> bool:
     if isinstance(cs, str):
         try:
             cs = json.loads(cs or "{}")
-        except Exception:
+        except (ValueError, TypeError):
             return True
     if not isinstance(cs, dict):
         return True

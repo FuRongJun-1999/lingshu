@@ -24,6 +24,10 @@ WorldLearner：
 """
 from __future__ import annotations
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
 import math
 import random
 from dataclasses import dataclass, field, asdict
@@ -35,10 +39,12 @@ from .coord_contract import apply_move          # 第 4 轮 #4：坐标口径唯
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
     from .scene_simulator import SceneSimulator
-except Exception:
+except Exception as _e:
+    _logger.debug("#170 3D 场景模拟器已迁移 AEIS，缺失回落 SceneSimulator=None：%s", _e)
     try:
         from .scene_simulator import SceneSimulator
-    except Exception:
+    except Exception as _e2:
+        _logger.debug("#170 二次回落仍缺失，SceneSimulator=None：%s", _e2)
         SceneSimulator = None
 
 try:
@@ -398,7 +404,8 @@ class WorldLearner:
         stc.scene = self.world
         try:
             return stc._predict_next()
-        except Exception:
+        except Exception as _e:
+            _logger.debug("#170 上界审计预测失败，回落空 dict：%s", _e)
             return {}
 
     def eval_phase(self, eval_ticks: int = 15, *, include_oracle: bool = True) -> Dict:

@@ -26,6 +26,10 @@ SpacetimeConsistency = SceneSimulator + 时空一致性验证闭环：
 """
 from __future__ import annotations
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
 import math
 from collections import deque
 from typing import Dict, List, Optional, Tuple
@@ -43,10 +47,12 @@ HISTORY_MAXLEN = 5000
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
     from .scene_simulator import SceneSimulator
-except Exception:
+except Exception as _e:
+    _logger.debug("#170 3D 场景模拟器已迁移 AEIS，缺失回落 SceneSimulator=None：%s", _e)
     try:
         from .scene_simulator import SceneSimulator
-    except Exception:
+    except Exception as _e2:
+        _logger.debug("#170 二次回落仍缺失，SceneSimulator=None：%s", _e2)
         SceneSimulator = None
 
 

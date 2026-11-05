@@ -183,8 +183,11 @@ def test_g4_whole_repo_zero_over_baseline():
     #: （`286b428` 就漏了这一步 ⇒ 三条 job 同时红，已补）。
     #: ★2026-11-06（#170 清偿第一批）140 → 139：`lingshu/world/prediction.py`
     #: 14 → 0（全 14 处补 logger 审计，控制流零变化；基线文件同步删行）。
-    assert data["actual_total"] >= 139, ("基线合计低于当前登记值 139"
-                                         "（#292 真实修复 4 ＋ #170 清偿第一批 prediction.py −14），"
+    #: ★2026-11-06（#170 清偿第二批）129 → 128：小额四文件 11 处
+    #: （模块级回落 6 处补 logger.debug ＋ provenance 4 处收窄
+    #: (ValueError, TypeError)——基线文件同步删四行）。
+    assert data["actual_total"] >= 128, ("基线合计低于当前登记值 128"
+                                         "（#170 清偿两批累计 −16：第一批 prediction.py −14＋第二批小额 11 处中净 −2 计入合计口径差），"
                                          "判据可能被偷偷放宽")
     assert data["unparsable"] == [], data
     # #609 重测的落点：core.py 计数已同步进基线（46→76；#653 再 76→78，
