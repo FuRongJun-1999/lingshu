@@ -24,10 +24,12 @@ lingshu/world/physics.py:2522:R1      # 物理阻尼：临界阻尼响应 (1+ωt
 lingshu/world/physics.py:2524:R1      # 物理阻尼：欠阻尼振子包络 exp(-ζωt)，非时间核
 lingshu/world/physics.py:2540:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
 lingshu/world/physics.py:2639:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
-lingshu/world/physics.py:2671:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
+lingshu/world/physics.py:2681:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
 lingshu/world/shade_paint.py:215:R1      # 色调映射：软肩曲线 1-exp(-(v-S)/S)（呈现层光学变换），非时间演化
 # ── 2026-10-22（#859 acquire history 落盘）后重编号：stable_lease.py 222 → 250 ──
 # ── 2026-10-24（#101 state() 现算谓词）后重编号：stable_lease.py 250 → 265 ──
+# 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。
+# ── 2026-11-05（#2166 projectile 标量闸插行）后重编号：physics.py 2671 → 2681 ──
 # 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。
 # ── 2026-11-05（#2122 γ≤0 谓词闸插行）后重编号：stable_lease.py 279 → 299 ──
 # 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。

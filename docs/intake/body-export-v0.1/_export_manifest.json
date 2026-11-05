@@ -292,7 +292,7 @@
     {
      "file": "process_ops.py",
      "origin": "lingshu_native_development",
-     "sha256": "7e596095c86aa3ea"
+     "sha256": "e0b0a503543fc504"
     },
     {
      "file": "world_process.py",
@@ -329,7 +329,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "2c80640a528bf325",
+     "sha256": "7e14449c20838ce2",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,
