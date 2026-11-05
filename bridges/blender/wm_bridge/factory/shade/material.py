@@ -540,8 +540,15 @@ def material_plan(spec, *, style="pbr", detail=True, bands=3, shadow=0.30, roles
             role = m["role"]
             if roles is not None and role not in roles:
                 continue
+            # #2114：spec 专门声明的 emission/emission_strength 修前被 material_plan
+            # 完全丢弃（不进 key、不进 entries）——spec 加字段并写明理由（「发光件
+            # 由 spec 声明」），shade 计划面让默认值赢过一切声明属镜像面漂移。现
+            # 随条目透传并参与去重 key（声明不同的两部件不再被合并成同一计划条）；
+            # recipe 节点图对 emission 的消费属执行面（bpy_shade），本票不动。
+            em, em_s = m.get("emission"), m.get("emission_strength")
             key = (role, tuple(m["color"]) if m["color"] else None,
-                   m.get("roughness"), m.get("metallic"), style, bool(detail), bands, shadow)
+                   m.get("roughness"), m.get("metallic"), em, em_s,
+                   style, bool(detail), bands, shadow)
             if key not in seen:
                 seen[key] = material_recipe(
                     role, m["color"], m.get("roughness"), m.get("metallic"),
@@ -551,6 +558,7 @@ def material_plan(spec, *, style="pbr", detail=True, bands=3, shadow=0.30, roles
                 "link": lk["name"], "part": p["name"], "role": role,
                 "color": list(m["color"]) if m["color"] else None,
                 "roughness": m.get("roughness"), "metallic": m.get("metallic"),
+                "emission": em, "emission_strength": em_s,
                 "recipe_digest": rec["digest"], "recipe": rec,
             })
             by_role.setdefault(role, []).append(len(entries) - 1)
