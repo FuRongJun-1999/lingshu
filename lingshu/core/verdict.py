@@ -86,6 +86,15 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
     # 与「未声明」结论相反。二者在此同义（报出非法值的责任在 canonical_sourced/validate_edges）。
     if occluded in (UNASSERTED, INVALID):
         occluded = "无遮挡"
+    # #2170：布尔域零覆盖——修前 `occluded != "无遮挡"` 把**任何**非该字符串
+    # 的值都当「有遮挡」：布尔 True/False 都不是字符串 ⇒ 两者结论相同（DEFER，
+    # 理由文案「clothing/occlusion covers」**断言有遮挡**），而输入 False 断言
+    # 的是**无遮挡**——语义完全反转。现用 `is True`/`is False`（非 `if occluded:`，
+    # 否则 0/"" 等假值重演 #135 类 falsy 吞噬）把布尔并入字符串域同档。
+    elif occluded is True:
+        occluded = "完全遮挡"
+    elif occluded is False:
+        occluded = "无遮挡"
     # 0) 部件区面积为零/负 ⇒ 无有效区域，条件冲突 REJECT（issue #296）。
     # 旧式 `_fg_ratio` 用 `max(1, part_area)`，零面积时比值退化为前景像素数本身
     # （如 5.0）⇒ 越过所有阈值被判 ACCEPT。零面积不是「条件充分」。
