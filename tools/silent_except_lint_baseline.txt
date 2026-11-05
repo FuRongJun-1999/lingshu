@@ -65,19 +65,15 @@ lingshu/_pathguard.py	29
 lingshu/core/component_resolver.py	7
 lingshu/core/core.py	77
 lingshu/core/longterm_gate.py	8
-lingshu/core/provenance.py	4
 lingshu/core/structure_service.py	0
 lingshu/nn/hex_cnn.py	0
 lingshu/world/brain_store.py	1
 lingshu/world/channel_credibility.py	2
 lingshu/world/scene_model.py	0
 lingshu/world/seven_layer_loop.py	1
-lingshu/world/spacetime_consistency.py	2
 lingshu/world/stable_lease.py	1
 lingshu/world/wm_simloop.py	0
 lingshu/world/world3d.py	2
-lingshu/world/world_learner.py	3
-lingshu/world/world_model.py	2
 
 # TOTAL 148
 
