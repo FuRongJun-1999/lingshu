@@ -2662,10 +2662,20 @@ def projectile_state(decl, t):
     p0 = _vec3(decl["p0"], "projectile_state.p0")
     v0 = _vec3(decl["v0"], "projectile_state.v0")
     g = _vec3(default_g_vec(up) if decl.get("g") is None else decl["g"], "projectile_state.g")
-    tau = float(t) - float(decl.get("t0") or 0.0)
+    # #2166：标量入口与向量入口（_vec3 族 isfinite 全检）同口径——修前 NaN 穿透：
+    # t0=nan/ground_z=nan 直接产出全 NaN 状态（p0=(0,nan,0) 走向量闸却被
+    # `decl.get("t0") or 0.0` 的标量通路绕过）。
+    def _finite_scalar(v, label):
+        f = float(v)
+        if not math.isfinite(f):
+            raise PhysicsError("projectile_state.%s 须为有限数，得到 %r" % (label, v))
+        return f
+    tau = float(t) - _finite_scalar(float(decl.get("t0") or 0.0), "t0")
     if tau <= 0.0:
         return p0, v0
     ground = decl.get("ground_z")
+    if ground is not None:
+        ground = _finite_scalar(float(ground), "ground_z")
     e = float(decl.get("restitution") or 0.0)
     if not decl.get("bounce") or ground is None or e <= 0.0:
         return (tuple(p0[i] + v0[i] * tau + 0.5 * g[i] * tau * tau for i in range(3)),
