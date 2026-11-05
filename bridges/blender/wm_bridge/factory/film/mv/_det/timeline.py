@@ -159,7 +159,10 @@ def stub_score(brief: dict) -> dict:
                      "energy": float(s["energy"])})
     secs[-1]["end_s"] = round(dur, 6)          # 末段必须 == duration_s（契约强制）
     hop = 0.05
-    n = int(math.ceil(dur / hop))
+    # #2107：包络帧数对齐 audio.py:747 的含端点口径 `int(round(dur/hop)) + 1`
+    # ——修前 ceil(dur/hop) 与「音频腿真实渲染出的采样数」在 127/200 个时长上
+    # 不一致（含 1.0/2.0/3.0/8.0 等常见整秒），两式产出的能量包络长度漂移。
+    n = int(round(dur / hop)) + 1
     vals = []
     for k in range(n):
         t = k * hop
@@ -565,7 +568,13 @@ def plan_shot_table(brief: dict, score: dict, bind: dict) -> list:
         if best is None:
             break
         s = segs[best]
-        mid = _even_cuts([f for f in dbf if s["start"] < f < s["end"]], 2)[0]
+        _mid_cands = [f for f in dbf if s["start"] < f < s["end"]]
+        if not _mid_cands:
+            raise TimelineError(
+                "细分循环：镜头 %d（%d..%d）段内没有可用 downbeat——"
+                "输入（不均匀 downbeat）是真实音频常态，fail-closed 不静默崩（#2108）"
+                % (best, s["start"], s["end"]))
+        mid = _even_cuts(_mid_cands, 2)[0]
         segs[best:best + 1] = [{"start": s["start"], "end": mid, "sec": s["sec"], "k": 0},
                                {"start": mid, "end": s["end"], "sec": s["sec"], "k": 0}]
     if len(segs) < 8:
@@ -707,7 +716,10 @@ def cut_alignment_report(edit: dict, score: dict, tolerance_frames=None) -> dict
            else int(edit["shots"][0].get("transition_out", {}).get("tolerance_frames", 1)))
     cuts = []
     for i, s in enumerate(edit["shots"]):
-        f = s["end_frame"]
+        # #2106：切点 = `frame_end + 1`（build_edit 的注释逐字钉死「切点 =
+        # frame_end + 1」）——修前复算面取 s["end_frame"] 本身，与 build_edit 的
+        # align 口径差一帧（末镜头 end 是片尾不是切点的豁免不变）。
+        f = s["end_frame"] + 1
         al = _align_for(f, score, fps)
         cuts.append({"shot_id": s["id"], "at_frame": f, "beat_s": al["beat_s"],
                      "offset_frames": al["offset_frames"],
