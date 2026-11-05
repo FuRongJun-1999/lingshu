@@ -67,6 +67,13 @@ def cred_step(x: float, decay: float) -> float:
     decay_cycle 逐周期形态；n 步后 x·(1-decay)^n = x·e^(n·ln(1-decay))，
     与连续核同族——衰减率 γ = -ln(1-decay) 每周期。
     """
+    # #2161：非有限输入 fail-closed（对齐同模块 cred_factor 的 #457 口径）。
+    # 修前 gamma=inf 直达本函数返回 -inf（衰减量负无穷=置信度变负数无穷）、
+    # 同一输入 cred_factor 却返回保守端 0.0——同一份非有限输入给出方向相反
+    # 的结论。不可判 ⇒ 保守端 0.0（按已全衰减），不翻倍放大。
+    x, decay = _as_floats("cred_step", x, decay)
+    if not (math.isfinite(x) and math.isfinite(decay)):
+        return 0.0
     return x * (1.0 - decay)
 
 
@@ -75,4 +82,11 @@ def cred_blend(last: float, incoming: float, retain: float) -> float:
 
     gap/信息差等累积观测的离散指数核形态（保持率 retain = 1-λ）。
     """
+    # #2161：非有限输入 fail-closed（#457 口径）——修前 retain=inf 返回 inf
+    # （保持率无穷，结果正无穷），与 cred_factor 的保守端 0.0 方向相反。
+    last, incoming = _as_floats("cred_blend", last, incoming)
+    retain, = _as_floats("cred_blend", retain)
+    if not (math.isfinite(last) and math.isfinite(incoming)
+            and math.isfinite(retain)):
+        return 0.0
     return last * retain + incoming
