@@ -25,7 +25,7 @@ from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，
 
 import sqlite3
 import json
-from types import SimpleNamespace as _DedupCand
+from collections import namedtuple as _namedtuple
 from collections.abc import Mapping
 import time
 import math
@@ -113,6 +113,9 @@ _MAIN_DIVERGENCE_REASON = {"negation": "polarity", "numeric": "number"}
 # =============================================================================
 # 条件空间（四维声明）
 # =============================================================================
+
+_DEDUP_CAND = _namedtuple("_DedupCand", ["id", "content", "tags", "condition_space"])
+
 
 @dataclass
 class ConditionSpace:
@@ -3274,7 +3277,7 @@ class LayeredStore:
         out, skipped = [], []
         for row in c.fetchall():
             try:
-                out.append(_DedupCand(
+                out.append(_DEDUP_CAND(
                     id=row[0],
                     content=row[1],
                     tags=json.loads(row[2]) if row[2] else [],
