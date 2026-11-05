@@ -726,9 +726,15 @@ class SevenLayerLoop:
             total += 1
             details.append({"entity": eid, "mode": p["mode"], "hit": hit,
                             "distance": round(dist, 4)})
-        rate = round(hits / total, 4) if total else None
+        # #2167：hit_rate 与 bound_coverage 修前赋成同一个 rate（而 hits 的
+        # 判据是**区间边界** dist < p["bound"]、point_hits 的判据是点半径
+        # dist < hit_threshold）⇒ 两个字段永远同值、各自失去判别力。现分别
+        # 计数：hit_rate 归点命中（与姊妹模块 world_learner 同口径）、
+        # bound_coverage 归边界覆盖。
+        rate = round(point_hits / total, 4) if total else None
+        coverage = round(hits / total, 4) if total else None
         return {"hits": hits, "total": total, "hit_rate": rate,
-                "bound_coverage": rate,
+                "bound_coverage": coverage,
                 "point_hit_rate": round(point_hits / total, 4) if total else None,
                 "mean_distance": round(sum(distances) / total, 4) if total else None,
                 "mean_bound": round(sum(bounds) / total, 4) if total else None,

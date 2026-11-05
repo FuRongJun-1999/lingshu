@@ -718,10 +718,14 @@ class UnifiedWorldModel:
                             "predicted": p["predicted"], "actual": actual,
                             "bound": p["bound"], "distance": round(dist, 4),
                             "hit": hit, "status": "verified"})
-        rate = round(hits / total, 4) if total else None
+        # #2167：与 seven_layer_loop._verify 同站点同修——hit_rate 与
+        # bound_coverage 修前同值（hits 判据是区间边界、point_hits 是点半径），
+        # 各归其位：hit_rate 归点命中、bound_coverage 归边界覆盖。
+        rate = round(point_hits / total, 4) if total else None
+        coverage = round(hits / total, 4) if total else None
         self._compare = {"tick": self.tick, "hits": hits, "total": total,
                          "hit_rate": rate, "pending": pending,
-                         "bound_coverage": rate,
+                         "bound_coverage": coverage,
                          "point_hit_rate": round(point_hits / total, 4) if total else None,
                          "mean_distance": round(finite_mean(distances), 4) if total else None,
                          "mean_bound": round(finite_mean(bounds), 4) if total else None,
