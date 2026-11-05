@@ -9552,10 +9552,11 @@ class SpacetimeMemoryEngine:
           （no_camera_pose / camera_pose_incomplete / bad_camera_pose），
           不退回单视角、不伪造位姿；显式 multiview=False 保留旧单视角观测
           路径。F04/#211）
-        - render: 渲染 3D 世界为图像（params: path 输出路径, yaw/pitch/cx
-          相机参数——任意视角透视投影；2D 是 3D 透视下的情况；screen_w/h
-          单边上限 MAX_SCREEN_DIM，超限返回 error 而非分配位图（#416）；
-          path 须落在白名单根内，否则返回 error（#277））
+        - render: 渲染 3D 世界为图像（params: path 输出路径, yaw/pitch/cx/cy/
+          cz/fov_deg（fov 为别名）相机参数——任意视角透视投影（#2382 前 cz 与
+          fov_deg 被静默丢弃，「任意视角」名不副实）；2D 是 3D 透视下的情况；
+          screen_w/h 单边上限 MAX_SCREEN_DIM，超限返回 error 而非分配位图
+          （#416）；path 须落在白名单根内，否则返回 error（#277））
         - status: 当前 3D 世界状态（物体/相机）
         - add: 手动添加物体（params: category, bbox 或 center/size/color；另可给
           eid/tick/screen_w/h 与 camera——给了**真实位姿**的观测会按该位姿反投影
@@ -9787,8 +9788,15 @@ class SpacetimeMemoryEngine:
                     "scene": world.scene_text(),
                     "detail": world.to_dict()}
         if action == "render":
+            # #2382：cz 与 fov_deg 此前不读取——传参与缺省渲染**逐字节相同**
+            # （F04 注释点名的「Camera3D(yaw,pitch,cx,cy) 四参构造静默丢
+            # cz/fov」病残留；R6 返工只收了摄取侧）。默认值与 Camera3D 字段
+            # 默认逐位相同（cz=0.0/fov_deg=60.0）⇒ 不传参调用方行为不变；
+            # fov 别名对齐 add 动作六参契约。
             cam = Camera3D(yaw=float(p.get("yaw", 0)), pitch=float(p.get("pitch", 0)),
-                           cx=float(p.get("cx", 0)), cy=float(p.get("cy", 1.2)))
+                           cx=float(p.get("cx", 0)), cy=float(p.get("cy", 1.2)),
+                           cz=float(p.get("cz", 0.0)),
+                           fov_deg=float(p.get("fov_deg", p.get("fov", 60.0))))
             sw = int(p.get("screen_w", 800))
             sh = int(p.get("screen_h", 600))
             # #416：门面在**任何分配之前**先判上限（fail-closed 返回 error dict，
