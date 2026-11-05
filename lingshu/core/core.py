@@ -618,7 +618,17 @@ def _parse_escalation_value_bound(condition: str):
 
 
 def _eval_escalation_value_bound(op: str, threshold: float, value) -> bool:
-    """按解析出的算符比较 `value` 与 `threshold`（#57 求值侧，纯函数）。"""
+    """按解析出的算符比较 `value` 与 `threshold`（#57 求值侧，纯函数）。
+
+    #2150：`value` 侧补类型/有限性闸（与阈值侧 #747 的三闸同口径）——
+    修前裸比较：非数值对象可用富比较伪造布尔让触发器**无条件命中**、`str`
+    让 TypeError 逃出公开 API（无 error 返回体）。不可判一律 False（fail-closed，
+    与 NaN 比较恒假的既有语义一致）。
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if not math.isfinite(value):
+        return False
     if op == ">":
         return value > threshold
     if op == ">=":
@@ -9786,9 +9796,24 @@ class SpacetimeMemoryEngine:
             sw = int(p.get("screen_w", 800))
             sh = int(p.get("screen_h", 600))
             eid = str(p["eid"]) if p.get("eid") is not None else ""
-            tick = p.get("tick")
-            ts = float(p.get("timestamp", time.time()))
-            confidence = float(p.get("confidence", 0.5))
+            # #2148：与姊妹实现（world3d 的 _meta_number 闸）同口径——修前
+            # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
+            # 导出面漏出（严格 JSON dumps 直接 ValueError）；tick/ts 同一裸
+            # 取值形态一并收口。
+            try:
+                from ..world.world3d import _meta_number as _mn
+            except Exception:
+                _mn = None
+            try:
+                tick = (None if p.get("tick") is None
+                        else (_mn(p["tick"], "tick") if _mn else p["tick"]))
+                ts = (_mn(p.get("timestamp", time.time()), "timestamp")
+                      if _mn else float(p.get("timestamp", time.time())))
+                confidence = (_mn(p.get("confidence", 0.5), "confidence")
+                              if _mn else float(p.get("confidence", 0.5)))
+            except CameraMetaError as _e:
+                return {"status": "error", "reason": getattr(_e, "reason", "meta"),
+                        "error": str(_e)}
             # F04：给 `camera`（真实位姿）时，这条单视角观测同样**绑定位姿落库**
             # （与 add_view 同一条通路/同一块格式），供后续或跨引擎
             # `build(multiview=True)` 读回三角化；不给 camera ⇒ 行为与旧版逐位一致
@@ -9838,9 +9863,24 @@ class SpacetimeMemoryEngine:
                 return {"status": "error", "error": "category 与 bbox=[x1,y1,x2,y2] 必填"}
             sw = int(p.get("screen_w", 800))
             sh = int(p.get("screen_h", 600))
-            tick = p.get("tick")
-            ts = float(p.get("timestamp", time.time()))
-            confidence = float(p.get("confidence", 0.5))
+            # #2148：与姊妹实现（world3d 的 _meta_number 闸）同口径——修前
+            # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
+            # 导出面漏出（严格 JSON dumps 直接 ValueError）；tick/ts 同一裸
+            # 取值形态一并收口。
+            try:
+                from ..world.world3d import _meta_number as _mn
+            except Exception:
+                _mn = None
+            try:
+                tick = (None if p.get("tick") is None
+                        else (_mn(p["tick"], "tick") if _mn else p["tick"]))
+                ts = (_mn(p.get("timestamp", time.time()), "timestamp")
+                      if _mn else float(p.get("timestamp", time.time())))
+                confidence = (_mn(p.get("confidence", 0.5), "confidence")
+                              if _mn else float(p.get("confidence", 0.5)))
+            except CameraMetaError as _e:
+                return {"status": "error", "reason": getattr(_e, "reason", "meta"),
+                        "error": str(_e)}
             # 视角相机（可选：缺省当前相机）。F04：**六参数全量**保留
             # （cx/cy/cz/yaw/pitch/fov_deg，`fov` 为别名）——旧实现只取
             # yaw/pitch/cx/cy，静默丢掉 cz 与 fov ⇒ 三角化按错位姿收敛
