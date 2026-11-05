@@ -307,6 +307,13 @@ class ScenarioContext:
             report["payload"] = payload
             if payload["truncated"]:
                 gaps.append("causal_budget_exhausted")
+            # #2157：**存在性**与**可见性**拆分——payload 增量补充
+            # endpoint_missing（用快照全集判定「端点根本不存在」，与
+            # outside_scope 的「存在但本视图不可见」互补）。判定取向
+            # （REJECT vs BLINDSPOT）留维护者裁定，本件只增量补充可判读
+            # 信息（零行为变化）。
+            payload["endpoint_missing"] = (start_id not in self._nodes
+                                           or end_id not in self._nodes)
             if payload["endpoint_outside_scope"]:
                 report["state"] = ("REJECT" if start_id in self._nodes and end_id in self._nodes
                                    else "BLINDSPOT")
