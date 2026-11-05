@@ -108,7 +108,7 @@
     {
      "file": "scene_model.py",
      "src": "aeis.scene_model",
-     "sha256": "78e656c7fc559126",
+     "sha256": "a839ae8959c2cf82",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -673,7 +673,7 @@
    "base_commit": "eb497f2ab2d067bc97fcca32281bab5a93e5c7e8",
    "note": "重建于最新 main（S3 公开面整改 + CI 首跑三红处置后续）；sha256 核验 LF 归一后的工作树文件。",
    "previous_sha256": {
-    "scene_model.py": "0cce56055028e004",
+    "scene_model.py": "a839ae8959c2cf82",
     "world_learner.py": "80943255192950d9",
     "world_model.py": "690041d299ed421c",
     "core.py": "af7c93c0842ca661"
@@ -720,7 +720,7 @@
   "report": "docs/world_memory_first_batch.md",
   "previous_sha256": {
    "lingshu/world/multiview.py": "9ff083b49d899a0e",
-   "lingshu/world/scene_model.py": "06a6086ae7e87497",
+   "lingshu/world/scene_model.py": "a839ae8959c2cf82",
    "lingshu/world/vprim.py": "7ac93f46f950556f",
    "lingshu/world/wm_simloop.py": "aa84dde49ad8c837",
    "lingshu/world/world3d.py": "7b7527deb009dd70",
