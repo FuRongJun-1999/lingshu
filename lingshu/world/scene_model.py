@@ -71,6 +71,12 @@ PRESENT_BY_CATEGORY = {
     "dragon": "box",
 }
 
+# 语义关系 kind 闭集（#2381）：relation()/apply_relations 的六种受支持约束。
+# 同仓 physics.MODEL_KINDS / shapes.PART_KINDS 同形闭集均 fail-loud；域外 kind
+# 此前被静默收边、apply_relations 无分支静默 no-op、scene_text 照常显示——
+# 调用方无法区分「约束已生效」与「kind 打错被忽略」。
+RELATION_KINDS = ("left_of", "right_of", "near", "far", "in_front", "behind")
+
 
 class WorldModel:
     """语义时空图 → 3D 场景。"""
@@ -102,6 +108,9 @@ class WorldModel:
         """语义关系边：a kind b（kind ∈ left_of/right_of/near/far/in_front/behind）。"""
         if a not in self.entities or b not in self.entities:
             raise ValueError(f"relation requires both entities: {a}, {b}")
+        if kind not in RELATION_KINDS:  # #2381：域外 kind fail-loud（同 physics/shapes 闭集口径）
+            raise ValueError("关系 kind %r 不在闭集 %s 内"
+                             % (kind, ", ".join(RELATION_KINDS)))
         self.entities[a].relations.append((b, kind))
         return self
 
@@ -390,6 +399,9 @@ def ingest_scene(agent, scene_desc, store=None, tag: str = "spatial",
         for a, kind, b in relations or []:
             if a not in names or b not in names:
                 raise ValueError(f"relation requires both entities: {a}, {b}")
+            if kind not in RELATION_KINDS:  # #2381：写路口径同 relation()，坏 kind 不入库
+                raise ValueError("关系 kind %r 不在闭集 %s 内"
+                                 % (kind, ", ".join(RELATION_KINDS)))
             for entity in entities:
                 if entity.name == a:
                     entity.relations.append((b, kind))
@@ -570,8 +582,14 @@ def load_world_from_memory(agent_or_store, tag: str = "spatial",
         restored_relations[name] = metadata.get("relations", [])
     for name, edges in restored_relations.items():
         for target, kind in edges:
-            if target in wm.entities:
-                wm.relation(name, kind, target)
+            if target not in wm.entities:
+                continue
+            # #2381 读面存量兜底：修前写入口不拦 kind，存量库可能有坏 kind 边；
+            # 沿 ingest_scene 对坏行的「跳过不入库」既有口径跳过（缺失 target
+            # 本就静默跳过），不破坏存量加载——新数据不会再有坏 kind（写面已拦）。
+            if kind not in RELATION_KINDS:
+                continue
+            wm.relation(name, kind, target)
     wm.build()
     return wm
 
