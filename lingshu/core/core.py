@@ -25,6 +25,7 @@ from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，
 
 import sqlite3
 import json
+from types import SimpleNamespace as _DedupCand
 from collections.abc import Mapping
 import time
 import math
@@ -3235,6 +3236,57 @@ class LayeredStore:
                 except Exception:  # noqa: BLE001
                     skipped.append(None)
         return edges, skipped
+
+    def _dedup_candidates(self, modality: str):
+        """#661：M5 去重候选的窄列投影（id / content / tags / condition_space）。
+
+        修前 `add_perception` 经 `query_nodes(layer=KNOWLEDGE, limit=-1)` 全列
+        装载候选——每行 `STNode.from_row` 严格反序列化（spatial/semantic/state
+        三处 json.loads ＋ 全字段构造），而判同循环实际只访问 4 个字段 ⇒ 写入
+        代价随知识层规模线性增长且大头花在「判同根本不用的列」上（issue #661
+        实测 7.1→52.6 ms/条随规模增长）。
+
+        本方法保持与 `query_nodes` **同 WHERE**（layer=KNOWLEDGE ＋ modality ＋
+        importance≥0）、**同 ORDER**（importance DESC, last_access DESC）、
+        **同 LIMIT -1 语义**，仅把投影收窄到判同四列 ⇒ 候选集合与顺序逐位等价、
+        判同输入逐位不变 ⇒ 判同结果逐位不变。坏行容错与 #267 同款（跳过该行，
+        id 如实计入 `last_skipped_rows`）。命中后的合并路径仍由
+        `get_node(best.id)` 回捞完整节点（#223 并面），不经窄行——窄行仅允许
+        在判同循环内使用（守卫
+        `tests/test_issue661_dedup_narrow_projection_guard.py` 钉源码锚）。
+
+        判据来源：issue #661（写入代价随库规模线性增长）＋「零语义风险窄列
+        优化」路径（判同输入不变 ⇒ 判同结果不变；预筛/截断类修法须先有召回
+        等价判据，另案）。
+        边界（如实标注）：①仍是全表行扫描——`nodes.content` 无索引，`LIKE`
+        预筛同样全扫（#297 边界已声明），本修只省「判同不用的列的反序列化」，
+        不改线性复杂度，根治（倒排索引）待召回判据补齐；②`_conditions_mergeable`
+        的 `cs` 侧（新写入侧）不受影响；③`last_skipped_rows` 与全列装载共用
+        同一槽位——`add_perception` 内无其它 query_nodes 调用，语义不变。
+        """
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT id, content, tags, condition_space FROM nodes"
+            " WHERE layer=? AND modality=? AND importance>=?"
+            " ORDER BY importance DESC, last_access DESC",
+            (MemoryLayer.KNOWLEDGE.value, modality, 0.0),
+        )
+        out, skipped = [], []
+        for row in c.fetchall():
+            try:
+                out.append(_DedupCand(
+                    id=row[0],
+                    content=row[1],
+                    tags=json.loads(row[2]) if row[2] else [],
+                    condition_space=ConditionSpace.from_json(row[3]),
+                ))
+            except (IndexError, ValueError, TypeError, KeyError):
+                # 坏行真实面：坏 JSON（JSONDecodeError ⊂ ValueError）/缺字段
+                # （KeyError/TypeError）/列越界（IndexError）——收窄类型而非
+                # 宽 except（#170 口径：新增不进基线）。跳过该行并如实计数。
+                skipped.append(row[0])
+        self.last_skipped_rows = skipped
+        return out
 
     def query_nodes_by_time(self, start_ts: float = None, end_ts: float = None,
                             limit: int = None) -> List[STNode]:
@@ -7563,8 +7615,11 @@ class SpacetimeMemoryEngine:
                 # （本仓索引只有 `idx_nodes_layer/idx_edges_source/idx_edges_target`，
                 # core.py:988-990），故不引入；③issue 建议 3（维持 200 并显式声明）**不**
                 # 采纳——那只是把漏去重写进文档，缺陷仍在；④仍按 `modality` 过滤（#223）。
-                candidates = self.store.query_nodes(layer=MemoryLayer.KNOWLEDGE,
-                                                    modality=modality, limit=-1)
+                # #661（叠加）：候选装载改走窄列投影 `_dedup_candidates`（判同四列，
+                # 同 WHERE/ORDER/LIMIT 语义 ⇒ 判同结果逐位不变），免掉全列
+                # `STNode.from_row` 的三处 JSON 解析；命中后合并面仍走
+                # `get_node(best.id)` 回捞完整节点（见下），窄行不逃出判同循环。
+                candidates = self.store._dedup_candidates(modality)
                 best, best_sim = None, 0.0
                 # #225：极性闸——**成败极性不同的节点不得合并**。旧实现只比正文二元组，
                 # 而 `record_action_sequence` 把成败写成正文前缀（`成功：`/`失败：`，且
