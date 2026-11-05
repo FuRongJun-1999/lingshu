@@ -70,7 +70,6 @@ lingshu/core/structure_service.py	0
 lingshu/nn/hex_cnn.py	0
 lingshu/world/brain_store.py	1
 lingshu/world/channel_credibility.py	2
-lingshu/world/prediction.py	14
 lingshu/world/scene_model.py	0
 lingshu/world/seven_layer_loop.py	1
 lingshu/world/spacetime_consistency.py	2

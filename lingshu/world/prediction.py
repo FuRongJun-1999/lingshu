@@ -18,13 +18,18 @@ prediction_engine · 预测能力补全（v1.9）
 import time
 from typing import Dict, List, Optional
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
 # #40：语义邻近回退（中文二元组 Jaccard）的实现来源。
 # 私域（AEIS）以裸名 `spacetime_memory_core` 命名空间注册**同一** LayeredStore；
 # 本仓形态无该别名——旧实现在此 `return 0.0`，致通道4（语义邻近）在本仓
 # **整体静默失效**（`semantic_neighbors` 恒空）。补仓内回落：
 try:  # 私域别名面（component_resolver 白名单内，勿删）
     from spacetime_memory_core import LayeredStore as _LayeredStore
-except Exception:  # 本仓形态：回落仓内 core 的同名实现（char_bigram_jaccard 逐字同式）
+except Exception as _e:  # 本仓形态：回落仓内 core 的同名实现（char_bigram_jaccard 逐字同式）
+    _logging.getLogger(__name__).debug("#170 私域别名缺省，回落仓内 core 的 LayeredStore：%s", _e)
     from ..core.core import LayeredStore as _LayeredStore
 
 
@@ -81,7 +86,8 @@ class PredictionEngine:
             try:
                 from semantic_space import SemanticSpaceProvider
                 return SemanticSpaceProvider.similarity_coordinates(sc_a, sc_b)
-            except Exception:
+            except Exception as _e:
+                _logger.debug("#170 语义空间相似度缺省，回落 char_bigram_jaccard：%s", _e)
                 pass
         return _LayeredStore.char_bigram_jaccard(a.content, b.content)
 
@@ -114,7 +120,8 @@ class PredictionEngine:
             if "信息差" in content or "盲区" in content:
                 score += w.get("gap", 0.6)
             return score
-        except Exception:
+        except Exception as _e:
+            _logger.debug("#170 评分失败回落 0.0：%s", _e)
             return 0.0
 
     def _branch_candidates(self, start_id: str) -> List:
@@ -203,8 +210,8 @@ class PredictionEngine:
                     ec = str(d.get("existence_constraint", "")).strip()
                     if ec:
                         return ec[:40]
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _logger.debug("#170 边条件空间标签提取失败，回落待定：%s", _e)
             try:
                 n = self.engine.store.get_node(node_id)
                 if n is not None and n.condition_space is not None:
@@ -213,8 +220,8 @@ class PredictionEngine:
                     ec = str(d.get("existence_constraint", "")).strip()
                     if ec:
                         return ec[:40]
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("#170 节点条件空间标签提取失败，回落待定：%s", _e)
             return "待定（条件空间未声明）"
 
         def dfs(current: str, path: List[str], conditions: List[str],
@@ -236,8 +243,8 @@ class PredictionEngine:
                             edge_cs = e.condition_space
                             edge_id = e.id
                             break
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _logger.debug("#170 边条件空间读取失败，回落节点侧：%s", _e)
                 cond = _cs_label(nid, edge_cs)
                 new_conds = conditions + [cond]
                 if edge_id is not None:   # #117：记录进入 nid 的参与边（edge 级）
@@ -265,8 +272,8 @@ class PredictionEngine:
             for b in self.engine.list_blindspots():
                 if b["id"] == blindspot_id:
                     return b
-        except Exception:
-            pass
+        except Exception as _e:
+            _logger.debug("#170 盲区清单读取失败，回落 None：%s", _e)
         return None
 
     def _anchor_from_description(self, description: str) -> Optional[str]:
@@ -275,8 +282,8 @@ class PredictionEngine:
             hits = self.engine.search_content(description, limit=3)
             if hits:
                 return hits[0][0].id
-        except Exception:
-            pass
+        except Exception as _e:
+            _logger.debug("#170 内容检索失败，回落语义邻近：%s", _e)
         try:
             from semantic_space import SemanticSpaceProvider
             q = SemanticSpaceProvider().to_semantic_coordinates(description)
@@ -295,8 +302,8 @@ class PredictionEngine:
                 return best_with_routes   # 优先有因果延续的锚点（预测需要路线）
             if best and best_sim > 0.05:
                 return best
-        except Exception:
-            pass
+        except Exception as _e:
+            _logger.debug("#170 锚点搜索失败，回落 None：%s", _e)
         return None
 
     def _score_route(self, route: Dict) -> Dict:
@@ -414,13 +421,13 @@ class PredictionEngine:
                     description=f"预测未命中：{predicted_node_id}"
                                 + (f"（{note}）" if note else ""),
                     reason=f"实际节点：{actual_node_id}")
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.warning("#170 预测未命中记录写入失败（证据丢失风险）：%s", _e, exc_info=True)
             # 自动条件化：比较预测/实际节点条件空间 → 缺失条件 → 条件候选节点
             try:
                 self._auto_conditionize(predicted_node_id, actual_node_id)
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.warning("#170 自动条件化 best-effort 失败：%s", _e, exc_info=True)
         return self._dynamic_hit_threshold()
 
     def _auto_conditionize(self, predicted_id: str, actual_id: str) -> List[str]:
@@ -431,7 +438,8 @@ class PredictionEngine:
         try:
             pn = self.engine.store.get_node(predicted_id)
             an = self.engine.store.get_node(actual_id)
-        except Exception:
+        except Exception as _e:
+            _logger.debug("#170 预测/实际节点读取失败，回落空清单：%s", _e)
             return []
         if not pn or not an:
             return []
@@ -440,7 +448,8 @@ class PredictionEngine:
             import json as _json
             p_cs = _json.loads(pn.condition_space.to_json()) if pn.condition_space else {}
             a_cs = _json.loads(an.condition_space.to_json()) if an.condition_space else {}
-        except Exception:
+        except Exception as _e:
+            _logger.debug("#170 条件空间 JSON 解析失败，回落空清单：%s", _e)
             return []
         p_ec = str(p_cs.get("existence_constraint", "")).strip()
         a_ec = str(a_cs.get("existence_constraint", "")).strip()
@@ -458,8 +467,8 @@ class PredictionEngine:
                     importance=0.7,
                     tags=["condition_candidate", "auto_conditionized", "prediction_error"])
                 created.append(node.id)
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.warning("#170 条件候选节点写入失败：%s", _e, exc_info=True)
         if created:
             self.prediction_log.append({"type": "auto_conditionize",
                                         "predicted": predicted_id,
