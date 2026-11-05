@@ -37,24 +37,52 @@ HEX_DIRS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
 
 class HexGrid:
     """蜂窝晶格：axial 坐标 (q, r) 存储为「错行矩形」数组（row=r, col=q+offset）。
-    pointy-top：六边形尖朝上下；行间水平错位半格，垂直间距 3/4·size。"""
+    pointy-top：六边形尖朝上下；行间水平错位半格，垂直间距 3/4·size。
 
-    def __init__(self, width_cells: int, height_cells: int, cell_size: float = 1.0):
+    两种坐标模式（issue #6：返回的 HexGrid 必须与 image_to_grid 的实际采样
+    同一套公式，否则 center_px/pixel_to_cell 的往返与采样脱节）：
+
+    · mode="axial"（默认，历史行为不变）：x = √3·s·(q + r/2)，y = 1.5·s·r，
+      原点 (0,0)。
+    · mode="odd_r_offset"（image_to_grid 同款）：奇偶错行
+      x = √3·s·(q + 0.5·(r%2)) + ox，y = 1.5·s·r + oy，origin=(ox, oy)。
+    """
+
+    def __init__(self, width_cells: int, height_cells: int, cell_size: float = 1.0,
+                 mode: str = "axial", origin: Tuple[float, float] = (0.0, 0.0)):
         self.W = width_cells      # 列数（q 方向）
         self.H = height_cells     # 行数（r 方向）
         self.size = float(cell_size)
+        if mode not in ("axial", "odd_r_offset"):
+            raise ValueError("未知坐标模式: %r（应为 'axial' 或 'odd_r_offset'）" % (mode,))
+        self.mode = mode
+        self.origin = (float(origin[0]), float(origin[1]))
 
     # ---- 像素坐标（cell 中心，图像坐标系 y 向下） ----
     def center_px(self, q: int, r: int) -> Tuple[float, float]:
+        if self.mode == "odd_r_offset":
+            ox, oy = self.origin
+            x = self.size * math.sqrt(3) * (q + 0.5 * (r % 2)) + ox
+            y = self.size * 1.5 * r + oy
+            return (x, y)
         x = self.size * math.sqrt(3) * (q + r / 2.0)
         y = self.size * 1.5 * r
         return (x, y)
 
     def pixel_to_cell(self, x: float, y: float) -> Tuple[int, int]:
         """像素 → 最近 cell（axial round：立方坐标四舍五入）。"""
+        ox, oy = self.origin
+        x_ = x - ox
+        y_ = y - oy
+        if self.mode == "odd_r_offset":
+            # 奇偶错行逆变换：先定行 r（y 与 q 无关），再按该行错位回解 q
+            rf = (2.0 / 3.0 * y_) / self.size
+            r = int(round(rf))
+            qf = (x_ / (self.size * math.sqrt(3))) - 0.5 * (r % 2)
+            return self._axial_round(qf, float(r))
         # 逆变换到轴向浮点
-        qf = (math.sqrt(3) / 3 * x - y / 3.0) / self.size
-        rf = (2.0 / 3.0 * y) / self.size
+        qf = (math.sqrt(3) / 3 * x_ - y_ / 3.0) / self.size
+        rf = (2.0 / 3.0 * y_) / self.size
         return self._axial_round(qf, rf)
 
     def _axial_round(self, qf: float, rf: float) -> Tuple[int, int]:
@@ -84,13 +112,15 @@ def image_to_grid(img_arr: np.ndarray, cells_across: int = 48) -> Tuple[np.ndarr
     s3 = W / (cells_across + 0.5)       # 横向节距 √3·s（此前误作 s 用：晶格横向越出画幅 √3 倍）
     cell = s3 / math.sqrt(3)
     rows = max(1, int(round(H / (cell * 1.5)) - 1)) or 1
-    grid = HexGrid(cells_across, rows, cell)
+    # issue #6：返回的 HexGrid 与本函数的采样必须是同一套公式（odd_r_offset +
+    # 原点 (s3/2, cell)），采样中心直接取 grid.center_px（单一真源——两处独立
+    # 写公式正是本次脱节缺陷的根；表达式漂移由守卫 test_issue6_grid_roundtrip_guard 钉）。
+    grid = HexGrid(cells_across, rows, cell, mode="odd_r_offset",
+                   origin=(s3 * 0.5, cell))
     out = np.zeros((rows, cells_across, img_arr.shape[2]), dtype=np.float32)
     for r in range(rows):
-        xoff = s3 * (0.5 * (r % 2) + 0.5)
         for q in range(cells_across):
-            cx = s3 * q + xoff
-            cy = 1.5 * cell * r + cell
+            cx, cy = grid.center_px(q, r)
             # cell 采样窗（六边形内切圆近似：方形窗均值；内切圆半径 √3·s/2 = s3/2）
             rad = max(1, int(s3 * 0.5))
             x0, x1 = int(cx - rad), int(cx + rad + 1)
