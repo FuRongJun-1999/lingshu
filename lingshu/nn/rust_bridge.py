@@ -353,6 +353,7 @@ def py_executor(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
             return float(d_obj + 0.5 * d_shape)
 
         d = loss(vec)
+        # 步初读数：本步更新前取值 ⇒ curve[-1] 是"最后一次更新前"，非训练终值
         curve.append(d)
         for pi in plan["plan_sample"][step]:
             vp, vm = vec.copy(), vec.copy()
@@ -392,6 +393,7 @@ def py_executor_par(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
             return float(d_obj + 0.5 * d_shape)
 
         d = loss(vec)
+        # 步初读数：本步更新前取值 ⇒ curve[-1] 是"最后一次更新前"，非训练终值
         curve.append(d)
         v = vec.copy()                                  # 步初快照
         updates = []
@@ -424,7 +426,7 @@ def equivalence_par(net, lat: np.ndarray, obj_idx: np.ndarray,
     curve_rs, _, _ = run_rust_train(lat, obj_idx, shape_idx, vec0.copy(),
                                     plan, mode="train_par", threads=1)
     diff = float(np.abs(curve_py - curve_rs).max())
-    return {"py_last": float(curve_py[-1]), "rust_last": float(curve_rs[-1]),
+    return {"py_before_last_update": float(curve_py[-1]), "rust_before_last_update": float(curve_rs[-1]),
             "max_abs_diff": diff, "pass": bool(diff < tol), "steps": steps}
 
 
@@ -442,7 +444,7 @@ def determinism_check(lat: np.ndarray, obj_idx: np.ndarray,
                                      plan, mode="train_par", threads=th)
         if ref is None:
             ref = curve
-            out["ref_last"] = float(curve[-1])
+            out["ref_before_last_update"] = float(curve[-1])
         else:
             out[f"threads_{th}_match"] = bool(np.array_equal(curve, ref))
     return out
@@ -464,7 +466,7 @@ def bench_threads(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
         wall = time.time() - t0
         res[f"t{th}"] = {"wall_s": round(wall, 2),
                          "ms_per_step": round(wall / steps * 1000, 1),
-                         "d_last": round(float(curve[-1]), 4)}
+                         "d_before_last_update": round(float(curve[-1]), 4)}
         if base is None:
             base = wall
         res[f"t{th}"]["speedup"] = round(base / max(1e-9, wall), 2)
@@ -487,7 +489,7 @@ def equivalence_check(net, lat: np.ndarray, obj_idx: np.ndarray,
     curve_rs, vec_rs, secs = run_rust_train(lat, obj_idx, shape_idx,
                                             vec0, plan)
     diff = float(np.abs(curve_py - curve_rs).max())
-    return {"py_last": float(curve_py[-1]), "rust_last": float(curve_rs[-1]),
+    return {"py_before_last_update": float(curve_py[-1]), "rust_before_last_update": float(curve_rs[-1]),
             "max_abs_diff": diff, "pass": bool(diff < tol),
             "rust_seconds": secs, "steps": steps}
 
@@ -503,4 +505,4 @@ def bench_rust(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
     return {"steps": steps, "wall_seconds": round(time.time() - t0, 2),
             "engine_seconds": round(secs, 2),
             "d_first": round(float(curve[0]), 5),
-            "d_last": round(float(curve[-1]), 5)}
+            "d_before_last_update": round(float(curve[-1]), 5)}
