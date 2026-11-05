@@ -88,6 +88,9 @@ STDLIB_ALLOWED = frozenset({
     # 序列化 / 编码
     "json", "base64", "hashlib", "hmac",
     # 容器 / 迭代 / 类型 / 数据类 / 枚举
+    # types（#1265 窄列投影在 core.py:28 引入 SimpleNamespace 作判同候选轻量
+    # 载体——标准库；守卫按设计判红「未知裸名」，此处补分类而非放宽判据）
+    "types",
     "collections", "itertools", "typing", "dataclasses", "enum",
     # 世界经验恢复的候选状态使用浅复制；只登记标准库分类，未知名判据不变。
     "copy",
