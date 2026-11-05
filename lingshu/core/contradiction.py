@@ -64,8 +64,16 @@ def _has_neg(seg: str) -> bool:
 
 
 def _nums(s: str) -> Counter:
+    # #2169：中文数字折算成数值再入 Counter（与阿拉伯数字共用同一值域）——
+    # 修前阿拉伯走 float 归一（25/25.0/007 都收敛）、中文走 "cn:"+原串 字符串
+    # 键，两条路从不汇合 ⇒ 「数量25」与「数量二十五」的多重集不同 ⇒ 误报矛盾。
+    # 解析复用同仓 retrieval.cn_number()（1–999 中文数字）；无法解析时保留
+    # "cn:"+原串 作兜底（现状行为，不引入新误报）。
+    from .retrieval import cn_number
     c = Counter(float(x) for x in _NUM.findall(s))
-    c.update("cn:" + x for x in _CN_NUM.findall(_NUM.sub(" ", s)))
+    for x in _CN_NUM.findall(_NUM.sub(" ", s)):
+        v = cn_number(x)
+        c[v if v is not None else ("cn:" + x)] += 1
     return c
 
 

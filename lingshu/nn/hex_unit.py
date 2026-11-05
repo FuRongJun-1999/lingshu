@@ -68,10 +68,16 @@ class UnitHeadNet:
         return np.concatenate([self.gain[self.mask > 0],
                                self.theta])
 
+    THETA_BOUND = 2.0   # #2168：与 GAIN_BOUND 对称——类 docstring 声明「两个
+    # 有界属性」，修前 theta 一个闸都没有（set_vec(1e6) → theta=1e6、
+    # set_vec(nan) → theta=nan 原样写入）
+
     def set_vec(self, v: np.ndarray):
         k = int(self.mask.sum())
         self.gain[self.mask > 0] = np.clip(v[:k], 0.0, self.GAIN_BOUND)
-        self.theta = v[k:].copy()  # #557: 必须复制，不能持有调用方数组视图
+        # #2168：theta 与 gain 同口径 clip（修前原样写入，无任何边界）
+        self.theta = np.clip(np.asarray(v[k:], dtype=np.float64),
+                             -self.THETA_BOUND, self.THETA_BOUND).copy()  # #557: 复制
 
     def apply_delta(self, delta):
         """原子读改写（#197）：在同一临界区内完成 get_vec → 应用 → set_vec。

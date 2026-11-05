@@ -393,7 +393,7 @@
     {
      "file": "verdict.py",
      "src": "aeis.verdict",
-     "sha256": "b02559ef0f844e68",
+     "sha256": "da93f276a4f39086",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -530,7 +530,7 @@
     {
      "file": "hex_unit.py",
      "src": "aeis.hex_unit",
-     "sha256": "d1cf616e0fa95d31",
+     "sha256": "ba3603724625edb9",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
