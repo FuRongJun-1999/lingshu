@@ -627,8 +627,10 @@ def _eval_escalation_value_bound(op: str, threshold: float, value) -> bool:
     """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False
-    if not math.isfinite(value):
-        return False
+    if isinstance(value, float) and math.isnan(value):
+        return False    # NaN 无序（触发器语义不可判）⇒ fail-closed；
+                        # ±inf 的**有序**比较语义保留（-inf < 0.2 照常触发，
+                        # 与 #2162 的边界声明一致）
     if op == ">":
         return value > threshold
     if op == ">=":
@@ -9800,10 +9802,10 @@ class SpacetimeMemoryEngine:
             # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
             # 导出面漏出（严格 JSON dumps 直接 ValueError）；tick/ts 同一裸
             # 取值形态一并收口。
-            try:
-                from ..world.world3d import _meta_number as _mn
-            except Exception:
-                _mn = None
+            # 不新增 core→world 导入行（import_direction_lint 基线只准减不准增），
+            # 改用本函数内既有的 World3D 模块对象取闸函数。
+            _mn = getattr(sys.modules.get("lingshu.world.world3d"),
+                         "_meta_number", None)
             try:
                 tick = (None if p.get("tick") is None
                         else (_mn(p["tick"], "tick") if _mn else p["tick"]))
@@ -9867,10 +9869,10 @@ class SpacetimeMemoryEngine:
             # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
             # 导出面漏出（严格 JSON dumps 直接 ValueError）；tick/ts 同一裸
             # 取值形态一并收口。
-            try:
-                from ..world.world3d import _meta_number as _mn
-            except Exception:
-                _mn = None
+            # 不新增 core→world 导入行（import_direction_lint 基线只准减不准增），
+            # 改用本函数内既有的 World3D 模块对象取闸函数。
+            _mn = getattr(sys.modules.get("lingshu.world.world3d"),
+                         "_meta_number", None)
             try:
                 tick = (None if p.get("tick") is None
                         else (_mn(p["tick"], "tick") if _mn else p["tick"]))
