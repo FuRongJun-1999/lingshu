@@ -9864,8 +9864,14 @@ class SpacetimeMemoryEngine:
             strong = p.get("strong")
             if not aid:
                 return {"status": "error", "error": "anchor_id 必填"}
-            r = self._world3d.verify_anchor(aid, channel, evidence,
-                                            strong=strong if strong is not None else None)
+            # #2399：通道键闭集（anchor_verify.KNOWN_CHANNELS）——域外键在门面
+            # 转 error dict（与同门面 fail-closed 惯例一致，不把 ValueError 抛给
+            # 模型驱动面）；修前任意字符串入账，拼错两次即伪造「多通道一致」。
+            try:
+                r = self._world3d.verify_anchor(aid, channel, evidence,
+                                                strong=strong if strong is not None else None)
+            except ValueError as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "verification": r}
         if action == "verify_conflict":
             """多通道矛盾检测（里程碑1.4）：通道观测与锚点声明冲突 → 降级。
