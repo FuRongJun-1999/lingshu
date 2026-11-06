@@ -370,6 +370,14 @@ class SceneSimulator:
 
     def create_scene(self, trees: int = 4, water: bool = True) -> Dict:
         """创建场景（体素世界 + 地形）。"""
+        # 自主发现（值域）：trees 此前不校验——负数被 range(-1) 静默吞成 0 棵树
+        # （实测 create_scene(trees=-1) 返回 status=ok、blocks=1152），调用方以为种了树；
+        # 非整数同理被 range() 抛不可读 TypeError。现 fail-loud：非整数 TypeError、
+        # 负数 ValueError（不建场景）。
+        if isinstance(trees, bool) or not isinstance(trees, int):
+            raise TypeError("trees 必须是整数，收到 %r" % (trees,))
+        if trees < 0:
+            raise ValueError("trees 不能为负，收到 %r" % (trees,))
         blocks = self.world.build_flatland(trees=trees, water=water)
         return {"status": "ok", "blocks": blocks, "size": self.world.size,
                 "scene": "flatland"}
