@@ -9669,6 +9669,28 @@ class SpacetimeMemoryEngine:
                                        % (type(e).__name__, e)}
             return getattr(node, "id", None), None
 
+        def resolve_screen(p, default_w=800, default_h=600):
+            """`screen_w`/`screen_h` → `(整数像素对, None)`，不合法 → `(None, 门面 error dict)`。
+
+            #2422：4 个动作此前各自 `int(p.get(...))`——`screen_w=nan` 裸
+            ValueError（"cannot convert float NaN to integer"）穿透门面、负数
+            在 PIL 内部抛 `Width and height must be >= 0`（泄露实现层）、浮点
+            静默截断。#416 的 MAX 闸在 `int()` 之后，挡不住这三类。现统一
+            预闸：非 int（bool 同拒）/非正 ⇒ 可读 error dict（同门面
+            fail-closed 惯例）；MAX 上限仍由 #416 的既有闸承担。
+            """
+            out = []
+            for _nm, _d in (("screen_w", default_w), ("screen_h", default_h)):
+                _v = p.get(_nm, _d)
+                if isinstance(_v, bool) or not isinstance(_v, int):
+                    return (None, None), {"status": "error", "reason": "bad_screen_size",
+                                          "error": "%s 必须是整数像素，收到 %r" % (_nm, _v)}
+                if _v <= 0:
+                    return (None, None), {"status": "error", "reason": "bad_screen_size",
+                                          "error": "%s 必须为正整数，收到 %r" % (_nm, _v)}
+                out.append(_v)
+            return tuple(out), None
+
         def resolve_ingest_camera(raw):
             """显式 `camera` 入参 → `(Camera3D, None)`，不合法 → `(None, 门面 error dict)`。
 
@@ -9720,8 +9742,10 @@ class SpacetimeMemoryEngine:
             except ImportError:
                 from ..world.vprim import parse_anchor  # noqa: F401
             nodes = self.store.get_nodes_by_tag("vprim", limit=int(p.get("limit", 20)))
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
+            res, err = resolve_screen(p)
+            if err is not None:
+                return err
+            sw, sh = res
             multiview = bool(p.get("multiview", False))  # 多视角融合（阶段1 里程碑1.1）
             if multiview:
                 # F04：多视角三角化**必须有真实相机位姿**——#211 先砍掉了「按索引凭空
@@ -9846,8 +9870,10 @@ class SpacetimeMemoryEngine:
                            cx=float(p.get("cx", 0)), cy=float(p.get("cy", 1.2)),
                            cz=float(p.get("cz", 0.0)),
                            fov_deg=float(p.get("fov_deg", p.get("fov", 60.0))))
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
+            res, err = resolve_screen(p)
+            if err is not None:
+                return err
+            sw, sh = res
             # #416：门面在**任何分配之前**先判上限（fail-closed 返回 error dict，
             # 与门面既有校验惯例一致；不静默钳尺寸）。上限真源在
             # `world3d.MAX_SCREEN_DIM`（`render` 内另有一道，覆盖直调 API）。
@@ -9933,8 +9959,10 @@ class SpacetimeMemoryEngine:
                     _require_finite("bbox[%d]" % _i, _v)
             except ValueError as _e:
                 return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
+            res, err = resolve_screen(p)
+            if err is not None:
+                return err
+            sw, sh = res
             eid = str(p["eid"]) if p.get("eid") is not None else ""
             # #2148：与姊妹实现（world3d 的 _meta_number 闸）同口径——修前
             # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
@@ -10008,8 +10036,10 @@ class SpacetimeMemoryEngine:
                     _require_finite("bbox[%d]" % _i, _v)
             except ValueError as _e:
                 return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
+            res, err = resolve_screen(p)
+            if err is not None:
+                return err
+            sw, sh = res
             # #2148：与姊妹实现（world3d 的 _meta_number 闸）同口径——修前
             # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
             # 导出面漏出（严格 JSON dumps 直接 ValueError）；tick/ts 同一裸
