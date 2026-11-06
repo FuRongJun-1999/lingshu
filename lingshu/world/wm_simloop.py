@@ -309,8 +309,18 @@ class SimulationLoop:
 
         external(scene, tick)：物理世界的外部演化钩子（遮蔽实体的脚本化运动/
         外部事件），在物理结算前应用——世界怎么演化是世界的自由，模型只观察。
+
+        #2412：`n` 此前 `range(max(0, int(n)))`——2.7 静默截断成 2 tick、负数被
+        `max(0,…)` 静默吞成 no-op、字符串抛不可读 ValueError（#2409 在
+        `SceneSimulator.step` 的姊妹面，另一模块另一函数，修复互不覆盖）。
+        现 fail-loud：非 int（bool 同拒）TypeError、负数 ValueError（`step(0)`
+        保持合法 no-op）。`run` 委托本方法 ⇒ 同闸覆盖。
         """
-        for _ in range(max(0, int(n))):
+        if isinstance(n, bool) or not isinstance(n, int):
+            raise TypeError("step 的 n 必须是 int tick 数，收到 %r" % (n,))
+        if n < 0:
+            raise ValueError("step 的 n 须 >= 0，收到 %r" % (n,))
+        for _ in range(n):
             self.ticks_stepped += 1
             self.wm.generate(horizon=1)               # ① 生成先验
             if external is not None:

@@ -115,9 +115,18 @@ class WorldModel:
         return self
 
     def set_state(self, name: str, state: str) -> "WorldModel":
-        """状态更新（→ 呈现变化：颜色/姿态）。"""
-        if name in self.entities:
-            self.entities[name].state = state
+        """状态更新（→ 呈现变化：颜色/姿态）。
+
+        #2413：未知实体名此前**静默吞**（`if name in self.entities` 不成立就
+        什么都不做、照常返回 self）——拼错实体名（尾随空格/别名）时状态不生效、
+        场景按 neutral 渲染、零信号；而同类 mutator `relation()` 对同型错误
+        （实体不存在）显式 `raise ValueError`，一图两制。现对齐 relation()
+        口径 fail-loud。
+        """
+        if name not in self.entities:
+            raise ValueError("set_state：实体 %r 不在场景中（现有：%s）"
+                             % (name, "/".join(sorted(self.entities))))
+        self.entities[name].state = state
         return self
 
     # ---- 语义关系 → 空间约束 ----
