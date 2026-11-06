@@ -333,7 +333,13 @@ class CuriosityExplorer(WorldLearner):
 
         返回诚实（#1095，与 explore/#497 同口径）：ticks<=0 ⇒ 一步不推进、
         `probe_ticks` 如实回传钳 0 后的值；零步时各 rate 无样本 ⇒ None。
+
+        #2421：浮点此前 `int()` 静默截断（2.7→2）——#2420 闸了同文件的
+        explore/explore_tick，本入口是同族第四处漏网；负数钳 0 口径不变。
         """
+        if isinstance(ticks, bool) or not isinstance(ticks, int):
+            raise TypeError("probe 的 ticks 必须是 int tick 数，收到 %r"
+                            % (ticks,))
         n = max(0, int(ticks))
         result = self.eval_phase(n, include_oracle=False)
         return {**result, "probe_ticks": n}
@@ -364,7 +370,17 @@ class CuriosityExplorer(WorldLearner):
         返回每策略：探针命中率 / 最终不确定度 / 观测分布 / 不确定度曲线。
         #1095：explore_ticks<=0 ⇒ 探索段零步（与 explore/#497 同口径），
         `explore_ticks` 如实回传钳 0 后的值。
+
+        #2421：三参数浮点此前 `int()` 静默截断；且 `budget` 原样传给已被
+        #2420 闸住的 `explore_tick` ⇒ `compare_policies(budget=1.5)` 从底层
+        炸出不可读 TypeError（中层不自闸的半截状态）——本入口同款闸收口。
         """
+        for _nm, _v in (("explore_ticks", explore_ticks),
+                        ("probe_ticks", probe_ticks),
+                        ("budget", budget)):
+            if isinstance(_v, bool) or not isinstance(_v, int):
+                raise TypeError("compare_policies 的 %s 必须是 int，收到 %r"
+                                % (_nm, _v))
         n_explore = max(0, int(explore_ticks))
         results = {}
         for pol in ("curiosity", "random", "round_robin"):
