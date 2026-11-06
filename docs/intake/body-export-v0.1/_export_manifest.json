@@ -54,7 +54,7 @@
     {
      "file": "curiosity_explorer.py",
      "src": "aeis.curiosity_explorer",
-     "sha256": "9f32b8c261f78e36",
+     "sha256": "75b675c57a21868e",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
