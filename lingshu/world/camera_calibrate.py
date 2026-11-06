@@ -211,12 +211,33 @@ def _null_vector(a: Sequence[Sequence[float]],
 
 
 # =========================================================== 单应（DLT）
+def _require_finite_points(pts: Sequence[Sequence[float]], where: str) -> None:
+    """#2402：点集须为数值对且每分量有限——否则 CalibrationError。
+
+    修前 nan/inf 点经 `_hartley` → DLT 得全 nan 单应，而唯一退化闸
+    `if nrm < 1e-300` 对 nan 恒假 ⇒ 静默返回全 nan H；该 H 再经
+    `intrinsics_from_homographies`（λ₂/λmax 对 nan 恒假）产出全 nan 内参——
+    与两函数自述的「点集退化 ⇒ 抛错」「不返回看似合理的解」直接矛盾。
+    同文件后段（:430 `math.isfinite(rms)`、:653 初值残差非有限）已是
+    fail-loud 口径，此处把入口段对齐。
+    """
+    for i, pt in enumerate(pts):
+        try:
+            vals = [float(v) for v in pt]
+        except (TypeError, ValueError):
+            raise CalibrationError("%s：第 %d 个点不是数值对（%r）" % (where, i, pt))
+        if len(vals) < 2 or not all(math.isfinite(v) for v in vals[:2]):
+            raise CalibrationError(
+                "%s：第 %d 个点含非有限/非法坐标（%r）——拒绝求解" % (where, i, pt))
+
+
 def _hartley(pts: Sequence[Sequence[float]]) -> Tuple[List[List[float]],
                                                       List[List[float]]]:
     """Hartley 归一化：重心移到原点、平均距离缩到 √2。"""
     n = len(pts)
     if n < 4:
         raise CalibrationError("_hartley：至少 4 个点（得到 %d）" % n)
+    _require_finite_points(pts, "_hartley")
     cx = sum(float(p[0]) for p in pts) / n
     cy = sum(float(p[1]) for p in pts) / n
     d = sum(math.hypot(float(p[0]) - cx, float(p[1]) - cy) for p in pts) / n
@@ -279,6 +300,19 @@ def intrinsics_from_homographies(hs: Sequence[Sequence[Sequence[float]]]
         raise CalibrationError(
             "intrinsics_from_homographies：至少 3 个视图（得到 %d）——"
             "2 个视图欠约束，无法唯一确定内参" % len(hs))
+    # #2402：H 含非有限元素时 λ₂/λmax 比较对 nan 恒假（退化闸逃逸），
+    # `_null_vector` 会产出全 nan 内参——与下方「退化 ⇒ 显式抛错，不返回
+    # 看似合理的解」的承诺相反。入口先拒，合法输入行为逐位不变。
+    for i, h in enumerate(hs):
+        try:
+            vals = [float(v) for row in h for v in row]
+        except (TypeError, ValueError):
+            raise CalibrationError(
+                "intrinsics_from_homographies：第 %d 个单应不是 3×3 数值矩阵" % i)
+        if len(vals) != 9 or not all(math.isfinite(v) for v in vals):
+            raise CalibrationError(
+                "intrinsics_from_homographies：第 %d 个单应含非有限/非法元素"
+                "——拒绝求解（不返回全 nan 内参）" % i)
     a: List[List[float]] = []
     for h in hs:
         a.append(_v_ij(h, 0, 1))
