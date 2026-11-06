@@ -16,6 +16,10 @@ world3d · 3D 语义时空图（WORLD3D-REV1）
        └──── 渲染（任意视角透视投影）←──────────┘
 """
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
 import json
 import math
 import time
@@ -1233,8 +1237,8 @@ class World3D:
             try:
                 draw.polygon([(p[0], p[1]) for p in poly], fill=color,
                              outline=tuple(min(255, int(v * 0.7)) for v in color))
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("#170 面绘制跳过（投影退化/越界，best-effort 渲染）：%s", _e)
 
     def _draw_sphere(self, draw, obj, cam, sw, sh):
         c = cam.project(obj.center, sw, sh)
@@ -1290,8 +1294,8 @@ class World3D:
             try:
                 draw.polygon([(p[0], p[1]) for p in poly], fill=obj.color,
                              outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("#170 面绘制跳过（投影退化/越界，best-effort 渲染）：%s", _e)
 
     # ---- 显式几何通道（网格一等公民 · v2） ----
 
