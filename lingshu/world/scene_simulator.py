@@ -369,6 +369,11 @@ class SceneSimulator:
     # ---- 场景构建 ----
 
     def create_scene(self, trees: int = 4, water: bool = True) -> Dict:
+        # 自主发现（参数类型）：water 此前只做真值判断——传 "yes"/1 被当成 True
+        # （实测 create_scene(trees=0, water="yes") 返回 status=ok 并生成水域），
+        # 调用方无从察觉参数类型写错。现 fail-loud：非 bool → 可读 TypeError。
+        if not isinstance(water, bool):
+            raise TypeError("water 必须是 bool，收到 %r" % (water,))
         """创建场景（体素世界 + 地形）。"""
         blocks = self.world.build_flatland(trees=trees, water=water)
         return {"status": "ok", "blocks": blocks, "size": self.world.size,
