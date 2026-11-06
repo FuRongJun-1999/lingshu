@@ -263,7 +263,14 @@ class CuriosityExplorer(WorldLearner):
         return n_anom
 
     def explore_tick(self, budget: int = 2, policy: str = "curiosity") -> Dict:
-        """探索一步：选择→预测→世界演化→真实观测→对比→学习。"""
+        """探索一步：选择→预测→世界演化→真实观测→对比→学习。
+
+        #2420：budget 浮点静默截断与 explore 同款（第三处姊妹面）——非 int
+        fail-loud；负数走 `_select` 既有钳 0 口径。
+        """
+        if isinstance(budget, bool) or not isinstance(budget, int):
+            raise TypeError("explore_tick 的 budget 必须是 int，收到 %r"
+                            % (budget,))
         chosen, scores = self._select(budget, policy)
         self.predict(horizon=1)
         self.world.step(n=1)
@@ -286,7 +293,17 @@ class CuriosityExplorer(WorldLearner):
         「ticks: 0」——返回值与实际行为矛盾（改前实测：tick 0→1、curve 长 1、
         返回 ticks=0）。final_uncertainty 在零 tick（curve 仍空）时回落到
         现场 `uncertainty()`，不再借偷跑的那一步撑出读数。
+
+        #2420：`ticks`/`budget` 的**浮点**此前 `int()` 静默截断（2.7→2）——
+        tick/预算计数非 int fail-loud 的裁决已在 #2409（SceneSimulator.step）
+        与 #2412（SimulationLoop.step/run）两处落地，本处是第三处姊妹面。
+        负数钳 0 的既有文档口径保持不变（bool 同拒）。
         """
+        if isinstance(ticks, bool) or not isinstance(ticks, int):
+            raise TypeError("explore 的 ticks 必须是 int tick 数，收到 %r"
+                            % (ticks,))
+        if isinstance(budget, bool) or not isinstance(budget, int):
+            raise TypeError("explore 的 budget 必须是 int，收到 %r" % (budget,))
         n = max(0, int(ticks))
         # #732：报数面与观测面同源——`budget` 仍如实回填输入，另加
         # `effective_budget`＝本轮每 tick **真正允许**的观测上限（`budget<=0`
