@@ -3149,6 +3149,11 @@ class LayeredStore:
         """
         conditions = []
         params = []
+        # 自主发现（参数类型）：layer 此前直接读 `.value`——传 str/int 抛不可读
+        # AttributeError（'str' object has no attribute 'value'）。现 fail-loud：
+        # 非 MemoryLayer 且非 None → 可读 TypeError（不查库）。
+        if layer is not None and not isinstance(layer, MemoryLayer):
+            raise TypeError("layer 必须是 MemoryLayer 或 None，收到 %r" % (layer,))
         if layer is not None:
             conditions.append("layer=?")
             params.append(layer.value)
