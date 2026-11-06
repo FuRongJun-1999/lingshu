@@ -9923,6 +9923,16 @@ class SpacetimeMemoryEngine:
             bbox = p.get("bbox")
             if not category or not bbox or len(bbox) != 4:
                 return {"status": "error", "error": "category 与 bbox=[x1,y1,x2,y2] 必填"}
+            # #2418：bbox 有限性闸——修前无 camera 路径 `VPrim(tuple(float(v)…))`
+            # 零校验，NaN/±inf 直通进世界图 ⇒ graph/status 导出严格 JSON 崩；
+            # 而**带 camera 的持久化路径**经 format_camera_observation 已有同款
+            # 闸（"bbox[0] 必须是有限实数"）——同一动作两口径。复用 _require_finite
+            # （同一文案），先拒先返回；带 camera 路径行为不变。
+            try:
+                for _i, _v in enumerate(bbox):
+                    _require_finite("bbox[%d]" % _i, _v)
+            except ValueError as _e:
+                return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
             sw = int(p.get("screen_w", 800))
             sh = int(p.get("screen_h", 600))
             eid = str(p["eid"]) if p.get("eid") is not None else ""
@@ -9991,6 +10001,13 @@ class SpacetimeMemoryEngine:
             bbox = p.get("bbox")
             if not category or not bbox or len(bbox) != 4:
                 return {"status": "error", "error": "category 与 bbox=[x1,y1,x2,y2] 必填"}
+            # #2418：同 add——无 camera 路径的 bbox 此前零有限闸（持久化路径
+            # 经 format_camera_observation 已有），NaN 直通进世界图。
+            try:
+                for _i, _v in enumerate(bbox):
+                    _require_finite("bbox[%d]" % _i, _v)
+            except ValueError as _e:
+                return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
             sw = int(p.get("screen_w", 800))
             sh = int(p.get("screen_h", 600))
             # #2148：与姊妹实现（world3d 的 _meta_number 闸）同口径——修前
