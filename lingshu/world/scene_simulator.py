@@ -383,6 +383,12 @@ class SceneSimulator:
         #398 同款）——2D/超维 pos 此前照单全收，之后每次 `step` 在
         `bx, by, bz = e.pos` 抛 ValueError：实体与路径常驻 ⇒ **一次合法调用
         把永久崩溃注入模拟器**（坏实体踢不掉、好实体跟着停、evolution 清零）。"""
+        # 自主发现（参数类型）：goal 此前不做类型闸——传 int 后 `_decide` 的
+        # `self.entities.get(123)` 恒 None ⇒ 实体**静默不动**（实测 seek+goal=123
+        # 的实体 pos 不变、无告警）。seek/follow 的 goal 是实体 id 字符串，非 str
+        # 不可能是有效引用。现 fail-loud：可读 TypeError（实体不注册）。
+        if not isinstance(goal, str):
+            raise TypeError("goal 必须是字符串（目标实体 id 或空串），收到 %r" % (goal,))
         p = tuple(float(v) for v in pos)
         if len(p) != 3 or not all(math.isfinite(v) for v in p):
             raise ValueError(
