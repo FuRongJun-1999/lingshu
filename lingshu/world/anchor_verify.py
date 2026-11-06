@@ -32,6 +32,11 @@ STRONG_CHANNELS = {"tactile", "action", "audio"}
 # 弱验证通道（感知/图/预测——可能自证）
 WEAK_CHANNELS = {"visual", "search", "prediction", "graph"}
 
+# #2399：通道键闭集 = 强 ∪ 弱（docstring 声明的七通道）。add_channel_evidence
+# 对域外键 fail-loud——否则 verify_anchor 的 len(ev) >= MIN_CHANNELS 按字典键
+# 计数，同一传感器拼错两次即伪造「多通道一致」（自证陷阱从通道域重开）。
+KNOWN_CHANNELS = frozenset(STRONG_CHANNELS | WEAK_CHANNELS)
+
 # 确认阈值（复用 confirmation 语义）
 CONF_THRESHOLD = 0.5      # 通道可信度达标线
 KL_THRESHOLD = 0.05       # 强验证 realized_KL 达标线
@@ -92,6 +97,15 @@ class AnchorVerification:
         evidence_id: 同通道重复递交同一证据时幂等（含 registry 更新）。
         缺省时每次提交视为一次新观测；verify 本身不产生新证据。
         """
+        # #2399：通道键**闭集校验**——此前任意字符串直接入账，而 verify_anchor 的
+        # 通道一致闸按**字典键数**计数（len(ev) >= MIN_CHANNELS）⇒ 同一传感器把
+        # 通道名拼错两次（visaul/vsiual）就伪造出「多通道一致」ACCEPT_weak，
+        # #160 专门挡的单通道自证陷阱从通道键域重开（实测修前：拼对 visual 只算
+        # 1 通道 → NOT_ACCEPTED；拼错两次 → ACCEPT_weak，方向与 fail-closed 相反）。
+        # 对齐同仓闭集惯例（physics.MODEL_KINDS / shapes.PART_KINDS 均 fail-loud）。
+        if channel not in KNOWN_CHANNELS:
+            raise ValueError("未知验证通道 %r（闭集 %s）"
+                             % (channel, ", ".join(sorted(KNOWN_CHANNELS))))
         rec = self._anchors.setdefault(anchor_id, {
             "channel_evidence": {}, "channel_conflicts": {},
             "verified_rounds": 0, "confirmation": "NOT_ACCEPTED",
