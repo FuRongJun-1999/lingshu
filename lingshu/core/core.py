@@ -11119,12 +11119,22 @@ class SpacetimeMemoryEngine:
             self._curious.world.add_path(str(p.get("path_id", "")), p.get("points", []))
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "explore":
-            r = self._curious.explore(ticks=int(p.get("n", 30)),
-                                      budget=int(p.get("budget", 2)),
+            # #2420：n/budget 判型后进底层（浮点不再静默截断；非 int 转 error
+            # dict，同门面 fail-closed 惯例），底层 explore 另有同形闸。
+            _n, _b = p.get("n", 30), p.get("budget", 2)
+            for _nm, _v in (("n", _n), ("budget", _b)):
+                if isinstance(_v, bool) or not isinstance(_v, int):
+                    return {"status": "error",
+                            "error": "explore 的 %s 必须是整数，收到 %r" % (_nm, _v)}
+            r = self._curious.explore(ticks=_n, budget=_b,
                                       policy=str(p.get("policy", "curiosity")))
             return {"status": "ok", "explore": r}
         if action == "step":
-            r = self._curious.explore_tick(budget=int(p.get("budget", 2)),
+            _b = p.get("budget", 2)
+            if isinstance(_b, bool) or not isinstance(_b, int):
+                return {"status": "error",
+                        "error": "step 的 budget 必须是整数，收到 %r" % (_b,)}
+            r = self._curious.explore_tick(budget=_b,
                                            policy=str(p.get("policy", "curiosity")))
             return {"status": "ok", "step": r}
         if action == "probe":
