@@ -1156,6 +1156,16 @@ class SceneSimulator:
         ③ 自主行为（`_decide` + 沿注册路径平移）。未标记 `"dynamics"` 的实体
         **永不**进入 ② ⇒ 既有场景逐位不变（硬判据）。
         """
+        # 自主发现（参数类型）：n 此前直接 `int(n)`——传 float 被**静默截断**
+        # （实测 step(2.7) 只推进 2 tick，调用方无从察觉）；传 str 抛不可读
+        # ValueError（invalid literal for int()）。现 fail-loud：非整数值 ValueError、
+        # 非数值类型 TypeError（不推进任何 tick）。
+        try:
+            _n = int(n)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("step 的 n 必须是整数，收到 %r" % (n,)) from exc
+        if isinstance(n, float) and not float(n).is_integer():
+            raise ValueError("step 的 n 必须是整数（不接受小数），收到 %r" % (n,))
         n = int(n)
         if n < 0 or n > MAX_STEPS_PER_CALL:
             raise ValueError("step n=%d 超出范围 [0, %d]" % (n, MAX_STEPS_PER_CALL))
