@@ -310,6 +310,19 @@ class MeshData:
             self.add_tri(ids[a], ids[b], ids[c], color)
 
     def add_quad(self, a, b, c, d, color=None) -> None:
+        """四角面 → 两个三角（a,b,c）+（a,c,d）。
+
+        #2403：**先全量校验后写入**——修前直接串联两次 `add_tri`，第二个三角
+        越界抛错时第一个已 append 进 faces/colors ⇒ 调用方按「抛错=未写入」
+        重试会得到多一块面片的半成品 mesh（渲染可见的多余面片、无告警），
+        与同文件 add_tri（:274）/ add_poly（:286）的「校验通过才写」口径分裂。
+        前置段只做转换与越界检查，合法输入结果逐位不变。
+        """
+        a, b, c, d = int(a), int(b), int(c), int(d)
+        n = len(self.verts)
+        for i in (a, b, c, d):
+            if not (0 <= i < n):
+                raise ValueError("面索引越界：%r（顶点数 %d）" % ((a, b, c, d), n))
         self.add_tri(a, b, c, color)
         self.add_tri(a, c, d, color)
 
