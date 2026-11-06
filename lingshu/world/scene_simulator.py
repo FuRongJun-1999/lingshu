@@ -383,6 +383,14 @@ class SceneSimulator:
         #398 同款）——2D/超维 pos 此前照单全收，之后每次 `step` 在
         `bx, by, bz = e.pos` 抛 ValueError：实体与路径常驻 ⇒ **一次合法调用
         把永久崩溃注入模拟器**（坏实体踢不掉、好实体跟着停、evolution 清零）。"""
+        # 自主发现（参数类型）：behavior/category 此前不做类型闸——非 str 会被原样
+        # 存进 SceneEntity，`_decide` 的 `==` 分支全部落空后静默按 wander 走（实测
+        # behavior=123 仍移动），且 world_learner 的按类别统计把它归成新类别脏值。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（实体不注册）。
+        if not isinstance(behavior, str) or not behavior.strip():
+            raise TypeError("behavior 必须是非空字符串，收到 %r" % (behavior,))
+        if not isinstance(category, str) or not category.strip():
+            raise TypeError("category 必须是非空字符串，收到 %r" % (category,))
         p = tuple(float(v) for v in pos)
         if len(p) != 3 or not all(math.isfinite(v) for v in p):
             raise ValueError(
@@ -412,6 +420,11 @@ class SceneSimulator:
         `if path:` 静默退化为随机游走，而验证器仍按 exact 判分。
         现拒绝：空路径 / 非 3 维点 / 非有限坐标。
         """
+        # 自主发现（参数类型）：path_id 此前不做类型闸——传 int 也能注册进 self.paths
+        # （实测 add_path(123, ...) 成功），此后按 str 引用路径永远查不到，形成
+        # 不可见脏条目。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(path_id, str) or not path_id.strip():
+            raise TypeError("path_id 必须是非空字符串，收到 %r" % (path_id,))
         pts = [tuple(float(v) for v in pt) for pt in points]
         if not pts or any(len(p) != 3 or not all(math.isfinite(v) for v in p)
                           for p in pts):
