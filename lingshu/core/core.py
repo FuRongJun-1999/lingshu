@@ -6062,6 +6062,12 @@ class LayeredStore:
             # importance 直升 0.9。改为「与已合并结果比」逐条去重（保持出现顺序），
             # 同时覆盖旧列表与本次提交内部两处重复。
             for e in add:
+                # 自主发现（证据类型）：证据此前只有「去重」没有类型闸——传 [1, 2]
+                # 会把整数塞进 evidence 列表（实测 status=verified），随后按证据
+                # 文本取证的查询永远匹配不到，证据链出现不可读条目。现 fail-loud：
+                # 非 str 或纯空白 → 可读 TypeError（整个 verify 回滚）。
+                if not isinstance(e, str) or not e.strip():
+                    raise TypeError("insight evidence 的每条必须是非空字符串，收到 %r" % (e,))
                 if e not in ev:
                     ev.append(e)
         # 自主发现（参数类型）：level 此前直接 `.upper()`——传非字符串（数字/列表）
