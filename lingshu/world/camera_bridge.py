@@ -94,6 +94,16 @@ def camera3d_from_intrinsics(intr: Any, *, eye: Sequence[float],
     if len(eye) != 3:
         raise BridgeError("camera3d_from_intrinsics：eye 必须是 3 元组，收到 %r"
                           % (tuple(eye),))
+    # #2405：eye 三分量**有限性**此前零校验——nan/inf 位姿直接写进 Camera3D，
+    # 之后 project/unproject/to_meta 全输出 nan，而本模块的卖点恰是「显式转换 +
+    # 显式报告损失」（docstring 开头），report["lossy"] 对非有限位姿一字不提。
+    # 同函数已在校验 fx/fy/width 三个标量，此处补齐同一维口径。
+    for _i, _v in enumerate(eye):
+        if (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                or not math.isfinite(float(_v))):
+            raise BridgeError(
+                "camera3d_from_intrinsics：eye[%d] 必须是有限数值，收到 %r"
+                % (_i, _v))
     if not (k.fx > 0 and k.fy > 0):
         raise BridgeError("camera3d_from_intrinsics：fx/fy 必须为正（%r/%r）"
                           % (k.fx, k.fy))
@@ -197,6 +207,16 @@ def intrinsics_from_camera3d(cam: Camera3D, *, width: int, height: int,
         cx, cy = width / 2.0, height / 2.0
         src = "center_assumption"
     else:
+        # #2405：principal_point 同样零有限性校验——nan 主点写进内参后，
+        # 再喂 camera3d_from_intrinsics 时 off_frac = nan，`if off_frac > tol`
+        # 对 nan 恒假 ⇒ 主点偏离检测静默失效（同族 NaN 比较陷阱）。
+        for _name, _v in (("principal_point[0]", principal_point[0]),
+                          ("principal_point[1]", principal_point[1])):
+            if (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                    or not math.isfinite(float(_v))):
+                raise BridgeError(
+                    "intrinsics_from_camera3d：%s 必须是有限数值，收到 %r"
+                    % (_name, _v))
         cx, cy = float(principal_point[0]), float(principal_point[1])
         src = "given"
     return _calib.CameraIntrinsics(
