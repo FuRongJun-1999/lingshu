@@ -4829,6 +4829,16 @@ class LayeredStore:
         if _is_meta_category(category):
             raise ValueError(
                 "元盲区零记录（#386）：拒绝把 category 规范化后为 meta 的盲区写入注册表")
+        # 自主发现（参数类型）：severity/category 此前不做类型闸——传 int 会被原样
+        # 写入 blindspots 表（实测 severity=123 / category=123 均成功），此后按 str
+        # 过滤（severity='high'、category='operational'）永远查不到，形成脏行。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(severity, str) or not severity.strip():
+            raise TypeError("add_blindspot 的 severity 必须是非空字符串，收到 %r"
+                            % (severity,))
+        if not isinstance(category, str) or not category.strip():
+            raise TypeError("add_blindspot 的 category 必须是非空字符串，收到 %r"
+                            % (category,))
         bid = f"bs_{uuid.uuid4().hex[:8]}"
         c = self.conn.cursor()
         c.execute("INSERT INTO blindspots (id, code, description, severity, category, status, created_at, resolved_at, predictability) VALUES (?,?,?,?,?,?,?,?,?)",
