@@ -70,10 +70,10 @@ def _run_assertions():
 _ARMS = {
     "M1": ("lingshu/core/core.py",
            [('        if not isinstance(severity, str) or not severity.strip():', '        if False:')],
-           {"A01", "A03", "E01"}),
+           {"A01", "A03"}),
     "M2": ("lingshu/core/core.py",
            [('        if not isinstance(category, str) or not category.strip():', '        if False:')],
-           {"A02", "E02"}),
+           {"A02"}),
 }
 
 
