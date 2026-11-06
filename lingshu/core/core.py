@@ -3171,6 +3171,11 @@ class LayeredStore:
         """
         conditions = []
         params = []
+        # 自主发现（参数类型）：layer 此前直接读 `.value`——传 str/int 抛不可读
+        # AttributeError（'str' object has no attribute 'value'）。现 fail-loud：
+        # 非 MemoryLayer 且非 None → 可读 TypeError（不查库）。
+        if layer is not None and not isinstance(layer, MemoryLayer):
+            raise TypeError("layer 必须是 MemoryLayer 或 None，收到 %r" % (layer,))
         if layer is not None:
             conditions.append("layer=?")
             params.append(layer.value)
@@ -4375,6 +4380,16 @@ class LayeredStore:
         if not isinstance(query, str):
             raise TypeError("search_content 的 query 必须是字符串，收到 %s"
                             % type(query).__name__)
+        # 自主发现（参数类型）：layers 此前直接迭代并读 `.value`——传 str/元素非
+        # MemoryLayer 抛不可读 AttributeError（'str' object has no attribute 'value'）。
+        # 现 fail-loud：非列表/元组，或元素非 MemoryLayer → 可读 TypeError（不查库）。
+        if layers is not None:
+            if not isinstance(layers, (list, tuple)):
+                raise TypeError("layers 必须是列表/元组或 None，收到 %s"
+                                % type(layers).__name__)
+            for _lay in layers:
+                if not isinstance(_lay, MemoryLayer):
+                    raise TypeError("layers 的元素必须是 MemoryLayer，收到 %r" % (_lay,))
         limit = _normalize_limit(limit)
         q = query.strip()
         if not q:
@@ -6224,6 +6239,12 @@ class LayeredStore:
             # importance 直升 0.9。改为「与已合并结果比」逐条去重（保持出现顺序），
             # 同时覆盖旧列表与本次提交内部两处重复。
             for e in add:
+                # 自主发现（证据类型）：证据此前只有「去重」没有类型闸——传 [1, 2]
+                # 会把整数塞进 evidence 列表（实测 status=verified），随后按证据
+                # 文本取证的查询永远匹配不到，证据链出现不可读条目。现 fail-loud：
+                # 非 str 或纯空白 → 可读 TypeError（整个 verify 回滚）。
+                if not isinstance(e, str) or not e.strip():
+                    raise TypeError("insight evidence 的每条必须是非空字符串，收到 %r" % (e,))
                 if e not in ev:
                     ev.append(e)
         # 自主发现（参数类型）：level 此前直接 `.upper()`——传非字符串（数字/列表）
@@ -6443,6 +6464,13 @@ class LayeredStore:
     def add_rejected_path(self, path_type: str, description: str, reason: str,
                           evidence: str = "") -> str:
         """登记被否决的路径（负路由沉淀：错误答案留档防重蹈），返回 id。"""
+        # 自主发现（参数类型）：path_type 此前不做类型闸——传 int 会原样写进
+        # rejected_paths 表（实测 add_rejected_path(123, ...) 成功），此后按 str
+        # 过滤（path_type='promotion'）永远查不到，负记忆面出现不可见脏行。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(path_type, str) or not path_type.strip():
+            raise TypeError("add_rejected_path 的 path_type 必须是非空字符串，收到 %r"
+                            % (path_type,))
         rid = f"rp_{uuid.uuid4().hex[:8]}"
         c = self.conn.cursor()
         c.execute("INSERT INTO rejected_paths VALUES (?,?,?,?,?,?,?,?)",

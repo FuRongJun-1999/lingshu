@@ -369,7 +369,20 @@ class SceneSimulator:
     # ---- 场景构建 ----
 
     def create_scene(self, trees: int = 4, water: bool = True) -> Dict:
+        # 自主发现（参数类型）：water 此前只做真值判断——传 "yes"/1 被当成 True
+        # （实测 create_scene(trees=0, water="yes") 返回 status=ok 并生成水域），
+        # 调用方无从察觉参数类型写错。现 fail-loud：非 bool → 可读 TypeError。
+        if not isinstance(water, bool):
+            raise TypeError("water 必须是 bool，收到 %r" % (water,))
         """创建场景（体素世界 + 地形）。"""
+        # 自主发现（值域）：trees 此前不校验——负数被 range(-1) 静默吞成 0 棵树
+        # （实测 create_scene(trees=-1) 返回 status=ok、blocks=1152），调用方以为种了树；
+        # 非整数同理被 range() 抛不可读 TypeError。现 fail-loud：非整数 TypeError、
+        # 负数 ValueError（不建场景）。
+        if isinstance(trees, bool) or not isinstance(trees, int):
+            raise TypeError("trees 必须是整数，收到 %r" % (trees,))
+        if trees < 0:
+            raise ValueError("trees 不能为负，收到 %r" % (trees,))
         blocks = self.world.build_flatland(trees=trees, water=water)
         return {"status": "ok", "blocks": blocks, "size": self.world.size,
                 "scene": "flatland"}
@@ -391,6 +404,12 @@ class SceneSimulator:
             raise TypeError("behavior 必须是非空字符串，收到 %r" % (behavior,))
         if not isinstance(category, str) or not category.strip():
             raise TypeError("category 必须是非空字符串，收到 %r" % (category,))
+        # 自主发现（参数类型）：goal 此前不做类型闸——传 int 后 `_decide` 的
+        # `self.entities.get(123)` 恒 None ⇒ 实体**静默不动**（实测 seek+goal=123
+        # 的实体 pos 不变、无告警）。seek/follow 的 goal 是实体 id 字符串，非 str
+        # 不可能是有效引用。现 fail-loud：可读 TypeError（实体不注册）。
+        if not isinstance(goal, str):
+            raise TypeError("goal 必须是字符串（目标实体 id 或空串），收到 %r" % (goal,))
         p = tuple(float(v) for v in pos)
         if len(p) != 3 or not all(math.isfinite(v) for v in p):
             raise ValueError(
@@ -1169,6 +1188,16 @@ class SceneSimulator:
         ③ 自主行为（`_decide` + 沿注册路径平移）。未标记 `"dynamics"` 的实体
         **永不**进入 ② ⇒ 既有场景逐位不变（硬判据）。
         """
+        # 自主发现（参数类型）：n 此前直接 `int(n)`——传 float 被**静默截断**
+        # （实测 step(2.7) 只推进 2 tick，调用方无从察觉）；传 str 抛不可读
+        # ValueError（invalid literal for int()）。现 fail-loud：非整数值 ValueError、
+        # 非数值类型 TypeError（不推进任何 tick）。
+        try:
+            _n = int(n)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("step 的 n 必须是整数，收到 %r" % (n,)) from exc
+        if isinstance(n, float) and not float(n).is_integer():
+            raise ValueError("step 的 n 必须是整数（不接受小数），收到 %r" % (n,))
         n = int(n)
         if n < 0 or n > MAX_STEPS_PER_CALL:
             raise ValueError("step n=%d 超出范围 [0, %d]" % (n, MAX_STEPS_PER_CALL))
