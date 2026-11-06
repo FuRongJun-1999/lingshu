@@ -6275,6 +6275,13 @@ class LayeredStore:
     def add_rejected_path(self, path_type: str, description: str, reason: str,
                           evidence: str = "") -> str:
         """登记被否决的路径（负路由沉淀：错误答案留档防重蹈），返回 id。"""
+        # 自主发现（参数类型）：path_type 此前不做类型闸——传 int 会原样写进
+        # rejected_paths 表（实测 add_rejected_path(123, ...) 成功），此后按 str
+        # 过滤（path_type='promotion'）永远查不到，负记忆面出现不可见脏行。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(path_type, str) or not path_type.strip():
+            raise TypeError("add_rejected_path 的 path_type 必须是非空字符串，收到 %r"
+                            % (path_type,))
         rid = f"rp_{uuid.uuid4().hex[:8]}"
         c = self.conn.cursor()
         c.execute("INSERT INTO rejected_paths VALUES (?,?,?,?,?,?,?,?)",
