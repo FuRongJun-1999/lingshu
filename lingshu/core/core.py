@@ -10485,29 +10485,52 @@ class SpacetimeMemoryEngine:
         if not hasattr(self, '_stc'):
             self._stc = SpacetimeConsistency()
         if action == "create":
-            r = self._stc.create_scene(trees=int(p.get("trees", 4)),
-                                       water=bool(p.get("water", True)))
+            # #2423：门面 fail-closed——坏 trees 等在门面转 error dict，
+            # 不把裸 ValueError 抛给模型驱动面（同 seven_layer #691 Z3 惯例）。
+            try:
+                r = self._stc.create_scene(trees=int(p.get("trees", 4)),
+                                           water=bool(p.get("water", True)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._stc.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2423：同上——pos/speed 闸的 ValueError 与裸 float/int 的
+            # TypeError 都在门面转 error dict（修前裸穿）。
+            try:
+                eid = self._stc.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._stc.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2423：同上（points 维度/有限性闸的 ValueError 裸穿修前实测）。
+            try:
+                self._stc.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "run":
-            r = self._stc.run(n=int(p.get("n", 10)))
+            # #2423：n 非数值的不可读 ValueError 同在门面收口。
+            try:
+                r = self._stc.run(n=int(p.get("n", 10)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "run": r}
         if action == "step":
             r = self._stc.step_verified()
             return {"status": "ok", "step": r}
         if action == "teleport":
-            ok = self._stc.teleport(str(p.get("entity_id", "")),
-                                    tuple(float(v) for v in p.get("pos", [0, 0, 0])))
+            # #2423：坏 pos 的裸 float ValueError 同在门面收口（未知实体的
+            # 二态返回保持不变）。
+            try:
+                ok = self._stc.teleport(str(p.get("entity_id", "")),
+                                        tuple(float(v) for v in p.get("pos", [0, 0, 0])))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok" if ok else "error",
                     "queued": ok}
         if action == "report":
