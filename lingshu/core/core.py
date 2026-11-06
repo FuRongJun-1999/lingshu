@@ -4267,6 +4267,16 @@ class LayeredStore:
         打分输入（检索只计数、不刷新近因），分数即成为固定输入的纯函数。"""
         # dsh-bounty #1795：#658「None／-1＝全量」口径在此入口收口（FTS 腿
         # `int(limit)` 对 None 崩、两腿 `scored[:limit]` 对 -1 负切片丢尾条）。
+        # 自主发现（参数类型）：layers 此前直接迭代并读 `.value`——传 str/元素非
+        # MemoryLayer 抛不可读 AttributeError（'str' object has no attribute 'value'）。
+        # 现 fail-loud：非列表/元组，或元素非 MemoryLayer → 可读 TypeError（不查库）。
+        if layers is not None:
+            if not isinstance(layers, (list, tuple)):
+                raise TypeError("layers 必须是列表/元组或 None，收到 %s"
+                                % type(layers).__name__)
+            for _lay in layers:
+                if not isinstance(_lay, MemoryLayer):
+                    raise TypeError("layers 的元素必须是 MemoryLayer，收到 %r" % (_lay,))
         limit = _normalize_limit(limit)
         q = query.strip()
         if not q:
