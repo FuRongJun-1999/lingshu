@@ -73,7 +73,6 @@ lingshu/world/scene_model.py	0
 lingshu/world/seven_layer_loop.py	1
 lingshu/world/stable_lease.py	1
 lingshu/world/wm_simloop.py	0
-lingshu/world/world3d.py	2
 
 # TOTAL 148
 
