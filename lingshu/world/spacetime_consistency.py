@@ -86,6 +86,17 @@ class SpacetimeConsistency:
         # 透传即覆盖整条随机轴；影子预测（`_predict_next`）不消耗 RNG。
         self.scene = SceneSimulator(size=size, ground_level=ground_level,
                                     seed=seed)
+        # #2419：三个 rate 参数此前裸 float() 零值域闸——`hit_threshold=nan`
+        # 使逐 tick `rate >= threshold` 恒 False ⇒ 同种子同场景 overall
+        # 1.0→0.0、假漂移告警（实测）；±inf 同理，负阈值则恒 True（假自洽）。
+        # 同段的离散参数已有 max(1, int(…)) 闸，rate 族补齐同一维口径。
+        for _name, _raw in (("hit_threshold", hit_threshold),
+                            ("drift_rate", drift_rate),
+                            ("consistent_rate", consistent_rate)):
+            _f = float(_raw)
+            if not (0.0 <= _f <= 1.0):
+                raise ValueError("%s 需为 [0,1] 内的有限数值，收到 %r"
+                                 % (_name, _raw))
         self.window = max(1, int(window))
         self.hit_threshold = float(hit_threshold)
         self.drift_rate = float(drift_rate)
