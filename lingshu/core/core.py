@@ -10299,7 +10299,11 @@ class SpacetimeMemoryEngine:
             return {"status": "error", "error": "推演循环未初始化（先 setup）"}
         sl = self._simloop
         if action == "run":
-            n = int(p.get("n", 10))
+            # #2412：同 step——n 判型后进底层（浮点/字符串不再静默截断）。
+            n = p.get("n", 10)
+            if isinstance(n, bool) or not isinstance(n, int):
+                return {"status": "error",
+                        "error": "run 的 n 必须是整数 tick 数，收到 %r" % (n,)}
             script = str(p.get("script", ""))
             target = str(p.get("target", ""))
             if script == "drift_sinusoid" and target in sl.scene.entities:
@@ -10317,7 +10321,14 @@ class SpacetimeMemoryEngine:
                 sl.run(n=n)
             return {"status": "ok", "report": sl.report()}
         if action == "step":
-            return {"status": "ok", "state": sl.step(n=int(p.get("n", 1)))}
+            # #2412：n 此前 `int(p.get("n", 1))`——模型面传 2.7 被静默截断成 2、
+            # 传 "x" 抛不可读 ValueError。现门面判型后转 error dict（同门面
+            # fail-closed 惯例），底层 SimulationLoop.step 另有同形闸。
+            _n = p.get("n", 1)
+            if isinstance(_n, bool) or not isinstance(_n, int):
+                return {"status": "error",
+                        "error": "step 的 n 必须是整数 tick 数，收到 %r" % (_n,)}
+            return {"status": "ok", "state": sl.step(n=_n)}
         if action == "load":
             # #744：读向与写向对称——模型面给的 mdcg_root 先过白名单读根闸
             # （先判后读，越界即拒）；空值不设闸（回落 MDCG_ROOT 由 load_priors 承担，
