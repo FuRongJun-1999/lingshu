@@ -412,6 +412,11 @@ class SceneSimulator:
         `if path:` 静默退化为随机游走，而验证器仍按 exact 判分。
         现拒绝：空路径 / 非 3 维点 / 非有限坐标。
         """
+        # 自主发现（参数类型）：path_id 此前不做类型闸——传 int 也能注册进 self.paths
+        # （实测 add_path(123, ...) 成功），此后按 str 引用路径永远查不到，形成
+        # 不可见脏条目。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(path_id, str) or not path_id.strip():
+            raise TypeError("path_id 必须是非空字符串，收到 %r" % (path_id,))
         pts = [tuple(float(v) for v in pt) for pt in points]
         if not pts or any(len(p) != 3 or not all(math.isfinite(v) for v in p)
                           for p in pts):
