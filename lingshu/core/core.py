@@ -9742,7 +9742,7 @@ class SpacetimeMemoryEngine:
             except ImportError:
                 from ..world.vprim import parse_anchor  # noqa: F401
             nodes = self.store.get_nodes_by_tag("vprim", limit=int(p.get("limit", 20)))
-            res, err = resolve_screen(p)
+            res, err = resolve_screen(p)  # #2422
             if err is not None:
                 return err
             sw, sh = res
@@ -9870,7 +9870,7 @@ class SpacetimeMemoryEngine:
                            cx=float(p.get("cx", 0)), cy=float(p.get("cy", 1.2)),
                            cz=float(p.get("cz", 0.0)),
                            fov_deg=float(p.get("fov_deg", p.get("fov", 60.0))))
-            res, err = resolve_screen(p)
+            res, err = resolve_screen(p)  # #2422（#416 的 MAX 闸保持不动）
             if err is not None:
                 return err
             sw, sh = res
@@ -9959,7 +9959,7 @@ class SpacetimeMemoryEngine:
                     _require_finite("bbox[%d]" % _i, _v)
             except ValueError as _e:
                 return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
-            res, err = resolve_screen(p)
+            res, err = resolve_screen(p)  # #2422
             if err is not None:
                 return err
             sw, sh = res
@@ -10036,7 +10036,7 @@ class SpacetimeMemoryEngine:
                     _require_finite("bbox[%d]" % _i, _v)
             except ValueError as _e:
                 return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
-            res, err = resolve_screen(p)
+            res, err = resolve_screen(p)  # #2422
             if err is not None:
                 return err
             sw, sh = res
