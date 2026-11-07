@@ -39,6 +39,7 @@ prompt 可**确定性正则解析**（零 LLM，实测 **37/37** 全解析成功
 """
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -200,6 +201,12 @@ def bg_color(img, ring=RING):
 
 
 def fg_mask(img, bg=None, tol=TOL):
+    # #2522：`tol=nan` 使 `dist > tol` 恒 False ⇒ 前景全空 ⇒ objects_of /
+    # measure_item 返回「零个物体」。这是「读不出任何物体」的**合法读数**
+    # （模块对空读有专门统计），调用方无法与「图里真没物体」区分。
+    if not (isinstance(tol, (int, float)) and not isinstance(tol, bool)
+            and math.isfinite(float(tol)) and float(tol) > 0.0):
+        raise ValueError("fg_mask: tol 须为有限正数，实得 %r" % (tol,))
     bg = bg_color(img) if bg is None else bg
     dist = np.sqrt(((img - bg) ** 2).sum(-1))
     return dist > tol, dist
