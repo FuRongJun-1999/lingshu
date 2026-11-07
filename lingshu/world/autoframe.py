@@ -99,6 +99,22 @@ def frame_points(points: Sequence[Vec3], screen_w: int, screen_h: int, *,
         raise ValueError("frame_points：margin_frac 须在 [0, 0.5) 内，收到 %r"
                          % (margin_frac,))
 
+    # #2432：同段 `fov_deg`/`margin_frac` 都有闸，而 `screen_w/screen_h` 与两个
+    # 角度参数仍是裸用——`screen_w=0` 使 `k = 0` ⇒ `dist / k` 抛裸
+    # ZeroDivisionError；`screen_w=nan` ⇒ `fit_w=nan` ⇒ 相机 cx/cy/cz/yaw/pitch
+    # 全 NaN（且 `auto_view` 会把这个 NaN 相机连同 area=0.0 当「最优视角」返回）；
+    # `azimuth_deg/elevation_deg=nan` 经 `orbit_dir` 同样污染整台相机。
+    for _nm, _v, _pos in (("screen_w", screen_w, True),
+                          ("screen_h", screen_h, True)):
+        if (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                or not math.isfinite(float(_v)) or (_pos and float(_v) <= 0.0)):
+            raise ValueError("frame_points：%s 须为正有限数，收到 %r" % (_nm, _v))
+    for _nm, _v in (("azimuth_deg", azimuth_deg),
+                    ("elevation_deg", elevation_deg)):
+        if (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                or not math.isfinite(float(_v))):
+            raise ValueError("frame_points：%s 须为有限数值，收到 %r" % (_nm, _v))
+
     lo = [min(p[k] for p in pts) for k in range(3)]
     hi = [max(p[k] for p in pts) for k in range(3)]
     center = tuple((lo[k] + hi[k]) / 2.0 for k in range(3))

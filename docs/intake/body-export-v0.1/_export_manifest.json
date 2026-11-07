@@ -187,7 +187,7 @@
     {
      "file": "spacetime_consistency.py",
      "src": "aeis.spacetime_consistency",
-     "sha256": "19c9c54ed0200589",
+     "sha256": "cd46c8c9877bfa40",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -292,7 +292,7 @@
     {
      "file": "process_ops.py",
      "origin": "lingshu_native_development",
-     "sha256": "e0b0a503543fc504"
+     "sha256": "78f3e5d67545c9a6"
     },
     {
      "file": "world_process.py",
@@ -420,7 +420,7 @@
     {
      "file": "hex_composite.py",
      "src": "aeis.hex_composite",
-     "sha256": "d448855fde51632a",
+     "sha256": "5b0bd22884d11150",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -568,7 +568,7 @@
     {
      "file": "hex_composite.py",
      "src": "aeis.hex_composite",
-     "sha256": "d448855fde51632a",
+     "sha256": "5b0bd22884d11150",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
