@@ -5722,6 +5722,12 @@ class LayeredStore:
 
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 自主发现（参数类型）：tag 此前不做类型闸——传 int/None 直接进 SQL 参数，
+        # 恒返回 []（实测 get_nodes_by_tag(123) -> []），调用方会把「参数写错」误读成
+        # 「没有该标签的节点」，形成静默假阴性。现 fail-loud：非 str/纯空白 → 可读
+        # TypeError（不查库）。
+        if not isinstance(tag, str) or not tag.strip():
+            raise TypeError("get_nodes_by_tag 的 tag 必须是非空字符串，收到 %r" % (tag,))
         c = self.conn.cursor()
         sql = ("SELECT * FROM nodes WHERE EXISTS ("
                "SELECT 1 FROM json_each("
