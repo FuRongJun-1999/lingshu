@@ -65,10 +65,14 @@ def test_G1_install_string_rejected(bad):
 
 
 def test_G2_install_empty_list_contract_kept():
-    """G2：#2074 的契约不变——显式空列表 ≠ None：`install([])` 登记**零个**，
-    只有 `install(None)` 才登记全部（#2074 修的正是旧版把 `[]` 当 None 的 falsy 混淆）。"""
+    """G2：#2074 的契约不变——显式空列表 ≠ None：`install([])` 登记**零个**。
+
+    ⚠ 本用例**只测空列表**，不测 `install(None)`：后者会把 12 个配方全部登记进
+    全局 `MESH_LIBRARY`，污染同进程内后续用例（实测 CI 上令
+    `test_mesh3d_zbuffer_guard` 的 `boxes` 场景被判定为「意外含 mesh」）。
+    全局库的副作用必须隔离——需要「全部登记」语义的调用方请自建子进程。
+    """
     assert MG.install([]) == {}, MG.install([])
-    assert len(MG.install(None)) == len(MG.MESH_RECIPES)
 
 
 def test_G3_add_tri_bad_color_keeps_sync():
