@@ -456,10 +456,18 @@ class LongTermMemoryGate:
         t2 = self._trust_second()
         n = self._mention(existing_id)
         w = self.weights
-        imp = (w["novelty"] * novelty + w["trust"] * trust
+        raw = (w["novelty"] * novelty + w["trust"] * trust
                + w["d2"] * d2 + w["t2"] * t2
                + w["mention"] * min(1.0, 0.15 * (n + 1) / (n + 2)))  # log 平滑近似
-        imp = max(0.0, min(1.0, imp))
+        # B-10（lingshu #114 待裁清单）：权重按各自分量上确界重归一（不改阈值）。
+        # 分量上确界：novelty/trust/mention ∈ [0,1] ⇒ 1.0；d2/t2 钳制 ⇒ 0.5。
+        # 旧实现合计上确界 = 0.85 < 1.0 ⇒ 满特征也只有 0.85，与 0.5 中性信任
+        # 组合后结构性压低长期层可达性（#114 主诉）。重归一后任意权重下
+        # imp ∈ [0,1] 且上确界恢复 1.0；自定义 weights 同步自适应。
+        sup = (w["novelty"] * 1.0 + w["trust"] * 1.0
+               + w["d2"] * 0.5 + w["t2"] * 0.5
+               + w["mention"] * 1.0)
+        imp = max(0.0, min(1.0, raw / sup if sup > 0 else 0.0))
         if imp >= self.LONG_TERM_THRESHOLD:
             layer = "long_term"
         elif imp >= self.KNOWLEDGE_THRESHOLD:
@@ -693,13 +701,10 @@ class LongTermMemoryGate:
         else:
             decided = "context"
 
-        # 情境层（<0.4）且无显式提示：快照不落库（返回评估，防低价值快照污染）。
-        if decided == "context" and importance_hint is None:
-            return {"status": "discarded", "importance": round(imp, 3),
-                    "layer": "context", "features": ev["features"],
-                    "decision": ev["decision"],
-                    "write_failed": False, "write_error": None}
-
+        # B-12（lingshu #114 待裁清单）：情境层快照**落库**（旧实现直接丢弃
+        # ——丢弃不可逆，情境层记忆在睡眠巩固时无法再评估提升）。快照以
+        # context 层身份走下方 add_context 既有腿落库，返回 node_id。
+        # 「防低价值快照污染」由既有 decay/回收机制承担，不在入口丢弃。
         node_id = None
         if existing_id:
             node = engine.store.get_node(existing_id)
