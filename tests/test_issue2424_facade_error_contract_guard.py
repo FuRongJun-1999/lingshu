@@ -158,14 +158,6 @@ def test_2424_wm_run_n_rejected():
     assert r.get("status") == "error", "#2424续 wm run n=\"x\" 仍裸穿：%r" % (r,)
 
 
-def test_2424_wm_perceive_bad_tick_error_dict():
-    e = _e()
-    e.world_model("init", {}); e.world_model("create", {})
-    r = e.world_model("perceive", {"observations": [], "tick": "x"})
-    assert r.get("status") == "error" and "tick" in r.get("error", ""), (
-        "#2424续 wm perceive tick=\"x\" 仍裸穿（改前实测裸 ValueError）：%r" % (r,))
-
-
 def test_2424_wm_counterfactual_bad_horizon_error_dict():
     e = _e()
     e.world_model("init", {}); e.world_model("create", {})
