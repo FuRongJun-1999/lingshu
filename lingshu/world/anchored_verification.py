@@ -112,7 +112,15 @@ class AnchoredVerification:
         # 比较恒 False ⇒ 旗标不翻，不可判的命中率被译成「基底稳定」。基底层
         # 旗标是其它确认判定的「世界可信」前提，恰是最不该 fail-open 的位置。
         # 与 #196（不可判 ⇒ 降级）口径一致：非有限 ⇒ baseline_ok=False + 点名。
-        if hit_rate is not None and not math.isfinite(hit_rate):
+        # #2536：`hit_rate` 的**默认值就是 None**（一次预测都没做时调用方最自然的
+        # 写法），而两条判据都是 `if hit_rate is not None and ...` ⇒ 直接跳过，
+        # 只凭 `stable_rounds>=3` 就判 `baseline_ok=True`。同一「未测量」状态传
+        # NaN（自然计算结果）判 False、传 None 判 True —— 同一事实两个相反结论，
+        # 且 fail-closed 方向被默认值绕过（#2125 只修了非有限值分支）。
+        if hit_rate is None:
+            baseline_ok = False
+            notes.append("预测命中率未测量（None）——基底不可判，待重新验证")
+        elif not math.isfinite(hit_rate):
             baseline_ok = False
             notes.append("预测命中率不可判（非有限 %r）——基底不稳，待重新验证"
                          % (hit_rate,))

@@ -223,7 +223,18 @@ class MultiViewFusion:
                 rec["views"], rec["center"] = [], None
             rec["tick"] = tick
         rec["size"], rec["color"], rec["shape"] = size, color, shape
-        rec["views"].append(obs)
+        # #2534：`eid` 分支此前**完全跳过** `_associate`，也就绕过了它的同源守卫
+        # （该守卫 docstring 逐字写「单视角桶的两条射线若同源（同一相机位置），其
+        # 最短距离恒为 0——那是『同一视角下不同像素 = 不同物体』……故不得据此
+        # 合并」）。固定机位（监控/三脚架）下同一 eid 的两帧被当成「两视角」，
+        # 最小二乘解就是**相机光心本身**（实测 center_3d=(0.0,1.2,0.0)），随后被
+        # World3D.add_view 当真实世界物体发布。此处复用同一判据：新射线若与桶内
+        # 任一已有视角同源，则不计入（不 append、不三角化）。
+        _o_new, _d_new = _ray_from_view(obs)
+        _same_origin = any(
+            math.dist(_o_new, _ray_from_view(v)[0]) < 1e-6 for v in rec["views"])
+        if not _same_origin:
+            rec["views"].append(obs)
         # 保留最近 N 视角（内存控制）
         if len(rec["views"]) > 8:
             rec["views"] = rec["views"][-8:]
