@@ -189,7 +189,12 @@ class TruthMaintenance:
         js = self.justifications_of(node_id)
         ev["justifications"] = js
         node = self.store.get_node(node_id)
-        belief = float(node.confidence) if node is not None else ev["confidence"]
+        # #2532：`assess` 此前对不存在的节点回落到**账本残留证据**推导的正置信度
+        # （实测 `assess('ghost')` = belief 0.5 / `unverified`，被删的佐证节点 =
+        # 0.8 / `corroborated`），而同一模块 `propagate` 对同一 id 给 0.0 并在注释里
+        # 逐字声明「不能给不存在的命题恢复信念」——同模块两条读路径自相矛盾。
+        # #863 只修了 propagate 一条路径，`assess` 是同缺陷的残余面。
+        belief = float(node.confidence) if node is not None else 0.0
         ev["belief"] = round(belief, 6)
         ev["undermined_by"] = []
         if js and ev["status"] != "corroborated":

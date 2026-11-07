@@ -95,6 +95,13 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
         occluded = "完全遮挡"
     elif occluded is False:
         occluded = "无遮挡"
+    # #2535：#2170 只覆盖了**布尔域**（`is True`/`is False`），非字符串的假值
+    # （JSON `null` 解码的 None、空串、0、[]）仍落进下方 `occluded != "无遮挡"`
+    # ⇒ 被判「有遮挡」DEFER。这与 #296「未知 ≠ 有遮挡」及 #2170「声明越明确结论
+    # 越差」的既有裁定方向相反；且 `canonical_condition({"occlusion": None})`
+    # 归一成 `__INVALID__` 后判 ACCEPT，两条路径对同一输入结论相反。
+    elif not isinstance(occluded, str) or occluded == "":
+        occluded = "无遮挡"
     # 0) 部件区面积为零/负 ⇒ 无有效区域，条件冲突 REJECT（issue #296）。
     # 旧式 `_fg_ratio` 用 `max(1, part_area)`，零面积时比值退化为前景像素数本身
     # （如 5.0）⇒ 越过所有阈值被判 ACCEPT。零面积不是「条件充分」。
