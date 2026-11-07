@@ -78,6 +78,18 @@ def fit_camera(points, screen_w: int, screen_h: int, *,
     """
     if not points:
         raise ValueError("fit_camera：点集为空")
+    # #2433：`fov_deg`/`screen_w/h` 此前零校验——`fov_deg=0` 在
+    # `math.tan(0)` 处抛裸 ZeroDivisionError；负值给出负焦距（画面上下翻转，
+    # 头脚对调）；`nan` 产出全 NaN 相机（随后 render 抛 cannot convert NaN）。
+    # 同仓 `autoframe.frame_points` 对同一参数已 fail-closed，此处对齐。
+    if (isinstance(fov_deg, bool) or not isinstance(fov_deg, (int, float))
+            or not math.isfinite(fov_deg) or not (0.0 < fov_deg < 180.0)):
+        raise ValueError("fit_camera：fov_deg 必须落在开区间 (0,180)，收到 %r"
+                         % (fov_deg,))
+    for _nm, _v in (("screen_w", screen_w), ("screen_h", screen_h)):
+        if (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                or not math.isfinite(float(_v)) or float(_v) <= 0.0):
+            raise ValueError("fit_camera：%s 须为正有限数，收到 %r" % (_nm, _v))
     lo = [min(p[k] for p in points) for k in range(3)]
     hi = [max(p[k] for p in points) for k in range(3)]
     target = tuple((lo[k] + hi[k]) / 2.0 for k in range(3))

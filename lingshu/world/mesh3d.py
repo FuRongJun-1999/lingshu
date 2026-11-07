@@ -116,6 +116,13 @@ def _rot_mat(rot: Optional[Sequence[float]]):
     if not rot:
         return None
     rx, ry, rz = rot
+    # #2433：NaN 旋转此前静默通过——顶点全 NaN、`prepare_triangles` 的背面剔除
+    # 判据 `n·(eye−面心) <= 0.0` 对 NaN 恒假 ⇒ 整条剔除失效（`kept` 从 4 变 12，
+    # 对调用方是假读数），但 `rasterize_triangles` 又因面积 NaN 写 0 像素。
+    # 同仓 `mesh_gen.rotate_mesh` 对同一参数已 fail-loud，此处对齐。
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+               and math.isfinite(v) for v in (rx, ry, rz)):
+        raise ValueError("rot 须为 3 个有限数：%r" % (rot,))
     if not (rx or ry or rz):
         return None
     cx, sx = math.cos(rx), math.sin(rx)
@@ -265,7 +272,18 @@ def load_mtl(path: str) -> Dict[str, RGB]:
             if t[0] == "newmtl":
                 cur = t[1]
             elif t[0] == "Kd" and cur:
-                cols[cur] = tuple(_srgb(x) for x in t[1:4])
+                # #2433：短 `Kd` 行（缺分量）此前产出 2 元组颜色，直到
+                # `prepare_triangles` 取 `base[2]` 才抛 IndexError（离入口很远的
+                # 晦涩崩溃）；`Kd nan nan nan` 则被 `_srgb` 的 min/max 静默变成
+                # 纯白。MTL 是外部不可信文件，此处 fail-loud。
+                _vals = t[1:4]
+                if len(_vals) != 3:
+                    raise ValueError("MTL %s 的 Kd 须为 3 个分量：%r"
+                                     % (cur, ln.strip()))
+                if not all(math.isfinite(float(v)) for v in _vals):
+                    raise ValueError("MTL %s 的 Kd 含非有限分量：%r"
+                                     % (cur, ln.strip()))
+                cols[cur] = tuple(_srgb(x) for x in _vals)
     return cols
 
 
@@ -366,8 +384,12 @@ def parse_obj(lines, path: str = "", mtl_colors: Dict[str, RGB] = None,
                          % (path, len(verts_raw), len(tris)))
     if scale is None or center is None:
         raise ValueError("OBJ 头部没有 normalize 注释，无法反归一化（拒绝用硬编码兜底）：%s" % path)
-    if scale == 0:
-        raise ValueError("OBJ 头部 scale=0 非法")
+    # #2433：此前只拒 `scale == 0`——`scale=1e999` 解析为 inf ⇒ 顶点全部塌成
+    # `(0,0,-0)`、全部面被当零面积丢弃（240 面静默归零，`load_obj_mesh` 还把这条
+    # 0 面网格写进 `MESH_LIBRARY`，渲染出纯背景无告警）；负 scale 则让法向整体
+    # 内翻（`axis_swap` 注释明写要「真旋转 det=+1」）。
+    if not math.isfinite(scale) or scale <= 0:
+        raise ValueError("OBJ 头部 scale 须为有限正数：%r" % (scale,))
     n_raw = len(verts_raw)
     verts: List[Vec3] = []
     for (x, y, z) in verts_raw:
@@ -807,7 +829,17 @@ class ZBuffer:
         self.depth = array("f", [-1.0]) * n        # -1 = 尚未写入任何几何
         self.color = bytearray(n * 3)
         if background:
-            self.color[:] = bytes(bytearray(background)) * n
+            # #2428：此前按「恰好 3 字节」解包——4 元组产出 12 字节缓冲（图像斜条纹）、
+            # 2 元组 6 字节（`Image.frombytes` 抛 not enough image data）、标量 60 字节
+            # 但前 9 字节全 0（纯黑）。同一组背景参数在「图元场景」（走 PIL）与「网格
+            # 场景」（走本缓冲）出两种画面。只接受文档化的 RGB/RGBA 3~4 元组，逐分量
+            # 钳到 0..255，写前 3 通道（同 `rgb8` 口径）。
+            _bg = tuple(int(v) for v in background)
+            if len(_bg) not in (3, 4):
+                raise ValueError("ZBuffer background 须为 RGB/RGBA 3~4 元组：%r"
+                                 % (background,))
+            _bg = tuple(0 if v < 0 else (255 if v > 255 else v) for v in _bg[:3])
+            self.color[:] = bytes(bytearray(_bg)) * n
         self._invz = 0.0                           # 背景/地面：最远但仍可写入
         self._rgb = (255, 255, 255)
         #: 还没有任何几何被写进缓冲。用于**整块填充**的快速路径：深度初值 -1.0

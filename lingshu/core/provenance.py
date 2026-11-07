@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -271,10 +272,20 @@ def new_provenance(position: str, tool: str, source: str,
                    observed_at: Optional[float] = None,
                    window: float = DEFAULT_WINDOW) -> Provenance:
     """写入方构造一条合规 provenance 的便捷入口。"""
-    t0 = float(observed_at if observed_at is not None else time.time())
+    # #2429：`observed_at`/`window` 此前零有限性闸——`observed_at=nan` 产出
+    # `(nan, nan)` 时间窗，`to_sql()` 因此出 RFC 8259 非法 JSON（`NaN` 不是合法
+    # 字面量，严格消费者当场 ValueError）；`validate()` 也判合规（`tw[0] > tw[1]`
+    # 与 `tw[0] <= 0` 对 NaN 都是 False），`_safe_window` 读回同样放行。
+    _t0 = float(observed_at if observed_at is not None else time.time())
+    _w = float(window)
+    if not (math.isfinite(_t0) and math.isfinite(_w)) or _w <= 0:
+        raise ValueError(
+            "new_provenance：observed_at/window 必须是有限数值且 window > 0，收到 %r/%r"
+            % (observed_at, window))
+    t0 = _t0
     return Provenance(
         source=source, observation_position=position, observation_tool=tool,
-        session_id=session_id, time_window=(t0, t0 + window),
+        session_id=session_id, time_window=(t0, t0 + _w),
         existence_constraint=existence_constraint,
         verify_status=verify_status,
         verify_methods=list(verify_methods or ["none"]),
