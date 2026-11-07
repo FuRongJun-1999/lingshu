@@ -236,8 +236,20 @@ class EvidenceLedger:
                 self_count += 1
                 continue
             cur = per_source.get(e["source"])
-            if cur is None or float(e["weight"]) > float(cur["weight"]):
+            # #2533：权重**相等**时此前保留先出现的那条——`record` 默认 weight=1.0
+            # 即绝大多数调用，于是同一来源先记支持后记反证时反证被吞掉（实测
+            # corroborated 0.75 vs 先反证后支持 contested 0.50，同一证据集合仅
+            # 插入顺序不同结论相反），违反模块头「一旦有人把反证记进来，置信度
+            # 会降」。同权时确定性地让反证胜出（fail-closed）。
+            if cur is None:
                 per_source[e["source"]] = e
+            else:
+                _w_new = float(e["weight"])
+                _w_cur = float(cur["weight"])
+                if _w_new > _w_cur or (
+                        _w_new == _w_cur and e["polarity"] == CONTRADICT
+                        and cur["polarity"] != CONTRADICT):
+                    per_source[e["source"]] = e
         for src, e in per_source.items():
             bucket = support if e["polarity"] == SUPPORT else contra
             bucket[src] = max(bucket.get(src, 0.0), e["weight"])
