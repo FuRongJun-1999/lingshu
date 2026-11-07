@@ -59,12 +59,20 @@
 
 # 2026-10-20 35b64f6（#487②） lingshu/_pathguard.py 25 → 29：新增 `_capture_argv_script_dir` 的 argv[0] 防御式兜底（`sys.argv` 读取 / `abspath`+`isfile` / `realpath` / 外层共 4 处宽 except ⇒ 返回中性值），与本模块既有「任何异常都不得改变导入语义」承重契约同款；不改 lint 判据。
 
+# 2026-11-08 (本笔) lingshu/core/longterm_gate.py 8 → 0，**只下调、无上调**（真实修复，非放宽判据）：
+#   · issue #170 第四批（#114 三条裁决落地后的联动清偿）：残余 8 处
+#     `except Exception: pass/缺省` 全部补 `_log.debug/_log.warning` 审计留痕
+#     （模板判据退回／novelty 参照 0.5／相似节点预判／相似边推断 4 处 debug；
+#     protect_node 失败 2 处＋promote 批处理 1 处 warning；novelty 计算失败 1 处 debug）——
+#     控制流零变化（返回值/缺省语义逐位不变），⇒ 按本文件语义「补审计动作」
+#     让工具数不到，不是把判据放宽。lint 读数：TOTAL 126 → 118。
+
 # ── 登记面 · 结束 ──
 
 lingshu/_pathguard.py	29
 lingshu/core/component_resolver.py	7
 lingshu/core/core.py	77
-lingshu/core/longterm_gate.py	8
+lingshu/core/longterm_gate.py	0
 lingshu/core/structure_service.py	0
 lingshu/nn/hex_cnn.py	0
 lingshu/world/brain_store.py	1
