@@ -10112,18 +10112,31 @@ class SpacetimeMemoryEngine:
             self._voxel = VoxelWorld(size=int(p.get('size', 16)),
                                     ground_level=int(p.get('ground_level', 1)))
         if action == "build":
-            blocks = self._voxel.build_flatland(trees=int(p.get("trees", 2)),
-                                               water=bool(p.get("water", True)))
+            # #2424：门面 fail-closed——坏 trees 等在门面转 error dict（下同）。
+            try:
+                blocks = self._voxel.build_flatland(trees=int(p.get("trees", 2)),
+                                                   water=bool(p.get("water", True)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "blocks": blocks, "world": self._voxel.world_state()}
         if action == "spawn":
-            category = str(p.get("category", "entity"))
-            pos = tuple(float(v) for v in p.get("pos", [0, 1, 0]))
-            vel = tuple(float(v) for v in p.get("velocity", [0, 0, 0]))
-            eid = self._voxel.spawn_entity(category, pos, velocity=vel)
+            try:
+                category = str(p.get("category", "entity"))
+                pos = tuple(float(v) for v in p.get("pos", [0, 1, 0]))
+                vel = tuple(float(v) for v in p.get("velocity", [0, 0, 0]))
+                eid = self._voxel.spawn_entity(category, pos, velocity=vel)
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "simulate":
-            steps = int(p.get("steps", 1))
-            moved = self._voxel.simulate(steps=steps)
+            # #2424：steps 非 int 预闸（nan 裸崩实测）+ 既有 int() 截断收口。
+            try:
+                steps = p.get("steps", 1)
+                if isinstance(steps, bool) or not isinstance(steps, int):
+                    raise TypeError("simulate 的 steps 必须是整数，收到 %r" % (steps,))
+                moved = self._voxel.simulate(steps=steps)
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entities_moved": moved, "step": self._voxel._step}
         if action == "trail":
             eid = str(p.get("entity_id", ""))
@@ -10451,22 +10464,39 @@ class SpacetimeMemoryEngine:
                                        ground_level=int(p.get('ground_level', 1)),
                                        seed=int(p.get('seed', 42)))
         if action == "create":
-            r = self._scene.create_scene(trees=int(p.get("trees", 4)),
-                                        water=bool(p.get("water", True)))
+            # #2424：同 voxel_world——门面 fail-closed。
+            try:
+                r = self._scene.create_scene(trees=int(p.get("trees", 4)),
+                                            water=bool(p.get("water", True)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._scene.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2424：pos/speed 闸的可读 ValueError 也在门面收口（修前裸穿）。
+            try:
+                eid = self._scene.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._scene.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2424：points 闸的可读 ValueError 在门面收口。
+            try:
+                self._scene.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "step":
-            r = self._scene.step(n=int(p.get("n", 1)))
+            # #2424：n 的 fail-loud 闸在 #2409 落地（SceneSimulator.step），
+            # 门面把可读 ValueError 转 error dict（修前裸穿）。
+            try:
+                r = self._scene.step(n=int(p.get("n", 1)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "step": r}
         if action == "state":
             return {"status": "ok", "scene": self._scene.scene_state()}
@@ -10722,22 +10752,38 @@ class SpacetimeMemoryEngine:
         if not hasattr(self, '_wlearner'):
             self._wlearner = WorldLearner()
         if action == "create":
-            r = self._wlearner.world.create_scene(trees=int(p.get("trees", 2)),
-                                                  water=bool(p.get("water", False)))
+            # #2424：门面 fail-closed（同 voxel_world/scene_simulator）。
+            try:
+                r = self._wlearner.world.create_scene(trees=int(p.get("trees", 2)),
+                                                      water=bool(p.get("water", False)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._wlearner.world.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2424：pos/speed 闸的可读 ValueError 在门面收口（修前裸穿）。
+            try:
+                eid = self._wlearner.world.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._wlearner.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2424：points 闸的可读 ValueError 在门面收口。
+            try:
+                self._wlearner.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "run":
-            r = self._wlearner.run(n=int(p.get("n", 10)))
+            # #2424：n 非数值的不可读 ValueError 在门面收口（修前实测裸穿）。
+            try:
+                r = self._wlearner.run(n=int(p.get("n", 10)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "run": r}
         if action == "learn":
             m = self._wlearner.learn()
@@ -11157,19 +11203,32 @@ class SpacetimeMemoryEngine:
         if not hasattr(self, '_curious'):
             self._curious = CuriosityExplorer()
         if action == "create":
-            r = self._curious.world.create_scene(trees=int(p.get("trees", 2)),
-                                                 water=bool(p.get("water", False)))
+            # #2424：门面 fail-closed（explore/step 已由 #2420 闸，本票补齐
+            # 同门面剩余动作——第四处姊妹面之后的扫尾）。
+            try:
+                r = self._curious.world.create_scene(trees=int(p.get("trees", 2)),
+                                                     water=bool(p.get("water", False)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._curious.world.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2424：pos/speed 闸的可读 ValueError 在门面收口（修前裸穿实测）。
+            try:
+                eid = self._curious.world.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._curious.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2424：points 闸的可读 ValueError 在门面收口。
+            try:
+                self._curious.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "explore":
             # #2420：n/budget 判型后进底层（浮点不再静默截断；非 int 转 error
