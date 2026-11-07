@@ -410,7 +410,15 @@ class SceneSimulator:
         # 不可能是有效引用。现 fail-loud：可读 TypeError（实体不注册）。
         if not isinstance(goal, str):
             raise TypeError("goal 必须是字符串（目标实体 id 或空串），收到 %r" % (goal,))
-        p = tuple(float(v) for v in pos)
+        # 自主发现（错误可读性）：pos 此前直接 `tuple(float(v) ...)`——传非数值时泄漏
+        # 裸 float() 异常（实测 pos="x" -> "could not convert string to float: 'x'"），
+        # 调用方拿不到「哪个参数、期望什么」。现 fail-loud 且可读：TypeError（含参数名）。
+        try:
+            p = tuple(float(v) for v in pos)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("pos 必须是 3 个实数的元组，收到 %r" % (pos,)) from exc
+        if len(p) != 3:
+            raise ValueError("pos 必须是 (x, y, z) 三元组，收到 %r" % (pos,))
         if len(p) != 3 or not all(math.isfinite(v) for v in p):
             raise ValueError(
                 "pos 需为 (x, y, z) 有限坐标三元组，收到 %r" % (pos,))
@@ -444,7 +452,13 @@ class SceneSimulator:
         # 不可见脏条目。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
         if not isinstance(path_id, str) or not path_id.strip():
             raise TypeError("path_id 必须是非空字符串，收到 %r" % (path_id,))
-        pts = [tuple(float(v) for v in pt) for pt in points]
+        # 自主发现（错误可读性）：points 此前直接嵌套 `float()`——传非数值时泄漏裸异常
+        # （实测 add_path("p", "x") -> could not convert string to float: 'x'），调用方无
+        # 从得知是哪个参数/哪一段出错。现 fail-loud 且可读：TypeError（含参数名）。
+        try:
+            pts = [tuple(float(v) for v in pt) for pt in points]
+        except (TypeError, ValueError) as exc:
+            raise TypeError("points 必须是 [(x, y, z), ...] 的实数点列，收到 %r" % (points,)) from exc
         if not pts or any(len(p) != 3 or not all(math.isfinite(v) for v in p)
                           for p in pts):
             raise ValueError(

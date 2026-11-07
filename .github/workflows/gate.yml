@@ -74,6 +74,10 @@ env:
     tests/test_prediction_path_nodes_single_fetch.py
     tests/test_coggraph_utf8_bom.py
     tests/test_issue454_unpack_out_guard.py
+    tests/test_issue_get_nodes_by_tag_type_guard.py
+    tests/test_issue_scene_pos_readable_guard.py
+    tests/test_issue_scene_path_points_readable_guard.py
+    tests/test_issue_untag_node_id_type_guard.py
     tests/test_issue_query_layer_type_guard.py
     tests/test_issue_scene_step_int_guard.py
     tests/test_issue_rejected_path_type_guard.py
