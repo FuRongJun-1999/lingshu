@@ -10124,6 +10124,13 @@ class SpacetimeMemoryEngine:
                 category = str(p.get("category", "entity"))
                 pos = tuple(float(v) for v in p.get("pos", [0, 1, 0]))
                 vel = tuple(float(v) for v in p.get("velocity", [0, 0, 0]))
+                # #2424 续：float(nan) 不抛异常——try 拦不住非有限值，
+                # 须显式 _require_finite（同 world3d bbox 闸口径）；修前
+                # nan pos 落进 trail 且 state 导出严格 JSON 崩（实测）。
+                for _i, _v in enumerate(pos):
+                    _require_finite("pos[%d]" % _i, _v)
+                for _i, _v in enumerate(vel):
+                    _require_finite("velocity[%d]" % _i, _v)
                 eid = self._voxel.spawn_entity(category, pos, velocity=vel)
             except (ValueError, TypeError) as _e:
                 return {"status": "error", "error": str(_e)}
