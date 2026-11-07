@@ -75,10 +75,16 @@
 #   · stable_lease.py 1→0：weak_at 防御计算补 _log.debug（名义到期回退不变，#pragma 注释保留）。
 #   ⇒ 五处均按本文件语义「补审计动作」让工具数不到。lint 读数：TOTAL 118 → 113。
 
+# 2026-11-08 (本笔) lingshu/core/component_resolver.py 7 → 0，**只下调、无上调**（真实修复，非放宽判据；#170 第六批）：
+#   · 7 处防御性宽 except（非法路径 realpath／cwd 不可用×2／帧不可用／帧内路径非法／
+#     告警通道失败×2）全部补 _log.debug 审计留痕——「任何异常都不得改变导入语义」
+#     承重契约与全部降级语义逐位不变（_pathguard 同族形态）。
+#   ⇒ 按本文件语义「补审计动作」让工具数不到。lint 读数：TOTAL 113 → 106。
+
 # ── 登记面 · 结束 ──
 
 lingshu/_pathguard.py	29
-lingshu/core/component_resolver.py	7
+lingshu/core/component_resolver.py	0
 lingshu/core/core.py	77
 lingshu/core/longterm_gate.py	0
 lingshu/core/structure_service.py	0
