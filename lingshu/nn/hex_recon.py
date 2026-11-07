@@ -30,6 +30,7 @@
 """
 from __future__ import annotations
 import json
+import math
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -54,6 +55,12 @@ def extract_regions(img: np.ndarray, color_th: int = 30
                     ) -> Tuple[List[Dict], np.ndarray]:
     """从图像提取均匀色块连通域。
     返回 (区域描述列表, 残差图)。"""
+    # #2522：`color_th=nan` 使 `diff > th*3` 恒 False ⇒ 洪泛永不拒绝任何像素，
+    # 整幅图被并成 1 个「区域」（color 取全图均值），随后 regions_to_connections
+    # 会把它当真实物体序列化——坏阈值不是报错，而是给出一个看似正常的描述。
+    if not (isinstance(color_th, (int, float)) and not isinstance(color_th, bool)
+            and math.isfinite(float(color_th)) and float(color_th) > 0.0):
+        raise ValueError("extract_regions: color_th 须为有限正数，实得 %r" % (color_th,))
     h, w = img.shape[:2]
     visited = np.zeros((h, w), dtype=bool)
     regions = []
