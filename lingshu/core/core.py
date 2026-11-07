@@ -10677,15 +10677,23 @@ class SpacetimeMemoryEngine:
                                                 water=bool(p.get("water", False)))
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._wmodel.world.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2457：同上。
+            try:
+                eid = self._wmodel.world.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._wmodel.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2457：同上。
+            try:
+                self._wmodel.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "perceive":
             r = self._wmodel.perceive(observations=p.get("observations"),
@@ -11369,15 +11377,23 @@ class SpacetimeMemoryEngine:
                                        water=bool(p.get("water", False)))
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._sll.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2457：门面 fail-closed（同 #2424 四门面收口）。
+            try:
+                eid = self._sll.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._sll.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2457：同上。
+            try:
+                self._sll.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "run":
             r = self._sll.run(n=int(p.get("n", 30)))
