@@ -10680,10 +10680,13 @@ class SpacetimeMemoryEngine:
             self._wmodel.world.add_path(str(p.get("path_id", "")), p.get("points", []))
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "perceive":
-            r = self._wmodel.perceive(observations=p.get("observations"),
-                                     tool=str(p.get("tool", "observer")),
-                                     tick=p.get("tick"), timestamp=p.get("timestamp"))
-            return {"status": "ok", "perceive": r}
+            try:
+                r = self._wmodel.perceive(observations=p.get("observations"),
+                                         tool=str(p.get("tool", "observer")),
+                                         tick=p.get("tick"), timestamp=p.get("timestamp"))
+                return {"status": "ok", "perceive": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "perceive_visual":
             if not hasattr(self, '_world3d'):
                 return {"status": "error", "error": "尚无视觉重建（先 world3d）"}
@@ -10707,15 +10710,21 @@ class SpacetimeMemoryEngine:
             r = self._wmodel.generate(horizon=_h)
             return {"status": "ok", "generate": r}
         if action == "counterfactual":
-            r = self._wmodel.counterfactual(horizon=p.get("horizon", 1),
-                                           relations=p.get("relations"))
-            return {"status": "ok", "counterfactual": r}
+            try:
+                r = self._wmodel.counterfactual(horizon=p.get("horizon", 1),
+                                               relations=p.get("relations"))
+                return {"status": "ok", "counterfactual": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "verify":
             r = self._wmodel.verify()
             return {"status": "ok", "verify": r}
         if action == "run":
-            r = self._wmodel.verify_run(n=int(p.get("n", 10)))
-            return {"status": "ok", "run": r}
+            try:
+                r = self._wmodel.verify_run(n=int(p.get("n", 10)))
+                return {"status": "ok", "run": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "patterns":
             return {"status": "ok", "patterns": self._wmodel.patterns()}
         if action == "anomalies":
@@ -10724,8 +10733,15 @@ class SpacetimeMemoryEngine:
         if action == "graph":
             return {"status": "ok", "graph": self._wmodel.graph()}
         if action == "history":
-            return {"status": "ok",
-                    "history": self._wmodel.history_view(limit=int(p.get("limit", 10)))}
+            # #2424 续：limit 非数值的不可读 ValueError 在门面收口
+            # （修前裸穿实测；本 handler 为可达分支——修前它被上一分支
+            # 的 return 短路，"history" 动作整体不可达，与 docstring 与
+            # 未知动作提示均不符）。
+            try:
+                return {"status": "ok",
+                        "history": self._wmodel.history_view(limit=int(p.get("limit", 10)))}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "state":
             return {"status": "ok", "model": self._wmodel.state()}
         return {"status": "error", "error": f"未知动作 {action}（可用: init/create/entity/path/perceive/perceive_visual/identity/identity_policy/generate/verify/run/patterns/anomalies/graph/history/state）"}
@@ -10802,18 +10818,27 @@ class SpacetimeMemoryEngine:
             m = self._wlearner.learn()
             return {"status": "ok", "learned": m}
         if action == "predict":
-            r = self._wlearner.predict(horizon=int(p.get("horizon", 1)))
-            return {"status": "ok", "predict": r}
+            try:
+                r = self._wlearner.predict(horizon=int(p.get("horizon", 1)))
+                return {"status": "ok", "predict": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "evaluate":
-            r = self._wlearner.evaluate(train_ticks=int(p.get("train_ticks", 30)),
-                                        eval_ticks=int(p.get("eval_ticks", 15)))
-            return {"status": "ok", "evaluate": r}
+            try:
+                r = self._wlearner.evaluate(train_ticks=int(p.get("train_ticks", 30)),
+                                            eval_ticks=int(p.get("eval_ticks", 15)))
+                return {"status": "ok", "evaluate": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "curve":
-            r = self._wlearner.learning_curve(
-                epochs=int(p.get("epochs", 4)),
-                per_epoch_ticks=int(p.get("per_epoch_ticks", 10)),
-                eval_ticks=int(p.get("eval_ticks", 8)))
-            return {"status": "ok", "curve": r}
+            try:
+                r = self._wlearner.learning_curve(
+                    epochs=int(p.get("epochs", 4)),
+                    per_epoch_ticks=int(p.get("per_epoch_ticks", 10)),
+                    eval_ticks=int(p.get("eval_ticks", 8)))
+                return {"status": "ok", "curve": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "masked":
             r = self._wlearner.masked_loss()
             return {"status": "ok", "masked": r}

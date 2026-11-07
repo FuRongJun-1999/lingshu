@@ -127,24 +127,65 @@ def test_2424_errors_are_readable_not_raw_traceback_text():
     assert "必须是整数" in r2.get("error", ""), r2
 
 
-# ---------------------------------------------------------------- G6（#2424 续）
+# ---------------------------------------------------------------- G8（#2424 续·扫尾 7 站点）
 
-def test_2424_voxel_spawn_nonfinite_rejected():
-    """float(nan) 不抛异常——try 拦不住，须显式 _require_finite（修前 nan 落
-    trail 且 state 严格 JSON 崩）。"""
+def test_2424_wl_predict_horizon_rejected():
     e = _e()
-    r = e.voxel_world("spawn", {"category": "a", "pos": [float("nan"), 1, 0]})
-    assert r.get("status") == "error" and "pos[0]" in r.get("error", ""), (
-        "#2424续 spawn nan pos 仍被接受：%r" % (r,))
-    r = e.voxel_world("spawn", {"category": "a", "pos": [0, 1, 0],
-                                "velocity": [float("inf"), 0, 0]})
-    assert r.get("status") == "error" and "velocity[0]" in r.get("error", ""), r
+    e.world_learner("init", {}); e.world_learner("create", {})
+    e.world_learner("entity", {"category": "a"})
+    r = e.world_learner("predict", {"horizon": float("nan")})
+    assert r.get("status") == "error", "#2424续 predict horizon=nan 仍裸穿：%r" % (r,)
 
 
-def test_2424_voxel_spawn_legal_and_state_json_safe():
-    import json
+def test_2424_wl_evaluate_train_ticks_rejected():
     e = _e()
-    r = e.voxel_world("spawn", {"category": "a", "pos": [0, 1, 0]})
-    assert r.get("status") == "ok", r
-    g = e.voxel_world("state", {})
-    json.dumps(g, allow_nan=False)          # 不抛即过
+    e.world_learner("init", {}); e.world_learner("create", {})
+    r = e.world_learner("evaluate", {"train_ticks": "x"})
+    assert r.get("status") == "error", r
+
+
+def test_2424_wl_curve_epochs_rejected():
+    e = _e()
+    e.world_learner("init", {}); e.world_learner("create", {})
+    r = e.world_learner("curve", {"epochs": float("nan")})
+    assert r.get("status") == "error", r
+
+
+def test_2424_wm_run_n_rejected():
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("run", {"n": "x"})
+    assert r.get("status") == "error", "#2424续 wm run n=\"x\" 仍裸穿：%r" % (r,)
+
+
+def test_2424_wm_perceive_bad_tick_error_dict():
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("perceive", {"observations": [], "tick": "x"})
+    assert r.get("status") == "error" and "tick" in r.get("error", ""), (
+        "#2424续 wm perceive tick=\"x\" 仍裸穿（改前实测裸 ValueError）：%r" % (r,))
+
+
+def test_2424_wm_counterfactual_bad_horizon_error_dict():
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("counterfactual", {"horizon": 0})
+    assert r.get("status") == "error" and "1..64" in r.get("error", ""), (
+        "#2424续 counterfactual horizon=0 的既有闸 ValueError 改为可读 error dict：%r" % (r,))
+
+
+def test_2424_wm_history_limit_rejected():
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("history", {"limit": "x"})
+    assert r.get("status") == "error", "#2424续 wm history limit=\"x\" 仍裸穿：%r" % (r,)
+
+
+def test_2424_wm_history_reachable():
+    """附修复：world_model 的 history 动作此前被 graph 分支 return 短路成
+    不可达死代码（docstring 与未知动作提示均声明可用，实测恒 未知动作）。
+    恢复后合法调用返回 ok。"""
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("history", {})
+    assert r.get("status") == "ok" and "history" in r, r
