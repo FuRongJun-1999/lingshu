@@ -348,7 +348,7 @@ def selfsup_finetune(img_arr: np.ndarray, kernel_name: str = "center_surround",
             "静默返回不可用核）——请先清洗输入（F23-10 fail-closed）")
     # #2522：同函数只查了 img_arr，`lr` 是同一训练入口的另一个数值参数——
     # `lr=nan/inf` 让 `w -= lr*grad` 首步就把核整体 NaN 化，随后 L1 归一化
-    # 仍是 NaN，函数**正常返回** {"kernel":[nan×7], "final_loss": nan}。
+    # 仍是 NaN，函数**正常返回**（kernel 全 NaN、final_loss 为 nan）。
     # `lr=0` 是合法值（test_issue351 ④ 钉住），只拒 NaN/inf/负数。
     if not (isinstance(lr, (int, float)) and not isinstance(lr, bool)
             and math.isfinite(float(lr)) and float(lr) >= 0.0):
