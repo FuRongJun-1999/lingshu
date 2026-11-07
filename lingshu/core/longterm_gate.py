@@ -412,9 +412,11 @@ class LongTermMemoryGate:
                 if seen is not None and toks not in seen:
                     return 1.0
             except Exception:
+                _log.debug("longterm_gate: 模板判据失败，退回 bigram ratio 主判据", exc_info=True)
                 pass                      # 模板判据失败不得影响主判据
             return ratio
         except Exception:
+            _log.debug("longterm_gate: novelty 参照读取失败，按 0.5 中性继续", exc_info=True)
             pass
         return 0.5  # 无参照：中性
 
@@ -607,6 +609,7 @@ class LongTermMemoryGate:
                     else:
                         existing_id = cand.id
         except Exception:
+            _log.debug("longterm_gate: 相似节点预判失败，按无既有继续", exc_info=True)
             pass
         return {"existing_id": existing_id, "divergent_id": divergent_id,
                 "ev": self.evaluate(content, source, tags, existing_id)}
@@ -653,6 +656,7 @@ class LongTermMemoryGate:
                                          source_evidence="inferred")
             return len([x for x in links if x[0].id != node_id])
         except Exception:
+            _log.debug("longterm_gate: 相似边推断失败，按 0 条继续", exc_info=True)
             return 0
 
     def _snapshot_write(self, content: str, source: str, tags: list,
@@ -781,6 +785,7 @@ class LongTermMemoryGate:
                 engine.protect_node(node_id, f"LongTermMemoryGate:{source}")
                 result["protected"] = True
             except Exception:
+                _log.warning("longterm_gate: protect_node 失败（node=%s source=%s），protected=False", node_id, source, exc_info=True)
                 result["protected"] = False
             # #770：关联边（与最相似知识节点建 similar 边）移到**事务提交之后**
             # ——该段调 `search_content`，其命中计数腿自开独立连接写回，留在本事务
@@ -812,6 +817,7 @@ class LongTermMemoryGate:
         try:
             novelty = self._novelty(content)
         except Exception:
+            _log.debug("longterm_gate: novelty 计算失败，按 0.5 中性继续", exc_info=True)
             novelty = 0.5
         if novelty < self.NOVEL_TRIGGER:
             # #292：`degraded` 键**恒在场**（本路径无降级面 ⇒ `[]`），使 docstring
@@ -935,10 +941,12 @@ class LongTermMemoryGate:
                         try:
                             engine.protect_node(node.id, "LongTermMemoryGate:promote")
                         except Exception:
+                            _log.warning("longterm_gate: 提升后 protect_node 失败（node=%s）", node.id, exc_info=True)
                             pass
                     promoted.append({"node_id": node.id,
                                      "importance": ev["importance"],
                                      "layer": ev["layer"]})
         except Exception:
+            _log.warning("longterm_gate: promote 批处理中途失败，返回已收集部分", exc_info=True)
             pass
         return promoted
