@@ -382,7 +382,12 @@ class ScenarioContext:
                 break
             current, seen, path = stack.pop()
             result["steps"] += 1
-            if current == end:
+            # #1319：零边"路径"不构成因果路径——同端点查询（start==end 且无
+            # 自环边）时起点压栈即命中，追加零边路径会让上层把"什么都没找到"
+            # 当作"找到了因果连接"，且缺口不报 causal_path_not_found。
+            # 零边拒绝后：无自环 ⇒ paths 空 ⇒ 视图层正常报缺口；真自环边走出
+            # 的环路径 path 非空，不受影响。
+            if current == end and path:
                 result["paths"].append({"node_ids": list(seen), "edges": list(path),
                     "hypothesis": any(not e["verified"] or e["source_evidence"] != "extracted"
                                       or not _declared(e["conditions"]) for e in path)
