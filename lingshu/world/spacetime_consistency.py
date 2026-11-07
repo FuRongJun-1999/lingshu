@@ -97,6 +97,19 @@ class SpacetimeConsistency:
             if not (0.0 <= _f <= 1.0):
                 raise ValueError("%s 需为 [0,1] 内的有限数值，收到 %r"
                                  % (_name, _raw))
+
+        # #2427：#2419 只收了 rate 三参数，同段的 wander_bound_* 与 ground_level
+        # 仍裸 float()——`wander_bound_factor=inf` 使 `_reach_bound` 为 inf ⇒
+        # 任意偏差都判命中（23 m/tick 瞬移被判 self_consistent，漂移检测恒不
+        # 触发）；`nan` 被 `max(0.5, nan)` 吃成 0.5 ⇒ 正常 wander 全判失败（假
+        # 漂移）。`ground_level=nan/-inf` 使 `y < gnd + 0.4` 恒假 ⇒ below_ground
+        # 不变量整条变死代码（地下 100 m 的世界判 self_consistent）。
+        for _name, _raw in (("wander_bound_factor", wander_bound_factor),
+                            ("wander_bound_pad", wander_bound_pad)):
+            if isinstance(_raw, bool) or not isinstance(_raw, (int, float))                     or not math.isfinite(float(_raw)) or float(_raw) < 0.0:
+                raise ValueError("%s 需为有限非负数，收到 %r" % (_name, _raw))
+        if isinstance(ground_level, bool) or not isinstance(ground_level, (int, float))                 or not math.isfinite(float(ground_level)):
+            raise ValueError("ground_level 需为有限数值，收到 %r" % (ground_level,))
         self.window = max(1, int(window))
         self.hit_threshold = float(hit_threshold)
         self.drift_rate = float(drift_rate)
@@ -311,6 +324,10 @@ class SpacetimeConsistency:
         issues = []
         size = self.scene.world.size
         gnd = float(self.scene.world.ground_level)
+        if not math.isfinite(gnd):
+            # #2427 纵深：直接改 `scene.world.ground_level` 也要拦——
+            # 否则 `y < nan + 0.4` 恒假会让 below_ground 判据静默失效。
+            issues.append("bad_ground_level:%r" % (gnd,))
         for eid, e in self.scene.entities.items():
             x, y, z = e.pos
             if not (0.5 <= x <= size - 0.5 and 0.5 <= z <= size - 0.5):

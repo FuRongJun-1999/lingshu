@@ -170,7 +170,13 @@ def solve_linear(a, b):
     n = len(a)
     if n == 0 or any(len(row) != n for row in a) or len(b) != n:
         raise PhysicsError("solve_linear：维度不匹配（A %d×?，b %d）" % (n, len(b)))
-    m = [[float(a[i][j]) for j in range(n)] + [float(b[i])] for i in range(n)]
+    n = len(b)
+    # #2426：docstring 逐字承诺「奇异 ⇒ PhysicsError（不返回 NaN 让下游静默拿
+    # 垃圾）」，但闸只有 `abs(pivot) < 1e-14`——`abs(nan) < 1e-14` 恒假 ⇒ 此前
+    # NaN 主元直接除法产出 [nan, nan]、inf 主元经 inf/inf 得 0.0 而返回一个
+    # 「看起来像真解」的 [0.0, 2.0]。构造增广矩阵时逐项过有限性闸。
+    m = [[_finite_num(a[i][j], "solve_linear.A[%d][%d]" % (i, j)) for j in range(n)]
+         + [_finite_num(b[i], "solve_linear.b[%d]" % i)] for i in range(n)]
     for col in range(n):
         piv = max(range(col, n), key=lambda r: abs(m[r][col]))
         if abs(m[piv][col]) < 1e-14:
@@ -614,7 +620,10 @@ def predict_trajectory(model, times, reflector=None):
 def projectile_truth(p0, v0, gravity=DEFAULT_G, up=1, ground=None):
     """抛体闭式真值：顶点时刻/**世界坐标**顶点高度（p0[up]+v0_up²/2g，#786 与 projectile_state 同口径）、（给地面时）落地时刻/水平射程/落地速度。"""
     up = _axis_of(up)
-    g = float(gravity)
+    # #2426：重力此前全裸——g=0 在 t_apex=v_up/g 抛裸 ZeroDivisionError；
+    # g=nan 时 t_apex/apex_height 双双为 None，与合法输入 v_up=0（「没有顶点」）
+    # 的返回形状完全相同，调用方无法判读是「无顶点」还是「重力坏了」。
+    g = _positive_num(gravity, "gravity")
     v_up = float(v0[up])
     p_up = float(p0[up])
     out = {"gravity": g, "up": up, "t_apex": None, "apex_height": None}
@@ -638,8 +647,9 @@ def projectile_truth(p0, v0, gravity=DEFAULT_G, up=1, ground=None):
 
 def damped_truth(p0, v0, k):
     """阻尼真值：时间常数、总滑行距离 `v0/k`、速度半衰期、位移半程时刻。"""
-    if k <= 0:
-        raise PhysicsError("damped_truth：k 须 > 0，得到 %r" % (k,))
+    # #2426：`k <= 0` 对 NaN 恒假 ⇒ 此前 k=nan 静默返回全 NaN 真值。改走
+    # `_positive_num`（有限性 + 正值双闸，同文件 drag2_truth 的既有口径）。
+    k = _positive_num(k, "k")
     return {"k": k, "tau": 1.0 / k, "stop_distance": vlen(v0) / k,
             "half_life": math.log(2.0) / k,
             "half_distance_time": math.log(2.0) / k,
@@ -655,8 +665,10 @@ def accelerated_truth(p0, v0, a, t):
 
 def circular_truth(center, radius, omega, up=1):
     """圆周真值：周期、线速度、向心加速度、每周期转角。"""
-    if radius <= 0:
-        raise PhysicsError("circular_truth：radius 须 > 0")
+    # #2426：`radius <= 0` 对 NaN 恒假 ⇒ 此前 radius=nan 时 speed/centripetal_accel
+    # 为 NaN 而 period/rev_per_second 仍是有限正常值（同一 dict 混两种可信度）。
+    radius = _positive_num(radius, "radius")
+    omega = _finite_num(omega, "omega")   # omega=0 合法（period=None 保留）
     w = abs(omega)
     return {"radius": radius, "omega": omega, "period": (2.0 * math.pi / w) if w > 0 else None,
             "speed": radius * w, "centripetal_accel": radius * w * w,

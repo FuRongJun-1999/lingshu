@@ -452,6 +452,17 @@ def judge_density(match: Optional[Dict], density: float,
     if not (math.isfinite(density) and math.isfinite(th_dense)):
         return {"state": "DEFER", "reason": "非有限输入",
                 "composite": match["composite"] if match else None}
+    # #2431：#196 的非有限闸只覆盖 density/th_dense，`match["score"]` 自己
+    # 没有闸——`nan < 0.999` 恒假 ⇒ 损坏的匹配分数被当成「配方完整」直落
+    # ACCEPT。函数 docstring 逐字承诺「任一非有限 ⇒ DEFER，不给通过态」，
+    # score 是同一判据链上的第三个数值，此处补齐。
+    if match is not None:
+        _sc = match.get("score")
+        if (isinstance(_sc, bool)
+                or not isinstance(_sc, (int, float))
+                or not math.isfinite(float(_sc))):
+            return {"state": "DEFER", "reason": "非有限输入",
+                    "composite": match.get("composite")}
     if match is None or match["score"] < 0.999:
         return {"state": "DEFER", "reason": "配方不完整",
                 "composite": match["composite"] if match else None}
