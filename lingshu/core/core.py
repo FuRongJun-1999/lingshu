@@ -10680,10 +10680,13 @@ class SpacetimeMemoryEngine:
             self._wmodel.world.add_path(str(p.get("path_id", "")), p.get("points", []))
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "perceive":
-            r = self._wmodel.perceive(observations=p.get("observations"),
-                                     tool=str(p.get("tool", "observer")),
-                                     tick=p.get("tick"), timestamp=p.get("timestamp"))
-            return {"status": "ok", "perceive": r}
+            try:
+                r = self._wmodel.perceive(observations=p.get("observations"),
+                                         tool=str(p.get("tool", "observer")),
+                                         tick=p.get("tick"), timestamp=p.get("timestamp"))
+                return {"status": "ok", "perceive": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "perceive_visual":
             if not hasattr(self, '_world3d'):
                 return {"status": "error", "error": "尚无视觉重建（先 world3d）"}
