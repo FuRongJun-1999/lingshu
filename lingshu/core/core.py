@@ -10691,7 +10691,13 @@ class SpacetimeMemoryEngine:
                 visible[source_index].eid = observation["eid"]
             return {"status": "ok", "perceive": r}
         if action == "generate":
-            r = self._wmodel.generate(horizon=int(p.get("horizon", 1)))
+            # #2446：horizon 判型后进底层（浮点/nan 不再裸崩或静默截断；
+            # 非整数转 error dict，同门面 fail-closed 惯例）。
+            _h = p.get("horizon", 1)
+            if isinstance(_h, bool) or not isinstance(_h, int):
+                return {"status": "error",
+                        "error": "generate 的 horizon 必须是 int，收到 %r" % (_h,)}
+            r = self._wmodel.generate(horizon=_h)
             return {"status": "ok", "generate": r}
         if action == "counterfactual":
             r = self._wmodel.counterfactual(horizon=p.get("horizon", 1),
