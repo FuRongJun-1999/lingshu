@@ -4802,6 +4802,13 @@ class LayeredStore:
         扩张与收缩都应可追）；撤销 `archived` 本方法不单独记——经
         `restore_archived` 走时会落 `archived_restored`，直接调本方法属普通编辑。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——把 STNode 当 id 传入时，
+        # 值会一路进 SQL 绑定，抛不可读 `sqlite3.ProgrammingError: Error binding
+        # parameter 1: type 'STNode' is not supported`（实测 untag_node(节点对象) 即如此）。
+        # 现 fail-loud：非 str → 可读 TypeError（零写入）。
+        if not isinstance(node_id, str):
+            raise TypeError("untag_node 的 node_id 必须是字符串，收到 %s"
+                            % type(node_id).__name__)
         self.assert_node_writable_by_role(node_id, action="移除共享层节点的标签")
         own_tx = not self.conn.in_transaction
         if own_tx:
