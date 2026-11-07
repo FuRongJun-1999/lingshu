@@ -125,3 +125,79 @@ def test_2424_errors_are_readable_not_raw_traceback_text():
     assert "三元组" in msg, "应为下游闸的可读中文原因：%r" % (msg,)
     r2 = e.voxel_world("simulate", {"steps": float("nan")})
     assert "必须是整数" in r2.get("error", ""), r2
+
+
+# ---------------------------------------------------------------- G8（#2424 续·扫尾 7 站点）
+
+def test_2424_wl_predict_horizon_rejected():
+    e = _e()
+    e.world_learner("init", {}); e.world_learner("create", {})
+    e.world_learner("entity", {"category": "a"})
+    r = e.world_learner("predict", {"horizon": float("nan")})
+    assert r.get("status") == "error", "#2424续 predict horizon=nan 仍裸穿：%r" % (r,)
+
+
+def test_2424_wl_evaluate_train_ticks_rejected():
+    e = _e()
+    e.world_learner("init", {}); e.world_learner("create", {})
+    r = e.world_learner("evaluate", {"train_ticks": "x"})
+    assert r.get("status") == "error", r
+
+
+def test_2424_wl_curve_epochs_rejected():
+    e = _e()
+    e.world_learner("init", {}); e.world_learner("create", {})
+    r = e.world_learner("curve", {"epochs": float("nan")})
+    assert r.get("status") == "error", r
+
+
+def test_2424_wm_run_n_rejected():
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("run", {"n": "x"})
+    assert r.get("status") == "error", "#2424续 wm run n=\"x\" 仍裸穿：%r" % (r,)
+
+
+def test_2424_wm_counterfactual_bad_horizon_error_dict():
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("counterfactual", {"horizon": 0})
+    assert r.get("status") == "error" and "1..64" in r.get("error", ""), (
+        "#2424续 counterfactual horizon=0 的既有闸 ValueError 改为可读 error dict：%r" % (r,))
+
+
+def test_2424_wm_history_limit_rejected():
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("history", {"limit": "x"})
+    assert r.get("status") == "error", "#2424续 wm history limit=\"x\" 仍裸穿：%r" % (r,)
+
+
+def test_2424_wm_history_reachable():
+    """附修复：world_model 的 history 动作此前被 graph 分支 return 短路成
+    不可达死代码（docstring 与未知动作提示均声明可用，实测恒 未知动作）。
+    恢复后合法调用返回 ok。"""
+    e = _e()
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("history", {})
+    assert r.get("status") == "ok" and "history" in r, r
+
+
+# ---------------------------------------------------------------- G9（#2424 续·perceive_visual 同契约）
+
+def test_2424_perceive_visual_bad_tick_error_dict():
+    """perceive_visual 与 perceive 同契约：tick 闸的可读 ValueError 在门面
+    转 error dict（修前裸穿实测，两处——observations 读取与 perceive 步骤）。"""
+    e = _e()
+    e.world3d("add", {"category": "box", "bbox": [380, 280, 420, 320]})
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("perceive_visual", {"tick": "x"})
+    assert r.get("status") == "error" and "tick" in r.get("error", ""), (
+        "#2424续 perceive_visual tick=\"x\" 仍裸穿：%r" % (r,))
+
+
+def test_2424_perceive_visual_legal_ok():
+    e = _e()
+    e.world3d("add", {"category": "box", "bbox": [380, 280, 420, 320]})
+    r = e.world_model("perceive_visual", {})
+    assert r.get("status") == "ok", r
