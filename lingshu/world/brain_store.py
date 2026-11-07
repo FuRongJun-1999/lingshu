@@ -82,6 +82,7 @@ RCE；受信根收的是**默认配置**这一档，不是「env 面＝安全边
   （不静默）。
 """
 from __future__ import annotations
+import logging
 
 import json
 import math
@@ -93,6 +94,7 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+_log = logging.getLogger(__name__)
 
 #: M1/M2 状态槽位约定（与 ingest_scene 的 state → 呈现语义对应）
 STATE_SLOT = "状态"
@@ -500,6 +502,7 @@ class MCPClient:
                     self._rpc(obj)
                     outcome.put((True, self._read()))
                 except Exception as exc:
+                    _log.debug("brain_store: RPC 线程内异常，经 outcome 队列回传", exc_info=True)
                     outcome.put((False, exc))
 
             worker = threading.Thread(target=run, daemon=True)

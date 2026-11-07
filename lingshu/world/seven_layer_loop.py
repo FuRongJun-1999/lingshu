@@ -40,11 +40,13 @@ F08 · 可选预测行动（configure_action / clear_action · 默认关闭）�
 纯标准库 · 零外部依赖（D-005）
 """
 from __future__ import annotations
+import logging
 
 import math
 import warnings
 from typing import Dict, List, Optional, Tuple
 from .time_core import cred_blend
+_log = logging.getLogger(__name__)
 
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 # （F08 起把原先重复两次的同一条导入回退合并为一处：静默宽 except 计数
@@ -55,6 +57,7 @@ try:
     from .scene_simulator import SceneSimulator, ACTION_DELTAS, ACTION_NAMES
 except Exception:
     SceneSimulator = None
+    _log.debug("seven_layer_loop: scene_simulator 导入失败，按无模拟器降级", exc_info=True)
     ACTION_DELTAS: Dict[str, Tuple[float, float]] = {}
     ACTION_NAMES: Tuple[str, ...] = ()
 

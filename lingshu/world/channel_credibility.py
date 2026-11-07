@@ -38,6 +38,7 @@ v3.4 新增机制：置信度 ≠ 可信度。
 纯标准库 · 零外部依赖（D-005）
 """
 from __future__ import annotations
+import logging
 
 import json
 import math
@@ -45,6 +46,7 @@ import os
 import time
 import warnings
 from typing import Dict, List, Optional
+_log = logging.getLogger(__name__)
 
 # 默认通道（对应 v3.4 三端口架构）
 DEFAULT_CHANNELS = ["visual", "tactile", "audio", "action", "prediction", "search"]
@@ -92,6 +94,7 @@ class ChannelCredibilityRegistry:
                 data = json.load(f)
         except Exception:
             # 只兜「文件级」失败（不可读 / 非 JSON）——整体保持构造器先验。
+            _log.debug("channel_credibility: 持久化读取失败，保持构造器先验", exc_info=True)
             return
         if not isinstance(data, dict):
             return  # A parseable non-object is still an invalid calibration file.
@@ -154,6 +157,7 @@ class ChannelCredibilityRegistry:
             with open(self.persist_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=1)
         except Exception:
+            _log.debug("channel_credibility: 持久化写盘失败，内存态不受影响", exc_info=True)
             pass
 
     # ---- 更新 ----
