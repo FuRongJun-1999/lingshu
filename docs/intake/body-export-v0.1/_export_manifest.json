@@ -409,7 +409,7 @@
     {
      "file": "hex_cnn.py",
      "src": "aeis.hex_cnn",
-     "sha256": "139069b31e883b19",
+     "sha256": "8a4a5e501a92a4b1",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
