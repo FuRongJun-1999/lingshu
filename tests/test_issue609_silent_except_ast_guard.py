@@ -188,8 +188,10 @@ def test_g4_whole_repo_zero_over_baseline():
     #: (ValueError, TypeError)——基线文件同步删四行）。
     #: ★2026-11-06（#170 清偿第三批）128 → 126：`lingshu/world/world3d.py`
     #: 2 → 0（两处面绘制循环补 logger.debug，控制流零变化；基线文件同步删行）。
-    assert data["actual_total"] >= 126, ("基线合计低于当前登记值 126"
-                                         "（#170 清偿三批累计）,"
+    #: ★2026-11-08（#170 清偿第四批）126 → 118：`lingshu/core/longterm_gate.py`
+    #: 8 → 0（8 处补 _log.debug/_log.warning 审计，控制流零变化；基线文件同步改行）。
+    assert data["actual_total"] >= 118, ("基线合计低于当前登记值 118"
+                                         "（#170 清偿四批累计）,"
                                          "判据可能被偷偷放宽")
     assert data["unparsable"] == [], data
     # #609 重测的落点：core.py 计数已同步进基线（46→76；#653 再 76→78，
