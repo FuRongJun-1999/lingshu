@@ -27,10 +27,12 @@ t_weak ≈ 2407.9s < TTL = 3600s（差 33%）。
 纯标准库 · 零外部依赖（D-005）
 """
 from __future__ import annotations
+import logging
 
 import math
 import time
 from typing import Dict, Optional
+_log = logging.getLogger(__name__)
 
 
 DEFAULT_TTL = 3600.0          # 默认租约时长（秒，1 小时）
@@ -245,6 +247,7 @@ class StableLease:
                     and self.weak_threshold > 0):
                 weak_at = now + math.log(confidence / self.weak_threshold) / self.gamma
         except Exception:  # pragma: no cover - 防御：非法参数退回名义到期
+            _log.debug("stable_lease: weak_at 计算失败，退回名义到期", exc_info=True)
             weak_at = ttl_exp
         return {"expires_at": min(ttl_exp, weak_at),
                 "ttl_expires_at": ttl_exp, "weak_at": weak_at}

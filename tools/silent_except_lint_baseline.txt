@@ -67,6 +67,14 @@
 #     控制流零变化（返回值/缺省语义逐位不变），⇒ 按本文件语义「补审计动作」
 #     让工具数不到，不是把判据放宽。lint 读数：TOTAL 126 → 118。
 
+# 2026-11-08 (本笔) world 四文件 5 → 0，**只下调、无上调**（真实修复，非放宽判据；#170 第五批）：
+#   · brain_store.py 1→0：RPC 线程 except 补 _log.debug（异常仍经 outcome 队列回传，控制流零变化）；
+#   · channel_credibility.py 2→0：持久化读/写两处补 _log.debug（构造器先验/内存态语义不变）；
+#   · seven_layer_loop.py 1→0：可选导入回落补 _log.debug（「无模拟器」降级形态不变——
+#     2026-10-13 5603e28 登记的刻意静默面本轮升格为可观测，非取消降级）；
+#   · stable_lease.py 1→0：weak_at 防御计算补 _log.debug（名义到期回退不变，#pragma 注释保留）。
+#   ⇒ 五处均按本文件语义「补审计动作」让工具数不到。lint 读数：TOTAL 118 → 113。
+
 # ── 登记面 · 结束 ──
 
 lingshu/_pathguard.py	29
@@ -75,11 +83,11 @@ lingshu/core/core.py	77
 lingshu/core/longterm_gate.py	0
 lingshu/core/structure_service.py	0
 lingshu/nn/hex_cnn.py	0
-lingshu/world/brain_store.py	1
-lingshu/world/channel_credibility.py	2
+lingshu/world/brain_store.py	0
+lingshu/world/channel_credibility.py	0
 lingshu/world/scene_model.py	0
-lingshu/world/seven_layer_loop.py	1
-lingshu/world/stable_lease.py	1
+lingshu/world/seven_layer_loop.py	0
+lingshu/world/stable_lease.py	0
 lingshu/world/wm_simloop.py	0
 
 # TOTAL 148

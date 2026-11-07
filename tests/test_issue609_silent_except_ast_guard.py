@@ -190,8 +190,10 @@ def test_g4_whole_repo_zero_over_baseline():
     #: 2 → 0（两处面绘制循环补 logger.debug，控制流零变化；基线文件同步删行）。
     #: ★2026-11-08（#170 清偿第四批）126 → 118：`lingshu/core/longterm_gate.py`
     #: 8 → 0（8 处补 _log.debug/_log.warning 审计，控制流零变化；基线文件同步改行）。
-    assert data["actual_total"] >= 118, ("基线合计低于当前登记值 118"
-                                         "（#170 清偿四批累计）,"
+    #: ★2026-11-08（#170 清偿第五批）118 → 113：world 四文件 5 → 0
+    #: （brain_store/channel_credibility×2/seven_layer_loop/stable_lease 补 _log.debug；基线文件同步改行）。
+    assert data["actual_total"] >= 113, ("基线合计低于当前登记值 113"
+                                         "（#170 清偿五批累计）,"
                                          "判据可能被偷偷放宽")
     assert data["unparsable"] == [], data
     # #609 重测的落点：core.py 计数已同步进基线（46→76；#653 再 76→78，
