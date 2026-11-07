@@ -125,3 +125,26 @@ def test_2424_errors_are_readable_not_raw_traceback_text():
     assert "三元组" in msg, "应为下游闸的可读中文原因：%r" % (msg,)
     r2 = e.voxel_world("simulate", {"steps": float("nan")})
     assert "必须是整数" in r2.get("error", ""), r2
+
+
+# ---------------------------------------------------------------- G6（#2424 续）
+
+def test_2424_voxel_spawn_nonfinite_rejected():
+    """float(nan) 不抛异常——try 拦不住，须显式 _require_finite（修前 nan 落
+    trail 且 state 严格 JSON 崩）。"""
+    e = _e()
+    r = e.voxel_world("spawn", {"category": "a", "pos": [float("nan"), 1, 0]})
+    assert r.get("status") == "error" and "pos[0]" in r.get("error", ""), (
+        "#2424续 spawn nan pos 仍被接受：%r" % (r,))
+    r = e.voxel_world("spawn", {"category": "a", "pos": [0, 1, 0],
+                                "velocity": [float("inf"), 0, 0]})
+    assert r.get("status") == "error" and "velocity[0]" in r.get("error", ""), r
+
+
+def test_2424_voxel_spawn_legal_and_state_json_safe():
+    import json
+    e = _e()
+    r = e.voxel_world("spawn", {"category": "a", "pos": [0, 1, 0]})
+    assert r.get("status") == "ok", r
+    g = e.voxel_world("state", {})
+    json.dumps(g, allow_nan=False)          # 不抛即过
