@@ -280,8 +280,13 @@ class MeshData:
         for i in (a, b, c):
             if not (0 <= i < n):
                 raise ValueError("面索引越界：%r（顶点数 %d）" % ((a, b, c), n))
+        # #2428：颜色校验此前在 append 之后——非法色抛 ValueError 时面已落库、颜色
+        # 没落，破坏类 docstring 声明的不变量「colors 与 faces 等长」；`to_obj_text`
+        # 的 `zip(faces, colors)` 随即静默丢掉那个面（geometry_report 报 tris=2 而
+        # OBJ 只有 1 条 f 行）。先算颜色再一次性写入（同 #2403 add_quad 的口径）。
+        _col = _clamp_color(color) if color is not None else DEFAULT_COLOR
         self.faces.append((a, b, c))
-        self.colors.append(_clamp_color(color) if color is not None else DEFAULT_COLOR)
+        self.colors.append(_col)
 
     def add_poly(self, idx, color=None) -> None:
         """ngon → **耳切**三角化（凹多边形也正确；<3 点计一次 degenerate 并跳过）。
@@ -1826,6 +1831,13 @@ def install(categories=None, target=None, overwrite: bool = False,
         from .mesh3d import MESH_LIBRARY
     except ImportError:                                         # pragma: no cover
         from .mesh3d import MESH_LIBRARY
+    # #2428：字符串入参会被 `list()` 拆成字符（`install("lamp")` -> ['l','a','m','p']），
+    # 每个都 `build_mesh` 不到 ⇒ 循环 `continue`，返回 `{}` 且不报错——调用方以为「已
+    # 登记 lamp」，实际 `MESH_LIBRARY` 没变。bytes 同病。#2074 修的是 `[]` 的 falsy 混淆，
+    # 这里是字符串形态的姊妹面。
+    if isinstance(categories, (str, bytes)):
+        raise TypeError("install：categories 须为类别名序列（不是单个字符串），收到 %r"
+                        % (categories,))
     cats = list(categories) if categories is not None else sorted(MESH_RECIPES)
     out: Dict[str, int] = {}
     for cat in cats:
