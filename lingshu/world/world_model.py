@@ -536,6 +536,14 @@ class UnifiedWorldModel:
           - bounded_stochastic：随机行为 → 可达域（预测=当前位置）
           - chase_stochastic：支持的追逐方向作中心，保留随机目标宽可达域（D1）
         """
+        # #2446：horizon 非整数值此前 int() 静默截断（2.7→2）、nan 裸崩
+        # （"cannot convert float NaN to integer" 穿透门面）——同文件
+        # counterfactual 已显式闸 1..64，本入口补同一维口径（负数/0 钳 1 的
+        # 既有行为保持不变）。
+        if horizon is not None and (isinstance(horizon, bool)
+                                    or not isinstance(horizon, int)):
+            raise TypeError("generate 的 horizon 必须是 int，收到 %r"
+                            % (horizon,))
         h = max(1, int(horizon)) if horizon is not None else 1
         if use_patterns:
             self.infer_patterns()
