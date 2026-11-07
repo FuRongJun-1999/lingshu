@@ -73,7 +73,17 @@ class UnitHeadNet:
     # set_vec(nan) → theta=nan 原样写入）
 
     def set_vec(self, v: np.ndarray):
+        # #2520：长度与有限性闸。此前长度不符时静默改形状（短 3 ⇒ theta
+        # 变 (6,)，错误延迟到下次前向的 broadcast 报错）；`np.clip(nan)` 仍是
+        # NaN（clip 不做有限性检查）⇒ #2168 的「有界」声明对 NaN 不成立。
+        v = np.asarray(v, dtype=np.float64)
         k = int(self.mask.sum())
+        _want = k + self.n_card
+        if v.shape != (_want,):
+            raise ValueError("UnitHeadNet.set_vec: 需 shape=(%d,)，实得 %r"
+                             % (_want, v.shape))
+        if not np.isfinite(v).all():
+            raise ValueError("UnitHeadNet.set_vec: 参数含 NaN/inf")
         self.gain[self.mask > 0] = np.clip(v[:k], 0.0, self.GAIN_BOUND)
         # #2168：theta 与 gain 同口径 clip（修前原样写入，无任何边界）
         self.theta = np.clip(np.asarray(v[k:], dtype=np.float64),
@@ -98,7 +108,13 @@ class UnitHeadNet:
                 out = delta(vec)
                 new = vec if out is None else np.asarray(out)
             else:
-                new = vec + np.asarray(delta)
+                _d = np.asarray(delta)
+                # #2520：形状必须一致——`(1,)` 增量此前被广播到全部参数
+                # （375 个全 +1），调用方无法从返回值看出发生了广播。
+                if _d.shape != vec.shape:
+                    raise ValueError("apply_delta: delta 需 shape=%r，实得 %r"
+                                     % (vec.shape, _d.shape))
+                new = vec + _d
             self.set_vec(new)
             return self.get_vec()
 
