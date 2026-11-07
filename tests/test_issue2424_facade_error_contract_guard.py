@@ -181,3 +181,23 @@ def test_2424_wm_history_reachable():
     e.world_model("init", {}); e.world_model("create", {})
     r = e.world_model("history", {})
     assert r.get("status") == "ok" and "history" in r, r
+
+
+# ---------------------------------------------------------------- G9（#2424 续·perceive_visual 同契约）
+
+def test_2424_perceive_visual_bad_tick_error_dict():
+    """perceive_visual 与 perceive 同契约：tick 闸的可读 ValueError 在门面
+    转 error dict（修前裸穿实测，两处——observations 读取与 perceive 步骤）。"""
+    e = _e()
+    e.world3d("add", {"category": "box", "bbox": [380, 280, 420, 320]})
+    e.world_model("init", {}); e.world_model("create", {})
+    r = e.world_model("perceive_visual", {"tick": "x"})
+    assert r.get("status") == "error" and "tick" in r.get("error", ""), (
+        "#2424续 perceive_visual tick=\"x\" 仍裸穿：%r" % (r,))
+
+
+def test_2424_perceive_visual_legal_ok():
+    e = _e()
+    e.world3d("add", {"category": "box", "bbox": [380, 280, 420, 320]})
+    r = e.world_model("perceive_visual", {})
+    assert r.get("status") == "ok", r

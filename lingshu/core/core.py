@@ -10687,9 +10687,17 @@ class SpacetimeMemoryEngine:
         if action == "perceive_visual":
             if not hasattr(self, '_world3d'):
                 return {"status": "error", "error": "尚无视觉重建（先 world3d）"}
-            obs = self._world3d.observations(tick=p.get("tick"))
-            r = self._wmodel.perceive(obs, tool=str(p.get("tool", "world3d")),
-                                     tick=p.get("tick"), timestamp=p.get("timestamp"))
+            # #2424 续：perceive_visual 与 perceive 同契约——tick 闸的
+            # 可读 ValueError 在门面收口（修前裸穿实测）。
+            try:
+                obs = self._world3d.observations(tick=p.get("tick"))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
+            try:
+                r = self._wmodel.perceive(obs, tool=str(p.get("tool", "world3d")),
+                                         tick=p.get("tick"), timestamp=p.get("timestamp"))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             visible = [obj for obj in self._world3d.objects
                        if p.get("tick") is None or obj.observed_tick == p["tick"]]
             for index, observation in enumerate(r["observations"]):
