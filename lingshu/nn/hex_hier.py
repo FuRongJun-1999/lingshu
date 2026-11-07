@@ -260,6 +260,17 @@ class HexHierNet:
         `.reshape` 不改变这一事实——直接持有会把模型参数别名到调用方缓冲上：
         调用方事后原地改自己的 `vec` 会静默改写模型参数，绕过 set_vec 的显式载入。
         """
+        # #2520：长度/有限性校验必须**先做**——此前 conv/conv2 已被整段改写、
+        # 随后 head reshape 抛错 ⇒ 模型留成新旧混合体（调用方以为「载入失败、
+        # 模型未动」）。字符串向量会静默把 dtype 变 `<U1`（下次前向才
+        # UFuncTypeError），全 NaN 向量静默写入（logits 全 NaN）。
+        vec = np.asarray(vec)
+        _n = self.n_params()
+        if vec.shape != (_n,):
+            raise ValueError("HexHierNet.set_vec: 需 shape=(%d,)，实得 %r"
+                             % (_n, vec.shape))
+        if not np.isfinite(vec).all():
+            raise ValueError("HexHierNet.set_vec: 参数含 NaN/inf")
         i, k7 = 0, self.K * 7
         self.conv = vec[i:i + k7].reshape(self.K, 7).copy(); i += k7
         if self.stacked:
@@ -270,6 +281,8 @@ class HexHierNet:
     def apply_delta(self, delta):
         """原子读改写（#197）：在同一临界区内完成 get_vec → 应用 → set_vec。
 
+        #2520：ndarray 形态的形状必须与当前向量一致——`(1,)` 增量此前被
+        # 广播到全部参数（375 个全 +1），调用方无法从返回值看出发生了广播。
         `delta` 两种形态：
           · 可调用对象 `fn(vec) -> ndarray | None`：收到当前向量的副本，
             返回新向量；返回 None 表示已原地修改传入的副本。
@@ -286,7 +299,13 @@ class HexHierNet:
                 out = delta(vec)
                 new = vec if out is None else np.asarray(out)
             else:
-                new = vec + np.asarray(delta)
+                _d = np.asarray(delta)
+                # #2520：形状必须一致——`(1,)` 增量此前被广播到全部参数
+                # （375 个全 +1），调用方无法从返回值看出发生了广播。
+                if _d.shape != vec.shape:
+                    raise ValueError("apply_delta: delta 需 shape=%r，实得 %r"
+                                     % (vec.shape, _d.shape))
+                new = vec + _d
             self.set_vec(new)
             return self.get_vec()
 

@@ -150,6 +150,24 @@ def residual_pyramid(lattice: np.ndarray, kernels: Sequence[np.ndarray],
                 "stop_reason": "invalid_input", "energy_spectrum": [],
                 "orthogonality_audit": {}, "residual_share": None,
                 "error": "lattice/kernels 含非有限值（NaN/inf）——判据不可判（#2132）"}
+    # #2521：#2132 只收了**输入面**（lattice/kernels），参数面一个闸都没有。
+    # 三个比较对 NaN 恒 False ⇒ `max_layers=nan` 让工程保险上界失效（depth 8→12）、
+    # `tol=nan` 让正交去重整段失效（dropped 7→0）、`dead_zone=nan`/负值让死区停因
+    # 永不触发（本该在 residual 0.0847 停第 1 层，实际剥到 0.0 并**改标**
+    # orthogonal_exhausted——停因读数是错的）。
+    for _n, _v in (("dead_zone", dead_zone), ("tol", tol)):
+        if not (isinstance(_v, (int, float)) and not isinstance(_v, bool)
+                and math.isfinite(float(_v)) and float(_v) >= 0.0):
+            return {"algo": ALGO, "layers": [], "depth": 0,
+                    "stop_reason": "invalid_input", "energy_spectrum": [],
+                    "orthogonality_audit": {}, "residual_share": None,
+                    "error": "%s=%r 非有限或为负——判据不可判（#2521）" % (_n, _v)}
+    if (isinstance(max_layers, bool) or not isinstance(max_layers, (int, np.integer))
+            or int(max_layers) < 1):
+        return {"algo": ALGO, "layers": [], "depth": 0,
+                "stop_reason": "invalid_input", "energy_spectrum": [],
+                "orthogonality_audit": {}, "residual_share": None,
+                "error": "max_layers=%r 须为正整数（#2521）" % (max_layers,)}
     keep, ortho_report = (orthogonal_pool(kernels, tol, names)
                           if use_orthogonal_pool
                           else (list(range(len(kernels))), []))
@@ -235,6 +253,14 @@ def residual_pyramid(lattice: np.ndarray, kernels: Sequence[np.ndarray],
 def pyramid_report(lattice: np.ndarray, kernels: Sequence[np.ndarray], **kw) -> Dict:
     """金字塔 + 一行式摘要(层数/停因/能量谱/去重数)——审计与日志用。"""
     r = residual_pyramid(lattice, kernels, **kw)
+    # #2521：#2132 让 residual_pyramid 对非法输入返回**不含** cumulative_share /
+    # orthogonality 的 dict；本函数此前无条件读这两个键 ⇒ 对恰好是 fail-closed
+    # 设计目标的输入抛 KeyError，把「不可判」变成崩溃并丢失 error 文案。
+    if r.get("stop_reason") == "invalid_input":
+        return {"depth": 0, "stop_reason": "invalid_input",
+                "residual_share": None, "cumulative_share": None,
+                "energy_spectrum": [], "dropped_redundant": 0,
+                "layers": [], "error": r.get("error")}
     return {"depth": r["depth"], "stop_reason": r["stop_reason"],
             "residual_share": r["residual_share"],
             "cumulative_share": r["cumulative_share"],

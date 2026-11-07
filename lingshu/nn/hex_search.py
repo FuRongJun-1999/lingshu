@@ -23,6 +23,8 @@
 from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 
+import math
+
 import numpy as np
 
 ALGO = "hex_search-0.1"
@@ -48,6 +50,11 @@ def evaluate_node(net: HexHierNet, sub: np.ndarray, energy_share: float,
     「双物体需递归」两条性质同时失效。REJECT(空域粗筛)不受本开关影响。
     """
     # 粗筛:能量份额不足 → REJECT(空域,不进入语义评估——明显排除)
+    # #2521：`share_mult=nan` 让粗筛比较恒 False ⇒ REJECT 永不触发
+    # （found 6→9、rejected 27→0，噪声子域全部进入语义评估）。
+    if not (isinstance(share_mult, (int, float)) and not isinstance(share_mult, bool)
+            and math.isfinite(float(share_mult)) and float(share_mult) > 0.0):
+        raise ValueError("evaluate_node: share_mult 须为有限正数，实得 %r" % (share_mult,))
     if energy_share is not None and energy_share < (1.0 / 9.0) * share_mult * 0.5:
         return {"verdict": "REJECT", "obj": None, "conf": 0.0,
                 "margin": 0.0, "alive": 0, "share": float(energy_share)}
@@ -111,6 +118,12 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
       「残差=信息差 → 自适应阈值 → 死区停」),本参数是其接口兑现。
     """
     if stats is None:
+        # #2521：`max_depth=nan/inf` 让 `depth >= max_depth` 恒 False ⇒
+        # 递归深度保险上界失效（5×5 晶格上 max_depth=1 实际钻到第 2 层、capped 2→0）。
+        if (isinstance(max_depth, bool) or not isinstance(max_depth, (int, np.integer))
+                or int(max_depth) < 0):
+            raise ValueError("recursive_search: max_depth 须为非负整数，实得 %r"
+                             % (max_depth,))
         stats = {"visited": 0, "rejected": 0, "deferred": 0, "max_depth": 0}
     stats.setdefault("stopped_dead_zone", 0)
     stats.setdefault("stopped_max_depth", 0)
@@ -173,6 +186,8 @@ def recursive_search(net: HexHierNet, lat: np.ndarray,
         # 分类置信不证明根域只含一个物体；先定位到子域，再交付位置。
         # DEFER → 递归深化(可能性引导:切 3×3,空子域被粗筛剪掉)
         stats["deferred"] += 1
+        # #2521：`max_depth=nan/inf` 让 `depth >= max_depth` 恒 False ⇒
+        # 递归深度保险上界失效（5×5 晶格上 max_depth=1 实际钻到第 2 层）。
         if depth >= max_depth:
             stats["stopped_max_depth"] += 1        # 工程保险上界(非语义深度)
             note_blindspot(pos_of(qy0, qy1, qx0, qx1), depth, "max_depth",
