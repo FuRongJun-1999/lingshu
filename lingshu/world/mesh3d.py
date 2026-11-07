@@ -389,7 +389,7 @@ def parse_obj(lines, path: str = "", mtl_colors: Dict[str, RGB] = None,
     # 0 面网格写进 `MESH_LIBRARY`，渲染出纯背景无告警）；负 scale 则让法向整体
     # 内翻（`axis_swap` 注释明写要「真旋转 det=+1」）。
     if not math.isfinite(scale) or scale <= 0:
-        raise ValueError("OBJ 头部 scale 须为有限正数：%r" % (scale,))
+        raise ValueError("OBJ 头部 scale 须为有限正数（scale=0 与非有限/负值均非法）：%r" % (scale,))
     n_raw = len(verts_raw)
     verts: List[Vec3] = []
     for (x, y, z) in verts_raw:
