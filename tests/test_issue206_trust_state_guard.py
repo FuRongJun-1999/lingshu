@@ -19,12 +19,14 @@
   判据来源：issue #206 建议 1（`math.isfinite` 检查）＋ `_trust()` 的既有声明
   「当前信任值 T（0-1）」（`longterm_gate.py:66-67`）。
 
-本件**未**修的面（如实标注，见守卫末条 Q5）：
-  `t_total` 的**值域**未收口——有限越界值（42.0）仍被接受，长期层仍可被它
-  无条件推过阈值。收紧属**破坏性改动**：仓内既有测试
+本件**曾**未修的面（2026-11-07 更新：值域已随两分支裁决「归一信任值」收口
+——update_trust_state 加 [0,1] fail-closed 值域闸，越界值拒绝，Q5 断言同步
+反转；既有「累计量」读法测试同步适配归一口径）：
+  `t_total` 的**值域**曾未收口——有限越界值（42.0）曾可被接受并推过阈值。
+  收紧属**破坏性改动**：仓内既有测试
   `tests/test_self_model_history.py:47` 以 `float(i)`（0…99）调用本方法，
-  「累计量」读法已在用；语义裁定（归一信任值 vs 累计量）须设计者给出，
-  待裁清单尚无该条（D-54/D-55 是 #114 的权重与 0 值语义，非本件）。
+  「累计量」读法已在用；语义裁定（归一信任值 vs 累计量）已由裁决给出＝归一
+  信任值（本批值域闸即裁决落地）。
 
 断言组（抽掉 `_require_finite` 调用即 Q1/Q2/Q3 红）：
   Q1 NaN 被拒：`update_trust_state(NaN)` 抛 `ValueError`，且 `trust_state`/落库
@@ -112,12 +114,14 @@ def test_q4_gate_no_long_term_under_rejected_values():
 
 
 def test_q5_in_range_works_and_range_gap_is_known():
-    """Q5：合法 T∈[0,1] 正常；**有限越界值仍被接受**（如实钉住未收口的值域面）。"""
+    """Q5（裁决落地后更新）：合法 T∈[0,1] 正常；有限越界值 fail-closed 拒绝（归一信任值口径收口）。"""
     e = SpacetimeMemoryEngine(":memory:")
     node = e.update_trust_state(0.5, 1)
     assert node is not None and node.layer.value == "self"
     assert e.self_model.trust_state["t_total"] == 0.5
-    # 已知边界（本件未收口）：有限越界值仍被接受——收紧须先裁定 t_total 语义。
-    e.update_trust_state(42.0, 2)
-    assert e.self_model.trust_state["t_total"] == 42.0, (
-        "值域口径被本件改动——若已裁定收紧，请同步改本断言与 docstring")
+    # 值域闸已收口（#206 两分支裁决＝归一信任值，2026-11-07）：有限越界值
+    # 不再被接受——长期层不可被越界值无条件推过阈值。
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        e.update_trust_state(42.0, 2)
+    assert e.self_model.trust_state["t_total"] == 0.5

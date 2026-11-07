@@ -44,5 +44,7 @@ def test_trust_history_still_capped():
 
     e = SpacetimeMemoryEngine(":memory:")
     for i in range(100):
-        e.update_trust_state(t_total=float(i), round_no=i, p_trust=0.5, p_gap=0.5)
+        # #206 值域闸裁决（2026-11-07）：t_total 收口为归一信任值 [0,1]——
+        # 旧「累计量」读法（float(i) 0..99）随裁决改归一口径（历史条数语义不变）。
+        e.update_trust_state(t_total=float(i % 2), round_no=i, p_trust=0.5, p_gap=0.5)
     assert len(e.self_model.trust_history) == SelfModel.TRUST_HISTORY_MAX

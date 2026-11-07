@@ -1134,6 +1134,14 @@ class SelfModel:
         （待裁清单尚无该条；D-54/D-55 是 #114 的权重与 0 值语义，非本件）。
         """
         t_total = _require_finite("t_total", t_total)
+        # 值域闸（lingshu #206 待裁两分支的「归一信任值」分支，2026-11-07 裁决）：
+        # T ∈ [0,1]（_trust() 声明口径）——有限越界值（如 42.0）不再原样接受，
+        # 长期层不可被越界值无条件推过阈值。既有「累计量」读法（0..99）随裁决
+        # 一并改归一口径（tests/test_self_model_history.py 同步适配）。
+        if not (0.0 <= t_total <= 1.0):
+            raise ValueError(
+                "#206 t_total 须为归一信任值 [0,1]，收到 %r"
+                % (t_total,))
         self.trust_state["t_total"] = t_total
         if p_trust is not None:
             self.trust_state["p_trust"] = _require_finite("p_trust", p_trust)
