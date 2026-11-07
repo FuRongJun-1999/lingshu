@@ -66,6 +66,29 @@ class ProcessOpsThresholds:
     min_tail_samples: int = 1     # 过程补全：未被前缀覆盖的最少后续采样数
     joint_tol: float = 0.5        # 过程重组：连接点 actor 衔接距离上限
 
+    def __post_init__(self):
+        """#2425：五个阈值此前全裸——`min_hit_ratio=nan` 使 `hits / compared < nan`
+        恒假，0 分记录被判「命中」并补全出 6 帧；`match_tol=inf` 让 26 m 误差全算
+        几何命中。此处按「阈值即判据」收口：容差类须有限非负、比例类须有限且落在
+        [0,1]、样本数须 >=1 的真整数（bool 一并拒绝）。
+        """
+        for _nm in ("match_tol", "joint_tol"):
+            _v = getattr(self, _nm)
+            if isinstance(_v, bool) or not isinstance(_v, (int, float)) \
+                    or not math.isfinite(float(_v)) or float(_v) < 0.0:
+                raise ValueError("ProcessOpsThresholds：%s 须为有限非负数，收到 %r"
+                                 % (_nm, _v))
+        _v = self.min_hit_ratio
+        if isinstance(_v, bool) or not isinstance(_v, (int, float)) \
+                or not math.isfinite(float(_v)) or not (0.0 <= float(_v) <= 1.0):
+            raise ValueError("ProcessOpsThresholds：min_hit_ratio 须落在 [0,1]，收到 %r"
+                             % (_v,))
+        for _nm in ("min_match_samples", "min_tail_samples"):
+            _v = getattr(self, _nm)
+            if isinstance(_v, bool) or not isinstance(_v, int) or _v < 1:
+                raise ValueError("ProcessOpsThresholds：%s 须为 >=1 的整数，收到 %r"
+                                 % (_nm, _v))
+
 
 # ================= 采样读数（只读，不返回原对象） =================
 
