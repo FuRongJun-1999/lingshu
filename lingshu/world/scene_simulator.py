@@ -444,7 +444,13 @@ class SceneSimulator:
         # 不可见脏条目。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
         if not isinstance(path_id, str) or not path_id.strip():
             raise TypeError("path_id 必须是非空字符串，收到 %r" % (path_id,))
-        pts = [tuple(float(v) for v in pt) for pt in points]
+        # 自主发现（错误可读性）：points 此前直接嵌套 `float()`——传非数值时泄漏裸异常
+        # （实测 add_path("p", "x") -> could not convert string to float: 'x'），调用方无
+        # 从得知是哪个参数/哪一段出错。现 fail-loud 且可读：TypeError（含参数名）。
+        try:
+            pts = [tuple(float(v) for v in pt) for pt in points]
+        except (TypeError, ValueError) as exc:
+            raise TypeError("points 必须是 [(x, y, z), ...] 的实数点列，收到 %r" % (points,)) from exc
         if not pts or any(len(p) != 3 or not all(math.isfinite(v) for v in p)
                           for p in pts):
             raise ValueError(
