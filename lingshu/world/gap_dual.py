@@ -53,6 +53,10 @@ class GapDual:
 
     def compute_d_task(self, graph_paths: Optional[Dict] = None,
                        task_conditions: Optional[set] = None) -> Dict:
+        # #2539：docstring 承诺返回 `{d_task, path_count, usable_paths, blindspot,
+        # cond_gap}`，但三个提前返回（无路径 / 全不可用 / 全 dist 缺失）只给前四项
+        # ⇒ 调用方按 docstring 无条件读 `r["cond_gap"]` 时，恰在「合法停止（∞ ⇒
+        # BLINDSPOT）」这条最需要缺口信息的路径上 KeyError。
         """计算 D_task（图上操作性距离）。
 
         graph_paths: {path_id: {"available": bool, "dist": float, "cond_set": set}}
@@ -62,6 +66,11 @@ class GapDual:
         if not graph_paths:
             return {"d_task": float("inf"), "path_count": 0,
                     "usable_paths": 0, "blindspot": True,
+                    # #2539：docstring 承诺 `cond_gap`，此前三个提前返回里只有
+                    # 「dist 全缺失」那条（#518 时补的）带该键，前两条缺 ⇒
+                    # 调用方按 docstring 无条件读 `r["cond_gap"]` 时在「合法停止」
+                    # 这条最需要缺口信息的路径上 KeyError。纯增量键，不动既有读数。
+                    "cond_gap": None, "best_path": "",
                     "note": "无可用知识路径 → D_task=∞ → BLINDSPOT 合法停止"}
 
         usable = [(pid, p) for pid, p in graph_paths.items()
@@ -69,6 +78,7 @@ class GapDual:
         if not usable:
             return {"d_task": float("inf"), "path_count": len(graph_paths),
                     "usable_paths": 0, "blindspot": True,
+                    "cond_gap": None, "best_path": "",   # #2539 同前
                     "note": "全部路径不可达 → BLINDSPOT"}
 
         # #518：dist **缺失 / NaN / None** 的可用路径不参与选路——其距离无定义，
