@@ -97,7 +97,12 @@ def _brain_env_file(path):
     if not isinstance(env, dict) or any(not key.startswith("MDCG_") or
             (value is not None and not isinstance(value, str)) for key, value in env.items()):
         raise ValueError("brain env file must map MDCG_ keys to strings or null")
-    if {"MDCG_ROOT", "MDCG_STG_STATE"}.intersection(env):
+    # #2564（安全 P1）：保留键检查此前**大小写敏感**——`{"MDCG_root": ...}` 放行，
+    # 而 Windows 环境块名不区分大小写，`_brain_env` 先写 `MDCG_ROOT` 再写
+    # `MDCG_root` ⇒ 后者生效，脑端库根被重定向到攻击者自备的库（世界先验全部由
+    # 攻击者决定），`MDCG_STG_state="0"` 还能关掉状态读取。docs/scenario_usage.md
+    # 明确承诺这两个键「不能经身份文件覆盖」。改为大小写不敏感比较。
+    if {"MDCG_ROOT", "MDCG_STG_STATE"} & {key.upper() for key in env}:
         raise ValueError("brain env file contains reserved root/state keys")
     return env  # 不打印身份值，不隐式继承宿主 MDCG_*。
 
