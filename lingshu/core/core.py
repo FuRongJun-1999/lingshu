@@ -3474,6 +3474,11 @@ class LayeredStore:
         返回 {root, node_count, edge_count, nodes: {id: {name, importance}}, edges}
         """
         # ① 递归遍历收集子图节点（默认沿归属/因果/相似三类边向指定方向扩展）
+        # 自主发现（参数类型）：root_id 此前不做类型闸——传 int/None 会被原样回填进
+        # 结果（实测 subgraph(123) -> {'root': 123, 'node_count': 1, ...}），调用方拿到
+        # 一个「根是整数」的伪子图。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(root_id, str) or not root_id.strip():
+            raise TypeError("subgraph 的 root_id 必须是非空字符串，收到 %r" % (root_id,))
         nodes = self.traverse(root_id, relation_types=relation_types or
                               ["hierarchical", "causal", "similar"],
                               direction=direction, max_depth=max_depth)
