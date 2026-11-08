@@ -5809,6 +5809,18 @@ class LayeredStore:
 
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 自主发现（参数类型）：start_ts/end_ts/layer 此前都不做类型闸——传 str 或 NaN
+        # 的边界静默返回 []（实测 get_nodes_in_range("x", "y") -> []），layer 传 str 则
+        # 抛不可读 AttributeError。两者都把「参数写错」伪装成「无数据」。现 fail-loud：
+        # 非有限实数 / 非 MemoryLayer → 可读 TypeError（None 仍表示无边界/全层）。
+        for _n, _v in (("start_ts", start_ts), ("end_ts", end_ts)):
+            if _v is not None and (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                                   or not math.isfinite(float(_v))):
+                raise TypeError("get_nodes_in_range 的 %s 必须是有限实数或 None，收到 %r"
+                                % (_n, _v))
+        if layer is not None and not isinstance(layer, MemoryLayer):
+            raise TypeError("get_nodes_in_range 的 layer 必须是 MemoryLayer 或 None，收到 %r"
+                            % (layer,))
         conds, params = ["temporal_coordinate >= ?", "temporal_coordinate <= ?"], [start_ts, end_ts]
         if layer is not None:
             conds.append("layer=?")
