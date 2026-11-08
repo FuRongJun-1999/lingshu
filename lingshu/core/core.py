@@ -3337,6 +3337,17 @@ class LayeredStore:
         ——`session_summary` 本就需全量分窗，代价与既有行为同阶（旧实现也扫表，
         只是多了 500 截断）。
         """
+        # 自主发现（参数类型）：start_ts/end_ts/limit 此前都不做类型闸——传 str 的时间边界
+        # 静默返回 []（实测 query_nodes_by_time("x", "y") -> []）；limit 传 str 直接进 SQL
+        # 抛不可读 `IntegrityError: datatype mismatch`。现 fail-loud：可读 TypeError。
+        for _n, _v in (("start_ts", start_ts), ("end_ts", end_ts)):
+            if _v is not None and (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                                   or not math.isfinite(float(_v))):
+                raise TypeError("query_nodes_by_time 的 %s 必须是有限实数或 None，收到 %r"
+                                % (_n, _v))
+        if limit is not None and (isinstance(limit, bool)
+                                 or not isinstance(limit, (int, float))):
+            raise TypeError("query_nodes_by_time 的 limit 必须是数值或 None，收到 %r" % (limit,))
         conds, params = [], []
         if start_ts is not None:
             conds.append("temporal_coordinate >= ?")
