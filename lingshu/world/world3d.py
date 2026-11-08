@@ -247,16 +247,27 @@ class Camera3D:
         if fl < 1e-12:
             raise ValueError("from_look_at：eye 与 target 重合，朝向未定义")
         fx, fy, fz = fx / fl, fy / fl, fz / fl
-        rx = fy * up[2] - fz * up[1]
-        ry = fz * up[0] - fx * up[2]
-        rz = fx * up[1] - fy * up[0]
+        # #2559：此处原为 `right = forward × up`（左手系）——实测 `det(basis) = -1`，
+        # 是**镜像**而非旋转：同一世界点 `(1,1.2,0)` 在 `look_at` 下投影 x=538.12、
+        # 在 `from_look_at` 下 x=261.88（左右相反）；跨构造器反投影把 +x 物体发布
+        # 到 -x（偏 3.44 m）。右手系须 `right = up × forward`。
+        rx = up[1] * fz - up[2] * fy
+        ry = up[2] * fx - up[0] * fz
+        rz = up[0] * fy - up[1] * fx
         rl = math.sqrt(rx * rx + ry * ry + rz * rz)
         if rl < 1e-9:
             raise ValueError("from_look_at：up 与前向共线，右向量退化")
         rx, ry, rz = rx / rl, ry / rl, rz / rl
-        ux = ry * fz - rz * fy
-        uy = rz * fx - rx * fz
-        uz = rx * fy - ry * fx
+        # #2559：`up` 也必须跟着换向——原式 `forward × right` 在左手系下给出
+        # 「上」，改成右手系 `right = up × forward` 后须用 `right × forward`，
+        # 否则基仍是镜像（det=-1）而投影恰好一致、掩盖问题。
+        # #2559：`up = forward × right`（原式）在 `right = up × forward` 下给出
+        # **反向上**；右手系要求 `right × up = forward` ⇒ 取 `up = right × forward`
+        # 再整体取反，或等价地 `up = forward × right` 后取负。此处直接写
+        # `up = -(forward × right)`，使 `det(basis) = +1` 且投影与 `look_at` 一致。
+        ux = -(ry * fz - rz * fy)
+        uy = -(rz * fx - rx * fz)
+        uz = -(rx * fy - ry * fx)
         return cls(fov_deg=fov_deg, cx=eye[0], cy=eye[1], cz=eye[2],
                    basis=((rx, ry, rz), (ux, uy, uz), (fx, fy, fz)))
 
@@ -326,9 +337,18 @@ class Camera3D:
         丢 cz 偏 0.25 m、丢 fov 偏 0.37 m）。故 meta 形状取「落盘即实际使用」，
         六个参数一个不少（缺一个就是另一个相机）。
         """
-        return {"cx": float(self.cx), "cy": float(self.cy), "cz": float(self.cz),
-                "yaw": float(self.yaw), "pitch": float(self.pitch),
-                "fov_deg": float(self.fov_deg)}
+        # #2561：docstring 逐字写「六个参数一个不少（缺一个就是另一个相机）」，
+        # 但 `roll` 与 `basis` 此前**不在六参里**——`roll=0.35` 落库读回 roll=0.0
+        # （投影漂 113.83 px）；`basis` 相机读回 `basis=None`（三角化偏 17.93 m）。
+        # 现按「落盘即实际使用」补齐：仅在非默认时才写（普通相机输出逐位不变）。
+        _m = {"cx": float(self.cx), "cy": float(self.cy), "cz": float(self.cz),
+              "yaw": float(self.yaw), "pitch": float(self.pitch),
+              "fov_deg": float(self.fov_deg)}
+        if self.roll:
+            _m["roll"] = float(self.roll)
+        if self.basis is not None:
+            _m["basis"] = [[float(x) for x in row] for row in self.basis]
+        return _m
 
     @classmethod
     def from_meta(cls, meta, strict: bool = True) -> "Camera3D":
@@ -375,7 +395,23 @@ class Camera3D:
             elif strict:
                 raise CameraMetaError(
                     "相机位姿缺字段 %r——残缺位姿不得当作真实位姿" % key)
-        return cls(fov_deg=fov, **vals)
+        # #2561：`roll` 与 `basis` 此前只写不读——`to_meta` 补了键但 `from_meta`
+        # 仍丢弃，往返仍不等价（实测 roll=0.35 读回 0.0、basis 读回 None）。
+        # 二者都是可选键：缺省时保持原默认（roll=0 / basis=None），普通六参
+        # 相机的行为逐位不变。
+        _roll = 0.0
+        if "roll" in meta:
+            _roll = _meta_number(meta["roll"], "roll")
+        _basis = None
+        if meta.get("basis") is not None:
+            _b = meta["basis"]
+            if (not isinstance(_b, (list, tuple)) or len(_b) != 3
+                    or any(not isinstance(r, (list, tuple)) or len(r) != 3
+                           for r in _b)):
+                raise CameraMetaError("相机 basis 必须是 3x3 数组：%r" % (_b,))
+            _basis = tuple(tuple(_meta_number(v, "camera.basis") for v in r)
+                           for r in _b)
+        return cls(fov_deg=fov, roll=_roll, basis=_basis, **vals)
 
     def focal(self, screen_w: int) -> float:
         return (screen_w / 2) / math.tan(math.radians(self.fov_deg) / 2)
