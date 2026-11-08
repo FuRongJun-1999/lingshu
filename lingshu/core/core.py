@@ -5840,6 +5840,12 @@ class LayeredStore:
         `add_perception` 去重 / 巩固周期）一律先经各自入口的层判，故本闸对它们
         只做**兜底**，不改变 PRIMARY 侧读数。
         """
+        # 自主发现（参数类型/值域）：delta 此前不做类型闸——传 "x"/None 静默返回
+        # None（实测 update_node_importance(nid, "x") -> None），重要度其实没变，
+        # 调用方却以为更新成功。现 fail-loud：非实数或非有限 → 可读 TypeError。
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_node_importance 的 delta 必须是有限实数，收到 %r" % (delta,))
         delta = _finite_or(delta, 0.0)
         self.assert_node_writable_by_role(node_id, action="改写共享层节点的 importance")
         c = self.conn.cursor()
