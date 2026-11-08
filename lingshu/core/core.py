@@ -2856,6 +2856,12 @@ class LayeredStore:
         ⇒ `PermissionError`（fail-closed、零落库）。本地层（knowledge/context/self）
         的增信路径不受影响（SUB 对自己节点的复核照旧放行——`#191` 裁定 SELF 属本地层）。
         """
+        # 自主发现（参数类型/值域）：delta 此前不做类型闸——传 "x"/None 静默返回
+        # None（实测 update_node_confidence(nid, "x") -> None），置信度其实没变。
+        # 现 fail-loud：非实数或非有限 → 可读 TypeError。
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_node_confidence 的 delta 必须是有限实数，收到 %r" % (delta,))
         delta = _finite_or(delta, 0.0)
         # 闸落在 UPDATE 之前（本方法已挂 @_transactional ⇒ 被拒时零落库）。
         self.assert_node_writable_by_role(node_id, action="改写共享层节点的 confidence")
@@ -3337,6 +3343,17 @@ class LayeredStore:
         ——`session_summary` 本就需全量分窗，代价与既有行为同阶（旧实现也扫表，
         只是多了 500 截断）。
         """
+        # 自主发现（参数类型）：start_ts/end_ts/limit 此前都不做类型闸——传 str 的时间边界
+        # 静默返回 []（实测 query_nodes_by_time("x", "y") -> []）；limit 传 str 直接进 SQL
+        # 抛不可读 `IntegrityError: datatype mismatch`。现 fail-loud：可读 TypeError。
+        for _n, _v in (("start_ts", start_ts), ("end_ts", end_ts)):
+            if _v is not None and (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                                   or not math.isfinite(float(_v))):
+                raise TypeError("query_nodes_by_time 的 %s 必须是有限实数或 None，收到 %r"
+                                % (_n, _v))
+        if limit is not None and (isinstance(limit, bool)
+                                 or not isinstance(limit, (int, float))):
+            raise TypeError("query_nodes_by_time 的 limit 必须是数值或 None，收到 %r" % (limit,))
         conds, params = [], []
         if start_ts is not None:
             conds.append("temporal_coordinate >= ?")
@@ -3474,6 +3491,11 @@ class LayeredStore:
         返回 {root, node_count, edge_count, nodes: {id: {name, importance}}, edges}
         """
         # ① 递归遍历收集子图节点（默认沿归属/因果/相似三类边向指定方向扩展）
+        # 自主发现（参数类型）：root_id 此前不做类型闸——传 int/None 会被原样回填进
+        # 结果（实测 subgraph(123) -> {'root': 123, 'node_count': 1, ...}），调用方拿到
+        # 一个「根是整数」的伪子图。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(root_id, str) or not root_id.strip():
+            raise TypeError("subgraph 的 root_id 必须是非空字符串，收到 %r" % (root_id,))
         nodes = self.traverse(root_id, relation_types=relation_types or
                               ["hierarchical", "causal", "similar"],
                               direction=direction, max_depth=max_depth)
@@ -3543,6 +3565,12 @@ class LayeredStore:
         拉进结果）；±inf 时分数 `t_dist/radius + s_dist/radius` 分母为 inf ⇒
         相隔一年的节点被评为 0.0 零距离排最前。半径必须非负有限。
         """
+        # 自主发现（参数类型）：center_node_id 此前不做类型闸——传 int/None 直接当 SQL
+        # 参数（实测 spatiotemporal_query(123) -> []），调用方把「参数写错」误读成
+        # 「该中心无时空近邻」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(center_node_id, str) or not center_node_id.strip():
+            raise TypeError("spatiotemporal_query 的 center_node_id 必须是非空字符串，收到 %r"
+                            % (center_node_id,))
         if (isinstance(time_radius, bool) or not isinstance(time_radius, (int, float))
                 or not math.isfinite(time_radius) or time_radius < 0):
             raise ValueError("spatiotemporal_query：time_radius 须为非负有限值，收到 %r"
@@ -3760,6 +3788,11 @@ class LayeredStore:
         语义（#145/#215 判据不动），也**不**把 `find_cycles` 改成生成器（保留列表
         返回以兼容既有调用）。
         """
+        # 自主发现（参数类型）：max_depth 此前不做类型闸——传 str 的深度上限静默返回 []
+        # （实测 find_cycles("x") -> []），调用方把「参数写错」误读成「无环」。现 fail-loud：
+        # 非整数 → 可读 TypeError。
+        if isinstance(max_depth, bool) or not isinstance(max_depth, int):
+            raise TypeError("find_cycles 的 max_depth 必须是整数，收到 %r" % (max_depth,))
         out_edges: Dict[str, List[STEdge]] = {}
         nodes: Set[str] = set()
         # #653：批量读经 `_tolerant_edges`——坏边（如 condition_space 非法 JSON
@@ -5103,6 +5136,11 @@ class LayeredStore:
         的**模糊**检索，`record_action_sequence` 用它绑定技能 ⇒ hint「备份」会
         命中「删除备份」，把备份步骤拼进删除技能并为其增信（分诊表行 200 第 1 条）。
         """
+        # 自主发现（参数类型）：name 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_skill_by_name(123) -> None），调用方把「参数写错」
+        # 误读成「该技能不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(name, str) or not name.strip():
+            raise TypeError("get_skill_by_name 的 name 必须是非空字符串，收到 %r" % (name,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM skills WHERE name = ? LIMIT 1", (name,))
         r = c.fetchone()
@@ -5809,6 +5847,18 @@ class LayeredStore:
 
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 自主发现（参数类型）：start_ts/end_ts/layer 此前都不做类型闸——传 str 或 NaN
+        # 的边界静默返回 []（实测 get_nodes_in_range("x", "y") -> []），layer 传 str 则
+        # 抛不可读 AttributeError。两者都把「参数写错」伪装成「无数据」。现 fail-loud：
+        # 非有限实数 / 非 MemoryLayer → 可读 TypeError（None 仍表示无边界/全层）。
+        for _n, _v in (("start_ts", start_ts), ("end_ts", end_ts)):
+            if _v is not None and (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                                   or not math.isfinite(float(_v))):
+                raise TypeError("get_nodes_in_range 的 %s 必须是有限实数或 None，收到 %r"
+                                % (_n, _v))
+        if layer is not None and not isinstance(layer, MemoryLayer):
+            raise TypeError("get_nodes_in_range 的 layer 必须是 MemoryLayer 或 None，收到 %r"
+                            % (layer,))
         conds, params = ["temporal_coordinate >= ?", "temporal_coordinate <= ?"], [start_ts, end_ts]
         if layer is not None:
             conds.append("layer=?")
@@ -5840,6 +5890,12 @@ class LayeredStore:
         `add_perception` 去重 / 巩固周期）一律先经各自入口的层判，故本闸对它们
         只做**兜底**，不改变 PRIMARY 侧读数。
         """
+        # 自主发现（参数类型/值域）：delta 此前不做类型闸——传 "x"/None 静默返回
+        # None（实测 update_node_importance(nid, "x") -> None），重要度其实没变，
+        # 调用方却以为更新成功。现 fail-loud：非实数或非有限 → 可读 TypeError。
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_node_importance 的 delta 必须是有限实数，收到 %r" % (delta,))
         delta = _finite_or(delta, 0.0)
         self.assert_node_writable_by_role(node_id, action="改写共享层节点的 importance")
         c = self.conn.cursor()
