@@ -2275,6 +2275,11 @@ class LayeredStore:
 
     def get_meta(self, key: str = None) -> dict:
         """读引擎元数据：key 指定返回 {key: value}，None 返回全部。"""
+        # 自主发现（参数类型，与 set_meta 对称）：key 此前不做类型闸——传 int 会直接
+        # 当 SQL 参数（实测 get_meta(123) -> {}），调用方把「参数写错」误读成「该键不存在」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（与 set_meta 的 key 闸同口径）。
+        if key is not None and (not isinstance(key, str) or not key.strip()):
+            raise TypeError("get_meta 的 key 必须是非空字符串或 None，收到 %r" % (key,))
         if key is not None:
             c = self.conn.cursor()
             c.execute("SELECT value FROM engine_meta WHERE key = ?", (key,))
