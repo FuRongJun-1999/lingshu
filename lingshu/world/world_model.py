@@ -737,7 +737,10 @@ class UnifiedWorldModel:
         # 各归其位：hit_rate 归点命中、bound_coverage 归边界覆盖。
         rate = round(point_hits / total, 4) if total else None
         coverage = round(hits / total, 4) if total else None
+        # #2542：同上——`hits` 是边界口径、`hit_rate` 是点口径，补 `point_hits`
+        # 让「分子」与「rate」可判读（实测 hits=1/total=1 而 hit_rate=0.0）。
         self._compare = {"tick": self.tick, "hits": hits, "total": total,
+                         "point_hits": point_hits,
                          "hit_rate": rate, "pending": pending,
                          "bound_coverage": coverage,
                          "point_hit_rate": round(point_hits / total, 4) if total else None,
