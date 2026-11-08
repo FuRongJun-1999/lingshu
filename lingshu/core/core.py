@@ -3543,6 +3543,12 @@ class LayeredStore:
         拉进结果）；±inf 时分数 `t_dist/radius + s_dist/radius` 分母为 inf ⇒
         相隔一年的节点被评为 0.0 零距离排最前。半径必须非负有限。
         """
+        # 自主发现（参数类型）：center_node_id 此前不做类型闸——传 int/None 直接当 SQL
+        # 参数（实测 spatiotemporal_query(123) -> []），调用方把「参数写错」误读成
+        # 「该中心无时空近邻」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(center_node_id, str) or not center_node_id.strip():
+            raise TypeError("spatiotemporal_query 的 center_node_id 必须是非空字符串，收到 %r"
+                            % (center_node_id,))
         if (isinstance(time_radius, bool) or not isinstance(time_radius, (int, float))
                 or not math.isfinite(time_radius) or time_radius < 0):
             raise ValueError("spatiotemporal_query：time_radius 须为非负有限值，收到 %r"
