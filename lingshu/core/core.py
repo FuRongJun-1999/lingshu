@@ -4802,6 +4802,13 @@ class LayeredStore:
         扩张与收缩都应可追）；撤销 `archived` 本方法不单独记——经
         `restore_archived` 走时会落 `archived_restored`，直接调本方法属普通编辑。
         """
+        # 自主发现（静默失败）：tag_node 此前不校验节点是否存在——对不存在的 nid
+        # 调用（实测 tag_node("nope", "x") -> None）静默成功，调用方以为标签已写入。
+        # 现 fail-loud：节点不存在 → 可读 LookupError（零写入）。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("tag_node 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
+        if self.get_node(node_id) is None:
+            raise LookupError("tag_node 的节点不存在：%r" % (node_id,))
         self.assert_node_writable_by_role(node_id, action="移除共享层节点的标签")
         own_tx = not self.conn.in_transaction
         if own_tx:
