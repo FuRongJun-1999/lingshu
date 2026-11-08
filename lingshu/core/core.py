@@ -3760,6 +3760,11 @@ class LayeredStore:
         语义（#145/#215 判据不动），也**不**把 `find_cycles` 改成生成器（保留列表
         返回以兼容既有调用）。
         """
+        # 自主发现（参数类型）：max_depth 此前不做类型闸——传 str 的深度上限静默返回 []
+        # （实测 find_cycles("x") -> []），调用方把「参数写错」误读成「无环」。现 fail-loud：
+        # 非整数 → 可读 TypeError。
+        if isinstance(max_depth, bool) or not isinstance(max_depth, int):
+            raise TypeError("find_cycles 的 max_depth 必须是整数，收到 %r" % (max_depth,))
         out_edges: Dict[str, List[STEdge]] = {}
         nodes: Set[str] = set()
         # #653：批量读经 `_tolerant_edges`——坏边（如 condition_space 非法 JSON
