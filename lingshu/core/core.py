@@ -3106,6 +3106,11 @@ class LayeredStore:
         SUB 可自行把结构层间的边置为 `verified=1`、`confidence=1.0`。
         判据来源：公开 issue #234「建议修复 2」＋ `_assert_edge_role`。
         """
+        # 自主发现（参数类型）：edge_id 此前不做类型闸——传 None/int 直接当 SQL 参数，
+        # 静默返回 None/False（实测 verify_edge(None) -> None），调用方把「参数写错」
+        # 误读成「该边不存在/未验证」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(edge_id, str) or not edge_id.strip():
+            raise TypeError("verify_edge 的 edge_id 必须是非空字符串，收到 %r" % (edge_id,))
         if self.role != Role.PRIMARY:
             edge = self.get_edge(edge_id)
             if edge is not None:
