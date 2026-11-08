@@ -4737,6 +4737,13 @@ class LayeredStore:
         `no_forget` 加配额或审批——后两条属设计取向（谁有权把一条记忆标成不可
         遗忘），见 issue #781 回帖。
         """
+        # 自主发现（静默失败）：tag_node 此前不校验节点是否存在——对不存在的 nid
+        # 调用（实测 tag_node("nope", "x") -> None）静默成功，调用方以为标签已写入。
+        # 现 fail-loud：节点不存在 → 可读 LookupError（零写入）。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("tag_node 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
+        if self.get_node(node_id) is None:
+            raise LookupError("tag_node 的节点不存在：%r" % (node_id,))
         if self.role != Role.PRIMARY:
             n = self.get_node(node_id)
             if n is not None and n.layer in self.SHARED_LAYERS:
