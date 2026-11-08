@@ -640,7 +640,12 @@ class SimulationLoop:
             seg = line.strip()[len("- entity:"):].strip()
             if " id=" not in seg or " pos=(" not in seg:
                 return None
-            category, rest = seg.split(" id=", 1)
+            # #2541：写侧格式是 `- entity: {category} id={eid} pos=(...)`，类别是
+            # **裸文本**（`add_entity` 只要求非空 str，可含 `" id="`）。`split(" id=", 1)`
+            # 取第一个标记 ⇒ 类别 `a id=b` 被读成 `a`、eid 变成 `b id=scene_...`
+            # （实测），即写→读往返损坏。从**最后一个** `" id="` 切：写侧固定把
+            # `id=` 放在类别之后、`pos=` 之前，故最后一个标记才是真分隔符。
+            category, rest = seg.rsplit(" id=", 1)
             eid, rest = rest.split(" pos=(", 1)
             pos_seg = rest.split(")", 1)[0]
             pos = tuple(float(v) for v in pos_seg.split(","))
