@@ -5103,6 +5103,11 @@ class LayeredStore:
         的**模糊**检索，`record_action_sequence` 用它绑定技能 ⇒ hint「备份」会
         命中「删除备份」，把备份步骤拼进删除技能并为其增信（分诊表行 200 第 1 条）。
         """
+        # 自主发现（参数类型）：name 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_skill_by_name(123) -> None），调用方把「参数写错」
+        # 误读成「该技能不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(name, str) or not name.strip():
+            raise TypeError("get_skill_by_name 的 name 必须是非空字符串，收到 %r" % (name,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM skills WHERE name = ? LIMIT 1", (name,))
         r = c.fetchone()

@@ -74,6 +74,7 @@ env:
     tests/test_prediction_path_nodes_single_fetch.py
     tests/test_coggraph_utf8_bom.py
     tests/test_issue454_unpack_out_guard.py
+    tests/test_issue_get_skill_by_name_type_guard.py
     tests/test_issue_get_nodes_by_tag_type_guard.py
     tests/test_issue_insight_content_type_guard.py
     tests/test_issue_count_layer_type_guard.py
