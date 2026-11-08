@@ -351,7 +351,11 @@ class SimulationLoop:
                                       / len(self._rolling_rates), 4)
             if self._rolling_rates else None,
             "verified_ticks": len(self._rolling_rates),
-            "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
+            # #2544：恢复场景下 `ticks_stepped` 未被恢复（0）而 `_rolling_rates`
+            # 有 5 条 ⇒ 原式给出 -5（物理上不可能的「负的未验证轮次」），且 flush
+            # 正文写「已验证轮次 5/0」。钳到 0（恢复 ticks_stepped 属另一修复面）。
+            "unverified_ticks": max(0, self.ticks_stepped
+                                    - len(self._rolling_rates)),
             "growth_summary": {
                 "born": sum(1 for g in self._growth_log
                             if g["event"] in ("growth", "re-grow")),
@@ -951,7 +955,13 @@ class SimulationLoop:
     # ---------- 报告 ----------
 
     def growth_events(self, limit: int = 20) -> List[Dict]:
-        return self._growth_log[-max(1, int(limit)):]
+        # #2544：`max(1, int(limit))` 是第三种 limit 语义（0 → 返回 1 条），
+        # 与同仓 `_normalize_limit`（#1795/#658：None/负数=全量、0=空）相反，
+        # 也与同门面 `wal` 的 Python 负切片不一致。此处统一：0=空、负数=全量。
+        _lim = int(limit)
+        if _lim == 0:
+            return []
+        return self._growth_log[-_lim:] if _lim > 0 else list(self._growth_log)
 
     def report(self) -> Dict:
         g = self.wm.graph()
@@ -962,7 +972,11 @@ class SimulationLoop:
                                           / len(self._rolling_rates), 4)
                 if self._rolling_rates else None,
                 "verified_ticks": len(self._rolling_rates),
-                "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
+                # #2544：恢复场景下 `ticks_stepped` 未被恢复（0）而 `_rolling_rates`
+            # 有 5 条 ⇒ 原式给出 -5（物理上不可能的「负的未验证轮次」），且 flush
+            # 正文写「已验证轮次 5/0」。钳到 0（恢复 ticks_stepped 属另一修复面）。
+            "unverified_ticks": max(0, self.ticks_stepped
+                                    - len(self._rolling_rates)),
                 "hypotheses_active": len(self._hypotheses),
                 "growth_events": len(self._growth_log),
                 "wal_records": len(self.wal),

@@ -10456,11 +10456,23 @@ class SpacetimeMemoryEngine:
             except FileExistsError:
                 return {"status": "error", "error": (
                     "#480 flush 拒绝：目标文件已存在，O_EXCL 拒覆盖（out_path=%s）" % out)}
+            # #2544：`flush_payloads` 返回的 `memory_id` 是脑端新节点的唯一句柄，
+            # 而门面白名单把它滤掉 ⇒ `note` 说「经验已经 MCP 摄取」但调用方拿不到
+            # id，无法执行 docs/world_memory_first_batch.md:75-79 的
+            # `load_priors(brain=..., memory_id=saved["memory_id"])`。
             return {"status": "ok",
-                    "flush": {k: r[k] for k in ("payload", "written", "note")}}
+                    "flush": {k: r[k] for k in
+                              ("payload", "written", "note", "memory_id")}}
         if action == "wal":
-            lim = int(p.get("limit", 20))
-            return {"status": "ok", "wal": sl.wal[-lim:]}
+            # #2544：`sl.wal[-lim:]` 对 0 是 `[0:]`（全量）、对 -1 是 `[1:]`
+            # （丢首条）——与同仓 `_normalize_limit`（#1795/#658：None/负数=全量、
+            # 0=空）相反，且与同门面 `growth` 的 `max(1, ...)` 又是第三种口径。
+            # 此处统一为 `_normalize_limit` 口径。
+            _lim = int(p.get("limit", 20))
+            if _lim == 0:
+                return {"status": "ok", "wal": []}
+            return {"status": "ok",
+                    "wal": sl.wal[-_lim:] if _lim > 0 else list(sl.wal)}
         if action == "growth":
             return {"status": "ok",
                     "growth": sl.growth_events(limit=int(p.get("limit", 20)))}
