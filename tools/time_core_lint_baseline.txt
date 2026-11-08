@@ -23,11 +23,11 @@ lingshu/world/physics.py:599:R3    # 既有：由 --update-baseline 机械登记
 lingshu/world/physics.py:600:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:602:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:1011:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2531:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2534:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2536:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2552:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2651:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2693:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2537:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2540:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2542:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2558:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2657:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2699:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/shade_paint.py:215:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/stable_lease.py:302:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核（2026-11-08 #170 第五批 logger 注入致 299→302 行号移位，单条同步——内容零变化）
