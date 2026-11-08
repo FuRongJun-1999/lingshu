@@ -649,12 +649,24 @@ class ActivationEngine:
         """当前工作态:激活节点+强度+内容摘要(执行层上下文的来源)。"""
         con = self._con()
         cur = con.cursor()
+        # #2544：`size` 此前是「本页条数」——同一 workset 有 25 个成员时
+        # `activate()["size"]=25` / `export_workset()` 25 条，而本方法默认
+        # `limit=20` 返回 `size=20`（且无 `truncated`），`limit=0` 时返回
+        # `size=0, query=None`（与「空工作集」不可区分）。`limit` 是**摘要页大小**，
+        # 不是工作集大小的定义 ⇒ 用全量 COUNT 作 `size`，另报 `returned`/`truncated`。
+        cur.execute("SELECT COUNT(*) FROM activation_nodes WHERE workset=?", (workset,))
+        _total = int(cur.fetchone()[0])
         cur.execute("SELECT node_id, activation, query FROM activation_nodes WHERE workset=? "
                     "ORDER BY activation DESC LIMIT ?", (workset, limit))
         rows = cur.fetchall()
-        con.close()
         # #505：工作态回读带出产生它的查询（同一 workset 的查询相同；空工作态为 None）。
+        # #2544：`limit=0` 时 rows 为空但工作集非空 ⇒ query 必须独立于 limit 读取。
         query = rows[0][2] if rows else None
+        if query is None and _total:
+            cur.execute("SELECT query FROM activation_nodes WHERE workset=? LIMIT 1", (workset,))
+            _q = cur.fetchone()
+            query = _q[0] if _q else None
+        con.close()
         members = []
         if rows:
             con = self._con(); cur = con.cursor()
@@ -669,7 +681,8 @@ class ActivationEngine:
                                 "layer": r[1] if r else None,
                                 "importance": r[2] if r else None})
             con.close()
-        return {"workset": workset, "query": query, "size": len(rows),
+        return {"workset": workset, "query": query, "size": _total,
+                "returned": len(rows), "truncated": len(rows) < _total,
                 "members": members}
 
     def export_workset(self, workset: str) -> Dict:
