@@ -2856,6 +2856,12 @@ class LayeredStore:
         ⇒ `PermissionError`（fail-closed、零落库）。本地层（knowledge/context/self）
         的增信路径不受影响（SUB 对自己节点的复核照旧放行——`#191` 裁定 SELF 属本地层）。
         """
+        # 自主发现（参数类型/值域）：delta 此前不做类型闸——传 "x"/None 静默返回
+        # None（实测 update_node_confidence(nid, "x") -> None），置信度其实没变。
+        # 现 fail-loud：非实数或非有限 → 可读 TypeError。
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_node_confidence 的 delta 必须是有限实数，收到 %r" % (delta,))
         delta = _finite_or(delta, 0.0)
         # 闸落在 UPDATE 之前（本方法已挂 @_transactional ⇒ 被拒时零落库）。
         self.assert_node_writable_by_role(node_id, action="改写共享层节点的 confidence")
