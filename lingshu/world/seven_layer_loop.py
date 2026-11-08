@@ -736,7 +736,13 @@ class SevenLayerLoop:
         # bound_coverage 归边界覆盖。
         rate = round(point_hits / total, 4) if total else None
         coverage = round(hits / total, 4) if total else None
-        return {"hits": hits, "total": total, "hit_rate": rate,
+        # #2542：#2167 只把 `hit_rate` 归到点命中，**没改 `hits`**（仍是边界
+        # 覆盖 `dist < bound`）——于是同一 dict 里 `hits/total` 与 `hit_rate`
+        # 是两套口径（实测 hits=1/total=1 而 hit_rate=0.0），而 `_overall_hit_rate`
+        # 又按 `hits` 池化 ⇒ `verify_state()["hit_rate"]=1.0` 与
+        # `hit_history=[0.0]` 自相矛盾。补 `point_hits` 显式区分，并让池化走点口径。
+        return {"hits": hits, "total": total, "point_hits": point_hits,
+                "hit_rate": rate,
                 "bound_coverage": coverage,
                 "point_hit_rate": round(point_hits / total, 4) if total else None,
                 "mean_distance": round(sum(distances) / total, 4) if total else None,
@@ -872,8 +878,12 @@ class SevenLayerLoop:
 
     def _overall_hit_rate(self) -> Optional[float]:
         total = sum(rec["L5_verification"]["total"] for rec in self.audit)
-        hits = sum(rec["L5_verification"]["hits"] for rec in self.audit)
-        return round(hits / total, 4) if total else None
+        # #2542：池化必须与 `hit_rate`（点命中）同口径——此前按 `hits`
+        # （边界覆盖）池化 ⇒ `overall_hit_rate=1.0` 而 `hit_history=[0.0]`。
+        # 旧 audit 记录无 `point_hits` 键时回落到 `hits`（兼容历史）。
+        pts = sum(rec["L5_verification"].get(
+            "point_hits", rec["L5_verification"]["hits"]) for rec in self.audit)
+        return round(pts / total, 4) if total else None
 
     # ---- 闭环报告与审计 ----
 
