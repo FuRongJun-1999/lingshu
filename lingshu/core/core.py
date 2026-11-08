@@ -2275,6 +2275,11 @@ class LayeredStore:
 
     def get_meta(self, key: str = None) -> dict:
         """读引擎元数据：key 指定返回 {key: value}，None 返回全部。"""
+        # 自主发现（参数类型，与 set_meta 对称）：key 此前不做类型闸——传 int 会直接
+        # 当 SQL 参数（实测 get_meta(123) -> {}），调用方把「参数写错」误读成「该键不存在」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（与 set_meta 的 key 闸同口径）。
+        if key is not None and (not isinstance(key, str) or not key.strip()):
+            raise TypeError("get_meta 的 key 必须是非空字符串或 None，收到 %r" % (key,))
         if key is not None:
             c = self.conn.cursor()
             c.execute("SELECT value FROM engine_meta WHERE key = ?", (key,))
@@ -3106,6 +3111,11 @@ class LayeredStore:
         SUB 可自行把结构层间的边置为 `verified=1`、`confidence=1.0`。
         判据来源：公开 issue #234「建议修复 2」＋ `_assert_edge_role`。
         """
+        # 自主发现（参数类型）：edge_id 此前不做类型闸——传 None/int 直接当 SQL 参数，
+        # 静默返回 None/False（实测 verify_edge(None) -> None），调用方把「参数写错」
+        # 误读成「该边不存在/未验证」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(edge_id, str) or not edge_id.strip():
+            raise TypeError("verify_edge 的 edge_id 必须是非空字符串，收到 %r" % (edge_id,))
         if self.role != Role.PRIMARY:
             edge = self.get_edge(edge_id)
             if edge is not None:
@@ -4737,6 +4747,13 @@ class LayeredStore:
         `no_forget` 加配额或审批——后两条属设计取向（谁有权把一条记忆标成不可
         遗忘），见 issue #781 回帖。
         """
+        # 自主发现（静默失败）：tag_node 此前不校验节点是否存在——对不存在的 nid
+        # 调用（实测 tag_node("nope", "x") -> None）静默成功，调用方以为标签已写入。
+        # 现 fail-loud：节点不存在 → 可读 LookupError（零写入）。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("tag_node 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
+        if self.get_node(node_id) is None:
+            raise LookupError("tag_node 的节点不存在：%r" % (node_id,))
         if self.role != Role.PRIMARY:
             n = self.get_node(node_id)
             if n is not None and n.layer in self.SHARED_LAYERS:
@@ -5695,6 +5712,12 @@ class LayeredStore:
         return len(doomed)
 
     def count_layer(self, layer: MemoryLayer) -> int:
+        # 自主发现（参数类型）：layer 此前直接读 `.value`——传 str/None 抛不可读
+        # AttributeError（实测 count_layer("knowledge") / (None) 各抛 'str'/'NoneType'
+        # object has no attribute 'value'）。现 fail-loud：非 MemoryLayer → 可读
+        # TypeError（不查库）。
+        if not isinstance(layer, MemoryLayer):
+            raise TypeError("count_layer 的 layer 必须是 MemoryLayer，收到 %r" % (layer,))
         """统计指定记忆层的节点数。"""
         c = self.conn.cursor()
         c.execute("SELECT COUNT(*) FROM nodes WHERE layer=?", (layer.value,))
@@ -6158,6 +6181,12 @@ class LayeredStore:
         # "x"、而落库被 STNode 的 _finite_clamp 兜成 0.5（返回与存储不一致，调用方
         # 会以为写入成功）；传 2.0 则落库被 clamp 到上限、返回值仍是 2.0。
         # 现 fail-loud：非实数 TypeError、非有限或越界 ValueError（零写入）。
+        # 自主发现（参数类型）：content 此前不做类型闸——传 int/None 会被 f-string
+        # 原样字符串化后落库（实测 insight_record(123) 成功生成洞见节点），洞见
+        # 内容变成 "123"，下游按内容检索/取证永远对不上。现 fail-loud：非 str
+        # 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(content, str) or not content.strip():
+            raise TypeError("insight_record 的 content 必须是非空字符串，收到 %r" % (content,))
         try:
             _imp = float(importance)
         except (TypeError, ValueError) as exc:
