@@ -1430,7 +1430,12 @@ def fit_slope_friction(samples, up=1, gravity=DEFAULT_G, slope_deg=None, mu_k=No
         u = [0.0, 0.0, 0.0]
         u[incline_axis] = math.cos(th)
         u[up] = -math.sin(th)
-    c, _rms0 = _per_axis(samples, ts, 2)          # 第二项已是 rms；统一用 _fit_rms 复核
+    # #2560：此前用**绝对** `ts` 拟合 ⇒ `p0`/`v0` 锚在 t=0，而 `predict_at` 按
+    # `tau = t - t_ref` 外推。观测不从 0 开始时（实测 t0=100 s）解出
+    # `v_s0=-227.18`（真值 1.5）、tau=0.5 预测误差 34,901 m，而 rms 仍 0.000000。
+    # 改用 tau 坐标（`uniform/accelerated/projectile/damped` 已按 #2053/#673 tau 化）。
+    _tau = [t - ts[0] for t in ts]
+    c, _rms0 = _per_axis(samples, _tau, 2)          # 第二项已是 rms；统一用 _fit_rms 复核
     # ⚠ 必须投影：up 轴坐标沿下坡是**减小**的（a_up = a·(−sinθ)），直接用 a_up 会把
     #    μ_k 解错（实测 a_up=−1.6025 而沿坡 a=+3.2050）。
     a_fit = sum(2.0 * c[i][2] * u[i] for i in range(3))
@@ -1550,7 +1555,8 @@ def fit_rolling(samples, up=1, gravity=DEFAULT_G, slope_deg=None, beta=None,
         u = [0.0, 0.0, 0.0]
         u[incline_axis] = math.cos(th)
         u[up] = -math.sin(th)
-    c, _rms0 = _per_axis(samples, ts, 2)
+    # #2560：同 fit_slope_friction——tau 坐标（否则 t0!=0 时整体错位）。
+    c, _rms0 = _per_axis(samples, [t - ts[0] for t in ts], 2)
     a_fit = sum(2.0 * c[i][2] * u[i] for i in range(3))   # 投影到下坡方向（同 slope_friction）
     if beta is None:
         if a_fit <= _EPS:
