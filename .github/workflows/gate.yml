@@ -75,6 +75,11 @@ env:
     tests/test_coggraph_utf8_bom.py
     tests/test_issue454_unpack_out_guard.py
     tests/test_issue_get_nodes_by_tag_type_guard.py
+    tests/test_issue_insight_content_type_guard.py
+    tests/test_issue_count_layer_type_guard.py
+    tests/test_issue_get_meta_key_type_guard.py
+    tests/test_issue_tag_node_missing_guard.py
+    tests/test_issue_verify_edge_id_type_guard.py
     tests/test_issue_scene_pos_readable_guard.py
     tests/test_issue_scene_path_points_readable_guard.py
     tests/test_issue_untag_node_id_type_guard.py
