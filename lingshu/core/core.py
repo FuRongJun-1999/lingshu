@@ -5688,6 +5688,12 @@ class LayeredStore:
         return len(doomed)
 
     def count_layer(self, layer: MemoryLayer) -> int:
+        # 自主发现（参数类型）：layer 此前直接读 `.value`——传 str/None 抛不可读
+        # AttributeError（实测 count_layer("knowledge") / (None) 各抛 'str'/'NoneType'
+        # object has no attribute 'value'）。现 fail-loud：非 MemoryLayer → 可读
+        # TypeError（不查库）。
+        if not isinstance(layer, MemoryLayer):
+            raise TypeError("count_layer 的 layer 必须是 MemoryLayer，收到 %r" % (layer,))
         """统计指定记忆层的节点数。"""
         c = self.conn.cursor()
         c.execute("SELECT COUNT(*) FROM nodes WHERE layer=?", (layer.value,))
