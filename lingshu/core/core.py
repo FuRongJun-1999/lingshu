@@ -6145,6 +6145,12 @@ class LayeredStore:
         # "x"、而落库被 STNode 的 _finite_clamp 兜成 0.5（返回与存储不一致，调用方
         # 会以为写入成功）；传 2.0 则落库被 clamp 到上限、返回值仍是 2.0。
         # 现 fail-loud：非实数 TypeError、非有限或越界 ValueError（零写入）。
+        # 自主发现（参数类型）：content 此前不做类型闸——传 int/None 会被 f-string
+        # 原样字符串化后落库（实测 insight_record(123) 成功生成洞见节点），洞见
+        # 内容变成 "123"，下游按内容检索/取证永远对不上。现 fail-loud：非 str
+        # 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(content, str) or not content.strip():
+            raise TypeError("insight_record 的 content 必须是非空字符串，收到 %r" % (content,))
         try:
             _imp = float(importance)
         except (TypeError, ValueError) as exc:
