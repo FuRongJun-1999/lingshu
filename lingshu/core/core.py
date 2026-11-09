@@ -3069,6 +3069,11 @@ class LayeredStore:
         `EdgeType(row[3])` / `ConditionSpace.from_json(row[4])` 使单条坏边
         中断所有边读取）。
         """
+        # 自主发现（参数类型）：edge_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_edge(123) -> None），调用方把「参数写错」误读成
+        # 「该边不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(edge_id, str) or not edge_id.strip():
+            raise TypeError("get_edge 的 edge_id 必须是非空字符串，收到 %r" % (edge_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE id=?", (edge_id,))
         row = c.fetchone()
