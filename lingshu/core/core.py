@@ -9692,6 +9692,20 @@ class SpacetimeMemoryEngine:
         for r in roots:
             root = os.path.normcase(os.path.realpath(r))
             if target == root or target.startswith(root + os.sep):
+                # #2566（安全 P0）：`realpath` **不解析硬链接**——攻击者在白名单根里
+                # 放一个硬链接指向受保护文件，别名路径看起来仍在根内 ⇒ 围栏放行，
+                # 而 `img.save()` 就地截断会作用在**共享 inode** 上，直接改写真源
+                # （实测：受保护 .md 从 67 字节被覆盖成 2868 字节 PNG、frontmatter
+                # 不可恢复）。写前拒绝 nlink > 1。
+                try:
+                    _st = os.stat(out_path)
+                except OSError:
+                    _st = None
+                if _st is not None and _st.st_nlink > 1:
+                    raise ValueError(
+                        "#2566 render 拒绝：输出路径是硬链接（nlink=%d）——"
+                        "就地写会改写到共享 inode 上的真源，fail-closed"
+                        % _st.st_nlink)
                 return out_path
         raise ValueError(
             "#277 render 拒绝：path 越出白名单根（%s 不在 %r 之下）"
