@@ -44,16 +44,26 @@ def test_G1_brain_branch_rejects_device_prefix():
     """
     root = tempfile.mkdtemp(prefix="brainroot_")
     evil = os.path.join(root, "evil.png")
+    # `--mode world` 必须显式给（否则 argparse 在 causal/all 分支先退）
     argv = ["brain", "--root", root, "--brain-path", root,
-            "--render", _VERB + evil, "--query", "q"]
+            "--render", _VERB + evil, "--query", "q", "--mode", "world"]
+    # 关键：不能只断言 `rc != 0`——围栏之后还有 `brain-path` 校验也会返回 1，
+    # 那样变异（`if False:`）后仍能通过。必须**捕获 stderr 文案**确认是围栏本身拒的。
+    import contextlib
+    import io as _io
+    buf = _io.StringIO()
     rc = None
     try:
-        rc = SC.main(argv)
+        with contextlib.redirect_stderr(buf):
+            rc = SC.main(argv)
     except SystemExit as e:
         rc = e.code
     except (ValueError, OSError):
         rc = 1
+    err = buf.getvalue()
     assert rc != 0, "verbatim 前缀路径未被围栏拒绝（rc=%r）" % (rc,)
+    assert "UNC/device" in err, (
+        "未由围栏拒绝（可能被后续检查兜住）——stderr=%r" % (err[:200],))
 
 
 def test_G2_verbatim_prefix_breaks_is_relative_to():
