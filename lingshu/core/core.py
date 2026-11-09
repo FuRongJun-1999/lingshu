@@ -3388,6 +3388,11 @@ class LayeredStore:
         ② `subgraph` 的同款 IN 查询（其候选集来自本函数返回的 ≤max_nodes 条，天然
         有界）不在本件。
         """
+        # 自主发现（参数类型）：start_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 traverse(123) -> []），调用方把「参数写错」误读成「该起点无后继」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(start_id, str) or not start_id.strip():
+            raise TypeError("traverse 的 start_id 必须是非空字符串，收到 %r" % (start_id,))
         c = self.conn.cursor()
         rel_clause, params = "", []
         if relation_types:
