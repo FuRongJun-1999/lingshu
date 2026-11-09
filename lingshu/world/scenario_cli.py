@@ -172,8 +172,19 @@ def main(argv=None):
             if args.source == "local" and (render == Path(args.db).resolve() or
                     (render.exists() and Path(args.db).is_file() and render.samefile(args.db))):
                 raise ValueError("render output cannot overwrite the source database")
-            if args.source == "brain" and render.is_relative_to(Path(args.root).resolve()):
-                raise ValueError("render output must be outside the brain root")
+            if args.source == "brain":
+                # #2565：`Path("\\?\C:\...").resolve()` **保留** `\?\` 前缀，
+                # 而 `Path(root).resolve()` 不带 ⇒ `is_relative_to` 恒 False ⇒ 围栏放行，
+                # 但 `os.path.realpath(verbatim)` 仍保留前缀、实际写入落在脑根内（实测
+                # plain=True / verbatim=False，两者指向同一文件）。同仓
+                # `_screen_expected_allowed` 已有 `\?\` 拒绝的现成写法。
+                _raw = str(args.render)
+                if _raw.startswith("//") or _raw.startswith("\\\\"):
+                    raise ValueError(
+                        "render output must not use a UNC/device path")
+                if render.is_relative_to(Path(args.root).resolve()):
+                    raise ValueError(
+                        "render output must be outside the brain root")
         if args.source == "demo":
             context = _demo_context(**scope)
         elif args.source == "local":
