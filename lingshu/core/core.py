@@ -6780,6 +6780,13 @@ class LayeredStore:
         删」这件事反而不可审计；该审计行是删后插入的，必在保留窗口内，不会自删）；
         ④不动 `engine_meta` 等其它表。
         """
+        # 自主发现（参数类型）：keep_rows 此前不做类型闸——传 str 会一路走到比较运算，
+        # 抛不可读 `TypeError: '>' not supported between instances of 'int' and 'str'`
+        # （实测 prune_action_logs("x")）。现 fail-loud：非整数或负数 → 可读 TypeError/ValueError。
+        if keep_rows is not None and (isinstance(keep_rows, bool)
+                                      or not isinstance(keep_rows, int)):
+            raise TypeError("prune_action_logs 的 keep_rows 必须是整数或 None，收到 %r"
+                            % (keep_rows,))
         if keep_rows is None:
             keep_rows = self.ACTION_LOGS_KEEP_ROWS
         # #2103：负 keep_rows 无治理语义——SQLite LIMIT -1 = 无上限 ⇒ 子查询取
