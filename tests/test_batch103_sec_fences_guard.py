@@ -37,15 +37,23 @@ _VERB = "\\" * 2 + "?" + "\\"
 
 # ============================================ #2565 scenario_cli 围栏
 def test_G1_brain_branch_rejects_device_prefix():
-    """G1：`brain` 分支必须先拒 UNC/device 前缀（改前只有 is_relative_to）。"""
-    src = inspect.getsource(SC.main)
-    # `args.source == "brain"` 在 main 里出现两次（前面还有 --k 校验）；
-    # 定位到**含 is_relative_to 的那一处**（渲染围栏）。
-    i = src.find("outside the brain root")
-    assert i > 0, "未找到脑根围栏文案"
-    seg = src[max(0, i - 900):i + 120]
-    assert "UNC/device path" in seg, "brain 分支缺 UNC/device 拒绝：%r" % seg[-500:]
-    assert "is_relative_to" in seg, "brain 分支缺 is_relative_to 判定"
+    """G1：`brain` 分支必须**行为上**拒 UNC/device 前缀。
+
+    注意：不能只做源码字符串断言——把 `if _raw.startswith(...)` 改成
+    `if False:` 时字符串仍在、断言仍绿（实测无判别力）。这里真跑 `main`。
+    """
+    root = tempfile.mkdtemp(prefix="brainroot_")
+    evil = os.path.join(root, "evil.png")
+    argv = ["brain", "--root", root, "--brain-path", root,
+            "--render", _VERB + evil, "--query", "q"]
+    rc = None
+    try:
+        rc = SC.main(argv)
+    except SystemExit as e:
+        rc = e.code
+    except (ValueError, OSError):
+        rc = 1
+    assert rc != 0, "verbatim 前缀路径未被围栏拒绝（rc=%r）" % (rc,)
 
 
 def test_G2_verbatim_prefix_breaks_is_relative_to():
