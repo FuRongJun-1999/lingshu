@@ -14821,6 +14821,20 @@ class SpacetimeMemoryEngine:
             # 同款；批量模式不落盘、返回体不动——见 `_strip_export_controls`
             # 处注释边界④）。`reported` 取剥除后的树，与文件内容同源。
             trajectory = self._sanitize_export_obj(trajectory)
+            # #2569（安全 P0）：`_confine_export_out_path` 用 `realpath` 归一，而
+            # **`realpath` 不解析硬链接**——攻击者在白名单根里放一个硬链接指向受
+            # 保护节点，别名看起来仍在根内 ⇒ 根闸放行 ⇒ `open(..., "w")` 就地
+            # 截断作用在**共享 inode** 上（实测：受保护 .md 从 53 被截断成 189
+            # 字节 JSON、frontmatter 彻底消失）。本方法 docstring 自述「无根闸、
+            # 无拒覆盖、无原子写」是 #330 的漏网；更彻底是改 `temp + os.replace`
+            # （抗硬链接、抗截断），此处先做最小闸。
+            if os.path.exists(output_path):
+                _nlink = os.stat(output_path).st_nlink
+                if _nlink > 1:
+                    raise ValueError(
+                        "#2569 export_trajectory 拒绝：输出路径是硬链接"
+                        "（nlink=%d）——就地写会截断共享 inode 上的真源，"
+                        "fail-closed" % _nlink)
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(trajectory, f, ensure_ascii=False, indent=2)
             reported = dict(trajectory)
