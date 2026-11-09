@@ -286,6 +286,18 @@ class SimulationLoop:
         if self.wal_path:
             os.makedirs(os.path.dirname(os.path.abspath(self.wal_path)),
                         exist_ok=True)
+            # #2568（安全 P0）：`_confine_simloop_wal_path` 用 `realpath` 归一，
+            # 而 **`realpath` 不解析硬链接**——攻击者在白名单根里放一个硬链接指向
+            # 受保护认知图节点，别名看起来仍在根内 ⇒ 闸放行 ⇒ `open(..., "a")`
+            # 就地追加作用在**共享 inode** 上（实测：受保护 .md 从 53 被追加到
+            # 211 字节，frontmatter 完好 ⇒ 下游仍当合法节点解析，污染更隐蔽）。
+            # 追加语义无法靠 `os.replace` 修，写前拒绝共享 inode。
+            if os.path.exists(self.wal_path):
+                _nlink = os.stat(self.wal_path).st_nlink
+                if _nlink > 1:
+                    raise ValueError(
+                        "#2568 wal_path 是硬链接（nlink=%d）——追加会改写到共享 "
+                        "inode 上的真源，fail-closed" % _nlink)
             with open(self.wal_path, "a", encoding="utf-8") as f:
                 # #464：残行粘连面——末尾不以换行结尾（上次进程写了一半）时先补
                 # 一个换行，使新记录独立成行。正常路径（末尾本就有换行）不写任何
