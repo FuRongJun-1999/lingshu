@@ -2889,6 +2889,11 @@ class LayeredStore:
         ★本笔合成：两分支都委派给批量单点（不复制实现）——`touch=True` 走与 #571
         逐位一致的默认入口，`touch=False` 多传一个 `touch` 形参；故「单节点入口委派
         批量单点」与「不刷新近因」两套语义并存。"""
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 会被当 SQL 参数，
+        # 静默返回 None（实测 increment_access(123) -> None），近因计数实际没写，调用方
+        # 以为刷新成功。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("increment_access 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         if touch:
             self.increment_access_many([node_id])
         else:
