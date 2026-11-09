@@ -66,8 +66,10 @@ def test_G1_brain_branch_rejects_device_prefix():
         "未由围栏拒绝（可能被后续检查兜住）——stderr=%r" % (err[:200],))
 
 
+@pytest.mark.skipif(os.name != "nt",
+                    reason="verbatim prefix is Win32-only syntax")
 def test_G2_verbatim_prefix_breaks_is_relative_to():
-    """G2 根因复现：`\\?\` 前缀让 `is_relative_to` 恒 False（而两路径同文件）。"""
+    """G2 根因复现（Windows 专属）：`\\?\` 前缀让 `is_relative_to` 恒 False。"""
     root = tempfile.mkdtemp(prefix="brain_")
     target = os.path.join(root, "evil.png")
     root_res = Path(root).resolve()
