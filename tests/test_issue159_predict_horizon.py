@@ -151,9 +151,13 @@ def group_c_stochastic_unchanged():
     w1 = wm.generate(horizon=1)["predictions"][eid2]
     w5 = wm.generate(horizon=5)["predictions"][eid2]
     print("     model reading:", w1["mode"], w1["predicted"], w1["bound"])
-    ok("C3 world_model 同型：可达域候选不随步数改变",
+    # #507（dsh-bounty 已结算、批一百零六 #1381 修复）：可达域 bound 不随步数
+    # 缩放属**已裁定缺陷**（h=1/2/3/5 恒 1.579 ⇒ h>1 系统性 false-miss）——
+    # bound 现随 h 逐 step 累加漂移分量。本锚相应收窄为「候选**位置**不随步数
+    # 改变 + bound 随 h 单调不降」；C2（learner 侧）口径未动（learner 未修 bound）。
+    ok("C3 world_model 同型：可达域候选位置不随步数改变、bound 随 h 不降（#507）",
        w1["mode"] == "bounded_stochastic"
-       and w1["predicted"] == w5["predicted"] and w1["bound"] == w5["bound"],
+       and w1["predicted"] == w5["predicted"] and w5["bound"] >= w1["bound"],
        "%r vs %r" % (w1, w5))
 
 
