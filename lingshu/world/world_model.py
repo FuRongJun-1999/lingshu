@@ -557,7 +557,18 @@ class UnifiedWorldModel:
         # 按 first_seen 序（≈ 物理世界插入序，保持顺序语义）
         ordered = sorted(self.nodes.items(), key=lambda kv: kv[1].first_seen)
         pred: Dict[str, Dict] = {}
+        # #507：视界不确定度累积。bound 是 target_tick = tick+h 预测的命中半径，
+        # 必须覆盖 h 步的未建模运动；各 mode 的 1 步 bound 只覆盖 1 步
+        # （实测单 wander 实体 h=4 有 32.8% 预测越界、h=8 60.2%，worst err 2.01
+        # > bound 0.65——假异常扣置信度）。age 项已对「未观测 tick」逐 tick 线性
+        # 累积（bound += age·_reach），horizon 步是同性质的未观测步，同口径逐
+        # step 累加该 mode 的**漂移分量**（不含 hit_threshold 噪声地板——静止实体
+        # 的漂移是 0 不是 0.5；exact 静目标逐步逐位复刻 sim ⇒ 漂移 0；
+        # h=1 时累加项为空 ⇒ 逐字节同改前）。
+        unc_acc: Dict[str, float] = {}
+        step_no = 0
         for _ in range(h):
+            step_no += 1
             for eid, n in ordered:
                 speed = self._patterns.get("speed_estimates", {}).get(eid, 0.3)
                 cons = self._patterns.get("entropy", {}).get(eid, 0.0)
@@ -566,7 +577,15 @@ class UnifiedWorldModel:
                 if rel is not None and rel.relation in ("seek", "flee") and rel.target in shadow:
                     tgt_cons = self._patterns.get("entropy", {}).get(rel.target, 0.0)
                     target_speed = self._patterns.get("speed_estimates", {}).get(rel.target, 0.3)
-                    target_stochastic = target_speed > 1e-6 and tgt_cons < self.entropy_threshold
+                    # #2582：exact 的前提是「目标位置在预测 tick 已知」——只有静止
+                    # 目标（speed_est ≈ 0）满足。一致运动只保证**方向**统计稳定，
+                    # 不保证位置可预言：sim 的逐实体顺序更新（先动者改变后动者的
+                    # 决策依据，`scene_simulator.step` 注释明言）⇒ 追逐者实际读的
+                    # 是目标**已移动一格**的位置，模型侧冻结在快照位 ⇒ h=1 误差
+                    # ≈ 目标单 tick 位移（实测 9/300 种子 err 0.58~1.19 > 窄界 0.55，
+                    # 假异常扣置信度）。一致目标同样降级 chase_stochastic：其 bound
+                    # 已含双方可达域（覆盖目标运动），预测中心不变。
+                    target_stochastic = target_speed > 1e-6
                     # 关系仅在自身方向性明确时使用（防随机实体的虚假关系）；
                     # seek 追逐随机目标 → 降级 chase_stochastic（宽可达域，D1）
                     if (cons >= self.entropy_threshold
@@ -587,31 +606,35 @@ class UnifiedWorldModel:
                         np_ = self._apply_move(shadow[eid], speed, d) if seek_supported else shadow[eid]
                         shadow[eid] = np_
                         bound = max(self._reach(speed),
-                                    self._reach(self._patterns.get("speed_estimates",
-                                                                   {}).get(rel.target, 0.3)))                             + self.hit_threshold
+                                    self._reach(target_speed)) + self.hit_threshold
                         mode = "chase_stochastic"
+                        drift = max(speed, target_speed) * 1.5 + self.pad
                     elif rel.relation == "seek" and not seek_supported:
                         np_ = shadow[eid]
                         bound = self._reach(speed)
                         mode = "bounded_stochastic"
+                        drift = speed * 1.5 + self.pad
                     elif rel.relation == "seek":
                         # #2580：世界侧 seek 步长按剩余距离封顶（
                         # `scene_simulator.step:1254` 的 `min(speed, dist)`），
                         # oracle 侧 #249 也已修（`step_cap=dist`）——模型侧是
                         # 同一数学的漏网。到达邻域时无封顶 ⇒ 预测越过目标
                         # （实测 tick=4 WM_err=0.90 ≥ bound=0.55），产生假异常
-                        # 并扣置信度。
+                        # 并扣置信度。#2582 后 exact 只剩**静止目标**（speed_est ≈ 0）
+                        # ⇒ 逐步逐位复刻 sim（cap 每步同样封顶）⇒ 漂移 0，bound 不随 h 累积。
                         _cap_speed = min(speed, dl) if dl < speed else speed
                         np_ = self._apply_move(shadow[eid], _cap_speed, d)
                         shadow[eid] = np_
                         bound = self.hit_threshold + 0.05
                         mode = "exact"
+                        drift = 0.0
                     else:
                         # flee：方向已知但带扰动 → 略宽可达域
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_
                         bound = self.hit_threshold + speed * 0.3
                         mode = "bounded_noisy"
+                        drift = speed * 0.3
                 elif cons >= self.entropy_threshold:
                     # 直线运动无关系目标（follow/巡游）→ 继续直线外推（可能转弯）
                     # 简化：预测=当前位置 + 最近位移方向
@@ -624,18 +647,26 @@ class UnifiedWorldModel:
                         shadow[eid] = np_
                         bound = self.hit_threshold + speed * 0.4
                         mode = "bounded_noisy"
+                        drift = speed * 0.4
                     else:
                         # 随机行为 → 可达域（D2）
                         np_ = shadow[eid]
                         bound = self._reach(speed)
                         mode = "bounded_stochastic"
+                        drift = speed * 1.5 + self.pad
                 else:
                     # 随机行为 → 可达域（D2）
                     np_ = shadow[eid]
                     bound = self._reach(speed)
                     mode = "bounded_stochastic"
+                    drift = speed * 1.5 + self.pad
                 age = max(0, self.tick - n.last_seen)
-                bound += age * self._reach(speed)
+                # #507：前 h−1 步的漂移累加进末步 bound（末步自身漂移已在其
+                # mode bound 内）；h=1 时 prior 恒 0 ⇒ 逐字节同改前。
+                prior = unc_acc.get(eid, 0.0)
+                if step_no < h:
+                    unc_acc[eid] = prior + drift
+                bound = bound + prior + age * self._reach(speed)
                 pred[eid] = {"category": n.category, "behavior": n.behavior_inferred,
                              "mode": mode, "predicted": list(np_),
                              "bound": round(bound, 3),
