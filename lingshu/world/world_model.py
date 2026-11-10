@@ -656,15 +656,23 @@ class UnifiedWorldModel:
                             tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
                             tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
                         turn_max = max(turn_max, t_)
-                    turn = turn_max
+                    # 窗口 < 3 点：转向不可测，但**不得拒接管**——2 观测直线体
+                    # （#159/test_world_verify_finite_evidence 契约）必须照常外推，
+                    # 转向不确定性用**一个整步长**做裕度（随机转向的最坏
+                    # |v_next − v1| ≤ 2|v1|，0.4·speed + |v1| 恰好覆盖）。
+                    if len(seq_) >= 3:
+                        turn = turn_max
+                        gate_open = turn_max <= 0.5 * speed
+                    else:
+                        turn = speed
+                        gate_open = True
                     # #2584：关系驱动闸——任一实体对本实体的趋向/远离 |c| > 0.5
                     # 说明自身运动是**外因驱动**（追逐/逃离尚未走完正式推断的
                     # 方向样本数），直线外推方向将由目标牵引 ⇒ 不接管。
                     rel_driven = any(
                         abs(self._pair_tendency(eid, other)) > 0.5
                         for other in self.nodes if other != eid)
-                    if (moves and len(seq_) >= 3 and turn_max <= 0.5 * speed
-                            and not rel_driven):
+                    if (moves and gate_open and not rel_driven):
                         d = moves
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_

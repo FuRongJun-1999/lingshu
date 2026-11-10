@@ -509,6 +509,12 @@ class SimulationLoop:
                 if (cons < self.wm.entropy_threshold and per is not None
                         and per >= self.persistence_min):
                     trig = f"stochastic_mask+structure(cons={cons},per={per:.2f})"
+                elif cons >= self.wm.entropy_threshold:
+                    # #2584 后新形态：转向证据闸挡下高一致直线外推（mode 落
+                    # stochastic）——模型自认直线模型失效，结构信号改由
+                    # estimate_hidden_target 的质量闸把关（per 在该形态下
+                    # 常为 None：直线段的 toward 记账无从谈起）。
+                    trig = f"gate_blocked+structure(cons={cons:.2f})"
             if trig is None:
                 continue
             est = estimate_hidden_target(self._traj(eid), self.wm.size)
