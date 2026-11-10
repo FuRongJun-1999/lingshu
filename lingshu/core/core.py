@@ -6375,7 +6375,11 @@ class LayeredStore:
         level = (level or "").upper()
         status = "pending"
         if level in ("REFUTED", "X"):
-            status = "refuted"
+            # #2593（批一百一十一，#38 同族补完）：零证据不得自报**证伪**——
+            # B-9/D-34 口径对称扩展：REFUTED/X 同样是自报裁定（X 更是任意调用
+            # 方字符串），零证据证伪让任何调用方无成本打压有效洞见（importance
+            # 回落 + refuted 标签）。有任意证据（本次或历史）才认 refuted。
+            status = "refuted" if len(ev) >= 1 else "pending"
         elif level == "V1":
             status = "verified" if len(ev) >= 3 else "pending"
         elif level in ("V2", "V3"):

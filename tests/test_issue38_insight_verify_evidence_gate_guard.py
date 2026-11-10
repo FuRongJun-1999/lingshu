@@ -102,8 +102,14 @@ def group_b_with_evidence_verified():
 
     nid4 = s.insight_record("REFUTED 洞见")["node_id"]
     r4 = s.insight_verify(nid4, level="REFUTED")
-    ok(r4["status"] == "refuted",
-       "B5 REFUTED 仍 ⇒ refuted（修法未动该分支）", r4["status"])
+    # #38 同族补完（批一百一十一）：B-9/D-34 口径对称扩展——零证据不得自报
+    # **证伪**（REFUTED/X 自报裁定同样需要至少一条证据）；B5 锚随裁决收窄。
+    ok(r4["status"] == "pending",
+       "B5 零证据 REFUTED ⇒ pending（自报证伪同样需要证据，#38 同族补完）",
+       r4["status"])
+    r4b = s.insight_verify(nid4, level="REFUTED", evidence=["证伪依据"])
+    ok(r4b["status"] == "refuted",
+       "B5b 有证据 REFUTED ⇒ refuted（正常证伪不受影响）", r4b["status"])
 
 
 # ---------- C 组：D-36 —— 0 证据一律不自抬 ----------
