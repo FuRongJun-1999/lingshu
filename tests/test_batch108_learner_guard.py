@@ -125,6 +125,11 @@ def test_G4_source_pins():
     assert "unc_acc: Dict[str, float] = {}" in src, "缺漂移累加脚手架"
     assert "_cap_speed = min(speed, dl) if dl < speed else speed" in src, \
         "seek exact 分支缺封顶"
-    assert "turn_max <= 0.5 * speed" in src, "directed 分支缺 max-turn 闸"
-    assert "abs(self._pair_tendency(eid, other)[0]) > 0.5" in src, \
-        "缺 pair-tendency 闸"
+    assert "turn_max = max(turns_[-2:]) if turns_ else 0.0" in src, (
+        "directed 分支缺近因 max-turn")
+    assert "gate_open = True" in src and "turn = speed" in src, (
+        "缺不可测转向整步裕度口径（遮挡契约）")
+    # pair-tendency 闸不移植（F5 的 follower 场景实测误伤——七层误差反馈
+    # 契约 errors 严格递减破档）；directed 分支不得出现该闸。
+    body = src.split("def predict")[1].split("\n    def ")[0]
+    assert "_pair_tendency" not in body, "directed 分支出现了 pair 闸"

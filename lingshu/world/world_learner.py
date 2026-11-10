@@ -355,26 +355,30 @@ class WorldLearner:
                             continue
                         q = ent.get("pos") if isinstance(ent, dict) and "pos" in ent else ent
                         seq_.append(tuple(float(v) for v in q))
-                    turn_max = 0.0
+                    # 近因 turn（最近 2 对）+ 可测性口径：窗口 <3 点（长遮挡/
+                    # 冷启动，转向不可测）**不得拒接管**——遮挡语义「保持最后
+                    # 实测方向」（test_world_observation_contracts 契约），转向
+                    # 不确定性用一个整步长做裕度。pair-tendency 闸不移植：
+                    # F5 的 follower 场景实测误伤（七层误差反馈契约 errors
+                    # 严格递减破档）。
+                    turns_ = [math.dist(
+                        tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
+                        tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
+                        for i in range(2, len(seq_))]
+                    turn_max = max(turns_[-2:]) if turns_ else 0.0
                     if len(seq_) >= 3:
-                        for i in range(2, len(seq_)):
-                            t_ = math.dist(
-                                tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
-                                tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
-                            turn_max = max(turn_max, t_)
-                    # learner 的 `_pair_tendency` 返回 (tendency, samples) 元组
-                    # （world_model 同名方法返回 float——移植时按本仓口径解包）。
-                    rel_driven = any(
-                        abs(self._pair_tendency(eid, other)[0]) > 0.5
-                        for other in self.nodes if other != eid)
-                    if (dr and len(seq_) >= 3 and turn_max <= 0.5 * speed
-                            and not rel_driven):
+                        gate_open = turn_max <= 0.5 * speed
+                        turn = turn_max
+                    else:
+                        gate_open = True
+                        turn = speed
+                    if dr and gate_open:
                         np_ = self._apply_move(shadow[eid], speed, dr)
                         shadow[eid] = np_
                         pred[eid] = {"predicted": list(np_),
-                                     "bound": round(self.hit_threshold + speed * 0.4 + turn_max, 3),
+                                     "bound": round(self.hit_threshold + speed * 0.4 + turn, 3),
                                      "mode": "bounded_noisy"}
-                        drift = speed * 0.4 + turn_max
+                        drift = speed * 0.4 + turn
                     else:
                         pred[eid] = {"predicted": list(shadow[eid]),
                                      "bound": round(self._reach(speed), 3),
