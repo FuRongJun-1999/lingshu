@@ -143,8 +143,11 @@ def group_c_stochastic_unchanged():
     print("     learner reading:", m1["mode"], m1["predicted"], m1["bound"])
     ok("C1 复现前提：静止实体走可达域模式 bounded_stochastic",
        m1["mode"] == "bounded_stochastic", m1["mode"])
-    ok("C2 可达域实体预测/边界不随步数改变（预测=当前位置）",
-       m1["predicted"] == m5["predicted"] and m1["bound"] == m5["bound"],
+    # #507（批一百零八移植到 learner）：可达域 bound 同样随 h 逐 step 累加
+    # 漂移分量——本锚收窄为「候选位置不随 h 改变 + bound 随 h 单调不降」
+    # （与 C3 同口径；bound 恒等断言与已裁定缺陷冲突）。
+    ok("C2 可达域实体候选位置不随步数改变、bound 随 h 不降（#507 移植）",
+       m1["predicted"] == m5["predicted"] and m5["bound"] >= m1["bound"],
        "%r vs %r" % (m1, m5))
 
     wm, eid2 = _stationary_wmodel()
