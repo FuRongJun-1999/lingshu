@@ -649,13 +649,15 @@ class UnifiedWorldModel:
                     # ⇒ 不接管，落到随机可达域（冻结中心 + 逐 h 累积 reach，
                     # 实测覆盖全部越界；巡游体转向 ≈ 0 不受影响）。
                     seq_ = [q for _t, q in _wm_traj(self, eid)]
-                    turn = 0.0
-                    turn_max = 0.0
-                    for i in range(2, len(seq_)):
-                        t_ = math.dist(
-                            tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
-                            tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
-                        turn_max = max(turn_max, t_)
+                    # 近因 turn（最近 2 对）：整窗 max 会把久远的单次急转记一辈子
+                    # ——转向证据闸的语义是「**最近**仍在温和转向」（随机前缀
+                    # 滑出窗口后须放行，test_trajectory_resolved_observations 契约）。
+                    turns_ = [math.dist(
+                        tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
+                        tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
+                        for i in range(2, len(seq_))]
+                    turn_max = max(turns_[-2:]) if turns_ else 0.0
+                    turn = turn_max
                     # 窗口 < 3 点：转向不可测，但**不得拒接管**——2 观测直线体
                     # （#159/test_world_verify_finite_evidence 契约）必须照常外推，
                     # 转向不确定性用**一个整步长**做裕度（随机转向的最坏
@@ -1679,21 +1681,24 @@ def _generate_with_modes(self, horizon=1, use_patterns=True):
             # （其 bound 已按各自口径校准）说话。维护者基准数据集残差
             # 0.002~0.02 ≪ 0.1·reach ⇒ 闸不影响既有生效面。
             seq_s = [q for _t, q in _wm_traj(self, eid)]
-            maxres = 0.0
+            # 残差取**最近 2 条**（近因）：随机前缀随窗口滑出后须放行 smooth
+            # （test_trajectory_resolved_observations 契约）；整窗 max 会把
+            # 前缀残差记一辈子。真随机体的近因残差每步都大 ⇒ 闸仍然有效。
+            resids_s = []
             for i in range(len(seq_s) - 1, 2, -1):
                 p2, p1, p0 = seq_s[i - 1], seq_s[i - 2], seq_s[i - 3]
                 _v1 = tuple(p2[j] - p1[j] for j in range(3))
                 _v2 = tuple(p1[j] - p0[j] for j in range(3))
                 _a = tuple(_v1[j] - _v2[j] for j in range(3))
-                maxres = max(maxres, math.dist(
+                resids_s.append(math.dist(
                     tuple(p2[j] + _v1[j] + _a[j] for j in range(3)), seq_s[i]))
+            maxres = max(resids_s[:2]) if resids_s else 0.0
             speed_est = float(speeds.get(eid, 0.0) or 0.0)
-            turn_max_s = 0.0
-            for i in range(2, len(seq_s)):
-                t_ = math.dist(
-                    tuple(seq_s[i][j] - seq_s[i - 1][j] for j in range(3)),
-                    tuple(seq_s[i - 1][j] - seq_s[i - 2][j] for j in range(3)))
-                turn_max_s = max(turn_max_s, t_)
+            turns_s = [math.dist(
+                tuple(seq_s[i][j] - seq_s[i - 1][j] for j in range(3)),
+                tuple(seq_s[i - 1][j] - seq_s[i - 2][j] for j in range(3)))
+                for i in range(2, len(seq_s))]
+            turn_max_s = max(turns_s[-2:]) if turns_s else 0.0
             if (maxres > 0.1 * self._reach(speed_est)
                     or turn_max_s > 0.5 * speed_est):
                 blocked["smooth_turn_evidence"] = blocked.get(
