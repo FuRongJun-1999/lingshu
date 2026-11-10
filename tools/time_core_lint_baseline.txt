@@ -1,9 +1,10 @@
 # time_core_lint baseline —— 已登记的既有违规（E5 衰减核审计）
-# ── 2026-11-06（#114 裁决批 B-10 重归一＋#170 清偿批 physics.py 重排）后重测 ──
-# --update-baseline 机械重写：physics.py 20 处行号移位条目清理，
-# 新增 physics.py 20 处（批九十六物理时间演化新增代码的 exp/ema 模式），
-# 既有 3 处（activation/shade_paint/stable_lease）不变。条目数守恒 23 → 23，
-# 不是新增豁免、不是放宽判据。#607 重测留痕见 git 历史（#1282 同款）。
+# ── 2026-11-10（批一百零五 #2578 _integrate_env 停止钳重写）后重测 ──
+# --update-baseline 机械重写：physics.py 6 处行号移位条目同步
+# （2537/2540/2542/2558/2657/2699 → 2554/2557/2559/2575/2674/2716，净 +17 行移位），
+# 其余 17 处不变。条目数守恒 23 → 23，不是新增豁免、不是放宽判据。
+# #607 重测留痕见 git 历史（#1282 同款）；R3 形态锚 11 条、R1 形态锚 9 条不变
+# （test_issue607_time_core_shapes_guard.py::test_g4 同口径）。
 # 格式：<仓内相对路径>:<行号>:<规则id>    （R1=exp_decay / R2=keep_rate / R3=ema）
 # `#` 起为注释；本文件由人工复核，--update-baseline 只做机械重写。
 # 规则表 / 豁免表 / 退出码 / 已知局限见 tools/time_core_lint.py 头部。
@@ -23,11 +24,11 @@ lingshu/world/physics.py:599:R3    # 既有：由 --update-baseline 机械登记
 lingshu/world/physics.py:600:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:602:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:1011:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2537:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2540:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2542:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2558:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2657:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2699:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2554:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2557:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2559:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2575:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2674:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2716:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/shade_paint.py:215:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/stable_lease.py:302:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核（2026-11-08 #170 第五批 logger 注入致 299→302 行号移位，单条同步——内容零变化）
+lingshu/world/stable_lease.py:302:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核

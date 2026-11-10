@@ -595,7 +595,14 @@ class UnifiedWorldModel:
                         bound = self._reach(speed)
                         mode = "bounded_stochastic"
                     elif rel.relation == "seek":
-                        np_ = self._apply_move(shadow[eid], speed, d)
+                        # #2580：世界侧 seek 步长按剩余距离封顶（
+                        # `scene_simulator.step:1254` 的 `min(speed, dist)`），
+                        # oracle 侧 #249 也已修（`step_cap=dist`）——模型侧是
+                        # 同一数学的漏网。到达邻域时无封顶 ⇒ 预测越过目标
+                        # （实测 tick=4 WM_err=0.90 ≥ bound=0.55），产生假异常
+                        # 并扣置信度。
+                        _cap_speed = min(speed, dl) if dl < speed else speed
+                        np_ = self._apply_move(shadow[eid], _cap_speed, d)
                         shadow[eid] = np_
                         bound = self.hit_threshold + 0.05
                         mode = "exact"
