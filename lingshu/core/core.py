@@ -6221,9 +6221,22 @@ class LayeredStore:
         given = set()
         if conditions:
             for k, v in conditions.items():
-                if k in vals:
-                    vals[k] = v
-                    given.add(k)
+                if k not in vals:
+                    # #2591（批一百一十）：未知键 fail-loud——旧实现静默丢弃，
+                    # 调用方以为条件已记录实则无痕丢失（对照同方法对
+                    # content/importance 的 fail-loud 纪律）。
+                    raise ValueError(
+                        "insight conditions 未知键 %r（合法键 %s）——静默丢弃"
+                        "会让调用方以为条件已记录" % (k, sorted(vals)))
+                vals[k] = v
+                given.add(k)
+        # #2591：非有限值 fail-loud——NaN/inf 落库会序列化成非标准 JSON
+        # 字面量（strict 解析必崩，实测 DB 行 `"memory_retrievability": NaN`），
+        # 且按「显式提供=0.7」拿到高置信度——NaN 冒充已测可靠条件。
+        for k, v in vals.items():
+            if isinstance(v, float) and not math.isfinite(v):
+                raise ValueError(
+                    "insight conditions %s 须为有限值，收到 %r" % (k, v))
         conf = {k: (0.7 if k in given else 0.3) for k in vals}
         return {"values": vals, "confidence": conf}
 
