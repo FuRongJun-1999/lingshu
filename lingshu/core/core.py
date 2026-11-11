@@ -6868,6 +6868,11 @@ class LayeredStore:
         才按 `enabled=1` 过滤）；③返回形状与 `list_escalation_points` 的单行同形
         （NULL 经 `or ""` 归一，与 #656 同口径）。
         """
+        # 自主发现（参数类型）：code 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_escalation_point_by_code(123) -> None），调用方把
+        # 「参数写错」误读成「该升级点不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(code, str) or not code.strip():
+            raise TypeError("get_escalation_point_by_code 的 code 必须是非空字符串，收到 %r" % (code,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM escalation_points WHERE code=? ORDER BY rowid LIMIT 1",
                   (code,))
