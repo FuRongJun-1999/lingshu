@@ -497,8 +497,14 @@ class SceneSimulator:
                 dx = bx - predator.pos[0]
                 dz = bz - predator.pos[2]
                 d = self._normalize(dx, 0, dz)
-                return (d[0] + self._rng.uniform(-0.1, 0.1),
-                        0, d[2] + self._rng.uniform(-0.1, 0.1))
+                # #2579：此前单位方向 + 分量均匀噪声后直接返回 ⇒ |d| ∈ [0.90, 1.1045]
+                # ⇒ 单 tick 位移突破 speed 声明的运动学上限（实测 65/2000 tick 超限）。
+                # 同函数 wander 分支的同型缺陷已修（#27/9f17f7c），且该分支注释
+                # 逐字写「返回单位方向——与 seek/avoid/follow/flee 一致」。此处
+                # 归一化恢复单位方向契约；RNG 消耗次数与顺序不变。
+                nd = self._normalize(d[0] + self._rng.uniform(-0.1, 0.1), 0,
+                                     d[2] + self._rng.uniform(-0.1, 0.1))
+                return d if nd == (0.0, 0.0, 0.0) else nd
             return self._unresolved(e)
 
         elif e.behavior == "follow":
