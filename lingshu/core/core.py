@@ -162,10 +162,16 @@ class ConditionSpace:
         # ValueError/TypeError（M5 判同链对毒窗口崩）。沿本方法既有健壮性
         # 口径（缺字段补默认/#267 丢未知键）：非二元或含非数值元素 ⇒ 补默认窗。
         _tw = d['time_window']
-        if (len(_tw) != 2
-                or not all(isinstance(v, (int, float)) and not isinstance(v, bool)
-                           for v in _tw)):
-            d['time_window'] = (0.0, 0.0)
+        # #342 契约形态（全 None 窗）原样保留：core 产出的 [null, null] 经
+        # from_legacy 回落到 created_at（test_342 构造式锚）。
+        if not all(v is None for v in _tw):
+            # #2610（批一百一十五）：非 #342 形态的元数/数值性闸——外部卡
+            # `[0, 10, 20]` 落成 3-tuple、`["a","b"]` 落成混型 tuple ⇒ M5 判同
+            # 链 unpack ValueError/TypeError（实测函数级崩）。补默认窗。
+            if (len(_tw) != 2
+                    or not all(isinstance(v, (int, float))
+                               and not isinstance(v, bool) for v in _tw)):
+                d['time_window'] = (0.0, 0.0)
         return cls(**d)
 
 
