@@ -3598,6 +3598,11 @@ class LayeredStore:
 
         #653：与 `get_outgoing_edges` 同款逐行容错（见其 docstring）。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 get_incoming_edges(123) -> []），调用方把「参数写错」误读成「该节点无入边」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("get_incoming_edges 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE target_id=?", (node_id,))
         edges, skipped = self._tolerant_edges(c.fetchall())
