@@ -3587,6 +3587,11 @@ class LayeredStore:
         等图算法的取边都经本入口，一条坏边即整体中断的历史（issue #653 读数）
         就此消除。跳过的边 id 记入 `self.last_skipped_edges`（每次调用刷新）。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 get_outgoing_edges(123) -> []），调用方把「参数写错」误读成「该节点无出边」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("get_outgoing_edges 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE source_id=?", (node_id,))
         edges, skipped = self._tolerant_edges(c.fetchall())
