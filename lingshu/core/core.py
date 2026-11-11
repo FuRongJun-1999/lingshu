@@ -547,10 +547,15 @@ def _esc_has_second_comparison(text: str) -> bool:
     #747：本解析器只认**单个**简单比较。`"value > 0.1 and value < 0.2"` 这类复合
     条件若只取首个界，会让后半静默失效 ⇒ 检出即让调用方**回落**（`None`），不猜。
     """
-    if any(ch in "<>=!" for ch in text):
+    if any(ch in "<>=!|&" for ch in text):
+        # #2595（批一百一十三）：检出集补 `|`/`&`——`"value > 0.9 || x"` 的
+        # 管道符不在旧检出集，`||` 也不是独立词 "or" ⇒ 复合 OR 分支静默失效
+        # （闸把设计者的 OR 收紧成 AND，危机该触发时不触发；与 #747 的
+        # 「后半静默失效」失效方向同族）。fail-closed：检出即回落。
         return True
-    return (_find_standalone_word(text, "and") >= 0
-            or _find_standalone_word(text, "or") >= 0)
+    lowered = text.lower()
+    return (_find_standalone_word(lowered, "and") >= 0
+            or _find_standalone_word(lowered, "or") >= 0)
 
 
 def _parse_escalation_value_bound(condition: str):
