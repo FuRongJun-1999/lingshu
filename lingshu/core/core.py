@@ -156,6 +156,16 @@ class ConditionSpace:
         elif not isinstance(d['time_window'], (tuple, list)):
             d['time_window'] = (d['time_window'], d['time_window'])
         d['time_window'] = tuple(d['time_window'])
+        # #2610（批一百一十五）：time_window 归一为**二元数值**窗——外部卡可写
+        # 任意长度/任意类型（实测 `[0, 10, 20]` 落成 3-tuple、`["a","b"]` 落成
+        # 混型），`_conditions_mergeable` 的二元组 unpack 对其
+        # ValueError/TypeError（M5 判同链对毒窗口崩）。沿本方法既有健壮性
+        # 口径（缺字段补默认/#267 丢未知键）：非二元或含非数值元素 ⇒ 补默认窗。
+        _tw = d['time_window']
+        if (len(_tw) != 2
+                or not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                           for v in _tw)):
+            d['time_window'] = (0.0, 0.0)
         return cls(**d)
 
 
