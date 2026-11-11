@@ -2922,6 +2922,11 @@ class LayeredStore:
         ★本笔合成：两分支都委派给批量单点（不复制实现）——`touch=True` 走与 #571
         逐位一致的默认入口，`touch=False` 多传一个 `touch` 形参；故「单节点入口委派
         批量单点」与「不刷新近因」两套语义并存。"""
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 会被当 SQL 参数，
+        # 静默返回 None（实测 increment_access(123) -> None），近因计数实际没写，调用方
+        # 以为刷新成功。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("increment_access 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         if touch:
             self.increment_access_many([node_id])
         else:
@@ -3102,6 +3107,11 @@ class LayeredStore:
         `EdgeType(row[3])` / `ConditionSpace.from_json(row[4])` 使单条坏边
         中断所有边读取）。
         """
+        # 自主发现（参数类型）：edge_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_edge(123) -> None），调用方把「参数写错」误读成
+        # 「该边不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(edge_id, str) or not edge_id.strip():
+            raise TypeError("get_edge 的 edge_id 必须是非空字符串，收到 %r" % (edge_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE id=?", (edge_id,))
         row = c.fetchone()
@@ -3432,6 +3442,11 @@ class LayeredStore:
         ② `subgraph` 的同款 IN 查询（其候选集来自本函数返回的 ≤max_nodes 条，天然
         有界）不在本件。
         """
+        # 自主发现（参数类型）：start_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 traverse(123) -> []），调用方把「参数写错」误读成「该起点无后继」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(start_id, str) or not start_id.strip():
+            raise TypeError("traverse 的 start_id 必须是非空字符串，收到 %r" % (start_id,))
         c = self.conn.cursor()
         rel_clause, params = "", []
         if relation_types:
@@ -3642,6 +3657,11 @@ class LayeredStore:
         等图算法的取边都经本入口，一条坏边即整体中断的历史（issue #653 读数）
         就此消除。跳过的边 id 记入 `self.last_skipped_edges`（每次调用刷新）。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 get_outgoing_edges(123) -> []），调用方把「参数写错」误读成「该节点无出边」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("get_outgoing_edges 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE source_id=?", (node_id,))
         edges, skipped = self._tolerant_edges(c.fetchall())
@@ -3653,6 +3673,11 @@ class LayeredStore:
 
         #653：与 `get_outgoing_edges` 同款逐行容错（见其 docstring）。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 get_incoming_edges(123) -> []），调用方把「参数写错」误读成「该节点无入边」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("get_incoming_edges 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE target_id=?", (node_id,))
         edges, skipped = self._tolerant_edges(c.fetchall())
@@ -5713,6 +5738,13 @@ class LayeredStore:
         # 本件只补**保护谓词**（选面 `tags LIKE '%self_snapshot%'` 口径不动，
         # 不顺手扩大改动面）；受保护件既不计入 `doomed` 也不删其关联边。
         # 谓词直传入口（`node_id` + `tags`）与 `decay_cycle` 同款，判据本体同一段。
+        # 自主发现（参数类型）：keep 此前不做类型闸——传 str 会一路走到比较运算，抛不可读
+        # `TypeError: '>' not supported between instances of 'int' and 'str'`
+        # （实测 prune_self_snapshots("x")）。现 fail-loud：非整数/负数 → 可读错误。
+        if isinstance(keep, bool) or not isinstance(keep, int):
+            raise TypeError("prune_self_snapshots 的 keep 必须是整数，收到 %r" % (keep,))
+        if keep < 0:
+            raise ValueError("prune_self_snapshots 的 keep 不能为负，收到 %r" % (keep,))
         c = self.conn.cursor()
         # #201 残留③：选面从**单标签**扩到**两类自动快照**——旧实现只选
         # `self_snapshot`，而 `update_trust_state` 落的 `trust_snapshot` 永不入选
@@ -6880,6 +6912,13 @@ class LayeredStore:
         删」这件事反而不可审计；该审计行是删后插入的，必在保留窗口内，不会自删）；
         ④不动 `engine_meta` 等其它表。
         """
+        # 自主发现（参数类型）：keep_rows 此前不做类型闸——传 str 会一路走到比较运算，
+        # 抛不可读 `TypeError: '>' not supported between instances of 'int' and 'str'`
+        # （实测 prune_action_logs("x")）。现 fail-loud：非整数或负数 → 可读 TypeError/ValueError。
+        if keep_rows is not None and (isinstance(keep_rows, bool)
+                                      or not isinstance(keep_rows, int)):
+            raise TypeError("prune_action_logs 的 keep_rows 必须是整数或 None，收到 %r"
+                            % (keep_rows,))
         if keep_rows is None:
             keep_rows = self.ACTION_LOGS_KEEP_ROWS
         # #2103：负 keep_rows 无治理语义——SQLite LIMIT -1 = 无上限 ⇒ 子查询取
@@ -6968,6 +7007,11 @@ class LayeredStore:
         才按 `enabled=1` 过滤）；③返回形状与 `list_escalation_points` 的单行同形
         （NULL 经 `or ""` 归一，与 #656 同口径）。
         """
+        # 自主发现（参数类型）：code 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_escalation_point_by_code(123) -> None），调用方把
+        # 「参数写错」误读成「该升级点不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(code, str) or not code.strip():
+            raise TypeError("get_escalation_point_by_code 的 code 必须是非空字符串，收到 %r" % (code,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM escalation_points WHERE code=? ORDER BY rowid LIMIT 1",
                   (code,))
