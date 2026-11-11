@@ -3,6 +3,7 @@
 Standard library only. Use through structure_service for untrusted workers;
 this in-process API is reserved for the trusted host.
 """
+import os
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -239,8 +240,32 @@ class StructureWriter:
         alone is not a full governance backup. Call outside a transaction.
         """
         from pathlib import Path
-        if self.store.db_path != ":memory:" and Path(path).resolve() == Path(self.store.db_path).resolve():
-            raise WriteError("backup must not overwrite the live database")
+        # #2577（安全 P1）：`Path.resolve()` 不解析硬链接——攻击者在 storage 里
+        # 放一个硬链接指向同卷另一个合法 SQLite 库，别名路径看起来仍在 storage
+        # 内 ⇒ `check_protected_directory` 放行 ⇒ 下方活库守卫对硬链接别名恒
+        # False ⇒ `sqlite3.connect(硬链接别名)` 打开受害库 inode ⇒ 全库页覆写
+        # （实测：受害库 8192→204800 字节、`secret` 表被销毁）。
+        # 三层收口：① `resolve()` 判等（同一路径）；② `samefile`（活库 inode，
+        # `_guard_export_source_path` 现成写法）；③ `st_nlink > 1` 拒绝一切硬
+        # 链接别名——samefile 只对活库生效，**受害库是另一个 SQLite 文件时
+        # inode 不同、samefile 恒 False**，票面复现（victim 8192→204800、
+        # `secret` 表销毁）必须靠 nlink 围栏（#2566/#2568/#2569 同族口径）。
+        if self.store.db_path != ":memory:":
+            if Path(path).resolve() == Path(self.store.db_path).resolve():
+                raise WriteError("backup must not overwrite the live database")
+            try:
+                if os.path.samefile(path, self.store.db_path):
+                    raise WriteError(
+                        "backup must not overwrite the live database (samefile)")
+            except (FileNotFoundError, OSError):
+                pass
+            try:
+                if os.stat(path).st_nlink > 1:
+                    raise WriteError(
+                        "backup 目标是硬链接别名（st_nlink>1）：写入会覆写共享"
+                        " inode 上的另一 SQLite 库——请改用普通文件路径")
+            except (FileNotFoundError, OSError):
+                pass
         with self._lock:
             if self._db.in_transaction:
                 raise WriteError("finish the caller transaction before backup")

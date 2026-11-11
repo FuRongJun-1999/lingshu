@@ -557,7 +557,18 @@ class UnifiedWorldModel:
         # 按 first_seen 序（≈ 物理世界插入序，保持顺序语义）
         ordered = sorted(self.nodes.items(), key=lambda kv: kv[1].first_seen)
         pred: Dict[str, Dict] = {}
+        # #507：视界不确定度累积。bound 是 target_tick = tick+h 预测的命中半径，
+        # 必须覆盖 h 步的未建模运动；各 mode 的 1 步 bound 只覆盖 1 步
+        # （实测单 wander 实体 h=4 有 32.8% 预测越界、h=8 60.2%，worst err 2.01
+        # > bound 0.65——假异常扣置信度）。age 项已对「未观测 tick」逐 tick 线性
+        # 累积（bound += age·_reach），horizon 步是同性质的未观测步，同口径逐
+        # step 累加该 mode 的**漂移分量**（不含 hit_threshold 噪声地板——静止实体
+        # 的漂移是 0 不是 0.5；exact 静目标逐步逐位复刻 sim ⇒ 漂移 0；
+        # h=1 时累加项为空 ⇒ 逐字节同改前）。
+        unc_acc: Dict[str, float] = {}
+        step_no = 0
         for _ in range(h):
+            step_no += 1
             for eid, n in ordered:
                 speed = self._patterns.get("speed_estimates", {}).get(eid, 0.3)
                 cons = self._patterns.get("entropy", {}).get(eid, 0.0)
@@ -566,7 +577,15 @@ class UnifiedWorldModel:
                 if rel is not None and rel.relation in ("seek", "flee") and rel.target in shadow:
                     tgt_cons = self._patterns.get("entropy", {}).get(rel.target, 0.0)
                     target_speed = self._patterns.get("speed_estimates", {}).get(rel.target, 0.3)
-                    target_stochastic = target_speed > 1e-6 and tgt_cons < self.entropy_threshold
+                    # #2582：exact 的前提是「目标位置在预测 tick 已知」——只有静止
+                    # 目标（speed_est ≈ 0）满足。一致运动只保证**方向**统计稳定，
+                    # 不保证位置可预言：sim 的逐实体顺序更新（先动者改变后动者的
+                    # 决策依据，`scene_simulator.step` 注释明言）⇒ 追逐者实际读的
+                    # 是目标**已移动一格**的位置，模型侧冻结在快照位 ⇒ h=1 误差
+                    # ≈ 目标单 tick 位移（实测 9/300 种子 err 0.58~1.19 > 窄界 0.55，
+                    # 假异常扣置信度）。一致目标同样降级 chase_stochastic：其 bound
+                    # 已含双方可达域（覆盖目标运动），预测中心不变。
+                    target_stochastic = target_speed > 1e-6
                     # 关系仅在自身方向性明确时使用（防随机实体的虚假关系）；
                     # seek 追逐随机目标 → 降级 chase_stochastic（宽可达域，D1）
                     if (cons >= self.entropy_threshold
@@ -587,48 +606,100 @@ class UnifiedWorldModel:
                         np_ = self._apply_move(shadow[eid], speed, d) if seek_supported else shadow[eid]
                         shadow[eid] = np_
                         bound = max(self._reach(speed),
-                                    self._reach(self._patterns.get("speed_estimates",
-                                                                   {}).get(rel.target, 0.3)))                             + self.hit_threshold
+                                    self._reach(target_speed)) + self.hit_threshold
                         mode = "chase_stochastic"
+                        drift = max(speed, target_speed) * 1.5 + self.pad
                     elif rel.relation == "seek" and not seek_supported:
                         np_ = shadow[eid]
                         bound = self._reach(speed)
                         mode = "bounded_stochastic"
+                        drift = speed * 1.5 + self.pad
                     elif rel.relation == "seek":
-                        np_ = self._apply_move(shadow[eid], speed, d)
+                        # #2580：世界侧 seek 步长按剩余距离封顶（
+                        # `scene_simulator.step:1254` 的 `min(speed, dist)`），
+                        # oracle 侧 #249 也已修（`step_cap=dist`）——模型侧是
+                        # 同一数学的漏网。到达邻域时无封顶 ⇒ 预测越过目标
+                        # （实测 tick=4 WM_err=0.90 ≥ bound=0.55），产生假异常
+                        # 并扣置信度。#2582 后 exact 只剩**静止目标**（speed_est ≈ 0）
+                        # ⇒ 逐步逐位复刻 sim（cap 每步同样封顶）⇒ 漂移 0，bound 不随 h 累积。
+                        _cap_speed = min(speed, dl) if dl < speed else speed
+                        np_ = self._apply_move(shadow[eid], _cap_speed, d)
                         shadow[eid] = np_
                         bound = self.hit_threshold + 0.05
                         mode = "exact"
+                        drift = 0.0
                     else:
                         # flee：方向已知但带扰动 → 略宽可达域
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_
                         bound = self.hit_threshold + speed * 0.3
                         mode = "bounded_noisy"
+                        drift = speed * 0.3
                 elif cons >= self.entropy_threshold:
                     # 直线运动无关系目标（follow/巡游）→ 继续直线外推（可能转弯）
                     # 简化：预测=当前位置 + 最近位移方向
                     moves = self._recent_move(eid)
                     if moves is None and n.last_seen < self.tick:
                         moves = self._motion_directions.get(eid)
-                    if moves:
+                    # #2584：转向可测闸 + 转向闸 + 转向项。|v1 − v2|（最近两次
+                    # 位移差）是直线外推下一步误差的逐位复刻（实测 err/turn 比
+                    # 1.00 中位）；窗口 < 3 点（转向不可测）或 turn > 0.5·speed
+                    # （「自身运动一致」是外因驱动——追逐体/被墙弹的游走体，
+                    # h>1 直线外推方向乱飞、h=3 实测 err 3.47 > 任何转向裕度）
+                    # ⇒ 不接管，落到随机可达域（冻结中心 + 逐 h 累积 reach，
+                    # 实测覆盖全部越界；巡游体转向 ≈ 0 不受影响）。
+                    seq_ = [q for _t, q in _wm_traj(self, eid)]
+                    # 近因 turn（最近 2 对）：整窗 max 会把久远的单次急转记一辈子
+                    # ——转向证据闸的语义是「**最近**仍在温和转向」（随机前缀
+                    # 滑出窗口后须放行，test_trajectory_resolved_observations 契约）。
+                    turns_ = [math.dist(
+                        tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
+                        tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
+                        for i in range(2, len(seq_))]
+                    turn_max = max(turns_[-2:]) if turns_ else 0.0
+                    turn = turn_max
+                    # 窗口 < 3 点：转向不可测，但**不得拒接管**——2 观测直线体
+                    # （#159/test_world_verify_finite_evidence 契约）必须照常外推，
+                    # 转向不确定性用**一个整步长**做裕度（随机转向的最坏
+                    # |v_next − v1| ≤ 2|v1|，0.4·speed + |v1| 恰好覆盖）。
+                    if len(seq_) >= 3:
+                        turn = turn_max
+                        gate_open = turn_max <= 0.5 * speed
+                    else:
+                        turn = speed
+                        gate_open = True
+                    # #2584：关系驱动闸——任一实体对本实体的趋向/远离 |c| > 0.5
+                    # 说明自身运动是**外因驱动**（追逐/逃离尚未走完正式推断的
+                    # 方向样本数），直线外推方向将由目标牵引 ⇒ 不接管。
+                    rel_driven = any(
+                        abs(self._pair_tendency(eid, other)) > 0.5
+                        for other in self.nodes if other != eid)
+                    if (moves and gate_open and not rel_driven):
                         d = moves
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_
-                        bound = self.hit_threshold + speed * 0.4
+                        bound = self.hit_threshold + speed * 0.4 + turn
                         mode = "bounded_noisy"
+                        drift = speed * 0.4 + turn
                     else:
                         # 随机行为 → 可达域（D2）
                         np_ = shadow[eid]
                         bound = self._reach(speed)
                         mode = "bounded_stochastic"
+                        drift = speed * 1.5 + self.pad
                 else:
                     # 随机行为 → 可达域（D2）
                     np_ = shadow[eid]
                     bound = self._reach(speed)
                     mode = "bounded_stochastic"
+                    drift = speed * 1.5 + self.pad
                 age = max(0, self.tick - n.last_seen)
-                bound += age * self._reach(speed)
+                # #507：前 h−1 步的漂移累加进末步 bound（末步自身漂移已在其
+                # mode bound 内）；h=1 时 prior 恒 0 ⇒ 逐字节同改前。
+                prior = unc_acc.get(eid, 0.0)
+                if step_no < h:
+                    unc_acc[eid] = prior + drift
+                bound = bound + prior + age * self._reach(speed)
                 pred[eid] = {"category": n.category, "behavior": n.behavior_inferred,
                              "mode": mode, "predicted": list(np_),
                              "bound": round(bound, 3),
@@ -1604,12 +1675,48 @@ def _generate_with_modes(self, horizon=1, use_patterns=True):
         # 保留 `pdet` 只为诊断留痕，不参与判据（守卫 G12 钉住这一点）。
         sm_ok, sm_pkt, sm_d = _wm_smooth_check(self, eid, age, src, False)
         if sm_ok:
+            # #2584：稳定闸 + 自设 bound。近期等加速度单步残差大说明「平滑」是
+            # 外因驱动的假象（游走体的随机转向不受任何窗口统计约束，实测冷启动
+            # 残差 0.18~0.53 而下一步 err 1.05~1.33）⇒ 不覆写，让 inner 预测
+            # （其 bound 已按各自口径校准）说话。维护者基准数据集残差
+            # 0.002~0.02 ≪ 0.1·reach ⇒ 闸不影响既有生效面。
+            seq_s = [q for _t, q in _wm_traj(self, eid)]
+            # 残差取**最近 2 条**（近因）：随机前缀随窗口滑出后须放行 smooth
+            # （test_trajectory_resolved_observations 契约）；整窗 max 会把
+            # 前缀残差记一辈子。真随机体的近因残差每步都大 ⇒ 闸仍然有效。
+            resids_s = []
+            for i in range(len(seq_s) - 1, 2, -1):
+                p2, p1, p0 = seq_s[i - 1], seq_s[i - 2], seq_s[i - 3]
+                _v1 = tuple(p2[j] - p1[j] for j in range(3))
+                _v2 = tuple(p1[j] - p0[j] for j in range(3))
+                _a = tuple(_v1[j] - _v2[j] for j in range(3))
+                resids_s.append(math.dist(
+                    tuple(p2[j] + _v1[j] + _a[j] for j in range(3)), seq_s[i]))
+            maxres = max(resids_s[:2]) if resids_s else 0.0
+            speed_est = float(speeds.get(eid, 0.0) or 0.0)
+            turns_s = [math.dist(
+                tuple(seq_s[i][j] - seq_s[i - 1][j] for j in range(3)),
+                tuple(seq_s[i - 1][j] - seq_s[i - 2][j] for j in range(3)))
+                for i in range(2, len(seq_s))]
+            turn_max_s = max(turns_s[-2:]) if turns_s else 0.0
+            if (maxres > 0.1 * self._reach(speed_est)
+                    or turn_max_s > 0.5 * speed_est):
+                blocked["smooth_turn_evidence"] = blocked.get(
+                    "smooth_turn_evidence", 0) + 1
+                diag[eid] = {"static": st_d, "smooth": sm_d,
+                             "smooth_gate": "turn_evidence", "maxres": maxres}
+                continue
             a, v1, _l1 = sm_pkt
             p = _wm_traj(self, eid, 1)[-1][1]
             # 等加速度：p[t+h] = p[t] + h·v1 + a·h(h+1)/2（h=1 时即 p+v1+a，与任务式同）
             k = h * (h + 1) / 2.0
             rec["predicted"] = [p[j] + h * v1[j] + a[j] * k for j in range(3)]
             rec["mode"] = "smooth"
+            # 注（#2584）：曾在此实现「自设 bound = max(inherited, threshold +
+            # maxres·h(h+1)/2)」，实现后证明被 #507 的逐 h 累积 inherited 恒覆盖
+            # （margin ≤ 0.5 + h(h+1)/2·0.1·reach < h·reach 对一切 h ≥ 1）——
+            # 死代码 ⇒ 移除；smooth 侧的实际收口是上面的**稳定闸**（未过闸不覆写，
+            # inner 预测的 bound 与预测保持配对）。
             n_smooth += 1
             diag[eid] = {"smooth": sm_d}
             continue

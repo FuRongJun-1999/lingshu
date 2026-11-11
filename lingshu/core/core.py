@@ -156,6 +156,22 @@ class ConditionSpace:
         elif not isinstance(d['time_window'], (tuple, list)):
             d['time_window'] = (d['time_window'], d['time_window'])
         d['time_window'] = tuple(d['time_window'])
+        # #2610（批一百一十五）：time_window 归一为**二元数值**窗——外部卡可写
+        # 任意长度/任意类型（实测 `[0, 10, 20]` 落成 3-tuple、`["a","b"]` 落成
+        # 混型），`_conditions_mergeable` 的二元组 unpack 对其
+        # ValueError/TypeError（M5 判同链对毒窗口崩）。沿本方法既有健壮性
+        # 口径（缺字段补默认/#267 丢未知键）：非二元或含非数值元素 ⇒ 补默认窗。
+        _tw = d['time_window']
+        # #342 契约形态（全 None 窗）原样保留：core 产出的 [null, null] 经
+        # from_legacy 回落到 created_at（test_342 构造式锚）。
+        if not all(v is None for v in _tw):
+            # #2610（批一百一十五）：非 #342 形态的元数/数值性闸——外部卡
+            # `[0, 10, 20]` 落成 3-tuple、`["a","b"]` 落成混型 tuple ⇒ M5 判同
+            # 链 unpack ValueError/TypeError（实测函数级崩）。补默认窗。
+            if (len(_tw) != 2
+                    or not all(isinstance(v, (int, float))
+                               and not isinstance(v, bool) for v in _tw)):
+                d['time_window'] = (0.0, 0.0)
         return cls(**d)
 
 
@@ -517,13 +533,19 @@ def _scan_esc_number(text: str, i: int):
     if j < n and text[j] in "+-":
         j += 1
     int_start = j
-    while j < n and text[j].isdigit():
+    # #2607（批一百一十四）：只认 ASCII 数字——`isdigit()` 对全角/阿拉伯-印度
+    # 等非 ASCII 数字也为 True，但**全角小数点 `．` 不被消费** ⇒ 词元在全角
+    # 数字后截断（实测 `"value > ０．９"` 词元="０" ⇒ threshold=0.0，设计者
+    # 意图 0.9——**阈值静默塌缩到 0.0，危机触发器对一切值无条件触发**，#747
+    # 自述的最危险方向）。非 ASCII 数字词元一律"读不准" ⇒ None 回落（不猜，
+    # 与 #747 三闸同纪律）。
+    while j < n and text[j] in "0123456789":
         j += 1
     has_int = j > int_start
     if j < n and text[j] == ".":
         j += 1
         frac_start = j
-        while j < n and text[j].isdigit():
+        while j < n and text[j] in "0123456789":
             j += 1
         if not has_int and j == frac_start:
             return None
@@ -534,7 +556,7 @@ def _scan_esc_number(text: str, i: int):
         if k < n and text[k] in "+-":
             k += 1
         exp_start = k
-        while k < n and text[k].isdigit():
+        while k < n and text[k] in "0123456789":
             k += 1
         if k > exp_start:
             j = k
@@ -547,10 +569,15 @@ def _esc_has_second_comparison(text: str) -> bool:
     #747：本解析器只认**单个**简单比较。`"value > 0.1 and value < 0.2"` 这类复合
     条件若只取首个界，会让后半静默失效 ⇒ 检出即让调用方**回落**（`None`），不猜。
     """
-    if any(ch in "<>=!" for ch in text):
+    if any(ch in "<>=!|&" for ch in text):
+        # #2595（批一百一十三）：检出集补 `|`/`&`——`"value > 0.9 || x"` 的
+        # 管道符不在旧检出集，`||` 也不是独立词 "or" ⇒ 复合 OR 分支静默失效
+        # （闸把设计者的 OR 收紧成 AND，危机该触发时不触发；与 #747 的
+        # 「后半静默失效」失效方向同族）。fail-closed：检出即回落。
         return True
-    return (_find_standalone_word(text, "and") >= 0
-            or _find_standalone_word(text, "or") >= 0)
+    lowered = text.lower()
+    return (_find_standalone_word(lowered, "and") >= 0
+            or _find_standalone_word(lowered, "or") >= 0)
 
 
 def _parse_escalation_value_bound(condition: str):
@@ -6221,9 +6248,22 @@ class LayeredStore:
         given = set()
         if conditions:
             for k, v in conditions.items():
-                if k in vals:
-                    vals[k] = v
-                    given.add(k)
+                if k not in vals:
+                    # #2591（批一百一十）：未知键 fail-loud——旧实现静默丢弃，
+                    # 调用方以为条件已记录实则无痕丢失（对照同方法对
+                    # content/importance 的 fail-loud 纪律）。
+                    raise ValueError(
+                        "insight conditions 未知键 %r（合法键 %s）——静默丢弃"
+                        "会让调用方以为条件已记录" % (k, sorted(vals)))
+                vals[k] = v
+                given.add(k)
+        # #2591：非有限值 fail-loud——NaN/inf 落库会序列化成非标准 JSON
+        # 字面量（strict 解析必崩，实测 DB 行 `"memory_retrievability": NaN`），
+        # 且按「显式提供=0.7」拿到高置信度——NaN 冒充已测可靠条件。
+        for k, v in vals.items():
+            if isinstance(v, float) and not math.isfinite(v):
+                raise ValueError(
+                    "insight conditions %s 须为有限值，收到 %r" % (k, v))
         conf = {k: (0.7 if k in given else 0.3) for k in vals}
         return {"values": vals, "confidence": conf}
 
@@ -6362,7 +6402,11 @@ class LayeredStore:
         level = (level or "").upper()
         status = "pending"
         if level in ("REFUTED", "X"):
-            status = "refuted"
+            # #2593（批一百一十一，#38 同族补完）：零证据不得自报**证伪**——
+            # B-9/D-34 口径对称扩展：REFUTED/X 同样是自报裁定（X 更是任意调用
+            # 方字符串），零证据证伪让任何调用方无成本打压有效洞见（importance
+            # 回落 + refuted 标签）。有任意证据（本次或历史）才认 refuted。
+            status = "refuted" if len(ev) >= 1 else "pending"
         elif level == "V1":
             status = "verified" if len(ev) >= 3 else "pending"
         elif level in ("V2", "V3"):

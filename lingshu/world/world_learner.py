@@ -282,7 +282,15 @@ class WorldLearner:
         rel_by_src = {r["source"]: r for r in m.get("relations", [])}
         stoch_targets = set(m.get("stochastic_targets", []))
         pred: Dict[str, Dict] = {}
+        # #2587（#507 同族移植）：视界不确定度累积。bound 是 target_tick = tick+h
+        # 预测的命中半径，须覆盖 h 步未建模运动（实测 learner h=1 越界 38%、
+        # h=4 58%——world_model 同缺陷修前 0~33%，learner 受害更重）。age 项
+        # （下方既有）已对未观测 tick 逐 tick 累积，horizon 步同口径：逐 step
+        # 累加各 mode 的漂移分量（不含噪声地板；exact 静目标漂移 0；h=1 零变更）。
+        unc_acc: Dict[str, float] = {}
+        step_no = 0
         for _ in range(h):
+            step_no += 1
             for eid, n in ordered:
                 speed = m.get("per_entity", {}).get(eid, {}).get("speed_est", 0.3)
                 pers = m.get("per_entity", {}).get(eid, {}).get("persistence", 0.0)
@@ -308,42 +316,87 @@ class WorldLearner:
                         shadow[eid] = np_
                         pred[eid] = {"predicted": list(np_), "bound": round(bound, 3),
                                      "mode": "chase_stochastic"}
+                        drift = max(speed, t_speed) * 1.5 + self.pad
                     elif rel["relation"] == "seek" and not seek_supported:
                         pred[eid] = {"predicted": list(shadow[eid]),
                                      "bound": round(self._reach(speed), 3),
                                      "mode": "bounded_stochastic"}
+                        drift = speed * 1.5 + self.pad
                     elif rel["relation"] == "seek":
-                        np_ = self._apply_move(shadow[eid], speed, d)
+                        # #2587（#2580 同族移植）：世界侧 seek 步长按剩余距离封顶
+                        # ——到达邻域无封顶 ⇒ 预测越过目标（实测 dist=0 时
+                        # pred_disp=1.0、err_next=1.0 > bound）。静目标逐步逐位
+                        # 复刻 sim ⇒ 漂移 0，bound 不随 h 累积。
+                        _cap_speed = min(speed, dl) if dl < speed else speed
+                        np_ = self._apply_move(shadow[eid], _cap_speed, d)
                         shadow[eid] = np_
                         pred[eid] = {"predicted": list(np_),
                                      "bound": round(self.hit_threshold + 0.05, 3),
                                      "mode": "exact"}
+                        drift = 0.0
                     else:
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_
                         pred[eid] = {"predicted": list(np_),
                                      "bound": round(self.hit_threshold + speed * 0.3, 3),
                                      "mode": "bounded_noisy"}
+                        drift = speed * 0.3
                 elif pers >= self.entropy_threshold:
                     dr = self._recent_dir(eid)
                     if dr is None and n.last_seen < self.tick:
                         dr = self._motion_directions.get(eid)
-                    if dr:
+                    # #2587（#2584 同族移植）：转向可测 + 窗口 max-turn +
+                    # pair-tendency 三闸（直线外推下一步误差 ≈ |v1−v2| 实测
+                    # err/turn 比 1.00；急转/外因驱动实体方向乱飞 ⇒ 不接管）。
+                    seq_ = []
+                    for rec in self.history[-(self.window or 8):]:
+                        ent = (rec.get("entities") or {}).get(eid)
+                        if ent is None:
+                            continue
+                        q = ent.get("pos") if isinstance(ent, dict) and "pos" in ent else ent
+                        seq_.append(tuple(float(v) for v in q))
+                    # 近因 turn（最近 2 对）+ 可测性口径：窗口 <3 点（长遮挡/
+                    # 冷启动，转向不可测）**不得拒接管**——遮挡语义「保持最后
+                    # 实测方向」（test_world_observation_contracts 契约），转向
+                    # 不确定性用一个整步长做裕度。pair-tendency 闸不移植：
+                    # F5 的 follower 场景实测误伤（七层误差反馈契约 errors
+                    # 严格递减破档）。
+                    turns_ = [math.dist(
+                        tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
+                        tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
+                        for i in range(2, len(seq_))]
+                    turn_max = max(turns_[-2:]) if turns_ else 0.0
+                    if len(seq_) >= 3:
+                        gate_open = turn_max <= 0.5 * speed
+                        turn = turn_max
+                    else:
+                        gate_open = True
+                        turn = speed
+                    if dr and gate_open:
                         np_ = self._apply_move(shadow[eid], speed, dr)
                         shadow[eid] = np_
                         pred[eid] = {"predicted": list(np_),
-                                     "bound": round(self.hit_threshold + speed * 0.4, 3),
+                                     "bound": round(self.hit_threshold + speed * 0.4 + turn, 3),
                                      "mode": "bounded_noisy"}
+                        drift = speed * 0.4 + turn
                     else:
                         pred[eid] = {"predicted": list(shadow[eid]),
                                      "bound": round(self._reach(speed), 3),
                                      "mode": "bounded_stochastic"}
+                        drift = speed * 1.5 + self.pad
                 else:
                     pred[eid] = {"predicted": list(shadow[eid]),
                                  "bound": round(self._reach(speed), 3),
                                  "mode": "bounded_stochastic"}
+                    drift = speed * 1.5 + self.pad
                 age = max(0, self.tick - n.last_seen)
-                pred[eid]["bound"] = round(pred[eid]["bound"] + age * self._reach(speed), 3)
+                # #2587：前 h−1 步漂移累加进末步 bound（末步自身漂移已在其
+                # mode bound 内）；h=1 时 prior 恒 0 ⇒ 逐字节同改前。
+                prior = unc_acc.get(eid, 0.0)
+                if step_no < h:
+                    unc_acc[eid] = prior + drift
+                pred[eid]["bound"] = round(
+                    pred[eid]["bound"] + prior + age * self._reach(speed), 3)
                 pred[eid]["observation_age"] = age
                 pred[eid]["target_tick"] = self.tick + h
         self._last_prediction = pred   # 生成先验（供好奇异常检测/状态导出）

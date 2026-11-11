@@ -67,7 +67,9 @@ SCAN_DIRS = ("tests", "tools", "scripts")
 #   family_guard 是首个以 `from bridges.blender...` 静态 import 它的用例——仓根
 #   顶层名，与 `wm_bridge`（bridges/blender 下插 sys.path 后的顶层名）同源不同形）。
 LOCAL_TOP = {"lingshu", "tools", "scripts", "tests", "experiments", "wm_bridge",
-             "bridges"}
+             "bridges",
+             "bench"}  # #2281 交付（批一百零九）：bench_world 首次被测试导入
+                      # （test_batch109_bench_horizon_guard）——仓库本地顶层包，非第三方
 DIST_ALIAS = {"pil": "pillow", "yaml": "pyyaml", "pytest": "pytest",
                "markdown_it": "markdown-it-py"}
 

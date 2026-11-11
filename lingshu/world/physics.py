@@ -2335,13 +2335,30 @@ def _integrate_env(model, env, t, dt):
                 a[i] -= g_n * nrm[i]
             v_s = sum(v[i] * u[i] for i in range(3))
             mu_a = ter["mu_k"] * env["gravity"] * math.cos(ter["slope_rad"])
-            if abs(v_s) > _EPS:
-                dec = min(mu_a * h, abs(v_s)) / h          # 一步内不反向
+            g_a = sum(g_vec[i] * u[i] for i in range(3))       # 重力沿坡分量（nrm⊥u）
+            mu_s_a = ter["mu_s"] * env["gravity"] * math.cos(ter["slope_rad"])
+            if abs(v_s) <= _EPS and mu_s_a >= abs(g_a):
+                # #2578：静止且坡度不足以克服静摩擦 ⇒ 托住不起步
+                # （#2088 闭式裁定同口径：正常材料停后即被静摩擦托住）。
+                for i in range(3):
+                    a[i] -= g_a * u[i]
+            elif abs(v_s) > _EPS:
                 sgn = 1.0 if v_s > 0.0 else -1.0
                 for i in range(3):
-                    a[i] -= sgn * dec * u[i]
+                    a[i] -= sgn * mu_a * u[i]   # 全量动摩擦；防反向交给下方过零钳
         for i in range(3):
             v[i] += a[i] * h
+        # #2578：摩擦+重力合成使沿坡速度过零 ⇒ 停（静摩擦托住，#2088 同口径，
+        # 钳在速度更新与位置更新之间）。旧实现把摩擦冲量钳在 |v_s|
+        # （`min(mu_a*h, |v_s|)`"一步内不反向"），但重力沿坡分量在其上照加 ⇒
+        # `v_s' = g·sinθ·h` 恒非零，停止场景永不停止、每步匀速爬行
+        # （闭式停 0.399 vs 积分 1.93，误差 ∝ dt）。
+        if ter is not None and abs(v_s) > _EPS:
+            v_s2 = sum(v[i] * u[i] for i in range(3))
+            if v_s * v_s2 <= 0.0:
+                for i in range(3):
+                    v[i] -= v_s2 * u[i]      # 沿坡分量清零（停）
+        for i in range(3):
             p[i] += v[i] * h
         if ter is not None:
             # 接触约束：去掉法向速度分量，并把位置拉回 p0 所在的坡面（法向零位移）
