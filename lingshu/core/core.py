@@ -517,13 +517,19 @@ def _scan_esc_number(text: str, i: int):
     if j < n and text[j] in "+-":
         j += 1
     int_start = j
-    while j < n and text[j].isdigit():
+    # #2607（批一百一十四）：只认 ASCII 数字——`isdigit()` 对全角/阿拉伯-印度
+    # 等非 ASCII 数字也为 True，但**全角小数点 `．` 不被消费** ⇒ 词元在全角
+    # 数字后截断（实测 `"value > ０．９"` 词元="０" ⇒ threshold=0.0，设计者
+    # 意图 0.9——**阈值静默塌缩到 0.0，危机触发器对一切值无条件触发**，#747
+    # 自述的最危险方向）。非 ASCII 数字词元一律"读不准" ⇒ None 回落（不猜，
+    # 与 #747 三闸同纪律）。
+    while j < n and text[j] in "0123456789":
         j += 1
     has_int = j > int_start
     if j < n and text[j] == ".":
         j += 1
         frac_start = j
-        while j < n and text[j].isdigit():
+        while j < n and text[j] in "0123456789":
             j += 1
         if not has_int and j == frac_start:
             return None
@@ -534,7 +540,7 @@ def _scan_esc_number(text: str, i: int):
         if k < n and text[k] in "+-":
             k += 1
         exp_start = k
-        while k < n and text[k].isdigit():
+        while k < n and text[k] in "0123456789":
             k += 1
         if k > exp_start:
             j = k
