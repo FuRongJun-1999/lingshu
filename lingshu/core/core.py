@@ -5648,6 +5648,13 @@ class LayeredStore:
         # 本件只补**保护谓词**（选面 `tags LIKE '%self_snapshot%'` 口径不动，
         # 不顺手扩大改动面）；受保护件既不计入 `doomed` 也不删其关联边。
         # 谓词直传入口（`node_id` + `tags`）与 `decay_cycle` 同款，判据本体同一段。
+        # 自主发现（参数类型）：keep 此前不做类型闸——传 str 会一路走到比较运算，抛不可读
+        # `TypeError: '>' not supported between instances of 'int' and 'str'`
+        # （实测 prune_self_snapshots("x")）。现 fail-loud：非整数/负数 → 可读错误。
+        if isinstance(keep, bool) or not isinstance(keep, int):
+            raise TypeError("prune_self_snapshots 的 keep 必须是整数，收到 %r" % (keep,))
+        if keep < 0:
+            raise ValueError("prune_self_snapshots 的 keep 不能为负，收到 %r" % (keep,))
         c = self.conn.cursor()
         # #201 残留③：选面从**单标签**扩到**两类自动快照**——旧实现只选
         # `self_snapshot`，而 `update_trust_state` 落的 `trust_snapshot` 永不入选
