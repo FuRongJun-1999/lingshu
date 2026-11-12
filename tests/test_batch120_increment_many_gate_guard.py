@@ -163,7 +163,7 @@ def _mutate():
             f.write(src.replace(_GATE_SRC, ""))
         proc = subprocess.run(
             [sys.executable, "-X", "utf8", "-m", "pytest", os.path.abspath(__file__), "-q"],
-            capture_output=True, text=True, cwd=_ROOT)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=_ROOT)
         red = proc.returncode != 0
         out = (proc.stdout or "") + (proc.stderr or "")
     finally:
