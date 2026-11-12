@@ -5281,6 +5281,16 @@ class LayeredStore:
         有界候选池（`LIMIT 100`）的取舍同族，属已知边界。
         判据来源：公开 issue #492（复现条件与读数为本件复核实测）。
         """
+        # 自主发现（参数类型 · 公开 API 直通面）：`recall_skill`（引擎公开入口）
+        # 原样转发到本方法，而本方法 `query.strip()` 裸调用——`recall_skill(None)`
+        # 抛 `AttributeError: 'NoneType' object has no attribute 'strip'`，
+        # `recall_skill(123)` 抛 `'int' object has no attribute 'strip'`——不可读且
+        # 不指参数名。同文件 `search_content` 早有 `"search_content 的 query 必须是
+        # 字符串"` 闸（#1396 类型闸族同款纪律），本方法零闸属同族漏网。修法同款
+        # fail-loud；空串/纯空白保持既有「列出前 100 张」语义（不改为报错）。
+        if not isinstance(query, str):
+            raise TypeError("search_skills 的 query 必须是字符串，收到 %r"
+                            % (type(query).__name__,))
         q = query.strip()
         c = self.conn.cursor()
         if q:
