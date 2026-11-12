@@ -2977,6 +2977,27 @@ class LayeredStore:
         把「被吞掉的失败」改为「被上报的失败」，**不**改锁等待取向（改锁等待属
         语义变更，见报告「取向题：要不要为访问计数等锁」）。
         """
+        # 自主发现（参数类型 · 批量兄弟入口）：`increment_access` 已在类型闸镜像里补了
+        # 非空 str 闸，但**它委派的批量入口零闸**——三条静默失效：
+        # ① `increment_access_many([123])` 把 int 当 SQL 参数，UPDATE 命中 0 行、
+        #   不抛（实测返回 None，access_count 不变）⇒ 调用方以为刷新成功；
+        # ② `increment_access_many("ab")`（忘包 list）按**逐字符**迭代，实测
+        #   把 `a`/`b` 两个单字符 id 各 +1、目标 `ab` 纹丝不动——**静默写错实体**，
+        #   这是本方法最重的失效方向；
+        # ③ 混批里的非 str/空串被 `if i` 静默丢弃，调用方无从得知少记了几条。
+        # 修法：入口 fail-loud（容器类型 + 逐元素非空 str）——非 list/tuple 容器
+        # 直接拒，逐字符迭代即 ② 的成因。`None`/空序列保持既有「无事可做」语义。
+        if node_ids is None:
+            return
+        if not isinstance(node_ids, (list, tuple)):
+            raise TypeError(
+                "increment_access_many 的 node_ids 必须是 list/tuple（不是单个字符串——"
+                "逐字符迭代会更新错误实体），收到 %r" % (type(node_ids).__name__,))
+        bad = [i for i in node_ids if not isinstance(i, str) or not i.strip()]
+        if bad:
+            raise TypeError(
+                "increment_access_many 的 node_ids 每项必须是非空字符串，收到非法项 %r"
+                % (bad[:3],))
         ids = [i for i in (node_ids or []) if i]
         if not ids:
             return
