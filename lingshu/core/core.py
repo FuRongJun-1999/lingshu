@@ -5281,6 +5281,16 @@ class LayeredStore:
         有界候选池（`LIMIT 100`）的取舍同族，属已知边界。
         判据来源：公开 issue #492（复现条件与读数为本件复核实测）。
         """
+        # 自主发现（参数类型 · 公开 API 直通面）：`recall_skill`（引擎公开入口）
+        # 原样转发到本方法，而本方法 `query.strip()` 裸调用——`recall_skill(None)`
+        # 抛 `AttributeError: 'NoneType' object has no attribute 'strip'`，
+        # `recall_skill(123)` 抛 `'int' object has no attribute 'strip'`——不可读且
+        # 不指参数名。同文件 `search_content` 早有 `"search_content 的 query 必须是
+        # 字符串"` 闸（#1396 类型闸族同款纪律），本方法零闸属同族漏网。修法同款
+        # fail-loud；空串/纯空白保持既有「列出前 100 张」语义（不改为报错）。
+        if not isinstance(query, str):
+            raise TypeError("search_skills 的 query 必须是字符串，收到 %r"
+                            % (type(query).__name__,))
         q = query.strip()
         c = self.conn.cursor()
         if q:
@@ -12653,6 +12663,12 @@ class SpacetimeMemoryEngine:
         动词→与同实体上一帧的 TemporalEdge（状态变→causal / 不变→sequential）。
         盲区56：视觉 substrate 缺失时强制 entity_hint + state_hint 人工标注。
         盲区60/61：原始帧仅存引用至 local_visual_buffer（LRU），不进共享层"""
+        # 自主发现（参数类型 · 公开入口）：`frame_data` 零闸——None/int 下
+        # 首个 `frame_data.get(...)` 即抛裸 `AttributeError: 'NoneType' object
+        # has no attribute 'get'`，不指参数名。
+        if not isinstance(frame_data, dict):
+            raise TypeError("ingest_frame 的 frame_data 必须是 dict，收到 %r"
+                            % (type(frame_data).__name__,))
         cs = condition_space or ConditionSpace(
             "视觉感知", "帧摄入", (time.time(), time.time()+3600), "协议实例运行中")
         # v1.8：semantic_attention = 决策偏好注入（自上而下通道，REFLECT-ATTENTION-REV1）
@@ -15243,6 +15259,15 @@ class SpacetimeMemoryEngine:
         时间过滤能查到）。削掉的判别力：无——返回语义（时间距离最近的前 `limit` 条）
         不变，仅把候选集从「重要性前 500」换成「时间窗内全部」。
         """
+        # 自主发现（参数类型 · 公开入口）：`timestamp`/`tolerance` 零闸——
+        # `timestamp - tolerance` 抛裸 `TypeError: unsupported operand type(s)
+        # for -: 'NoneType' and 'float'`（或 'str' and 'float'），不指参数名。
+        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+            raise TypeError("what_happened_at 的 timestamp 必须是数值，收到 %r"
+                            % (type(timestamp).__name__,))
+        if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)):
+            raise TypeError("what_happened_at 的 tolerance 必须是数值，收到 %r"
+                            % (type(tolerance).__name__,))
         nodes = self.store.query_nodes_by_time(timestamp - tolerance,
                                                timestamp + tolerance)
         results = [(n, abs(n.temporal_coordinate - timestamp)) for n in nodes
@@ -15409,6 +15434,18 @@ class SpacetimeMemoryEngine:
         可直接落地』的读侧接线」（`.tmp/prowatch/reply216_ruling.md`）＋ 先例
         `propose_promotion` 的读侧接线（`find_rejected_paths` + `path_type` 过滤）。
         """
+        # 自主发现（参数类型 · 公开入口）：`actions` 零闸——None/非序列下
+        # `actions[:5]` 抛裸 `TypeError: 'NoneType' object is not subscriptable`，
+        # `outcome[:40]` 同款；不指参数名。同一 #1396 类型闸族纪律。
+        if not isinstance(actions, (list, tuple)):
+            raise TypeError("record_action_sequence 的 actions 必须是 list/tuple，收到 %r"
+                            % (type(actions).__name__,))
+        if not all(isinstance(a, str) for a in actions):
+            raise TypeError("record_action_sequence 的 actions 每项必须是字符串，收到 %r"
+                            % ([type(a).__name__ for a in actions][:3],))
+        if not isinstance(outcome, str):
+            raise TypeError("record_action_sequence 的 outcome 必须是字符串，收到 %r"
+                            % (type(outcome).__name__,))
         node = self.add_perception(
             f"[action_seq] {'成功' if success else '失败'}：{' > '.join(actions[:5])}（{outcome[:40]}）",
             importance=0.5,
