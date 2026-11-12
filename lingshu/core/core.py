@@ -59,6 +59,9 @@ except ImportError:  # 直跑 fallback（裸名互导）
 # 只放开 ① 层（非白名单名的 cwd 解析面）；② 层自 #750 残余修复起不随逃生口
 # 放开——白名单名受控面未命中即失败，不再交还标准 PathFinder（A/D/E 臂封死）。
 from . import contradiction as _contradiction
+import logging
+_log = logging.getLogger(__name__)
+
 
 from .component_resolver import (
     COMPONENT_NAMES as _COMPONENT_NAMES,
@@ -952,6 +955,7 @@ class SelfModel:
         try:
             hook()
         except Exception:  # noqa: BLE001 —— 持久化是旁路，失败不阻断模型变更
+            _log.debug("core.py silent-except：持久化是旁路，失败不阻断模型变更", exc_info=True)
             pass
 
     def update(self, **kwargs):
@@ -1314,6 +1318,7 @@ class _ThreadConn:
         try:
             self.conn.close()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass  # 已关闭/被其它线程回收：关闭是尽力而为，不阻断生命周期收尾
 
     def __del__(self):
@@ -1321,6 +1326,7 @@ class _ThreadConn:
         try:
             self.close()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
 
@@ -1588,8 +1594,10 @@ class LayeredStore:
                 try:
                     self.conn.execute("PRAGMA journal_size_limit=512000000")
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     pass
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
         # ③ 启动重试（2026-09-01 修复③）：建表/初始化失败（写锁竞争超时）
         #    指数退避重试 3 次再退出——不再一次性崩溃
@@ -1673,6 +1681,7 @@ class LayeredStore:
             if not _is_mem:
                 c.execute("PRAGMA journal_size_limit=512000000")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # #93：外键强制是**连接级**开关——SQLite 默认 `foreign_keys=OFF`，建表块里
         # 声明的两条 `FOREIGN KEY ... REFERENCES nodes(id)` 因此**没有约束力**，
@@ -1841,6 +1850,7 @@ class LayeredStore:
                 else:
                     conn.rollback()
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
             raise
         finally:
@@ -1872,6 +1882,7 @@ class LayeredStore:
                                 for t, c in self._SCHEMA_COLUMNS.items())):
                     return
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass  # 只读校验异常 → 保守回退到原建表路径（IF NOT EXISTS 幂等）
         # 节点表（含层标识）
         c.execute('''
@@ -1913,6 +1924,7 @@ class LayeredStore:
             try:
                 c.execute(f"ALTER TABLE nodes ADD COLUMN {col_sql}")
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
         # 边表
         c.execute('''
@@ -1929,6 +1941,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE edges ADD COLUMN source_evidence TEXT DEFAULT 'extracted'")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # 索引
         c.execute('CREATE INDEX IF NOT EXISTS idx_nodes_layer ON nodes(layer)')
@@ -1947,6 +1960,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE blindspots ADD COLUMN predictability TEXT DEFAULT 'pending_assessment'")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         c.execute('''
             CREATE TABLE IF NOT EXISTS skills (
@@ -1967,6 +1981,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE promotion_proposals ADD COLUMN content_hash TEXT DEFAULT ''")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # #778-F4（加固不对称）：本表**不声明** `FOREIGN KEY(node_id) REFERENCES
         # nodes(id)`——对照边表（`edges` 有两条 `REFERENCES nodes(id)` ＋ #93 孤儿
@@ -3273,9 +3288,11 @@ class LayeredStore:
             try:
                 nodes.append(STNode.from_row(tuple(row)))
             except Exception:      # noqa: BLE001 —— 坏行不该毒化整层（#267）
+                _log.debug("core.py silent-except：坏行不该毒化整层（#267）", exc_info=True)
                 try:
                     skipped.append(row[0])
                 except Exception:  # noqa: BLE001
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     skipped.append(None)
         return nodes, skipped
 
@@ -3300,9 +3317,11 @@ class LayeredStore:
             try:
                 edges.append(STEdge.from_row(tuple(row)))
             except Exception:      # noqa: BLE001 —— 坏行不该毒化整批（#653）
+                _log.debug("core.py silent-except：坏行不该毒化整批（#653）", exc_info=True)
                 try:
                     skipped.append(row[0])
                 except Exception:  # noqa: BLE001
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     skipped.append(None)
         return edges, skipped
 
@@ -3561,6 +3580,7 @@ class LayeredStore:
                 nm = json.loads(row["state_attributes"] or "{}").get("name", "") \
                     or row["id"][:24]
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 nm = row["id"][:24]
             names[row["id"]] = {"name": nm, "importance": row["importance"]}
         return {"root": root_id, "node_count": len(node_ids),
@@ -5459,6 +5479,7 @@ class LayeredStore:
                     outcome={"proposal_id": proposal_id, "node_id": node_id,
                              "adjudicated_by": adjudicated_by})
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
             return None
         if bound_hash and self._content_hash(node.content if node else "") != bound_hash:
@@ -6193,6 +6214,7 @@ class LayeredStore:
             try:
                 sa = json.loads(row[0])
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 sa = {}
         sa[key] = infl
         c.execute("UPDATE nodes SET state_attributes=? WHERE id=?",
@@ -7418,6 +7440,7 @@ class SpacetimeMemoryEngine:
                 return p
             self._vision_error = "ultralytics 未安装（pip install ultralytics）"
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             # #602：无消息异常（bare `raise ImportError`）str(e)=="" ⇒ 回落 repr/类名，
             # 保证失败一定带**可读**标识（空串会被状态面误读成「从未尝试」）。
             self._vision_error = str(e) or repr(e) or type(e).__name__
@@ -7433,6 +7456,7 @@ class SpacetimeMemoryEngine:
             self._body_registry = build_default_registry(
                 workspace=_os.environ.get("AEIS_WORKSPACE", ""))
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._body_error = str(e)
 
     def _setup_v111(self):
@@ -7442,6 +7466,7 @@ class SpacetimeMemoryEngine:
             from flywheel_engine import FlywheelEngine
             self._flywheel = FlywheelEngine(self, self._prediction)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._flywheel_error = str(e)
 
     def _setup_v112(self):
@@ -7451,6 +7476,7 @@ class SpacetimeMemoryEngine:
             from self_cognition_engine import SelfCognitionEngine
             self._self_cognition = SelfCognitionEngine(self)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._self_cognition_error = str(e)
 
     def _note_action(self, action_type: str, summary: str = "",
@@ -7462,6 +7488,7 @@ class SpacetimeMemoryEngine:
         try:
             self._self_cognition.log_action(action_type, summary, node_ids, outcome, context)
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
     def _setup_v110(self):
@@ -7472,6 +7499,7 @@ class SpacetimeMemoryEngine:
             self._lifecycle = LifecycleEngine(self, self._prediction,
                                               self._learning_loop, self._attention_policy)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._lifecycle_error = str(e)
 
     def _setup_v19(self):
@@ -7494,6 +7522,7 @@ class SpacetimeMemoryEngine:
             try:
                 from prediction_engine import PredictionEngine
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 # 本仓形态：无顶层 `prediction_engine` 模块 ⇒ 回退仓内自带实现
                 from ..world.prediction import PredictionEngine
             self._prediction = PredictionEngine(self, self._attention_policy)
@@ -7506,8 +7535,10 @@ class SpacetimeMemoryEngine:
                 if hits:
                     self._prediction._hit_history = hits[-200:]
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._prediction_error = str(e)
 
     def _setup_v18(self):
@@ -7517,6 +7548,7 @@ class SpacetimeMemoryEngine:
             from attention_policy import AttentionPolicy
             self._attention_policy = AttentionPolicy()
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._attention_error = str(e)
 
     def _setup_v16(self):
@@ -7526,6 +7558,7 @@ class SpacetimeMemoryEngine:
             from semantic_space import SemanticSpaceProvider
             self._semantic_provider = SemanticSpaceProvider()
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._semantic_error = str(e)
 
     def _setup_v13(self):
@@ -7544,6 +7577,7 @@ class SpacetimeMemoryEngine:
             self._cognition = CognitiveOrchestrator(self, self.entity_registry)
             self._v13_ready = True
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._v13_error = str(e)
 
     # ==================== 感知入口 ====================
@@ -8396,6 +8430,7 @@ class SpacetimeMemoryEngine:
                 try:
                     sg = self.store.subgraph(tail, max_depth=2)
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     sg = None
                 decorated.append({"path": p, "subgraph": sg})
             return decorated
@@ -8611,6 +8646,7 @@ class SpacetimeMemoryEngine:
             try:
                 return json.loads(raw), self.SELF_MODEL_META_KEY
             except Exception:  # noqa: BLE001 —— 权威键损坏则继续走回退腿
+                _log.debug("core.py silent-except：权威键损坏则继续走回退腿", exc_info=True)
                 pass
         c = self.store.conn.cursor()
         c.execute("SELECT content FROM nodes WHERE layer='self' AND tags LIKE ? "
@@ -8643,6 +8679,7 @@ class SpacetimeMemoryEngine:
         try:
             loaded = self._load_self_snapshot()
         except Exception as e:  # noqa: BLE001 —— 坏快照：回退默认 + 显式标注
+            _log.debug("core.py silent-except：坏快照：回退默认 + 显式标注", exc_info=True)
             info.update(status="failed", error=str(e))
             return info
         if not loaded:
@@ -8651,6 +8688,7 @@ class SpacetimeMemoryEngine:
         try:
             model = SelfModel.from_dict(data)
         except Exception as e:  # noqa: BLE001
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             info.update(status="failed", error=str(e))
             return info
         snap_identity = getattr(model, "identity", "")
@@ -9296,6 +9334,7 @@ class SpacetimeMemoryEngine:
             # 只有最外层真提交）。此处位于 try 内：观测落库失败仍静默。
             self._commit_locked()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass  # 观测落库失败静默（不阻断检索）
 
     def notify_event(self, event_type: str, payload: Dict = None):
@@ -9327,6 +9366,7 @@ class SpacetimeMemoryEngine:
                     self._flywheel.distill_cycle()
                     consumed += 1
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     pass
         return {"status": "ok", "consumed": consumed, "pending": len(self._event_queue)}
 
@@ -9418,6 +9458,7 @@ class SpacetimeMemoryEngine:
             return _pi(self, image_path, provider,
                        conf_threshold, importance, classes)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             # 视觉实现已迁 AEIS 身体库：缺失按能力不可用降级（契约 status）
             return {"status": "vision_unavailable", "error": str(e)}
 
@@ -9440,6 +9481,7 @@ class SpacetimeMemoryEngine:
                 devices = [h["name"] for h in health]
                 devices_available = [h["name"] for h in health if h.get("available")]
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return {
             "modalities": {
@@ -9626,6 +9668,7 @@ class SpacetimeMemoryEngine:
                         expected = m.group(1)
                         break
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
 
         # 2. 对照前复核落点（#745：纵深防御——「提取」与「使用」之间仍有一次复核；
@@ -9836,6 +9879,7 @@ class SpacetimeMemoryEngine:
                                              CameraMetaError, parse_camera_observation,
                                              format_camera_observation)
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "world3d_not_ready", "error": str(e)}
         # 世界状态（跨调用保持于引擎）
         if not hasattr(self, "_world3d"):
@@ -9871,6 +9915,7 @@ class SpacetimeMemoryEngine:
                                            tags=["vprim"], condition_space=cs,
                                            skip_dedup=True)
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return None, {"status": "error",
                               "reason": "observation_not_persisted",
                               "error": "#F04 观测未落库（%s: %s）——拒绝只做内存融合"
@@ -10315,6 +10360,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.voxel_world import VoxelWorld
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "voxel_not_ready", "error": str(e)}
         if not hasattr(self, '_voxel'):
             self._voxel = VoxelWorld(size=int(p.get('size', 16)),
@@ -10523,6 +10569,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.wm_simloop import SimulationLoop
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "simloop_not_ready", "error": str(e)}
         if action == "attach":
             if not hasattr(self, '_wmodel'):
@@ -10685,6 +10732,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.scene_simulator import SceneSimulator
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "scene_not_ready", "error": str(e)}
         if not hasattr(self, '_scene'):
             self._scene = SceneSimulator(size=int(p.get('size', 24)),
@@ -10751,6 +10799,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.spacetime_consistency import SpacetimeConsistency
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "stc_not_ready", "error": str(e)}
         # #243：`init` 必须有独立分支——docstring/兜底错误信息都列了它，旧实现
         # 无此分支，`init` 落到 `hasattr` 惰性构造：①首次调用被顺带构造却返回
@@ -10863,6 +10912,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.world_model import UnifiedWorldModel
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "wm_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -11001,6 +11051,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.world_learner import WorldLearner
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "wl_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -11461,6 +11512,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.curiosity_explorer import CuriosityExplorer
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "cx_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -11570,6 +11622,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.seven_layer_loop import SevenLayerLoop
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "sll_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -11702,6 +11755,7 @@ class SpacetimeMemoryEngine:
             try:
                 from .game_web.generate import WorldGenerator
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "gen_not_ready", "error": str(e)}
         if not hasattr(self, '_wgen'):
             self._wgen = WorldGenerator(size=int(p.get('size', 24)),
@@ -11802,8 +11856,10 @@ class SpacetimeMemoryEngine:
                 from ..world.vprim import (  # 相对导入兜底（包内调用）
                     VPrim, spatial_relation, count_vprims, parse_anchor)
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "vprim_not_ready", "error": str(e)}
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"status": "vprim_not_ready", "error": str(e)}
         if action == "spatial":
             a = p.get("a")
@@ -11836,6 +11892,7 @@ class SpacetimeMemoryEngine:
                     if vp is not None:
                         vprims.append(vp)
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return vprims
 
@@ -11848,6 +11905,7 @@ class SpacetimeMemoryEngine:
                 text += f" 变化={changed}"
             self.add_perception(text, importance=0.5, tags=["screen_state"])
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
     # =====================================================================
@@ -11866,6 +11924,7 @@ class SpacetimeMemoryEngine:
                                        tags=["voice_session", "conversation"])
             return node.id
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return ""
 
     def recursive_reflect(self, claim: str, expected: str = None,
@@ -11973,6 +12032,7 @@ class SpacetimeMemoryEngine:
                 from ..world.vprim import (ANCHOR_SCAN_PATTERN, parse_anchor,
                                            spatial_relation)
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return None
         anchors = []
         import re as _re
@@ -12021,6 +12081,7 @@ class SpacetimeMemoryEngine:
                     k: rel.get(k) for k in ("status", "reliability", "note")
                     if k in rel}
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # 反思标准声明：反思者的观察位置/工具自述（结构性，与具体 claim 无关）
         result["standards"].append({
@@ -12062,6 +12123,7 @@ class SpacetimeMemoryEngine:
                     if len(hits) >= 3:
                         break
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
             deviation = len(hits) == 0
             detail = (f"记忆对照：{'无相关记忆（信息差信号）' if deviation else f'{len(hits)} 条相关记忆'}")
@@ -12092,6 +12154,7 @@ class SpacetimeMemoryEngine:
                         "similarity": round(score, 3),
                     })
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         if not premises:
             premises.append({"premise": "该判断缺少记忆支撑（可能基于未言明的默认假设）",
@@ -12117,6 +12180,7 @@ class SpacetimeMemoryEngine:
                            "confidence": round(r.get("confidence", 0), 3)}
                           for r in (result.get("routes") or [])[:3]]
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # 影响分级（工程代理）：结构/协作/存在 三档
         level = "协作"
@@ -12240,6 +12304,7 @@ class SpacetimeMemoryEngine:
                     "reflection", f"claim={report.get('claim', '')[:80]}",
                     None, {"depth": report.get("depth"), "verdict": report.get("verdict", {})})
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         try:
             verdict = report.get("verdict", {})
@@ -12251,6 +12316,7 @@ class SpacetimeMemoryEngine:
                                 source="self:reflection", self_generated=True)
             self._last_reflection_chain = text
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
     # ==================== v1.12 自我认知循环（SELF-COGNITION-REV2） ====================
@@ -12284,6 +12350,7 @@ class SpacetimeMemoryEngine:
                               "vision": body["vision"]["available"],
                               "memory": body["memory"]["engine"]}
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return report
 
@@ -12304,6 +12371,7 @@ class SpacetimeMemoryEngine:
             # ⇒ 显式落库，否则 `state_description` 仍活不过一次重启。
             self.self_model._persist()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return {"status": "ok", "state_description": desc, "body": body}
 
@@ -12347,6 +12415,7 @@ class SpacetimeMemoryEngine:
         try:
             self.consume_events()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         result = self._lifecycle.cycle()
         self._note_action("lifecycle", f"state={result.get('state')}",
@@ -12449,6 +12518,7 @@ class SpacetimeMemoryEngine:
                 importance=0.6, tags=["观测层", "验证回路", "prediction_feedback",
                                       "hit" if hit else "miss"])
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return result
 
@@ -14794,6 +14864,7 @@ class SpacetimeMemoryEngine:
                        " (SELECT id FROM gap_history ORDER BY id DESC LIMIT 2000)")
             self._commit_locked()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return dn
 
@@ -14806,6 +14877,7 @@ class SpacetimeMemoryEngine:
             rows = c.fetchall()
             return [{"ts": ts, "d_norm": dn} for ts, dn in reversed(rows)]
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return []
 
     def get_gap_trend(self, window: int = 30) -> Dict:
@@ -14885,6 +14957,7 @@ class SpacetimeMemoryEngine:
                 try:
                     trajectory = json.loads(full[0].content)
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     trajectory = None
             if trajectory is None:
                 trajectory = {"cycle_id": cycle_id,
@@ -14905,6 +14978,7 @@ class SpacetimeMemoryEngine:
                 try:
                     trajectory["cycles"].append(json.loads(n.content))
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     pass
         trajectory.setdefault("meta", {
             "exported_at": time.time(),
@@ -15703,6 +15777,7 @@ class SpacetimeMemoryEngine:
                     self.decay_cycle()
                     self._decay_last_error = None   # #184：本周期成功 ⇒ 清旧读数
                 except Exception as exc:            # noqa: BLE001 —— 见 docstring #184
+                    _log.debug("core.py silent-except：见 docstring #184", exc_info=True)
                     self._decay_last_error = "%s: %s" % (type(exc).__name__, exc)
 
         self._decay_thread = threading.Thread(target=loop, daemon=True)
@@ -15865,6 +15940,7 @@ class SpacetimeMemoryEngine:
             return gate.write_snapshot(content, source, tags, entities,
                                        importance_hint)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"status": "error", "error": str(exc)}
 
     def prefeed_input(self, content: str, source: str = "input",
@@ -15876,6 +15952,7 @@ class SpacetimeMemoryEngine:
             gate = self._ensure_gate()
             return gate.prefeed(content, source, tags, entities)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"novel": False, "action": "error", "error": str(exc)}
 
     def pattern_separation_scan(self, limit: int = 150) -> dict:
@@ -15904,6 +15981,7 @@ class SpacetimeMemoryEngine:
             ps = PatternSeparation(self)
             return ps.scan(limit=limit)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"created": 0, "error": str(exc)}
 
     def reconstruct_scene(self, clue: str, depth: int = 2,
@@ -15926,6 +16004,7 @@ class SpacetimeMemoryEngine:
             sr = SceneReconstruction(self)
             return sr.reconstruct(clue, depth=depth, max_nodes=max_nodes)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"scene": [], "error": str(exc)}
 
     def promote_context_memories(self, limit: int = 30) -> list:
@@ -15934,4 +16013,5 @@ class SpacetimeMemoryEngine:
             gate = self._ensure_gate()
             return gate.promote_from_context(limit)
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return []
