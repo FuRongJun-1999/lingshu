@@ -5756,6 +5756,13 @@ class LayeredStore:
         # 恒返回 []（实测 get_nodes_by_tag(123) -> []），调用方会把「参数写错」误读成
         # 「没有该标签的节点」，形成静默假阴性。现 fail-loud：非 str/纯空白 → 可读
         # TypeError（不查库）。
+        # 自主发现（参数类型）：limit 此前不做类型闸——传 str 直接进 SQL 的 LIMIT，
+        # 抛不可读 `IntegrityError: datatype mismatch`（实测 get_nodes_by_tag("ops", limit="x")）。
+        # 现 fail-loud：非整数或负数 → 可读 TypeError/ValueError（与 tag 闸同族）。
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise TypeError("get_nodes_by_tag 的 limit 必须是整数，收到 %r" % (limit,))
+        if limit < 0:
+            raise ValueError("get_nodes_by_tag 的 limit 不能为负，收到 %r" % (limit,))
         if not isinstance(tag, str) or not tag.strip():
             raise TypeError("get_nodes_by_tag 的 tag 必须是非空字符串，收到 %r" % (tag,))
         c = self.conn.cursor()
