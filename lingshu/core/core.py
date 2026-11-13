@@ -5150,6 +5150,11 @@ class LayeredStore:
         有界候选池（`LIMIT 100`）的取舍同族，属已知边界。
         判据来源：公开 issue #492（复现条件与读数为本件复核实测）。
         """
+        # 自主发现（参数类型）：query 此前不做类型闸——传 int/None 直接落到 `.strip()`，
+        # 抛不可读 `AttributeError: 'int' object has no attribute 'strip'`
+        # （实测 search_skills(123)）。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(query, str) or not query.strip():
+            raise TypeError("search_skills 的 query 必须是非空字符串，收到 %r" % (query,))
         q = query.strip()
         c = self.conn.cursor()
         if q:
