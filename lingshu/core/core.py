@@ -4398,6 +4398,9 @@ class LayeredStore:
     @staticmethod
     def char_bigram_jaccard(a: str, b: str) -> float:
         """中文二元组 Jaccard 相似度（对中文友好，解决按词分割失效问题）"""
+        for _n, _v in (("a", a), ("b", b)):
+            if not isinstance(_v, str):
+                raise TypeError("char_bigram_jaccard 的 %s 必须是字符串，收到 %r" % (_n, _v))
         if not a or not b:
             return 0.0
         def bigrams(s):
@@ -4464,6 +4467,8 @@ class LayeredStore:
         """查询同义词展开：原查询整句 + 命中组词（含命中词本身，词级预筛）+ 组内同义词。
         命中词本身必须加入——整句 LIKE 无法命中只含词级的节点。
         触发判据见 `_synonym_trigger_hit`（#132：ASCII 词边界，杜绝 EMAIL→AI）。"""
+        if not isinstance(query, str):
+            raise TypeError("expand_query_terms 的 query 必须是字符串，收到 %r" % (query,))
         terms = [query]
         for group in LayeredStore.SYNONYM_GROUPS:
             for w in group:
@@ -5096,6 +5101,11 @@ class LayeredStore:
         #267：经 `_tolerant_nodes` 逐行容错——单条坏行不毒化整层读取。
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 类型闸（#1409）：只拦非整数——None/负数**放行**（#658 已定谳：
+        # `limit=None` ⇒ 全量、`limit=-1` ⇒ 同全量（SQLite LIMIT -1 语义）；
+        # bool 是 int 子类须显式排除）。负数 ValueError 口径与 #658 G2 冲突，不采。
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
+            raise TypeError("get_recent_context 的 limit 必须是整数，收到 %r" % (limit,))
         c = self.conn.cursor()
         sql = "SELECT * FROM nodes WHERE layer='context' ORDER BY rowid DESC"
         if limit is not None:
@@ -5322,6 +5332,12 @@ class LayeredStore:
     @_transactional
     def update_skill_confidence(self, skill_id: str, delta: float):
         """技能置信度增量更新（clamp 到 [0,1]，正=成功经验/负=失败经验）。"""
+        if not isinstance(skill_id, str) or not skill_id.strip():
+            raise TypeError("update_skill_confidence 的 skill_id 必须是非空字符串，收到 %r"
+                            % (skill_id,))
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_skill_confidence 的 delta 必须是有限实数，收到 %r" % (delta,))
         c = self.conn.cursor()
         c.execute("UPDATE skills SET confidence = MIN(1.0, MAX(0.0, confidence + ?)), updated_at=? WHERE id=?",
                   (delta, time.time(), skill_id))
@@ -6678,6 +6694,11 @@ class LayeredStore:
     @_transactional
     def append_skill_procedure(self, skill_id: str, step: str):
         """技能程序追加（P1-3 技能获取：版本+1）"""
+        if not isinstance(skill_id, str) or not skill_id.strip():
+            raise TypeError("append_skill_procedure 的 skill_id 必须是非空字符串，收到 %r"
+                            % (skill_id,))
+        if not isinstance(step, str) or not step.strip():
+            raise TypeError("append_skill_procedure 的 step 必须是非空字符串，收到 %r" % (step,))
         c = self.conn.cursor()
         c.execute("SELECT procedure FROM skills WHERE id=?", (skill_id,))
         row = c.fetchone()

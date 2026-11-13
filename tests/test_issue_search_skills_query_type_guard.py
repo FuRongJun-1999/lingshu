@@ -32,7 +32,7 @@ def _assertions():
     _check("A02 None -> 可读 TypeError", msg2 is not None and not msg2.startswith("__WRONG__"), msg2)
     _check("A03 正对照：合法 query 正常返回列表", e.store.search_skills("no-such") == [], "n/a")
     text = (_REPO / "lingshu/core/core.py").read_text(encoding="utf-8")
-    _check("E01 钉子：可读文案", "search_skills 的 query 必须是非空字符串" in text)
+    _check("E01 钉子：可读文案", "search_skills 的 query 必须是字符串" in text)
 
 
 def _run_assertions():
@@ -43,7 +43,7 @@ def _run_assertions():
     return len(FAILS)
 
 
-_ARMS = {"M1":["lingshu/core/core.py",[["        if not isinstance(query, str) or not query.strip():","        if False:"]],["A01","A02"]]}
+_ARMS = {"M1":["lingshu/core/core.py",[["        if not isinstance(query, str):\n            raise TypeError(\"search_skills 的 query 必须是字符串，收到 %r\"","        if False:\n            raise TypeError(\"search_skills 的 query 必须是字符串，收到 %r\""]],["A01","A02"]]}
 
 
 def _subprocess_fail_names():

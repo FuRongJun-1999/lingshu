@@ -31,8 +31,8 @@ def _assertions():
            msg is not None and not msg.startswith("__WRONG__") and "limit" in msg, msg)
     msg2 = _err(lambda: e.store.get_recent_context(2.5), TypeError)
     _check("A02 float limit -> 可读 TypeError", msg2 is not None and not msg2.startswith("__WRONG__"), msg2)
-    msg3 = _err(lambda: e.store.get_recent_context(-1), ValueError)
-    _check("A03 负数 limit -> ValueError", msg3 is not None and not msg3.startswith("__WRONG__"), msg3)
+    _check("A03 limit=-1 ⇒ 全量（#658 G2 口径：-1 与 None 同全量，不拦）",
+           len(e.store.get_recent_context(-1)) == len(e.store.get_recent_context(None)), "n/a")
     _check("A04 正对照：合法 limit 返回列表", isinstance(e.store.get_recent_context(5), list), "n/a")
     text = (_REPO / "lingshu/core/core.py").read_text(encoding="utf-8")
     _check("E01 钉子：可读文案", "get_recent_context 的 limit 必须是整数" in text)
