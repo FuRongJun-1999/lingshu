@@ -23,7 +23,7 @@ def test_av_verify_nan_conf_raises():
 def test_av_verify_bool_conf_raises():
     from lingshu.world.anchored_verification import AnchoredVerification
     v = AnchoredVerification()
-    with pytest.raises(TypeError, match="conf 必须是数值"):
+    with pytest.raises(ValueError, match="conf 必须是数值"):
         v.verify("visual", "action", conf=True)
 
 
@@ -58,7 +58,7 @@ def test_sag_verify_bool_evidence_raises():
         def to_dict(self):
             return {"id": "a1"}
     g.anchors["a1"] = _FakeAnchor()
-    with pytest.raises(TypeError, match="evidence 必须是数值"):
+    with pytest.raises(ValueError, match="evidence 必须是数值"):
         g.verify("a1", "visual", evidence=True, strong=True)
 
 
