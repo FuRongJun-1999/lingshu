@@ -8,7 +8,7 @@
     {
      "file": "anchor_verify.py",
      "src": "aeis.anchor_verify",
-     "sha256": "e2cab7b98c8eee9b",
+     "sha256": "ff7688223a718c4a",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -32,7 +32,7 @@
     {
      "file": "channel_credibility.py",
      "src": "aeis.channel_credibility",
-     "sha256": "0f6f59d436512c83",
+     "sha256": "79c23ecf74623077",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -43,7 +43,7 @@
     {
      "file": "confirmation.py",
      "src": "aeis.confirmation",
-     "sha256": "3274294f0e1a6f0f",
+     "sha256": "c8977bd4a22ed28b",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -54,7 +54,7 @@
     {
      "file": "curiosity_explorer.py",
      "src": "aeis.curiosity_explorer",
-     "sha256": "85dbe6a5ef4e0d56",
+     "sha256": "4a551240f4594c68",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -119,7 +119,7 @@
     {
      "file": "scene_simulator.py",
      "src": "aeis.scene_simulator",
-     "sha256": "8afa2bf8366e5a4a",
+     "sha256": "f07ddfd30d47264e",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -141,7 +141,7 @@
     {
      "file": "seven_layer_loop.py",
      "src": "aeis.seven_layer_loop",
-     "sha256": "f6e8f0620c5e91ae",
+     "sha256": "c15d58217999f1df",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -176,7 +176,7 @@
     {
      "file": "skeleton3d.py",
      "src": "aeis.skeleton3d",
-     "sha256": "c52d984697eaa106",
+     "sha256": "60fcc971720212c7",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -198,7 +198,7 @@
     {
      "file": "stable_lease.py",
      "src": "aeis.stable_lease",
-     "sha256": "f9b0ada5be48adb4",
+     "sha256": "851ec8f5a329e875",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -220,7 +220,7 @@
     {
      "file": "voxel_world.py",
      "src": "aeis.voxel_world",
-     "sha256": "c8c0299e1a88c0b0",
+     "sha256": "c96c94ee03354211",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -231,7 +231,7 @@
     {
      "file": "vprim.py",
      "src": "aeis.vprim",
-     "sha256": "649978c9e9b53aff",
+     "sha256": "86f3f9649881b300",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -242,7 +242,7 @@
     {
      "file": "wm_simloop.py",
      "src": "aeis.wm_simloop",
-     "sha256": "8dc3e760cf3780ac",
+     "sha256": "7d33f88cf2ebcb2d",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -255,7 +255,7 @@
     {
      "file": "world3d.py",
      "src": "aeis.world3d",
-     "sha256": "1d14e78e53c643b3",
+     "sha256": "96415a9439faffcf",
      "rewrites": 16,
      "sanitized": 0,
      "patches": 0,
@@ -266,7 +266,7 @@
     {
      "file": "world_learner.py",
      "src": "aeis.world_learner",
-     "sha256": "60f0e28de884b0c0",
+     "sha256": "69ddbddd97489708",
      "rewrites": 8,
      "sanitized": 0,
      "patches": 0,
@@ -279,7 +279,7 @@
     {
      "file": "world_model.py",
      "src": "aeis.world_model",
-     "sha256": "079b3ec3775e43ae",
+     "sha256": "f328599573397309",
      "rewrites": 4,
      "sanitized": 0,
      "patches": 0,
@@ -297,7 +297,7 @@
     {
      "file": "world_process.py",
      "origin": "lingshu_native_development",
-     "sha256": "3c139755d49b5ee8"
+     "sha256": "9b736b05e11637c9"
     }
    ],
    "private_hits": []
@@ -318,7 +318,7 @@
     {
      "file": "condition_normalize.py",
      "src": "aeis.condition_normalize",
-     "sha256": "59a9ff2936029662",
+     "sha256": "199834c837efe530",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -329,7 +329,7 @@
     {
      "file": "core.py",
      "src": "aeis.core",
-     "sha256": "1094e7f468a0ea77",
+     "sha256": "c192b9c3207adb7f",
      "rewrites": 34,
      "sanitized": 2,
      "patches": 2,
@@ -360,7 +360,7 @@
     {
      "file": "longterm_gate.py",
      "src": "aeis.longterm_gate",
-     "sha256": "6f0e6156fe676ac6",
+     "sha256": "ff860efdcaf7ca55",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -393,7 +393,7 @@
     {
      "file": "verdict.py",
      "src": "aeis.verdict",
-     "sha256": "fdf957c1b4bafe84",
+     "sha256": "6b1e73fa53beac56",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -409,7 +409,7 @@
     {
      "file": "hex_cnn.py",
      "src": "aeis.hex_cnn",
-     "sha256": "500f3db6eaed1ece",
+     "sha256": "bee9136a6a886143",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -431,7 +431,7 @@
     {
      "file": "hex_gen.py",
      "src": "aeis.hex_gen",
-     "sha256": "b18f474ba9433337",
+     "sha256": "19f3e3857336dc0e",
      "rewrites": 3,
      "sanitized": 0,
      "patches": 0,
@@ -442,7 +442,7 @@
     {
      "file": "hex_hier.py",
      "src": "aeis.hex_hier",
-     "sha256": "c322fb6e7ef68137",
+     "sha256": "f54e61d10dda98b3",
      "rewrites": 3,
      "sanitized": 0,
      "patches": 0,
@@ -453,7 +453,7 @@
     {
      "file": "hex_nn_preview.py",
      "src": "aeis.hex_nn_preview",
-     "sha256": "d9fa7e989f5068cf",
+     "sha256": "94bbec838d5348e3",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -475,7 +475,7 @@
     {
      "file": "hex_query.py",
      "src": "aeis.hex_query",
-     "sha256": "824fb8c4e94140f5",
+     "sha256": "2717cd646df02ec4",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -486,7 +486,7 @@
     {
      "file": "hex_recon.py",
      "src": "aeis.hex_recon",
-     "sha256": "39c2df502d81330e",
+     "sha256": "6ba50a37cc403a5d",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -497,7 +497,7 @@
     {
      "file": "hex_search.py",
      "src": "aeis.hex_search",
-     "sha256": "41920fe9a28c7fd3",
+     "sha256": "e8cefd0623b689f1",
      "rewrites": 2,
      "sanitized": 0,
      "patches": 0,
@@ -508,7 +508,7 @@
     {
      "file": "hex_text.py",
      "src": "aeis.hex_text",
-     "sha256": "330269be933d1949",
+     "sha256": "60f0688806a77bb2",
      "rewrites": 1,
      "sanitized": 0,
      "patches": 0,
@@ -519,7 +519,7 @@
     {
      "file": "hex_train.py",
      "src": "aeis.hex_train",
-     "sha256": "be3ff6a820018fbf",
+     "sha256": "9b35a19eeedff125",
      "rewrites": 2,
      "sanitized": 1,
      "patches": 0,
@@ -530,7 +530,7 @@
     {
      "file": "hex_unit.py",
      "src": "aeis.hex_unit",
-     "sha256": "d1cf616e0fa95d31",
+     "sha256": "39aa28bade875edf",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -541,7 +541,7 @@
     {
      "file": "rust_bridge.py",
      "src": "aeis.rust_bridge",
-     "sha256": "f47e49c07c9b9d95",
+     "sha256": "6eb2b48cd4f4bc22",
      "rewrites": 0,
      "sanitized": 4,
      "patches": 0,
@@ -552,7 +552,7 @@
     {
      "file": "stcnn.py",
      "src": "wisdom.stcnn",
-     "sha256": "406538be87fab512",
+     "sha256": "2b73b2e3e3923e10",
      "rewrites": 0,
      "sanitized": 0,
      "patches": 0,
@@ -601,7 +601,7 @@
     {
      "file": "hexgen_multi_seed.py",
      "src": "experiments.hexgen_multi_seed",
-     "sha256": "d02a60418da1385e",
+     "sha256": "7f275718a603748d",
      "rewrites": 1,
      "sanitized": 1,
      "patches": 0,
