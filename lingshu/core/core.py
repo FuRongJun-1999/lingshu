@@ -4970,6 +4970,13 @@ class LayeredStore:
         #267：经 `_tolerant_nodes` 逐行容错——单条坏行不毒化整层读取。
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 自主发现（参数类型）：limit 此前不做类型闸——传 str 直接进 SQL 的 LIMIT，
+        # 抛不可读 `IntegrityError: datatype mismatch`（实测 get_recent_context("x")）。
+        # 现 fail-loud：非整数或负数 → 可读 TypeError/ValueError。
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise TypeError("get_recent_context 的 limit 必须是整数，收到 %r" % (limit,))
+        if limit < 0:
+            raise ValueError("get_recent_context 的 limit 不能为负，收到 %r" % (limit,))
         c = self.conn.cursor()
         sql = "SELECT * FROM nodes WHERE layer='context' ORDER BY rowid DESC"
         if limit is not None:
