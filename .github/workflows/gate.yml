@@ -86,6 +86,12 @@ env:
     tests/test_issue_update_importance_type_guard.py
     tests/test_issue_update_confidence_type_guard.py
     tests/test_issue_get_skill_by_name_type_guard.py
+    tests/test_issue_search_skills_query_type_guard.py
+    tests/test_issue_recent_context_limit_type_guard.py
+    tests/test_issue_update_skill_confidence_type_guard.py
+    tests/test_issue_append_skill_procedure_type_guard.py
+    tests/test_issue_jaccard_arg_type_guard.py
+    tests/test_issue_expand_terms_query_type_guard.py
     tests/test_issue_range_time_layer_type_guard.py
     tests/test_issue_by_time_type_guard.py
     tests/test_issue_subgraph_root_type_guard.py
