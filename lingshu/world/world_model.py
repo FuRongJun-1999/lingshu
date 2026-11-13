@@ -28,21 +28,30 @@ UnifiedWorldModel = 世界图（统一骨干）+ 三端口：
 """
 from __future__ import annotations
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
 import inspect
 import math
 import random
+from collections import deque
+from copy import deepcopy
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 
 from .motion import ObservationWindow, recent_direction
+from .identity import inspect_frame, validate_measurements, validate_policy
 
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
     from .scene_simulator import SceneSimulator
-except Exception:
+except Exception as _e:
+    _logger.debug("#170 3D 场景模拟器已迁移 AEIS，缺失回落 SceneSimulator=None：%s", _e)
     try:
         from .scene_simulator import SceneSimulator
-    except Exception:
+    except Exception as _e2:
+        _logger.debug("#170 二次回落仍缺失，SceneSimulator=None：%s", _e2)
         SceneSimulator = None
 
 
@@ -83,7 +92,8 @@ class UnifiedWorldModel:
     """
 
     def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
-                 world: Optional[SceneSimulator] = None):
+                 world: Optional[SceneSimulator] = None, identity_policy: str = "legacy"):
+        self._identity_policy = validate_policy(identity_policy)
         self.world = world or SceneSimulator(size=size, ground_level=ground_level,
                                              seed=seed)
         self.size = self.world.world.size
@@ -116,6 +126,22 @@ class UnifiedWorldModel:
 
     # ================= 理解端口 =================
 
+    @property
+    def identity_policy(self) -> str:
+        return self._identity_policy
+
+    def set_identity_policy(self, policy: str) -> str:
+        self._identity_policy = validate_policy(policy)
+        return self._identity_policy
+
+    def inspect_identity(self, observations: List[Dict], tick: Optional[int] = None) -> Dict:
+        """只读的整帧关联回执；不分配 ID，不读取模拟器身份/行为真值。"""
+        target = self.tick + 1 if tick is None else tick
+        if (isinstance(target, bool) or not isinstance(target, int) or target < 0
+                or (self.history and target <= self.tick)):
+            raise ValueError("观测 tick 必须是晚于当前世界图时刻的非负整数")
+        return inspect_frame(self.nodes, self._last_prediction, observations, target)
+
     def _observe_world(self) -> List[Dict]:
         """传感器读物理世界：只暴露位置/类别（模型看不到内部规则）。"""
         return [{"eid": eid, "category": e.category, "pos": tuple(e.pos)}
@@ -143,6 +169,10 @@ class UnifiedWorldModel:
                 best, best_d = eid, d
         if best is not None and best_d < 2.0:   # 追踪半径：同类别 2 体素内
             return best
+        return self._new_identity(taken)
+
+    def _new_identity(self, taken: Optional[set] = None) -> str:
+        """只分配空闲 ID；不把本帧刚创建的节点重新用作身份候选。"""
         # 生成后查重 self.nodes，碰撞则重生成（6 位 hex=16M 空间，长程生日悖论必然碰撞；
         # 不查重会让新 eid 命中既有键，perceive 走 matched 分支把两个不同实体静默合并）
         for _ in range(8):
@@ -184,6 +214,8 @@ class UnifiedWorldModel:
           - 异常（距离 ≥ bound）→ 置信 -0.1，记录 anomaly（模型缺口/外部事件）
         """
         obs = observations if observations is not None else self._observe_world()
+        assessment = (self.inspect_identity(obs, tick) if self.identity_policy == "conservative"
+                      else None)
         if tick is not None and self.history and tick <= self.tick:
             raise ValueError("观测 tick 必须晚于当前世界图时刻")
         self.tick = self.tick + 1 if tick is None else tick
@@ -196,15 +228,24 @@ class UnifiedWorldModel:
                      is not None else tuple(n.pos) for eid, n in self.nodes.items()}
         taken = {str(o["eid"]) for o in obs if o.get("eid") is not None and str(o["eid"])}
         resolved = []
-        for o in obs:
+        if assessment is not None:
+            stats.update(deferred=assessment["deferred"], rejected=assessment["rejected"])
+        for index, o in enumerate(obs):
+            stats["observed"] += 1
+            reading = assessment["readings"][index] if assessment is not None else None
+            if reading is not None and reading["association_state"] != "ACCEPT":
+                continue
             eid = str(o["eid"]) if o.get("eid") is not None else ""
             if not eid:
-                eid = self._track_identity(o, taken=taken, positions=frame_pos)
+                eid = ((reading["matched_eid"] or self._new_identity(taken)) if reading is not None
+                       else self._track_identity(o, taken=taken, positions=frame_pos))
                 taken.add(eid)                 # 一个节点本帧至多被一个观测占用
             pos = tuple(float(v) for v in o["pos"])
             snap[eid] = list(pos)
             resolved.append({**o, "eid": eid, "pos": list(pos)})
-            stats["observed"] += 1
+            if reading is not None:
+                reading["resolved_eid"] = eid
+                resolved[-1]["observation_index"] = index
             if eid in self.nodes:
                 stats["matched"] += 1
                 n = self.nodes[eid]
@@ -253,9 +294,13 @@ class UnifiedWorldModel:
                              "entities": {eid: list(p) for eid, p in snap.items()}})
         if timestamp is not None:
             self.history[-1]["timestamp"] = timestamp
+        if assessment is not None:
+            self.history[-1].update(identity_readings=deepcopy(assessment["readings"]),
+                                    observation_tool=tool)
         self._patterns = {}   # 模式缓存失效（新观测后重新推断）
         return {"status": "ok", "tick": self.tick, **stats,
-                "anomaly_events": stats["anomalies"], "observations": resolved}
+                "anomaly_events": stats["anomalies"], "observations": resolved,
+                **({"identity": assessment} if assessment is not None else {})}
 
     def restore_trajectory_from_history(self) -> int:
         """把观测历史重建成轨迹缓冲，返回写入的观测点总数。
@@ -268,17 +313,18 @@ class UnifiedWorldModel:
         `speed_near_zero` 变成 `not_enough_samples`，两侧预测不再一致。
 
         边界：只有本帧真实观测到的实体进缓冲（与 `snap` 同源），模型信念
-        位置不进；被存档历史丢掉的帧无法补回。
+        位置不进；被存档历史丢掉的帧无法补回。读取时即按实体保留最后
+        256 个点，避免先构造全历史的第二份轨迹；完整 history 不裁剪。
         """
-        buf: Dict[str, List[Tuple[int, Tuple[float, float, float]]]] = {}
+        buf: Dict[str, deque] = {}
         for frame in self.history:
             tick = int(frame["tick"])
             for eid, pos in frame["entities"].items():
-                buf.setdefault(eid, []).append((tick, tuple(float(v) for v in pos)))
-        for eid, seq in buf.items():
-            if len(seq) > 256:
-                buf[eid] = seq[-256:]
-        self._traj_buf = buf
+                rows = buf.get(eid)
+                if rows is None:
+                    rows = buf[eid] = deque(maxlen=256)
+                rows.append((tick, tuple(float(v) for v in pos)))
+        self._traj_buf = {eid: list(seq) for eid, seq in buf.items()}
         # 与轨迹缓冲同批建立：包装层只在"缓冲不存在"时一并初始化这两个误差
         # 队列；先把缓冲建出来而不建它们，下一帧 perceive 就会在
         # `self._err_model.setdefault` 上抛 AttributeError。
@@ -421,6 +467,66 @@ class UnifiedWorldModel:
         """随机行为可达域（D2：分布稳定可预测）。"""
         return max(self.hit_threshold, speed * 1.5 + self.pad)
 
+    def counterfactual(self, *, horizon: int = 1,
+                       relations: Optional[List[Dict]] = None) -> Dict:
+        """在独立副本中比较关系条件，不提交观测、预测缓存或经验。
+
+        首版只支持已知实体之间的 seek/flee 条件；每个来源最多一条。
+        horizon 限 1..64，作为显式计算预算。副本保留整个模型的派生缓冲和
+        RNG 状态，但屏蔽物理世界（包括指向它的别名）；预测链只读已观测模型
+        和调用方显式配置的物理环境。调用方须串行提供稳定实例，本接口不提供
+        并发事务或通用 Python 沙箱。返回的候选仍未经真实后续观测验证。
+        """
+        if type(horizon) is not int or not 1 <= horizon <= 64:
+            raise ValueError("counterfactual horizon must be an integer in 1..64")
+        if relations is None:
+            relations = []
+        if not isinstance(relations, list):
+            raise ValueError("counterfactual relations must be a list")
+        assumptions = []
+        sources = set()
+        for item in relations:
+            if not isinstance(item, dict) or set(item) != {"source", "relation", "target"}:
+                raise ValueError("counterfactual relation requires source/relation/target only")
+            source, target, relation = item["source"], item["target"], item["relation"]
+            if (not isinstance(source, str) or not isinstance(target, str)
+                    or source not in self.nodes or target not in self.nodes):
+                raise ValueError("counterfactual relation must reference known entity IDs")
+            if source == target or source in sources:
+                raise ValueError("counterfactual relation source must be unique and not its target")
+            if relation not in ("seek", "flee"):
+                raise ValueError("counterfactual relation must be seek or flee")
+            sources.add(source)
+            assumptions.append({"source": source, "relation": relation, "target": target})
+
+        # 复制前不生成/推断：这些操作会改真实缓存、关系和节点行为字段。
+        # memo 同时隔断 world 及其别名，不读取或复制模拟器隐藏真相。
+        baseline_model = deepcopy(self, {id(self.world): None})
+        alternative_model = deepcopy(self, {id(self.world): None})
+        baseline = baseline_model.generate(horizon=horizon)
+        if assumptions:
+            alternative_model.infer_patterns()
+            alternative_model.edges = [e for e in alternative_model.edges if e.source not in sources]
+            for item in assumptions:
+                alternative_model.edges.append(WMEdge(**item, confidence=1.0,
+                                                       evidence="counterfactual_assumption"))
+                alternative_model.nodes[item["source"]].behavior_inferred = item["relation"]
+                alternative_model._patterns.setdefault("behavior_inference", {})[item["source"]] = item["relation"]
+            alternative_model._patterns["relations"] = [e.to_dict() for e in alternative_model.edges]
+        # 条件只覆盖此次候选关系；不再让推断把它们覆写回观测模式。
+        alternative = alternative_model.generate(horizon=horizon, use_patterns=not bool(assumptions))
+        deltas = {}
+        for eid, record in alternative["predictions"].items():
+            before = baseline["predictions"][eid]["predicted"]
+            after = record["predicted"]
+            deltas[eid] = {"position": [after[i] - before[i] for i in range(3)],
+                           "distance": math.dist(before, after)}
+        return deepcopy({"schema": "wm.counterfactual/1", "source_tick": self.tick,
+                         "target_tick": self.tick + horizon, "horizon": horizon,
+                         "provenance": "counterfactual", "verification": "unverified",
+                         "committed": False, "assumptions": assumptions,
+                         "baseline": baseline, "alternative": alternative, "deltas": deltas})
+
     def generate(self, horizon: int = 1, use_patterns: bool = True) -> Dict:
         """生成端口：世界图 → 候选未来（顺序语义外推 + 不确定边界）。
 
@@ -430,6 +536,14 @@ class UnifiedWorldModel:
           - bounded_stochastic：随机行为 → 可达域（预测=当前位置）
           - chase_stochastic：支持的追逐方向作中心，保留随机目标宽可达域（D1）
         """
+        # #2446：horizon 非整数值此前 int() 静默截断（2.7→2）、nan 裸崩
+        # （"cannot convert float NaN to integer" 穿透门面）——同文件
+        # counterfactual 已显式闸 1..64，本入口补同一维口径（负数/0 钳 1 的
+        # 既有行为保持不变）。
+        if horizon is not None and (isinstance(horizon, bool)
+                                    or not isinstance(horizon, int)):
+            raise TypeError("generate 的 horizon 必须是 int，收到 %r"
+                            % (horizon,))
         h = max(1, int(horizon)) if horizon is not None else 1
         if use_patterns:
             self.infer_patterns()
@@ -443,7 +557,18 @@ class UnifiedWorldModel:
         # 按 first_seen 序（≈ 物理世界插入序，保持顺序语义）
         ordered = sorted(self.nodes.items(), key=lambda kv: kv[1].first_seen)
         pred: Dict[str, Dict] = {}
+        # #507：视界不确定度累积。bound 是 target_tick = tick+h 预测的命中半径，
+        # 必须覆盖 h 步的未建模运动；各 mode 的 1 步 bound 只覆盖 1 步
+        # （实测单 wander 实体 h=4 有 32.8% 预测越界、h=8 60.2%，worst err 2.01
+        # > bound 0.65——假异常扣置信度）。age 项已对「未观测 tick」逐 tick 线性
+        # 累积（bound += age·_reach），horizon 步是同性质的未观测步，同口径逐
+        # step 累加该 mode 的**漂移分量**（不含 hit_threshold 噪声地板——静止实体
+        # 的漂移是 0 不是 0.5；exact 静目标逐步逐位复刻 sim ⇒ 漂移 0；
+        # h=1 时累加项为空 ⇒ 逐字节同改前）。
+        unc_acc: Dict[str, float] = {}
+        step_no = 0
         for _ in range(h):
+            step_no += 1
             for eid, n in ordered:
                 speed = self._patterns.get("speed_estimates", {}).get(eid, 0.3)
                 cons = self._patterns.get("entropy", {}).get(eid, 0.0)
@@ -452,7 +577,15 @@ class UnifiedWorldModel:
                 if rel is not None and rel.relation in ("seek", "flee") and rel.target in shadow:
                     tgt_cons = self._patterns.get("entropy", {}).get(rel.target, 0.0)
                     target_speed = self._patterns.get("speed_estimates", {}).get(rel.target, 0.3)
-                    target_stochastic = target_speed > 1e-6 and tgt_cons < self.entropy_threshold
+                    # #2582：exact 的前提是「目标位置在预测 tick 已知」——只有静止
+                    # 目标（speed_est ≈ 0）满足。一致运动只保证**方向**统计稳定，
+                    # 不保证位置可预言：sim 的逐实体顺序更新（先动者改变后动者的
+                    # 决策依据，`scene_simulator.step` 注释明言）⇒ 追逐者实际读的
+                    # 是目标**已移动一格**的位置，模型侧冻结在快照位 ⇒ h=1 误差
+                    # ≈ 目标单 tick 位移（实测 9/300 种子 err 0.58~1.19 > 窄界 0.55，
+                    # 假异常扣置信度）。一致目标同样降级 chase_stochastic：其 bound
+                    # 已含双方可达域（覆盖目标运动），预测中心不变。
+                    target_stochastic = target_speed > 1e-6
                     # 关系仅在自身方向性明确时使用（防随机实体的虚假关系）；
                     # seek 追逐随机目标 → 降级 chase_stochastic（宽可达域，D1）
                     if (cons >= self.entropy_threshold
@@ -473,48 +606,100 @@ class UnifiedWorldModel:
                         np_ = self._apply_move(shadow[eid], speed, d) if seek_supported else shadow[eid]
                         shadow[eid] = np_
                         bound = max(self._reach(speed),
-                                    self._reach(self._patterns.get("speed_estimates",
-                                                                   {}).get(rel.target, 0.3)))                             + self.hit_threshold
+                                    self._reach(target_speed)) + self.hit_threshold
                         mode = "chase_stochastic"
+                        drift = max(speed, target_speed) * 1.5 + self.pad
                     elif rel.relation == "seek" and not seek_supported:
                         np_ = shadow[eid]
                         bound = self._reach(speed)
                         mode = "bounded_stochastic"
+                        drift = speed * 1.5 + self.pad
                     elif rel.relation == "seek":
-                        np_ = self._apply_move(shadow[eid], speed, d)
+                        # #2580：世界侧 seek 步长按剩余距离封顶（
+                        # `scene_simulator.step:1254` 的 `min(speed, dist)`），
+                        # oracle 侧 #249 也已修（`step_cap=dist`）——模型侧是
+                        # 同一数学的漏网。到达邻域时无封顶 ⇒ 预测越过目标
+                        # （实测 tick=4 WM_err=0.90 ≥ bound=0.55），产生假异常
+                        # 并扣置信度。#2582 后 exact 只剩**静止目标**（speed_est ≈ 0）
+                        # ⇒ 逐步逐位复刻 sim（cap 每步同样封顶）⇒ 漂移 0，bound 不随 h 累积。
+                        _cap_speed = min(speed, dl) if dl < speed else speed
+                        np_ = self._apply_move(shadow[eid], _cap_speed, d)
                         shadow[eid] = np_
                         bound = self.hit_threshold + 0.05
                         mode = "exact"
+                        drift = 0.0
                     else:
                         # flee：方向已知但带扰动 → 略宽可达域
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_
                         bound = self.hit_threshold + speed * 0.3
                         mode = "bounded_noisy"
+                        drift = speed * 0.3
                 elif cons >= self.entropy_threshold:
                     # 直线运动无关系目标（follow/巡游）→ 继续直线外推（可能转弯）
                     # 简化：预测=当前位置 + 最近位移方向
                     moves = self._recent_move(eid)
                     if moves is None and n.last_seen < self.tick:
                         moves = self._motion_directions.get(eid)
-                    if moves:
+                    # #2584：转向可测闸 + 转向闸 + 转向项。|v1 − v2|（最近两次
+                    # 位移差）是直线外推下一步误差的逐位复刻（实测 err/turn 比
+                    # 1.00 中位）；窗口 < 3 点（转向不可测）或 turn > 0.5·speed
+                    # （「自身运动一致」是外因驱动——追逐体/被墙弹的游走体，
+                    # h>1 直线外推方向乱飞、h=3 实测 err 3.47 > 任何转向裕度）
+                    # ⇒ 不接管，落到随机可达域（冻结中心 + 逐 h 累积 reach，
+                    # 实测覆盖全部越界；巡游体转向 ≈ 0 不受影响）。
+                    seq_ = [q for _t, q in _wm_traj(self, eid)]
+                    # 近因 turn（最近 2 对）：整窗 max 会把久远的单次急转记一辈子
+                    # ——转向证据闸的语义是「**最近**仍在温和转向」（随机前缀
+                    # 滑出窗口后须放行，test_trajectory_resolved_observations 契约）。
+                    turns_ = [math.dist(
+                        tuple(seq_[i][j] - seq_[i - 1][j] for j in range(3)),
+                        tuple(seq_[i - 1][j] - seq_[i - 2][j] for j in range(3)))
+                        for i in range(2, len(seq_))]
+                    turn_max = max(turns_[-2:]) if turns_ else 0.0
+                    turn = turn_max
+                    # 窗口 < 3 点：转向不可测，但**不得拒接管**——2 观测直线体
+                    # （#159/test_world_verify_finite_evidence 契约）必须照常外推，
+                    # 转向不确定性用**一个整步长**做裕度（随机转向的最坏
+                    # |v_next − v1| ≤ 2|v1|，0.4·speed + |v1| 恰好覆盖）。
+                    if len(seq_) >= 3:
+                        turn = turn_max
+                        gate_open = turn_max <= 0.5 * speed
+                    else:
+                        turn = speed
+                        gate_open = True
+                    # #2584：关系驱动闸——任一实体对本实体的趋向/远离 |c| > 0.5
+                    # 说明自身运动是**外因驱动**（追逐/逃离尚未走完正式推断的
+                    # 方向样本数），直线外推方向将由目标牵引 ⇒ 不接管。
+                    rel_driven = any(
+                        abs(self._pair_tendency(eid, other)) > 0.5
+                        for other in self.nodes if other != eid)
+                    if (moves and gate_open and not rel_driven):
                         d = moves
                         np_ = self._apply_move(shadow[eid], speed, d)
                         shadow[eid] = np_
-                        bound = self.hit_threshold + speed * 0.4
+                        bound = self.hit_threshold + speed * 0.4 + turn
                         mode = "bounded_noisy"
+                        drift = speed * 0.4 + turn
                     else:
                         # 随机行为 → 可达域（D2）
                         np_ = shadow[eid]
                         bound = self._reach(speed)
                         mode = "bounded_stochastic"
+                        drift = speed * 1.5 + self.pad
                 else:
                     # 随机行为 → 可达域（D2）
                     np_ = shadow[eid]
                     bound = self._reach(speed)
                     mode = "bounded_stochastic"
+                    drift = speed * 1.5 + self.pad
                 age = max(0, self.tick - n.last_seen)
-                bound += age * self._reach(speed)
+                # #507：前 h−1 步的漂移累加进末步 bound（末步自身漂移已在其
+                # mode bound 内）；h=1 时 prior 恒 0 ⇒ 逐字节同改前。
+                prior = unc_acc.get(eid, 0.0)
+                if step_no < h:
+                    unc_acc[eid] = prior + drift
+                bound = bound + prior + age * self._reach(speed)
                 pred[eid] = {"category": n.category, "behavior": n.behavior_inferred,
                              "mode": mode, "predicted": list(np_),
                              "bound": round(bound, 3),
@@ -551,6 +736,26 @@ class UnifiedWorldModel:
         判据来源：verify 端口语义（world_model.py 模块 docstring：验证端口
         「外部观察者逐 tick 对比」）+ 条件空间四维度的「时间窗口」维度。
         """
+        def finite_point(value):
+            try:
+                return (isinstance(value, (list, tuple)) and len(value) == 3
+                        and all(math.isfinite(v) for v in value))
+            except (TypeError, ValueError, OverflowError):
+                return False
+
+        def finite_bound(value):
+            try:
+                return math.isfinite(value) and value >= 0
+            except (TypeError, ValueError, OverflowError):
+                return False
+
+        def finite_mean(values):
+            combined = sum(values)
+            if math.isfinite(combined):
+                return combined / len(values)
+            scale = max(values)
+            return scale * min(1.0, math.fsum(v / scale for v in values) / len(values))
+
         snap = self._obs_snapshot
         fresh = (snap is not None and self._obs_tick is not None
                  and self._pred_tick is not None and self._obs_tick > self._pred_tick)
@@ -560,17 +765,33 @@ class UnifiedWorldModel:
         details = []
         for eid, p in self._last_prediction.items():
             actual = snap.get(eid) if fresh else None
-            if actual is None or p.get("target_tick", self._obs_tick) != self._obs_tick:
+            predicted_ok = finite_point(p["predicted"])
+            bound_ok = finite_bound(p["bound"])
+            eligible = actual is not None and p.get("target_tick", self._obs_tick) == self._obs_tick
+            reason = None
+            if not predicted_ok:
+                reason = "invalid_prediction"
+            elif not bound_ok:
+                reason = "invalid_bound"
+            elif eligible and not finite_point(actual):
+                reason = "invalid_observation"
+            dist = None
+            if eligible and reason is None:
+                dist = math.dist(p["predicted"], actual)
+                if not math.isfinite(dist):
+                    reason = "unrepresentable_distance"
+            if not eligible or reason is not None:
                 pending += 1
                 d = {"entity": eid, "mode": p["mode"],
-                     "predicted": p["predicted"], "actual": None,
-                     "bound": p["bound"], "distance": None,
+                     "predicted": p["predicted"] if predicted_ok else None, "actual": None,
+                     "bound": p["bound"] if bound_ok else None, "distance": None,
                      "hit": None, "status": "pending"}
+                if reason is not None:
+                    d["unverifiable_reason"] = reason
                 if stale:
                     d["stale"] = True
                 details.append(d)
                 continue
-            dist = math.dist(p["predicted"], actual)
             hit = dist < p["bound"]
             point_hits += dist < self.hit_threshold
             distances.append(dist)
@@ -582,13 +803,20 @@ class UnifiedWorldModel:
                             "predicted": p["predicted"], "actual": actual,
                             "bound": p["bound"], "distance": round(dist, 4),
                             "hit": hit, "status": "verified"})
-        rate = round(hits / total, 4) if total else None
+        # #2167：与 seven_layer_loop._verify 同站点同修——hit_rate 与
+        # bound_coverage 修前同值（hits 判据是区间边界、point_hits 是点半径），
+        # 各归其位：hit_rate 归点命中、bound_coverage 归边界覆盖。
+        rate = round(point_hits / total, 4) if total else None
+        coverage = round(hits / total, 4) if total else None
+        # #2542：同上——`hits` 是边界口径、`hit_rate` 是点口径，补 `point_hits`
+        # 让「分子」与「rate」可判读（实测 hits=1/total=1 而 hit_rate=0.0）。
         self._compare = {"tick": self.tick, "hits": hits, "total": total,
+                         "point_hits": point_hits,
                          "hit_rate": rate, "pending": pending,
-                         "bound_coverage": rate,
+                         "bound_coverage": coverage,
                          "point_hit_rate": round(point_hits / total, 4) if total else None,
-                         "mean_distance": round(sum(distances) / total, 4) if total else None,
-                         "mean_bound": round(sum(bounds) / total, 4) if total else None,
+                         "mean_distance": round(finite_mean(distances), 4) if total else None,
+                         "mean_bound": round(finite_mean(bounds), 4) if total else None,
                          "details": details}
         if snap is None:
             self._compare["no_observation"] = True
@@ -645,6 +873,7 @@ class UnifiedWorldModel:
 
     def state(self) -> Dict:
         return {"status": "ok", "tick": self.tick, "size": self.size,
+                "identity_policy": self.identity_policy,
                 "node_count": len(self.nodes), "edge_count": len(self.edges),
                 "history_len": len(self.history),
                 "anomaly_count": len(self._anomalies)}
@@ -1038,6 +1267,7 @@ def _phase_at(seq, P, h):
     `TypeError: list indices must be integers or slices, not float`。
     ⇒ 收成一个函数，两处共用（与 #4 的纪律同一条）。
     **整数 P 走原来那一行**（逐位不变）；非整数 P 在相位上做**线性插值**。
+    跨周期的预测先回绕到最近一周期，避免目标索引越过历史后被钳成最后观测值。
     """
     if not seq:
         return None
@@ -1046,6 +1276,8 @@ def _phase_at(seq, P, h):
             return None
         h_eff = ((h - 1) % P) + 1
         return seq[h_eff - P - 1]
+    if h > P:
+        h = h % float(P) or float(P)          # 整周期保留末端观测锚点
     j = (len(seq) - 1) + h - float(P)          # 目标索引（浮点）
     if j < 0:
         return None
@@ -1102,6 +1334,42 @@ def _wm_traj_buf(self):
     return buf
 
 
+def _prepare_observation_frame(self, observations, tick):
+    """Check and materialize a frame before tick, RNG or lazy buffers change.
+
+    Legacy keeps float-convertible and nonfinite measurements: motion diagnostics
+    already account for those. Conservative retains its stricter existing rules.
+    This is input preflight, not rollback for arbitrary extension/runtime failures.
+    """
+    target = self.tick + 1 if tick is None else tick
+    if (isinstance(target, bool) or not isinstance(target, int) or target < 0
+            or (self.history and target <= self.tick)):
+        raise ValueError("观测 tick 必须是晚于当前世界图时刻的非负整数")
+    observations = self._observe_world() if observations is None else observations
+    if self.identity_policy == "conservative":
+        validate_measurements(observations)
+        return observations
+    if not isinstance(observations, (list, tuple)):
+        raise ValueError("observations must be a list of measurements")
+    prepared = []
+    for observation in observations:
+        if not isinstance(observation, dict):
+            raise ValueError("each observation must be a mapping")
+        if not isinstance(observation.get("conditions", {}), dict):
+            raise ValueError("conditions must be a mapping")
+        try:
+            pos = [float(value) for value in observation["pos"]]
+            str(observation["category"])
+            eid = observation.get("eid")
+            eid = str(eid) if eid is not None else None
+        except (KeyError, TypeError, ValueError, OverflowError) as error:
+            raise ValueError("invalid observation fields") from error
+        if len(pos) != 3:
+            raise ValueError("pos must contain three coordinates")
+        prepared.append({**observation, "pos": pos, "eid": eid})
+    return prepared
+
+
 def _perceive_with_traj(self, observations=None, tool="observer",
                         tick=None, timestamp=None):
     """包装：① 记轨迹缓冲（供周期检测）② 用上一轮预测对账，滚动记两种误差。
@@ -1110,6 +1378,7 @@ def _perceive_with_traj(self, observations=None, tool="observer",
     见文件尾「包装链签名契约 `wm.perceive-signature/1`」：任一层漏转，等于把
     下层的关键字参数吃掉——调用方不报错，但 `tick` 静默失效。
     """
+    observations = _prepare_observation_frame(self, observations, tick)
     buf = _wm_traj_buf(self)
     out = _ORIG_WM_PERCEIVE(self, observations, tool, tick, timestamp)
     # 本体已把匿名/默认传感器观测解析为真实 eid；所有派生视图消费同一份结果。
@@ -1406,12 +1675,48 @@ def _generate_with_modes(self, horizon=1, use_patterns=True):
         # 保留 `pdet` 只为诊断留痕，不参与判据（守卫 G12 钉住这一点）。
         sm_ok, sm_pkt, sm_d = _wm_smooth_check(self, eid, age, src, False)
         if sm_ok:
+            # #2584：稳定闸 + 自设 bound。近期等加速度单步残差大说明「平滑」是
+            # 外因驱动的假象（游走体的随机转向不受任何窗口统计约束，实测冷启动
+            # 残差 0.18~0.53 而下一步 err 1.05~1.33）⇒ 不覆写，让 inner 预测
+            # （其 bound 已按各自口径校准）说话。维护者基准数据集残差
+            # 0.002~0.02 ≪ 0.1·reach ⇒ 闸不影响既有生效面。
+            seq_s = [q for _t, q in _wm_traj(self, eid)]
+            # 残差取**最近 2 条**（近因）：随机前缀随窗口滑出后须放行 smooth
+            # （test_trajectory_resolved_observations 契约）；整窗 max 会把
+            # 前缀残差记一辈子。真随机体的近因残差每步都大 ⇒ 闸仍然有效。
+            resids_s = []
+            for i in range(len(seq_s) - 1, 2, -1):
+                p2, p1, p0 = seq_s[i - 1], seq_s[i - 2], seq_s[i - 3]
+                _v1 = tuple(p2[j] - p1[j] for j in range(3))
+                _v2 = tuple(p1[j] - p0[j] for j in range(3))
+                _a = tuple(_v1[j] - _v2[j] for j in range(3))
+                resids_s.append(math.dist(
+                    tuple(p2[j] + _v1[j] + _a[j] for j in range(3)), seq_s[i]))
+            maxres = max(resids_s[:2]) if resids_s else 0.0
+            speed_est = float(speeds.get(eid, 0.0) or 0.0)
+            turns_s = [math.dist(
+                tuple(seq_s[i][j] - seq_s[i - 1][j] for j in range(3)),
+                tuple(seq_s[i - 1][j] - seq_s[i - 2][j] for j in range(3)))
+                for i in range(2, len(seq_s))]
+            turn_max_s = max(turns_s[-2:]) if turns_s else 0.0
+            if (maxres > 0.1 * self._reach(speed_est)
+                    or turn_max_s > 0.5 * speed_est):
+                blocked["smooth_turn_evidence"] = blocked.get(
+                    "smooth_turn_evidence", 0) + 1
+                diag[eid] = {"static": st_d, "smooth": sm_d,
+                             "smooth_gate": "turn_evidence", "maxres": maxres}
+                continue
             a, v1, _l1 = sm_pkt
             p = _wm_traj(self, eid, 1)[-1][1]
             # 等加速度：p[t+h] = p[t] + h·v1 + a·h(h+1)/2（h=1 时即 p+v1+a，与任务式同）
             k = h * (h + 1) / 2.0
             rec["predicted"] = [p[j] + h * v1[j] + a[j] * k for j in range(3)]
             rec["mode"] = "smooth"
+            # 注（#2584）：曾在此实现「自设 bound = max(inherited, threshold +
+            # maxres·h(h+1)/2)」，实现后证明被 #507 的逐 h 累积 inherited 恒覆盖
+            # （margin ≤ 0.5 + h(h+1)/2·0.1·reach < h·reach 对一切 h ≥ 1）——
+            # 死代码 ⇒ 移除；smooth 侧的实际收口是上面的**稳定闸**（未过闸不覆写，
+            # inner 预测的 bound 与预测保持配对）。
             n_smooth += 1
             diag[eid] = {"smooth": sm_d}
             continue
@@ -1769,8 +2074,8 @@ _WM_COORD_FACTORY = {"apply_move": _wm_apply_move_with_coord}
 #      â 的**一致性**（与各瞬时轴夹角 ≤30° 的加权质量占比）低于阈值 ⇒ 标 `multi_axis`
 #      并**不给预测**（fail-closed：宁可报 unresolved，不拿单轴口径糊多轴刚体）。
 #   ② **预测 = 与位置通道同族的四态**：
-#        rot_static（|角速度| ≤ 容差）／ **rot_periodic**（复用 `_wm_detect_period`，
-#        把 θ 当 (θ,0,0) 传）/ rot_smooth（等角加速度，`h(h+1)/2` 同式）／ rot_rate（等角速度）。
+#        rot_static（|角速度| ≤ 容差）／ **rot_periodic**（等间隔样本复用 `_wm_detect_period`，
+#        把 θ 当 (θ,0,0) 传）/ rot_smooth（按真实 tick 估计等角加速度）／ rot_rate（等角速度）。
 #   ③ **落点**：`generate()` 每条预测多 `predicted_rot`(rad) + `rot_mode` + `rot_axis`
 #      + `rot_axis_consistency` + `rot_P`；`out["rot"]` 给汇总。**位置通道一字不动。**
 #
@@ -1786,8 +2091,8 @@ _ROT = {
     "min_samples": 6,               # 少于这么多样本不给旋转预测
     "axis_consistency_min": 0.90,   # 加权轴一致性下限（低于 ⇒ multi_axis，不给预测）
     "axis_tol_deg": 30.0,           # 判"同一转轴"的夹角容差
-    "static_tol_rad": 1e-4,         # 每步角速度小于它 ⇒ rot_static
-    "accel_tol_rad": 1e-6,          # 每步角加速度大于它 ⇒ 走 rot_smooth
+    "static_tol_rad": 1e-4,         # 每 tick 角速度小于它 ⇒ rot_static
+    "accel_tol_rad": 1e-6,          # 每 tick² 角加速度大于它 ⇒ 走 rot_smooth
     "len": 96,                      # 角序列缓冲长度（与位置通道 window 对齐）
     "rate_window": 3,               # 估等角速度用最近几个差分
 }
@@ -1897,6 +2202,18 @@ def _rot_predict(self, eid, h=1):
     if not _ROT["enabled"] or len(seq) < _ROT["min_samples"]:
         d["reason"] = "样本不足（%d < %d）" % (len(seq), _ROT["min_samples"])
         return None, d
+    ticks = [t for t, _q in buf]
+    if (type(self.tick) is not int or any(type(t) is not int or t < 0 for t in ticks)
+            or any(b <= a for a, b in zip(ticks, ticks[1:]))
+            or self.tick < ticks[-1]):
+        d.update(mode="unresolved", reason="invalid_rotation_ticks")
+        return None, d
+    intervals = [b - a for a, b in zip(ticks, ticks[1:])]
+    step = intervals[0] if len(set(intervals)) == 1 else None
+    lead = self.tick - ticks[-1] + h
+    d.update(last_observation_tick=ticks[-1], target_tick=self.tick + h,
+             observation_age=self.tick - ticks[-1], horizon_from_observation=lead,
+             sampling_step=step, rate_unit="rad/tick", accel_unit="rad/tick^2")
     axis, consist, mass = _rot_dominant_axis(seq)
     if axis is None:
         # 朝向**恒定**（无任何净旋转）⇒ 转轴不可定。取默认 z：角是常量，
@@ -1920,31 +2237,45 @@ def _rot_predict(self, eid, h=1):
     if len(th) < 3:
         d["reason"] = "角序列太短"
         return None, d
-    rates = [th[i] - th[i - 1] for i in range(1, len(th))]
-    k = max(1, min(_ROT["rate_window"], len(rates)))
-    v1 = sum(rates[-k:]) / k
+    k = max(1, min(_ROT["rate_window"], len(th) - 1))
+    span = ticks[-1] - ticks[-1-k]
+    v1 = (th[-1] - th[-1-k]) / span
     if abs(v1) <= _ROT["static_tol_rad"]:
         d["mode"] = "rot_static"
         d["rate"] = round(v1, 9)
         return th[-1], d
-    P, pd = _wm_detect_period(self, eid, seq=[(x, 0.0, 0.0) for x in th])
+    angles = [(x, 0.0, 0.0) for x in th]
+    # 周期检测器按样本索引工作；不等间隔时不能把索引周期冒充世界时钟周期。
+    P, pd = (_wm_detect_period(self, eid, seq=angles) if step is not None else (None, {}))
+    if step is None:
+        d["period_unavailable"] = "nonuniform_sampling"
     if P:
         d["mode"] = "rot_periodic"
-        d["P"] = P
+        d["P"] = P * step
+        d["sample_period"] = P
         d["resid"] = pd.get("resid")
         d["P_used"] = pd.get("P_used")
-        # ⚠ 用**共享**取址：非整数 P 下 `th[h - P - 1]` 会 TypeError（本轮实测）
-        return _phase_at([(x, 0.0, 0.0) for x in th], P, h)[0], d
-    v2 = (sum(rates[-k - 1:-1]) / k) if len(rates) > k else v1
-    acc = v1 - v2
+        # 先把目标时刻换回采样格，再用共享插值；跨多个周期也回绕到已有观测。
+        phase_h = (lead / step) % P or P
+        if isinstance(P, int) and float(phase_h).is_integer():
+            return _phase_at(angles, P, int(phase_h))[0], d
+        return _phase_at(angles, float(P), phase_h)[0], d
+    acc = 0.0
+    if len(th) - 1 > k:
+        previous_span = ticks[-2] - ticks[-2-k]
+        v2 = (th[-2] - th[-2-k]) / previous_span
+        # 区间平均角速度位于区间中点；两个滑窗中点的距离不一定是一 tick。
+        center_dt = ((ticks[-1] - ticks[-2]) + (ticks[-1-k] - ticks[-2-k])) / 2.0
+        acc = (v1 - v2) / center_dt
     if abs(acc) > _ROT["accel_tol_rad"]:
         d["mode"] = "rot_smooth"
-        d["rate"] = round(v1, 9)
+        current_rate = v1 + acc * span / 2.0
+        d["rate"] = round(current_rate, 9)
         d["accel"] = round(acc, 9)
-        return th[-1] + h * v1 + acc * (h * (h + 1) / 2.0), d
+        return th[-1] + lead * current_rate + acc * lead * lead / 2.0, d
     d["mode"] = "rot_rate"
     d["rate"] = round(v1, 9)
-    return th[-1] + h * v1, d
+    return th[-1] + lead * v1, d
 
 
 #: gen3 包的是**出厂那一对 gen2**（组合顺序：orig → gen1 → gen2 → gen3）
@@ -1976,7 +2307,15 @@ def _perceive_with_rot(self, observations=None, tool="observer",
             qq = _rot_qnorm(q)
         except (TypeError, ValueError):     # 四元数形状/数值不合法 ⇒ 跳过；
             continue                        # 其余异常照常抛出（不再静默掩盖）
-        buf.setdefault(eid, []).append((self.tick, qq))
+        entries = buf.setdefault(eid, [])
+        if entries and entries[-1][0] == self.tick:
+            # #1012：一 tick 一条目——同帧重复显式 eid 取帧内最后一条读数。
+            # 旧实现无条件 append 两条同 tick 条目，读侧严格递增守卫
+            # （invalid_rotation_ticks）随即拒读缓冲约 96 tick（整个老化窗口），
+            # predicted_rot 静默失效且入口无任何告警。
+            entries[-1] = (self.tick, qq)
+        else:
+            entries.append((self.tick, qq))
         buf[eid] = buf[eid][-_ROT["len"]:]
         got += 1
     if got:

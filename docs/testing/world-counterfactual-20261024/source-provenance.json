@@ -1,0 +1,96 @@
+{
+  "baseline": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "0b8554430132d7c030ee80f22f8b5e60efddd044413c11010191d2d5a75495f1",
+    "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286",
+    "tests/test_world_counterfactual_isolation.py": "78a0c63abeb325e70f0c2b807332be621d361eec3f175823486a5884079d198e",
+    "tests/fixtures/world_counterfactual_mutations.json": "592dbb753e0b37f6c89743bd78f11a16a72b6ca610ce531802b25cd57beebf5e",
+    "tools/testing/world_counterfactual_scenarios.py": "7e2cb71b72b09e4ecc3b78007ae9d71a76cca91dcb1246bab35c15be9c9221d5"
+  },
+  "runs": {
+    "windows": {
+      "platform": "Windows",
+      "python": "3.12.10",
+      "sqlite": "3.49.1",
+      "baseline": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+      "validated_commit": "870f25be5919bb680825892954cd40e86bcd872d",
+      "sha256_lf": {
+        "lingshu/world/world_model.py": "0b8554430132d7c030ee80f22f8b5e60efddd044413c11010191d2d5a75495f1",
+        "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286",
+        "tests/test_world_counterfactual_isolation.py": "78a0c63abeb325e70f0c2b807332be621d361eec3f175823486a5884079d198e",
+        "tests/fixtures/world_counterfactual_mutations.json": "592dbb753e0b37f6c89743bd78f11a16a72b6ca610ce531802b25cd57beebf5e",
+        "tools/testing/world_counterfactual_scenarios.py": "7e2cb71b72b09e4ecc3b78007ae9d71a76cca91dcb1246bab35c15be9c9221d5"
+      },
+      "commands": [
+        {
+          "name": "scenarios",
+          "returncode": 0
+        },
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 84,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": [],
+      "owned_test_temp_cleaned": true
+    },
+    "linux": {
+      "platform": "Linux",
+      "python": "3.13.12",
+      "sqlite": "3.46.1",
+      "baseline": "aadc9f13d70be7536b6b2e1c753e325b4859f66f",
+      "validated_commit": "870f25be5919bb680825892954cd40e86bcd872d",
+      "sha256_lf": {
+        "lingshu/world/world_model.py": "0b8554430132d7c030ee80f22f8b5e60efddd044413c11010191d2d5a75495f1",
+        "lingshu/core/core.py": "11cfc455cdbb33bd916cfee02678b7092b36aef8c91be09c39ed29d0c3db6286",
+        "tests/test_world_counterfactual_isolation.py": "78a0c63abeb325e70f0c2b807332be621d361eec3f175823486a5884079d198e",
+        "tests/fixtures/world_counterfactual_mutations.json": "592dbb753e0b37f6c89743bd78f11a16a72b6ca610ce531802b25cd57beebf5e",
+        "tools/testing/world_counterfactual_scenarios.py": "7e2cb71b72b09e4ecc3b78007ae9d71a76cca91dcb1246bab35c15be9c9221d5"
+      },
+      "commands": [
+        {
+          "name": "scenarios",
+          "returncode": 0
+        },
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 84,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": [],
+      "owned_test_temp_cleaned": true
+    }
+  },
+  "composition_tool_sha256_lf": "28062b70c4ab1f23c96f22cb1f11c5c120f0c0cb0204a5a0dd67e062f83d5e7f",
+  "public_normalization": "Only workspace and interpreter prefixes, line endings and trailing whitespace; raw originals retained locally."
+}

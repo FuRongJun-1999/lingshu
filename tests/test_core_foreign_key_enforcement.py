@@ -123,11 +123,12 @@ def test_direct_orphan_write_is_rejected_by_foreign_key():
         con.rollback()
         raised = True
     assert raised, "直插孤儿边未被外键拒绝（PRAGMA 未生效）"
-    # 公开 API 同样被拒
+    # 公开 API 同样被拒（#1178 修后 fail-loud KeyError——「节点不存在」可读点名，
+    # 取代裸 IntegrityError；拒绝行为本身不变，类型面随修法演进）
     try:
         eng.add_edge("NOPE_SRC", "NOPE_DST")
         api_raised = False
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, KeyError):
         api_raised = True
     assert api_raised, "公开 add_edge 接受了不存在的端点（孤儿边可写入）"
 

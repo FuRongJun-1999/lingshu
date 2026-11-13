@@ -51,6 +51,27 @@ def _provenance(tags):
             "session_ids": _tags_with(tags, "session:")}
 
 
+def _finite_or_none(v):
+    """#2538：非有限 float（`inf`/`nan`）→ None（= 未声明），供 `_copy` 的
+    `allow_nan=False` 通过。
+
+    为什么必须有这一步：core 自己写入的**锚点/结构层节点**默认
+    `time_window=(0, float('inf'))`（`core.py` `set_anchor` / `add_structure_node` /
+    `record_structure_event`），而本模块的 `_copy` 用
+    `json.dumps(..., allow_nan=False)` ⇒ `from_store` 对这些**合法写入**的节点直接
+    抛 `ValueError: Out of range float values are not JSON compliant: inf`，
+    `scenario_cli local` 同样 rc=1。而本模块 `_declared` 的语义本来就是「非有限
+    时间窗 = 未声明」（`isinstance(t, (int, float))` 对 None 不成立）——两条路径
+    口径相反。归一为 None 后 `_declared` 行为不变，且不再崩。
+    """
+    if isinstance(v, float):
+        return v if math.isfinite(v) else None
+    if isinstance(v, (list, tuple)):
+        # `time_window` 是 `(start, end)` 二元组：逐元素归一，保留形状。
+        return type(v)(_finite_or_none(x) for x in v)
+    return v
+
+
 def _node(node, qualification="BLINDSPOT"):
     fm = node.get("frontmatter") or {}
     tags = list(fm.get("tags") or [])
@@ -58,10 +79,12 @@ def _node(node, qualification="BLINDSPOT"):
     return {"id": str(node.get("id") or fm.get("id") or ""),
             "content": str(node.get("content") or ""), "tags": tags,
             "layer": fm.get("layer", "knowledge"),
-            "conditions": {key: cs.get(key) for key in CONDITION_FIELDS},
+            "conditions": {key: _finite_or_none(cs.get(key))
+                           for key in CONDITION_FIELDS},
             "provenance": _provenance(tags),
             "qualification": qualification if qualification in STATES else "BLINDSPOT",
-            "spatial": (fm.get("spatial") or {}).get("coords3d") or {},
+            "spatial": {k: _finite_or_none(v) for k, v in
+                        ((fm.get("spatial") or {}).get("coords3d") or {}).items()},
             "attributes": fm.get("state_attributes") or {},
             "record_role": fm.get("role"),
             "body_window": {key: node.get(key) for key in (
@@ -307,6 +330,13 @@ class ScenarioContext:
             report["payload"] = payload
             if payload["truncated"]:
                 gaps.append("causal_budget_exhausted")
+            # #2157：**存在性**与**可见性**拆分——payload 增量补充
+            # endpoint_missing（用快照全集判定「端点根本不存在」，与
+            # outside_scope 的「存在但本视图不可见」互补）。判定取向
+            # （REJECT vs BLINDSPOT）留维护者裁定，本件只增量补充可判读
+            # 信息（零行为变化）。
+            payload["endpoint_missing"] = (start_id not in self._nodes
+                                           or end_id not in self._nodes)
             if payload["endpoint_outside_scope"]:
                 report["state"] = ("REJECT" if start_id in self._nodes and end_id in self._nodes
                                    else "BLINDSPOT")
@@ -375,7 +405,12 @@ class ScenarioContext:
                 break
             current, seen, path = stack.pop()
             result["steps"] += 1
-            if current == end:
+            # #1319：零边"路径"不构成因果路径——同端点查询（start==end 且无
+            # 自环边）时起点压栈即命中，追加零边路径会让上层把"什么都没找到"
+            # 当作"找到了因果连接"，且缺口不报 causal_path_not_found。
+            # 零边拒绝后：无自环 ⇒ paths 空 ⇒ 视图层正常报缺口；真自环边走出
+            # 的环路径 path 非空，不受影响。
+            if current == end and path:
                 result["paths"].append({"node_ids": list(seen), "edges": list(path),
                     "hypothesis": any(not e["verified"] or e["source_evidence"] != "extracted"
                                       or not _declared(e["conditions"]) for e in path)

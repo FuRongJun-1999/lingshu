@@ -1,0 +1,6 @@
+{
+  "tests_executed": false,
+  "reason": "WSL launch failed before Python: Wsl/Service/CreateInstance/CreateVm/HCS/ERROR_NOT_FOUND",
+  "host_configuration_changed": false,
+  "replacement_evidence": "Current-head Linux CI; local Linux replay and mutants not executed"
+}

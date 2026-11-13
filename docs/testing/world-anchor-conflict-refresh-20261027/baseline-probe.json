@@ -1,0 +1,65 @@
+{
+  "baseline": "02caf8bfe6d53fb33981d2f51c0ebceef9a0957f",
+  "record": {
+    "before": {
+      "anchor_id": "anchor_b1fbe6fb80",
+      "channel_evidence": {
+        "visual": 0.9,
+        "tactile": 0.9
+      },
+      "channel_conflicts": {},
+      "verified_rounds": 1,
+      "confirmation": "ACCEPT_strong",
+      "tier_basis": [
+        {
+          "channel": "tactile",
+          "evidence": 0.9,
+          "weight": 0.5
+        },
+        {
+          "channel": "visual",
+          "evidence": 0.9,
+          "weight": 0.5
+        }
+      ]
+    },
+    "after": {
+      "anchor_id": "anchor_b1fbe6fb80",
+      "channel_evidence": {
+        "visual": 0.9,
+        "tactile": 0.0
+      },
+      "channel_conflicts": {
+        "tactile": {
+          "expected": "chair",
+          "actual": "box"
+        }
+      },
+      "verified_rounds": 1,
+      "confirmation": "ACCEPT_strong",
+      "tier_basis": [
+        {
+          "channel": "tactile",
+          "evidence": 0.9,
+          "weight": 0.5
+        },
+        {
+          "channel": "visual",
+          "evidence": 0.9,
+          "weight": 0.5
+        }
+      ],
+      "conflict_detected": true,
+      "conflict_count": 1
+    },
+    "summary": {
+      "anchor_b1fbe6fb80": {
+        "confirmation": "ACCEPT_strong",
+        "channels": 2,
+        "conflicts": 1
+      }
+    }
+  },
+  "scope": "deterministic synthetic inputs; real Python/core paths, no devices or online brain",
+  "encoding": "Nonfinite floating values are displayed as strings; strict_json records the original encoding result."
+}

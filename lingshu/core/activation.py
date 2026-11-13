@@ -498,6 +498,16 @@ class ActivationEngine:
             if i is not None:
                 act[i] = max(act[i], s)
                 seed_ids.append(nid)
+        # #2165：self_condition 的 [0,1] 权重域显式闸（docstring 定义的语义就是
+        # 「回注**权重**」）——修前只判 `> 0.0`，w>1 时 act0 = max(w·act_prev, seeds)
+        # 成为几何放大算子（1.5^30 ≈ 127834，实测吻合），且会污染库内历史值被
+        # 后续合法调用继承。非数值/非有限/越界一律 fail-closed。
+        if isinstance(self_condition, bool) or not isinstance(self_condition,
+                                                          (int, float)):
+            raise ValueError("self_condition 必须是数值，收到 %r" % (self_condition,))
+        if not math.isfinite(self_condition) or not (0.0 <= self_condition <= 1.0):
+            raise ValueError("self_condition 必须落在 [0,1]，收到 %r"
+                             % (self_condition,))
         # self-conditioning:上一步工作态作本步先验(先验∩图域内节点才有效)
         prior_name = prior_workset or workset
         carried_ids: List[str] = []
@@ -639,12 +649,24 @@ class ActivationEngine:
         """当前工作态:激活节点+强度+内容摘要(执行层上下文的来源)。"""
         con = self._con()
         cur = con.cursor()
+        # #2544：`size` 此前是「本页条数」——同一 workset 有 25 个成员时
+        # `activate()["size"]=25` / `export_workset()` 25 条，而本方法默认
+        # `limit=20` 返回 `size=20`（且无 `truncated`），`limit=0` 时返回
+        # `size=0, query=None`（与「空工作集」不可区分）。`limit` 是**摘要页大小**，
+        # 不是工作集大小的定义 ⇒ 用全量 COUNT 作 `size`，另报 `returned`/`truncated`。
+        cur.execute("SELECT COUNT(*) FROM activation_nodes WHERE workset=?", (workset,))
+        _total = int(cur.fetchone()[0])
         cur.execute("SELECT node_id, activation, query FROM activation_nodes WHERE workset=? "
                     "ORDER BY activation DESC LIMIT ?", (workset, limit))
         rows = cur.fetchall()
-        con.close()
         # #505：工作态回读带出产生它的查询（同一 workset 的查询相同；空工作态为 None）。
+        # #2544：`limit=0` 时 rows 为空但工作集非空 ⇒ query 必须独立于 limit 读取。
         query = rows[0][2] if rows else None
+        if query is None and _total:
+            cur.execute("SELECT query FROM activation_nodes WHERE workset=? LIMIT 1", (workset,))
+            _q = cur.fetchone()
+            query = _q[0] if _q else None
+        con.close()
         members = []
         if rows:
             con = self._con(); cur = con.cursor()
@@ -659,7 +681,8 @@ class ActivationEngine:
                                 "layer": r[1] if r else None,
                                 "importance": r[2] if r else None})
             con.close()
-        return {"workset": workset, "query": query, "size": len(rows),
+        return {"workset": workset, "query": query, "size": _total,
+                "returned": len(rows), "truncated": len(rows) < _total,
                 "members": members}
 
     def export_workset(self, workset: str) -> Dict:

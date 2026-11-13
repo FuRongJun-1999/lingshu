@@ -53,7 +53,7 @@
 
 | 项 | 读数（实跑） | 命令 |
 |---|---|---|
-| 模块 import 冒烟 | **ok=51 fail=0** + 构造性运行（圆掩膜 8137 px；分割读回 1 件） | `python <AEIS>/tools/public_export/smoke.py <本仓根>`（**该命令需上游工具，本仓内不可执行**——`<AEIS>` 未随本仓导出） |
+| 模块 import 冒烟 | **ok=51 fail=0**（上游 `smoke.py` 读数，本仓内不可复跑）+ 构造性运行（圆掩膜 8137 px；分割读回 1 件） | 上游：`python <AEIS>/tools/public_export/smoke.py <本仓根>`（需上游工具，本仓内不可执行）；**本仓内等价最小复跑：`python tools/intake_smoke_min.py`**（见 §六） |
 | 固化物加载 | 6 核全加载（各 7 参数）；**导出副本与源 `allclose(atol=0) = True`**、键集一致（脱敏未动数值） | 见 §六 |
 | `tests/test_hex_cnn.py` | **13 passed, 0 failed** + 段④⑤⑥ 显式 SKIP（素材在盘时全 25 项） | `python tests/test_hex_cnn.py` |
 | `tests/test_hex_composite.py` | **24/24 通过** | `python tests/test_hex_composite.py` |
@@ -76,13 +76,22 @@
 ## 六、复跑
 
 ```bash
-# 模块 import 冒烟 + 构造性运行（工具：AEIS/tools/public_export/smoke.py；**需上游工具，本仓内不可执行**）
-python <AEIS>/tools/public_export/smoke.py <本仓根>   # <AEIS> 未定义：需上游工具，本仓内不可执行
+# 模块 import 冒烟 + 构造性运行（**本仓内等价最小面**：发现并 import 全部 lingshu.* 模块）
+python tools/intake_smoke_min.py          # 本仓内可执行（issue #80 #8）
 # 固化物加载（确定性模块）
 python -c "import sys; sys.path.insert(0,'.'); from lingshu.nn.hex_cnn import load_consolidated; \
 print(sorted(load_consolidated('lingshu/nn/assets/kernels_img0.json')))"
+
 # 测试件（需 pytest：pyproject dev extra）
 python -m pytest tests/test_hex_ortho.py tests/test_hex_search.py -v   # 理论稿 §八.4 点名
 python tests/test_hex_cnn.py      # 13 项 + 素材段 SKIP
 python tests/test_hex_composite.py && python tests/test_hex_gen.py
 ```
+
+> **本仓内等价面的边界（issue #80 · #8）**：`tools/intake_smoke_min.py` 只覆盖
+> 「模块可 import + 核心路径可跑通」这两件——它**不等价于**上游 `smoke.py` 的全部检查。
+> 上游读数 `ok=51` 与本仓脚本读数**口径不同、不可互比**：上游扫的是其导出面清单（51 项），
+> 本仓脚本扫的是 `pkgutil.walk_packages` 在 `lingshu.*` 下的全部可发现模块。
+> 本脚本**不做**：导出副本与源的逐位一致（那是 `tools/verify_manifest.py` 的面）、
+> 分割读回、脱敏字段比对、语料依赖测试件。
+

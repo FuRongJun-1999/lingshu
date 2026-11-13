@@ -23,9 +23,16 @@
 纯 numpy + PIL(D-005 零 LLM)。
 """
 from __future__ import annotations
+import threading
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+# #197：参数向量「读-改-写」的原子化锁。
+# get_vec/set_vec 是**两次独立调用**，各自内部加锁并不能让裸用的 RMW 成为原子操作
+# （两线程可在 get 与 set 之间交错）。故提供 apply_delta() 把整段收进同一临界区；
+# 本锁为**模块级**（同模块内跨实例串行化），代价是不同实例之间也会互斥。
+_VEC_RMW_LOCK = threading.Lock()
 
 ALGO = "hex_hier-0.1"
 
@@ -197,6 +204,14 @@ class HexHierNet:
             amp = np.linalg.norm(deep1, axis=1, keepdims=True)
             deep1 = deep1 / (amp + 1e-12)
             if self.amp_sep:
+                # dsh-bounty #1800②：与 stacked 分支（上方）同一处理——旧实现
+                # 在 stacked=False 配置下漏了 amp_log 中心化，该参数静默失效、
+                # 无界原始幅度直接进 head（正是 M4.4 注释声明要防的形态；
+                # stacked=False 是 make_plan 认可的受支持配置）。
+                if self.amp_log:
+                    # 固定参考点中心化(amp=1→0)——不能用 batch mean,
+                    # 否则特征 batch 依赖,训练/测试/子区域分布错乱
+                    amp = np.log1p(amp) - 0.6931471805599453
                 deep1 = np.concatenate([deep1, amp], axis=1)
         return deep1, lat.mean(axis=(1, 2))
 
@@ -225,6 +240,13 @@ class HexHierNet:
 
     # ---- 参数平铺(有限差分统一索引:L1 核+L1.5 核+L3 头) ----
     def get_vec(self) -> np.ndarray:
+        """取参数向量**副本**（HexHierNet）。
+
+        ⚠ #197：本方法与 `set_vec` 是**两次独立调用**，「get → 改 → set」这一范式
+        在多线程下**非原子** —— 两线程可各自取到同一快照、各自改、后写者覆盖先写者，
+        静默丢一次更新（不抛异常）。单线程下无影响。
+        并发场景请改用 `apply_delta()`（RMW 在同一临界区内完成）。
+        """
         parts = [self.conv.ravel()]
         if self.stacked:
             parts.append(self.conv2.ravel())
@@ -238,12 +260,54 @@ class HexHierNet:
         `.reshape` 不改变这一事实——直接持有会把模型参数别名到调用方缓冲上：
         调用方事后原地改自己的 `vec` 会静默改写模型参数，绕过 set_vec 的显式载入。
         """
+        # #2520：长度/有限性校验必须**先做**——此前 conv/conv2 已被整段改写、
+        # 随后 head reshape 抛错 ⇒ 模型留成新旧混合体（调用方以为「载入失败、
+        # 模型未动」）。字符串向量会静默把 dtype 变 `<U1`（下次前向才
+        # UFuncTypeError），全 NaN 向量静默写入（logits 全 NaN）。
+        vec = np.asarray(vec)
+        _n = self.n_params()
+        if vec.shape != (_n,):
+            raise ValueError("HexHierNet.set_vec: 需 shape=(%d,)，实得 %r"
+                             % (_n, vec.shape))
+        if not np.isfinite(vec).all():
+            raise ValueError("HexHierNet.set_vec: 参数含 NaN/inf")
         i, k7 = 0, self.K * 7
         self.conv = vec[i:i + k7].reshape(self.K, 7).copy(); i += k7
         if self.stacked:
             k2s = self.K2 * self.K * 7
             self.conv2 = vec[i:i + k2s].reshape(self.K2, self.K, 7).copy(); i += k2s
         self.head = vec[i:].reshape(self.head.shape).copy()
+
+    def apply_delta(self, delta):
+        """原子读改写（#197）：在同一临界区内完成 get_vec → 应用 → set_vec。
+
+        #2520：ndarray 形态的形状必须与当前向量一致——`(1,)` 增量此前被
+        # 广播到全部参数（375 个全 +1），调用方无法从返回值看出发生了广播。
+        `delta` 两种形态：
+          · 可调用对象 `fn(vec) -> ndarray | None`：收到当前向量的副本，
+            返回新向量；返回 None 表示已原地修改传入的副本。
+          · ndarray：与当前向量逐元素相加的增量（形状须一致）。
+
+        并发下多次 `apply_delta` 不会互相覆盖 —— RMW 整段被 `_VEC_RMW_LOCK` 串行化。
+        ⚠ 本方法只保证「apply_delta 之间」原子：`get_vec`/`set_vec` 的**成对裸用**
+          仍然非原子（两次调用之间可被交错）。并发场景请改用本方法，
+          或由调用方自行串行化。返回写入后的向量副本。
+        """
+        with _VEC_RMW_LOCK:
+            vec = self.get_vec()
+            if callable(delta):
+                out = delta(vec)
+                new = vec if out is None else np.asarray(out)
+            else:
+                _d = np.asarray(delta)
+                # #2520：形状必须一致——`(1,)` 增量此前被广播到全部参数
+                # （375 个全 +1），调用方无法从返回值看出发生了广播。
+                if _d.shape != vec.shape:
+                    raise ValueError("apply_delta: delta 需 shape=%r，实得 %r"
+                                     % (vec.shape, _d.shape))
+                new = vec + _d
+            self.set_vec(new)
+            return self.get_vec()
 
     def n_params(self) -> int:
         n = self.K * 7 + self.head.size
@@ -279,6 +343,13 @@ def train_hier(net: HexHierNet, lat: np.ndarray, labels: Dict[str, np.ndarray],
     """L2+L3 联合监督(语义信息差+物体信息差)+L1 自监督(掩码重建),
     统一符号更新。返回信息差剖面。"""
     from .hex_train import normalize_lattices  # noqa: F401 (调用方已标准化)
+    # F23-16（#942 清单）：batch 无校验——batch=0 时 `lat[:0]` 空切片进 softmax/loss
+    # 抛零尺寸归一错误（numpy 内部错误，非领域消息）；batch<0 时 `lat[:-k]` 静默
+    # 丢弃尾部样本并把评测子集换成另一批。两者都属调用方契约违背，fail-closed
+    # 给领域消息（与 #798 最小帧数闸同款口径：与其静默返回伪读数不如拒收）。
+    if not isinstance(batch, int) or isinstance(batch, bool) or batch < 1:
+        raise ValueError(
+            "train_hier：batch 须为正整数（评测与训练切片的契约），实得 %r" % (batch,))
     rng = np.random.default_rng(seed)
     shape_idx = {s: i for i, s in enumerate(SHAPES)}
     obj_idx = {o: i for i, o in enumerate(OBJ)}
@@ -332,26 +403,41 @@ def train_hier(net: HexHierNet, lat: np.ndarray, labels: Dict[str, np.ndarray],
 def calibrate_hier_cards(net: HexHierNet, lat: np.ndarray,
                          labels: Dict[str, np.ndarray]) -> Dict:
     """L2 语义卡(形状/颜色原型+分位阈值)与 L3 物体卡(概率分位)。
-    返回卡片+校准分布(分布宽度=该层信息差读数)。"""
+    返回卡片+校准分布(分布宽度=该层信息差读数)。
+
+    退化输入（#254 同步面）：某语义/物体在标注里**缺样本** ⇒ 该卡给保守阈值
+    并标注 `"missing": True`（inlier_q25/p_q25 取 1.0 = 永远达不到的门槛），
+    不再空数组 `mean`/`np.quantile` 抛错或产 NaN。"""
     sf, cf = net.l2_features(lat)
     logits = net.l3_logits(sf, cf)
     probs = softmax(logits)
     cards = {"shape": [], "color": [], "obj": []}
     for i, s in enumerate(SHAPES):
-        sims = [_cos(sf[labels["shape"] == s].mean(axis=0), sf[j])
-                for j in range(len(sf))]
+        mask = labels["shape"] == s
+        if not mask.any():
+            cards["shape"].append({"semantic": s, "proto": None,
+                                   "inlier_q25": 1.0, "missing": True})
+            continue
+        sims = [_cos(sf[mask].mean(axis=0), sf[j]) for j in range(len(sf))]
         sims = np.array(sims)
-        in_sims = sims[labels["shape"] == s]
-        cards["shape"].append({"semantic": s, "proto": sf[labels["shape"] == s].mean(axis=0).tolist(),
+        in_sims = sims[mask]
+        cards["shape"].append({"semantic": s, "proto": sf[mask].mean(axis=0).tolist(),
                                "inlier_q25": round(float(np.quantile(in_sims, 0.25)), 4)})
     for i, c in enumerate(COLORS):
         in_cf = cf[labels["color"] == c]
+        if in_cf.shape[0] == 0:
+            cards["color"].append({"semantic": c, "proto": None,
+                                   "inlier_q25": 1.0, "missing": True})
+            continue
         proto = in_cf.mean(axis=0)
         in_sims = np.array([_cos(proto, p) for p in in_cf])
         cards["color"].append({"semantic": c, "proto": proto.tolist(),
                                "inlier_q25": round(float(np.quantile(in_sims, 0.25)), 4)})
     for i, o in enumerate(OBJ):
         in_p = probs[labels["obj"] == o, i]
+        if in_p.size == 0:
+            cards["obj"].append({"obj": o, "p_q25": 1.0, "missing": True})
+            continue
         cards["obj"].append({"obj": o,
                              "p_q25": round(float(np.quantile(in_p, 0.25)), 4)})
     return cards

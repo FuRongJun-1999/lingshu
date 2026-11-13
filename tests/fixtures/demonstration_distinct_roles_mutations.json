@@ -1,0 +1,10 @@
+{
+  "guard": "tests/test_demonstration_distinct_roles.py",
+  "total": 7,
+  "sources": ["lingshu/world/world_process.py"],
+  "baseline_failures": ["test_same_output_roles_are_rejected_without_changing_record[identity]", "test_same_output_roles_are_rejected_without_changing_record[transformed]", "test_core_cannot_report_success_after_role_overwrite[direct]", "test_core_cannot_report_success_after_role_overwrite[memory_id]"],
+  "mutations": [
+    {"name": "allow_output_role_collision", "test": "test_same_output_roles_are_rejected_without_changing_record[identity]", "assertion": "DID NOT RAISE", "changes": [{"file": "lingshu/world/world_process.py", "method": "transfer_demonstration", "old": "if actor == ref:", "new": "if False:"}]},
+    {"name": "reject_distinct_source_name_reuse", "test": "test_reusing_distinct_original_names_is_still_valid", "assertion": "distinct role rebinding must remain usable", "changes": [{"file": "lingshu/world/world_process.py", "method": "transfer_demonstration", "old": "if actor == ref:", "new": "if actor == ref or actor == record['ref'] or ref == record['actor']:"}]}
+  ]
+}

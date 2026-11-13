@@ -5,8 +5,8 @@ test_hex_conv_fusion.py 覆盖基础正确性；本条补**规模矩阵**与**�
 
   A 组：(B,rows,cols,C,K) 网格上融合路径与逐核循环逐点等价
   B 组：stacked × deep_norm × amp_sep × amp_log 全组合与改动前实现等价
-        （非 stacked 分支的 amp_log 是既定的"不生效"语义，必须保持）
-  C 组：参数向量布局稳定性（get_vec = [conv1 | conv2 | head]）
+        （dsh-bounty #1800②修正后语义：amp_log 在两分支同效——原「只在
+          stacked 生效」是漏网缺陷，参考实现已同步对齐）
   D 组：纯函数与确定性（不修改入参、同输入逐位相同）
 
 运行（lingshu 仓根）：python -X utf8 tests/test_hex_conv_fusion_matrix.py
@@ -75,13 +75,17 @@ def _reference_deep(net, lat):
         amp = np.linalg.norm(deep1, axis=1, keepdims=True)
         deep1 = deep1 / (amp + 1e-12)
         if net.amp_sep:
-            # 既定语义：amp_log **只在 stacked 分支**生效（原实现如此）
+            # dsh-bounty #1800②：amp_log 在**两个分支**都生效（原实现只在
+            # stacked 分支处理是漏网——该参数在 stacked=False 下静默失效，
+            # 已修正；参考实现同步对齐修正后语义）。
+            if net.amp_log:
+                amp = np.log1p(amp) - 0.6931471805599453
             deep1 = np.concatenate([deep1, amp], axis=1)
     return deep1
 
 
 def group_b_stacked_paths():
-    print("\n[B] stacked × deep_norm × amp_sep × amp_log 全组合与改动前等价")
+    print("\n[B] stacked × deep_norm × amp_sep × amp_log 全组合与参考实现等价")
     rng = np.random.default_rng(8)
     lat = rng.random((6, 7, 10, 3)).astype(np.float32)
     worst = 0.0

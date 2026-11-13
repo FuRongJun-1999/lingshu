@@ -1,0 +1,276 @@
+CASE fixed
+......................
+22 passed, 17 warnings in 1.57s
+
+CASE baseline
+.FFFFFFFFFFFFFFFFFFFFF
+=================================== FAILURES ===================================
+___ test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross ____
+tests/test_world_identity_qualification.py:46: in test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+____ test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error ____
+tests/test_world_identity_qualification.py:59: in test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+______ test_two_observations_competing_for_one_track_defer_in_both_orders ______
+tests/test_world_identity_qualification.py:84: in test_two_observations_competing_for_one_track_defer_in_both_orders
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+______ test_whole_frame_explicit_reservation_and_new_tracks_are_distinct _______
+tests/test_world_identity_qualification.py:93: in test_whole_frame_explicit_reservation_and_new_tracks_are_distinct
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+_____________ test_duplicate_explicit_ids_reject_both_measurements _____________
+tests/test_world_identity_qualification.py:103: in test_duplicate_explicit_ids_reject_both_measurements
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+____ test_readonly_preview_has_detached_candidates_and_does_not_consume_rng ____
+tests/test_world_identity_qualification.py:112: in test_readonly_preview_has_detached_candidates_and_does_not_consume_rng
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+_____ test_preview_uses_only_a_prediction_for_the_observation_target_tick ______
+tests/test_world_identity_qualification.py:123: in test_preview_uses_only_a_prediction_for_the_observation_target_tick
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+____________ test_invalid_frame_rejected_before_graph_updates[nan] _____________
+tests/test_world_identity_qualification.py:135: in test_invalid_frame_rejected_before_graph_updates
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+____________ test_invalid_frame_rejected_before_graph_updates[inf] _____________
+tests/test_world_identity_qualification.py:135: in test_invalid_frame_rejected_before_graph_updates
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+____________ test_invalid_frame_rejected_before_graph_updates[True] ____________
+tests/test_world_identity_qualification.py:135: in test_invalid_frame_rejected_before_graph_updates
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+____________ test_invalid_frame_rejected_before_graph_updates[bad] _____________
+tests/test_world_identity_qualification.py:135: in test_invalid_frame_rejected_before_graph_updates
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+__________ test_clear_evidence_resumes_after_ambiguity_and_occlusion ___________
+tests/test_world_identity_qualification.py:144: in test_clear_evidence_resumes_after_ambiguity_and_occlusion
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+_______ test_core_policy_and_readonly_actions_do_not_lazy_create_a_model _______
+tests/test_world_identity_qualification.py:157: in test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+____________ test_visual_writeback_uses_original_measurement_index _____________
+tests/test_world_identity_qualification.py:179: in test_visual_writeback_uses_original_measurement_index
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+_ test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate] _
+tests/test_world_identity_qualification.py:197: in test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+_ test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[confirmed] _
+tests/test_world_identity_qualification.py:197: in test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+_____ test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only _____
+tests/test_world_identity_qualification.py:228: in test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+______ test_old_v1_payload_restores_legacy_even_into_a_conservative_model ______
+tests/test_world_identity_qualification.py:248: in test_old_v1_payload_restores_legacy_even_into_a_conservative_model
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+___________ test_truncated_prior_can_be_exported_and_restored_again ____________
+tests/test_world_identity_qualification.py:255: in test_truncated_prior_can_be_exported_and_restored_again
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+_______ test_invalid_v2_recovery_does_not_replace_running_facts[policy] ________
+tests/test_world_identity_qualification.py:270: in test_invalid_v2_recovery_does_not_replace_running_facts
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+__ test_invalid_v2_recovery_does_not_replace_running_facts[promoted_pending] ___
+tests/test_world_identity_qualification.py:270: in test_invalid_v2_recovery_does_not_replace_running_facts
+    model = _model()
+            ^^^^^^^^
+tests/test_world_identity_qualification.py:21: in _model
+    assert hasattr(UnifiedWorldModel, "inspect_identity"), "W2 association qualification is unavailable"
+E   AssertionError: W2 association qualification is unavailable
+E   assert False
+E    +  where False = hasattr(UnifiedWorldModel, 'inspect_identity')
+=========================== short test summary info ============================
+FAILED tests/test_world_identity_qualification.py::test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross
+FAILED tests/test_world_identity_qualification.py::test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error
+FAILED tests/test_world_identity_qualification.py::test_two_observations_competing_for_one_track_defer_in_both_orders
+FAILED tests/test_world_identity_qualification.py::test_whole_frame_explicit_reservation_and_new_tracks_are_distinct
+FAILED tests/test_world_identity_qualification.py::test_duplicate_explicit_ids_reject_both_measurements
+FAILED tests/test_world_identity_qualification.py::test_readonly_preview_has_detached_candidates_and_does_not_consume_rng
+FAILED tests/test_world_identity_qualification.py::test_preview_uses_only_a_prediction_for_the_observation_target_tick
+FAILED tests/test_world_identity_qualification.py::test_invalid_frame_rejected_before_graph_updates[nan]
+FAILED tests/test_world_identity_qualification.py::test_invalid_frame_rejected_before_graph_updates[inf]
+FAILED tests/test_world_identity_qualification.py::test_invalid_frame_rejected_before_graph_updates[True]
+FAILED tests/test_world_identity_qualification.py::test_invalid_frame_rejected_before_graph_updates[bad]
+FAILED tests/test_world_identity_qualification.py::test_clear_evidence_resumes_after_ambiguity_and_occlusion
+FAILED tests/test_world_identity_qualification.py::test_core_policy_and_readonly_actions_do_not_lazy_create_a_model
+FAILED tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+FAILED tests/test_world_identity_qualification.py::test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]
+FAILED tests/test_world_identity_qualification.py::test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[confirmed]
+FAILED tests/test_world_identity_qualification.py::test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only
+FAILED tests/test_world_identity_qualification.py::test_old_v1_payload_restores_legacy_even_into_a_conservative_model
+FAILED tests/test_world_identity_qualification.py::test_truncated_prior_can_be_exported_and_restored_again
+FAILED tests/test_world_identity_qualification.py::test_invalid_v2_recovery_does_not_replace_running_facts[policy]
+FAILED tests/test_world_identity_qualification.py::test_invalid_v2_recovery_does_not_replace_running_facts[promoted_pending]
+21 failed, 1 passed in 1.79s
+
+CASE commit_unresolved_measurement
+F
+=================================== FAILURES ===================================
+____ test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error ____
+tests/test_world_identity_qualification.py:66: in test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error
+    assert result["observations"] == [], "unresolved measurement entered confirmed observations"
+E   AssertionError: unresolved measurement entered confirmed observations
+E   assert [{'category':...5, 2.0], ...}] == []
+E
+E     Left contains one more item: {'category': 'person', 'eid': 'wm_a4c123', 'observation_index': 0, 'pos': [0.5, 1.5, 2.0], ...}
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_world_identity_qualification.py::test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error
+1 failed in 0.64s
+
+CASE zip_shortened_visual_observations
+F
+=================================== FAILURES ===================================
+____________ test_visual_writeback_uses_original_measurement_index _____________
+tests/test_world_identity_qualification.py:188: in test_visual_writeback_uses_original_measurement_index
+    assert objects[0].eid == "", "visual ID was assigned to an unresolved measurement"
+E   AssertionError: visual ID was assigned to an unresolved measurement
+E   assert 'c' == ''
+E
+E     + c
+=========================== short test summary info ============================
+FAILED tests/test_world_identity_qualification.py::test_visual_writeback_uses_original_measurement_index
+1 failed, 9 warnings in 1.26s
+
+CASE restore_with_legacy_association
+F
+=================================== FAILURES ===================================
+_____ test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only _____
+tests/test_world_identity_qualification.py:236: in test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only
+    assert target.wm.identity_policy == "conservative", "recovery silently changed identity policy"
+E   AssertionError: recovery silently changed identity policy
+E   assert 'legacy' == 'conservative'
+E
+E     - conservative
+E     + legacy
+=========================== short test summary info ============================
+FAILED tests/test_world_identity_qualification.py::test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only
+1 failed in 0.71s
+
+CASE advance_unresolved_hypothesis
+F
+=================================== FAILURES ===================================
+_ test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate] _
+tests/test_world_identity_qualification.py:206: in test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis
+    assert loop._hypotheses == before, "unresolved subject advanced hypothesis verification"
+E   AssertionError: unresolved subject advanced hypothesis verification
+E   assert {'a': {'_subj...its': 0, ...}} == {'a': {'_subj...its': 0, ...}}
+E
+E     Differing items:
+E     {'a': {'_subject': 'a', 'away_streak': 0, 'born_tick': 1, 'hits': 0, ...}} != {'a': {'_subject': 'a', 'away_streak': 0, 'born_tick': 1, 'hits': 0, ...}}
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_world_identity_qualification.py::test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]
+1 failed in 0.65s

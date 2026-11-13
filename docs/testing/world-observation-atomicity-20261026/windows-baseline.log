@@ -1,0 +1,130 @@
+FFFFFFFFFFFFFF..                                                         [100%]
+================================== FAILURES ===================================
+___________ test_bad_later_row_preserves_the_live_frame[conditions] ___________
+tests\test_world_observation_atomicity.py:54: in test_bad_later_row_preserves_the_live_frame
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'\xb0' != b'8'
+E     Use -v to get more diff
+____________ test_bad_later_row_preserves_the_live_frame[position] ____________
+tests\test_world_observation_atomicity.py:54: in test_bad_later_row_preserves_the_live_frame
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'O' != b'8'
+E     Use -v to get more diff
+____________ test_bad_later_row_preserves_the_live_frame[category] ____________
+tests\test_world_observation_atomicity.py:54: in test_bad_later_row_preserves_the_live_frame
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'O' != b'8'
+E     Use -v to get more diff
+___________ test_bad_later_row_preserves_the_live_frame[dimension] ____________
+tests\test_world_observation_atomicity.py:54: in test_bad_later_row_preserves_the_live_frame
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'\x1e' != b'8'
+E     Use -v to get more diff
+________ test_rejection_preserves_rng_and_anonymous_identity_on_retry _________
+tests\test_world_observation_atomicity.py:65: in test_rejection_preserves_rng_and_anonymous_identity_on_retry
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b',' != b'8'
+E     Use -v to get more diff
+_____ test_first_rejection_does_not_initialize_prediction_buffers[legacy] _____
+tests\test_world_observation_atomicity.py:78: in test_first_rejection_does_not_initialize_prediction_buffers
+    assert frozen(model) == before, "WM_FIRST_REJECTION_INITIALIZED_BUFFERS"
+E   AssertionError: WM_FIRST_REJECTION_INITIALIZED_BUFFERS
+E   assert b'\x80\x04\x9...st\x94}\x94u.' == b'\x80\x04\x9...?\xe6ffffffu.'
+E
+E     At index 3 diff: b'\x1f' != b'H'
+E     Use -v to get more diff
+__ test_first_rejection_does_not_initialize_prediction_buffers[conservative] __
+tests\test_world_observation_atomicity.py:78: in test_first_rejection_does_not_initialize_prediction_buffers
+    assert frozen(model) == before, "WM_FIRST_REJECTION_INITIALIZED_BUFFERS"
+E   AssertionError: WM_FIRST_REJECTION_INITIALIZED_BUFFERS
+E   assert b'\x80\x04\x9...st\x94}\x94u.' == b'\x80\x04\x9...?\xe6ffffffu.'
+E
+E     At index 3 diff: b'|' != b'N'
+E     Use -v to get more diff
+_________ test_invalid_tick_is_rejected_before_any_state_change[bool] _________
+tests\test_world_observation_atomicity.py:88: in test_invalid_tick_is_rejected_before_any_state_change
+    assert frozen(model) == before, "WM_BAD_TICK_CHANGED_STATE"
+E   AssertionError: WM_BAD_TICK_CHANGED_STATE
+E   assert b'\x80\x04\x9...uf\x94}\x94u.' == b'\x80\x04\x9...?\xe6ffffffu.'
+E
+E     At index 3 diff: b'1' != b'H'
+E     Use -v to get more diff
+_______ test_invalid_tick_is_rejected_before_any_state_change[negative] _______
+tests\test_world_observation_atomicity.py:88: in test_invalid_tick_is_rejected_before_any_state_change
+    assert frozen(model) == before, "WM_BAD_TICK_CHANGED_STATE"
+E   AssertionError: WM_BAD_TICK_CHANGED_STATE
+E   assert b'\x80\x04\x9...uf\x94}\x94u.' == b'\x80\x04\x9...?\xe6ffffffu.'
+E
+E     At index 3 diff: b'U' != b'H'
+E     Use -v to get more diff
+________ test_invalid_tick_is_rejected_before_any_state_change[float] _________
+tests\test_world_observation_atomicity.py:88: in test_invalid_tick_is_rejected_before_any_state_change
+    assert frozen(model) == before, "WM_BAD_TICK_CHANGED_STATE"
+E   AssertionError: WM_BAD_TICK_CHANGED_STATE
+E   assert b'\x80\x04\x9...uf\x94}\x94u.' == b'\x80\x04\x9...?\xe6ffffffu.'
+E
+E     At index 3 diff: b'}' != b'H'
+E     Use -v to get more diff
+________ test_invalid_tick_is_rejected_before_any_state_change[string] ________
+tests\test_world_observation_atomicity.py:88: in test_invalid_tick_is_rejected_before_any_state_change
+    assert frozen(model) == before, "WM_BAD_TICK_CHANGED_STATE"
+E   AssertionError: WM_BAD_TICK_CHANGED_STATE
+E   assert b'\x80\x04\x9...st\x94}\x94u.' == b'\x80\x04\x9...?\xe6ffffffu.'
+E
+E     At index 3 diff: b'F' != b'H'
+E     Use -v to get more diff
+______ test_valid_retry_verifies_the_original_forecast_at_the_same_tick _______
+tests\test_world_observation_atomicity.py:98: in test_valid_retry_verifies_the_original_forecast_at_the_same_tick
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'\xb0' != b'8'
+E     Use -v to get more diff
+______ test_default_sensor_is_read_once_and_checked_before_state_changes ______
+tests\test_world_observation_atomicity.py:121: in test_default_sensor_is_read_once_and_checked_before_state_changes
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'\xb0' != b'8'
+E     Use -v to get more diff
+______ test_core_rejects_without_database_or_model_writes_and_can_retry _______
+tests\test_world_observation_atomicity.py:140: in test_core_rejects_without_database_or_model_writes_and_can_retry
+    assert frozen(model) == before, "WM_CORE_FRAME_CHANGED_STATE"
+E   AssertionError: WM_CORE_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'\xb0' != b'8'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_observation_atomicity.py::test_bad_later_row_preserves_the_live_frame[conditions]
+FAILED tests/test_world_observation_atomicity.py::test_bad_later_row_preserves_the_live_frame[position]
+FAILED tests/test_world_observation_atomicity.py::test_bad_later_row_preserves_the_live_frame[category]
+FAILED tests/test_world_observation_atomicity.py::test_bad_later_row_preserves_the_live_frame[dimension]
+FAILED tests/test_world_observation_atomicity.py::test_rejection_preserves_rng_and_anonymous_identity_on_retry
+FAILED tests/test_world_observation_atomicity.py::test_first_rejection_does_not_initialize_prediction_buffers[legacy]
+FAILED tests/test_world_observation_atomicity.py::test_first_rejection_does_not_initialize_prediction_buffers[conservative]
+FAILED tests/test_world_observation_atomicity.py::test_invalid_tick_is_rejected_before_any_state_change[bool]
+FAILED tests/test_world_observation_atomicity.py::test_invalid_tick_is_rejected_before_any_state_change[negative]
+FAILED tests/test_world_observation_atomicity.py::test_invalid_tick_is_rejected_before_any_state_change[float]
+FAILED tests/test_world_observation_atomicity.py::test_invalid_tick_is_rejected_before_any_state_change[string]
+FAILED tests/test_world_observation_atomicity.py::test_valid_retry_verifies_the_original_forecast_at_the_same_tick
+FAILED tests/test_world_observation_atomicity.py::test_default_sensor_is_read_once_and_checked_before_state_changes
+FAILED tests/test_world_observation_atomicity.py::test_core_rejects_without_database_or_model_writes_and_can_retry
+14 failed, 2 passed, 9 warnings in 0.64s

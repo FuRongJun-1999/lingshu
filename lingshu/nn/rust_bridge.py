@@ -176,7 +176,8 @@ MAGIC_PLAN = 0x4845584E4E525531
 # ==================== plan 生成(权威随机性在 Python) ====================
 
 def make_plan(n: int, steps: int, batch: int, samples: int,
-              seed: int, k1: int = 6, k2: int = 6) -> Dict:
+              seed: int, k1: int = 6, k2: int = 6,
+              n_params: Optional[int] = None) -> Dict:
     """生成 plan。**#294**：支路采样上限随 `k1/k2` 走，不再写死 `375`。
 
     原实现把 `n_params` 硬编码成 `6*7 + 6*6*7 + 9*(6+3)`，只在 `K1=K2=6`
@@ -191,7 +192,16 @@ def make_plan(n: int, steps: int, batch: int, samples: int,
     """
     rng = np.random.default_rng(seed)
     plan_batch = [rng.permutation(n)[:batch].tolist() for _ in range(steps)]
-    n_params = k1 * 7 + k1 * k2 * 7 + 9 * (k2 + 3)      # 与 HexHierNet.n_params() 同口径
+    # #294 症状③：上面两式**不覆盖** `deep_norm and amp_sep`（head_in 额外 +1 ⇒ 参数量多
+    # 9 个）与 `stacked=False`（head_in = K1+3）。这些配置下算出的上界小于真实参数量，
+    # `plan_sample` 永远采不到尾部参数（issue 实测：384 个参数、上界 374、9 个永不采样）。
+    # 故给**权威值**开口子：调用方拿得到真实规模时（`net.n_params()` / `vec0.size`）必须显式
+    # 传入；`None` 时退回上式，保证既有调用与 K1=K2=6 的 Rust 等价基线**逐位不变**。
+    if n_params is None:
+        n_params = k1 * 7 + k1 * k2 * 7 + 9 * (k2 + 3)   # 与 HexHierNet.n_params() 同口径
+    if int(n_params) <= 0:
+        raise ValueError("#294 make_plan 拒绝：n_params=%r 非正数" % (n_params,))
+    n_params = int(n_params)
     plan_sample = [rng.choice(n_params, size=min(samples, n_params),
                               replace=False).tolist() for _ in range(steps)]
     return {"plan_batch": plan_batch, "plan_sample": plan_sample}
@@ -343,6 +353,7 @@ def py_executor(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
             return float(d_obj + 0.5 * d_shape)
 
         d = loss(vec)
+        # 步初读数：本步更新前取值 ⇒ curve[-1] 是"最后一次更新前"，非训练终值
         curve.append(d)
         for pi in plan["plan_sample"][step]:
             vp, vm = vec.copy(), vec.copy()
@@ -382,6 +393,7 @@ def py_executor_par(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
             return float(d_obj + 0.5 * d_shape)
 
         d = loss(vec)
+        # 步初读数：本步更新前取值 ⇒ curve[-1] 是"最后一次更新前"，非训练终值
         curve.append(d)
         v = vec.copy()                                  # 步初快照
         updates = []
@@ -406,13 +418,15 @@ def equivalence_par(net, lat: np.ndarray, obj_idx: np.ndarray,
                     tol: float = 1e-9) -> Dict:
     """Python 批量参考 ↔ Rust train_par(单线程)逐位等价。"""
     vec0 = net.get_vec().copy()
+    # #294 症状③：`net.n_params()` 是权威值（含 deep_norm+amp_sep 的 +1 列 / stacked 差异），
+    # 只传 k1/k2 会在这些配置下少算 9 个参数 ⇒ 尾部永不采样。
     plan = make_plan(len(lat), steps, batch, samples, seed,
-                     k1=net.K, k2=net.K2)
+                     k1=net.K, k2=net.K2, n_params=net.n_params())
     curve_py = py_executor_par(lat, obj_idx, shape_idx, vec0.copy(), plan, net)
     curve_rs, _, _ = run_rust_train(lat, obj_idx, shape_idx, vec0.copy(),
                                     plan, mode="train_par", threads=1)
     diff = float(np.abs(curve_py - curve_rs).max())
-    return {"py_last": float(curve_py[-1]), "rust_last": float(curve_rs[-1]),
+    return {"py_before_last_update": float(curve_py[-1]), "rust_before_last_update": float(curve_rs[-1]),
             "max_abs_diff": diff, "pass": bool(diff < tol), "steps": steps}
 
 
@@ -430,7 +444,7 @@ def determinism_check(lat: np.ndarray, obj_idx: np.ndarray,
                                      plan, mode="train_par", threads=th)
         if ref is None:
             ref = curve
-            out["ref_last"] = float(curve[-1])
+            out["ref_before_last_update"] = float(curve[-1])
         else:
             out[f"threads_{th}_match"] = bool(np.array_equal(curve, ref))
     return out
@@ -452,7 +466,7 @@ def bench_threads(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
         wall = time.time() - t0
         res[f"t{th}"] = {"wall_s": round(wall, 2),
                          "ms_per_step": round(wall / steps * 1000, 1),
-                         "d_last": round(float(curve[-1]), 4)}
+                         "d_before_last_update": round(float(curve[-1]), 4)}
         if base is None:
             base = wall
         res[f"t{th}"]["speedup"] = round(base / max(1e-9, wall), 2)
@@ -467,13 +481,15 @@ def equivalence_check(net, lat: np.ndarray, obj_idx: np.ndarray,
                       tol: float = 1e-9) -> Dict:
     """同 plan 下 Python vs Rust D 曲线逐点对照。"""
     vec0 = net.get_vec().copy()
+    # #294 症状③：`net.n_params()` 是权威值（含 deep_norm+amp_sep 的 +1 列 / stacked 差异），
+    # 只传 k1/k2 会在这些配置下少算 9 个参数 ⇒ 尾部永不采样。
     plan = make_plan(len(lat), steps, batch, samples, seed,
-                     k1=net.K, k2=net.K2)
+                     k1=net.K, k2=net.K2, n_params=net.n_params())
     curve_py = py_executor(lat, obj_idx, shape_idx, vec0, plan, net)
     curve_rs, vec_rs, secs = run_rust_train(lat, obj_idx, shape_idx,
                                             vec0, plan)
     diff = float(np.abs(curve_py - curve_rs).max())
-    return {"py_last": float(curve_py[-1]), "rust_last": float(curve_rs[-1]),
+    return {"py_before_last_update": float(curve_py[-1]), "rust_before_last_update": float(curve_rs[-1]),
             "max_abs_diff": diff, "pass": bool(diff < tol),
             "rust_seconds": secs, "steps": steps}
 
@@ -489,4 +505,4 @@ def bench_rust(lat: np.ndarray, obj_idx: np.ndarray, shape_idx: np.ndarray,
     return {"steps": steps, "wall_seconds": round(time.time() - t0, 2),
             "engine_seconds": round(secs, 2),
             "d_first": round(float(curve[0]), 5),
-            "d_last": round(float(curve[-1]), 5)}
+            "d_before_last_update": round(float(curve[-1]), 5)}

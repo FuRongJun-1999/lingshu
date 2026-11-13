@@ -1,0 +1,69 @@
+{
+  "guard": "tests/test_world_restore_bounded_tail.py",
+  "total": 14,
+  "sources": [
+    "lingshu/world/world_model.py"
+  ],
+  "baseline_failures": [
+    "test_restore_live_normalized_coordinates_are_bounded[one]",
+    "test_restore_live_normalized_coordinates_are_bounded[four]"
+  ],
+  "mutations": [
+    {
+      "name": "unbounded_intermediate_tail",
+      "test": "test_restore_live_normalized_coordinates_are_bounded[one]",
+      "assertion": "WM_RESTORE_PEAK_GROWS_WITH_HISTORY",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "restore_trajectory_from_history",
+          "old": "deque(maxlen=256)",
+          "new": "deque()"
+        }
+      ]
+    },
+    {
+      "name": "reverse_retained_observations",
+      "test": "test_newest_points_and_chronological_order",
+      "assertion": "WM_RESTORE_TAIL_OR_ORDER_CHANGED",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "restore_trajectory_from_history",
+          "old": "                rows.append((tick, tuple(float(v) for v in pos)))",
+          "new": "                rows.appendleft((tick, tuple(float(v) for v in pos)))"
+        }
+      ]
+    },
+    {
+      "name": "trim_source_history",
+      "test": "test_history_and_unrelated_state_are_untouched",
+      "assertion": "WM_RESTORE_CHANGED_HISTORY",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "restore_trajectory_from_history",
+          "old": "        self._traj_buf = {eid: list(seq) for eid, seq in buf.items()}",
+          "new": "        self._traj_buf = {eid: list(seq) for eid, seq in buf.items()}\n        self.history = self.history[-256:]"
+        }
+      ]
+    },
+    {
+      "name": "publish_before_validation",
+      "test": "test_failed_restore_does_not_publish_partial_state[position]",
+      "assertion": "WM_RESTORE_FAILED_CHANGED_STATE",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "restore_trajectory_from_history",
+          "old": "        for frame in self.history:",
+          "new": "        self._traj_buf = {}\n        for frame in self.history:"
+        }
+      ]
+    }
+  ]
+}

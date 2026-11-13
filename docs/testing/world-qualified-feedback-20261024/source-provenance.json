@@ -1,0 +1,98 @@
+{
+  "baseline": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+  "sha256_lf": {
+    "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+    "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535",
+    "tests/test_world_qualified_feedback.py": "8f91640a5475373b5469cae48050900ddd0e7929200ebae12e9cd14d545a3764",
+    "tests/fixtures/world_qualified_feedback_mutations.json": "62e278068972643427059d0bdc386e5051ca6cc5bcb434d0df1f98bc6f0fe0b4",
+    "tools/testing/world_feedback_scenarios.py": "736c1499808eb6a9d0b8189cc34d5431f09230b929d13133d714ea91db963e8c"
+  },
+  "runs": {
+    "windows": {
+      "platform": "Windows",
+      "python": "3.12.10",
+      "sqlite": "3.49.1",
+      "baseline": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+      "validated_commit": "e40acb72002e4ac0177b82b55562fb600c676c45",
+      "sha256_lf": {
+        "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+        "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535",
+        "tests/test_world_qualified_feedback.py": "8f91640a5475373b5469cae48050900ddd0e7929200ebae12e9cd14d545a3764",
+        "tests/fixtures/world_qualified_feedback_mutations.json": "62e278068972643427059d0bdc386e5051ca6cc5bcb434d0df1f98bc6f0fe0b4",
+        "tools/testing/world_feedback_scenarios.py": "736c1499808eb6a9d0b8189cc34d5431f09230b929d13133d714ea91db963e8c"
+      },
+      "commands": [
+        {
+          "name": "scenarios",
+          "returncode": 0
+        },
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 90,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": [],
+      "owned_test_temp_cleaned": true,
+      "related_reading": "90 passed, 122 warnings in 7.51s"
+    },
+    "linux": {
+      "platform": "Linux",
+      "python": "3.13.12",
+      "sqlite": "3.46.1",
+      "baseline": "50ee03b2c17aa15c5e6859ee208ef2a4aedf6ee5",
+      "validated_commit": "e40acb72002e4ac0177b82b55562fb600c676c45",
+      "sha256_lf": {
+        "lingshu/world/seven_layer_loop.py": "f6e8f0620c5e91ae306cbb52c29b4478d3e8d366fc8029e971f41af82a9752f3",
+        "lingshu/core/core.py": "5f9dd56efced405b506b7d0c2dfb98da924033e94276e10d9ef26dd2c338a535",
+        "tests/test_world_qualified_feedback.py": "8f91640a5475373b5469cae48050900ddd0e7929200ebae12e9cd14d545a3764",
+        "tests/fixtures/world_qualified_feedback_mutations.json": "62e278068972643427059d0bdc386e5051ca6cc5bcb434d0df1f98bc6f0fe0b4",
+        "tools/testing/world_feedback_scenarios.py": "736c1499808eb6a9d0b8189cc34d5431f09230b929d13133d714ea91db963e8c"
+      },
+      "commands": [
+        {
+          "name": "scenarios",
+          "returncode": 0
+        },
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 90,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": [],
+      "owned_test_temp_cleaned": true,
+      "related_reading": "90 passed, 122 warnings in 36.17s"
+    }
+  },
+  "composition_tool_sha256_lf": "7fe96827094f3290a1716c44ec1c141c40b4d3c6a20d65528d447d6ddb6d1f6e",
+  "normalization": "Public logs only normalize workspace prefixes, line endings and trailing whitespace. Raw logs retained locally."
+}

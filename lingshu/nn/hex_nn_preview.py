@@ -19,9 +19,23 @@ def _layer(x, kern, n):
 
     核按输入的**实际通道数**展开（原实现硬编码 3：C=1 会被广播成 3 份，
     C=2/4 直接广播失败）。
+
+    #1109（第三种差异，显式声明）：**3-D 核的通道维必须严格等于输入通道数 C**
+    ——融合路径 `hex_conv_batch_multi` 按 `reshape(K, C*7)` 展开，核通道维≠C 时
+    显式 `ValueError`（逐核 `hex_conv_batch` 对该形态按通道广播能跑，融合路径
+    不支持——此前是未声明的裸 `ValueError: cannot reshape`）。`n` 必须是**正
+    整数**（`None` 曾被 `[:None]` 切片语义意外放行成「全部核」，使 docstring
+    声明的「n 是权威核数」失效；浮点/负数同样显式拒绝）。
     """
     from .hex_train import hex_conv_batch_multi
+    if n is None or isinstance(n, bool) or not isinstance(n, int) or n <= 0:
+        raise ValueError("n 必须是正整数（权威核数），实为 %r" % (n,))
     ks = np.asarray(kern)[:n]
+    if ks.ndim == 3 and ks.shape[1] != x.shape[-1]:
+        raise ValueError(
+            "3-D 核的通道维 %d 与输入通道数 C=%d 不一致：融合路径按 reshape(K, C*7) "
+            "展开要求严格相等（逐核 hex_conv_batch 支持通道广播，融合路径不支持）；"
+            "请把核复制/裁剪到 C 通道后再传入" % (ks.shape[1], x.shape[-1]))
     if ks.ndim == 2:                           # (n,7) 灰度核 → 复制到实际通道数
         ks = np.repeat(ks[:, None, :], x.shape[-1], axis=1)   # (n,C,7)
     return _lrelu(hex_conv_batch_multi(x, ks))

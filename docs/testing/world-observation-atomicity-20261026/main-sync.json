@@ -1,0 +1,10 @@
+{
+  "original_baseline": "a4c8207996f2cf2e41db792a918a3b484abef382",
+  "validated_commit": "e3453b8c8420e7c7c2333f6842d2ae73d6f7d447",
+  "delivery_main": "c3f9178eb70c8cd43d317a33fb7989ef66b0f001",
+  "feature_sources_and_guards_byte_identical": true,
+  "no_conflict": true,
+  "windows_local_results_reused": true,
+  "linux_local_not_run": true,
+  "current_head_full_ci_required": true
+}

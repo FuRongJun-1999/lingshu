@@ -1,0 +1,133 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "cebbe423779bd25cb106998a6e1f4ca2a4e262ad",
+  "guard_sha256": "c3671f7f1bb88d0a5e8ae8cfbac26eafeedaa577143a49f0cf862f834fd837e2",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 17,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "17 passed, 17 warnings in 0.55s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "8ee9c4c9f9cf784acd704cedc984566cec71194c3457078e4794b36cfb186ff6"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 9,
+      "failed_tests": [
+        "test_accessors_estimate_once[detail-flat]",
+        "test_accessors_estimate_once[detail-nested]",
+        "test_accessors_estimate_once[motion-flat]",
+        "test_accessors_estimate_once[motion-nested]",
+        "test_core_entry_estimates_each_entity_once[learner]",
+        "test_core_entry_estimates_each_entity_once[unified]",
+        "test_sparse_context_is_read_once[flat]",
+        "test_sparse_context_is_read_once[nested]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_accessors_estimate_once[motion-flat]",
+        "test_accessors_estimate_once[motion-nested]",
+        "test_accessors_estimate_once[detail-flat]",
+        "test_accessors_estimate_once[detail-nested]",
+        "test_sparse_context_is_read_once[flat]",
+        "test_sparse_context_is_read_once[nested]",
+        "test_core_entry_estimates_each_entity_once[learner]",
+        "test_core_entry_estimates_each_entity_once[unified]"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "8 failed, 9 passed, 17 warnings in 0.67s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "422f564d6872fbb3406284dc1430c2ecb5668dabba6998b02d107b9b9c4e94d6"
+      }
+    },
+    {
+      "case": "recompute_between_accessors",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_accessors_estimate_once[motion-flat]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_accessors_estimate_once[motion-flat]"
+      ],
+      "expected_assertion": "WM_MOTION_REESTIMATED_WITHIN_VIEW",
+      "pytest_summary": "1 failed in 0.19s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "db48d2ef06978c2f66669ab373f26453df50a56946ec85a9e5e14bafb6887fe6"
+      }
+    },
+    {
+      "case": "read_mutable_public_estimate",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_public_diagnostic_mutation_cannot_change_motion[detail]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_public_diagnostic_mutation_cannot_change_motion[detail]"
+      ],
+      "expected_assertion": "WM_MUTABLE_DIAGNOSTIC_CHANGED_MOTION",
+      "pytest_summary": "1 failed in 0.20s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "00b23a292f3bb511ef7cd7cd579f403bcd8b3ee21b320f05f1807f305435d3d8"
+      }
+    },
+    {
+      "case": "share_cache_between_views",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_new_view_refreshes_after_new_observation"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_new_view_refreshes_after_new_observation"
+      ],
+      "expected_assertion": "WM_MOTION_CACHE_ESCAPED_VIEW",
+      "pytest_summary": "1 failed in 0.20s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "21b9454f2c2d3a2b778d9b7a4938552be8b2b1727132eab841842db52b342d6d"
+      }
+    },
+    {
+      "case": "force_diagnostics_for_motion_only",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_motion_only_does_not_build_public_diagnostics"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_motion_only_does_not_build_public_diagnostics"
+      ],
+      "expected_assertion": "WM_MOTION_ONLY_FORCED_DIAGNOSTICS",
+      "pytest_summary": "1 failed in 0.19s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "5c0bb8f5c7409e50f5a7dcb01a839ddde026185f409d2d1ed3051d349f0eae2c"
+      }
+    }
+  ]
+}

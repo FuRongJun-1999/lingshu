@@ -1,0 +1,131 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "a4c8207996f2cf2e41db792a918a3b484abef382",
+  "guard_sha256": "c0d44160b099612a1870a548f2a13ca957396bad3cdf8b7e346bbc15041fe06b",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 16,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "16 passed, 9 warnings in 0.46s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "e776437d2f634ba07d8a20479d3490ee1db878c2ff4f1e5154ee11cd60b0cbe7",
+        "lingshu/world/identity.py": "a0b2276deef172925e72690ca8aa594b8c0226f1d1dee6159b4348003d3549c2"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 2,
+      "failed_tests": [
+        "test_bad_later_row_preserves_the_live_frame[category]",
+        "test_bad_later_row_preserves_the_live_frame[conditions]",
+        "test_bad_later_row_preserves_the_live_frame[dimension]",
+        "test_bad_later_row_preserves_the_live_frame[position]",
+        "test_core_rejects_without_database_or_model_writes_and_can_retry",
+        "test_default_sensor_is_read_once_and_checked_before_state_changes",
+        "test_first_rejection_does_not_initialize_prediction_buffers[conservative]",
+        "test_first_rejection_does_not_initialize_prediction_buffers[legacy]",
+        "test_invalid_tick_is_rejected_before_any_state_change[bool]",
+        "test_invalid_tick_is_rejected_before_any_state_change[float]",
+        "test_invalid_tick_is_rejected_before_any_state_change[negative]",
+        "test_invalid_tick_is_rejected_before_any_state_change[string]",
+        "test_rejection_preserves_rng_and_anonymous_identity_on_retry",
+        "test_valid_retry_verifies_the_original_forecast_at_the_same_tick"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_bad_later_row_preserves_the_live_frame[conditions]",
+        "test_bad_later_row_preserves_the_live_frame[position]",
+        "test_bad_later_row_preserves_the_live_frame[category]",
+        "test_bad_later_row_preserves_the_live_frame[dimension]",
+        "test_rejection_preserves_rng_and_anonymous_identity_on_retry",
+        "test_first_rejection_does_not_initialize_prediction_buffers[legacy]",
+        "test_first_rejection_does_not_initialize_prediction_buffers[conservative]",
+        "test_invalid_tick_is_rejected_before_any_state_change[bool]",
+        "test_invalid_tick_is_rejected_before_any_state_change[negative]",
+        "test_invalid_tick_is_rejected_before_any_state_change[float]",
+        "test_invalid_tick_is_rejected_before_any_state_change[string]",
+        "test_valid_retry_verifies_the_original_forecast_at_the_same_tick",
+        "test_default_sensor_is_read_once_and_checked_before_state_changes",
+        "test_core_rejects_without_database_or_model_writes_and_can_retry"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "14 failed, 2 passed, 9 warnings in 0.64s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "50b380c3038987d7e82cb229985ed034dab93a78aa695a25516f3c67531c79b4",
+        "lingshu/world/identity.py": "740e664e06e8dc7b1bacae91f478d2e06a91480b1578be5a5aa74d7ffc6edc7e"
+      }
+    },
+    {
+      "case": "skip_frame_preflight",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_bad_later_row_preserves_the_live_frame[conditions]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_bad_later_row_preserves_the_live_frame[conditions]"
+      ],
+      "expected_assertion": "WM_REJECTED_FRAME_CHANGED_STATE",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "ae00c450bb09009fd9b28d09ab9afd43784526e933368e6784efcdfdd6c91e4e",
+        "lingshu/world/identity.py": "a0b2276deef172925e72690ca8aa594b8c0226f1d1dee6159b4348003d3549c2"
+      }
+    },
+    {
+      "case": "validate_first_row_only",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_bad_later_row_preserves_the_live_frame[conditions]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_bad_later_row_preserves_the_live_frame[conditions]"
+      ],
+      "expected_assertion": "WM_REJECTED_FRAME_CHANGED_STATE",
+      "pytest_summary": "1 failed in 0.28s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "32d8b49c570cde6a6fd3499c9e1671cd182387eb0007b69ac76de6c136169d45",
+        "lingshu/world/identity.py": "a0b2276deef172925e72690ca8aa594b8c0226f1d1dee6159b4348003d3549c2"
+      }
+    },
+    {
+      "case": "initialize_buffers_before_validation",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_first_rejection_does_not_initialize_prediction_buffers[conservative]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_first_rejection_does_not_initialize_prediction_buffers[conservative]"
+      ],
+      "expected_assertion": "WM_FIRST_REJECTION_INITIALIZED_BUFFERS",
+      "pytest_summary": "1 failed in 0.28s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "f75aa8be9649d97104b450909d65995b83a6605581eb039e61f7df6b0db6cc5c",
+        "lingshu/world/identity.py": "a0b2276deef172925e72690ca8aa594b8c0226f1d1dee6159b4348003d3549c2"
+      }
+    }
+  ]
+}

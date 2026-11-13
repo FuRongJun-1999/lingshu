@@ -82,10 +82,14 @@ def _orig_apply_move(pos, speed, d, size):
 
 
 def _orig_apply_move_capped(pos, speed, d, size, dist):
-    """`spacetime_consistency` 改前的字面算式（含步长封顶与 #347 非有限拒绝）。"""
+    """`spacetime_consistency` 的字面算式（步长封顶 + #347 非有限拒绝
+    + #2151 的 speed 非有限统一拒绝——cap 路径此前 `min(inf, cap)=cap`
+    会把拒绝吃成移动，契约不分路径）。"""
     if d == (0.0, 0.0, 0.0):
         return tuple(round(v, 2) for v in pos)
     step_len = speed if dist is None else min(speed, dist)
+    if not (math.isfinite(speed) and math.isfinite(step_len)):
+        return tuple(round(v, 2) for v in pos)
     nx = pos[0] + d[0] * step_len
     nz = pos[2] + d[2] * step_len
     if not (math.isfinite(nx) and math.isfinite(nz)):
@@ -127,7 +131,8 @@ def test_a2_apply_move_默认口径与原算式逐位一致():
 
 
 def test_a3_封顶与拒绝口径与原算式逐位一致():
-    """A3：`step_cap` + `NF_REJECT_ROUND_ALL` = `spacetime_consistency` 改前口径。"""
+    """A3：`step_cap` + `NF_REJECT_ROUND_ALL` = `spacetime_consistency` 口径
+    （#2151 修后：speed 非有限统一拒绝，cap 路径不得吃成移动）。"""
     dirs = ((1.0, 0.0, 0.0), (0.6, 0.0, 0.8), (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0))
     for size in SIZES:
         for x in GRID:

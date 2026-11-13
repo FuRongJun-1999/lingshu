@@ -1,0 +1,139 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "3090b87121dedc920d0cdae9529ff928cce9da29",
+  "guard_sha256": "b3dd92f2caec12e088ba7e3af16d56776c5a9772465bc41b227426e96b90f712",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 18,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "18 passed, 9 warnings in 0.46s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "b3d583c31c222176273ee5e8ffbc6708313ac2ff94dbbbda119e7007c883d1c4"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 7,
+      "failed_tests": [
+        "test_core_public_forecast_uses_the_wrapped_phase_without_writes",
+        "test_counterfactual_wraps_without_committing_the_candidate",
+        "test_fractional_cycles_preserve_the_interpolated_phase[18]",
+        "test_fractional_cycles_preserve_the_interpolated_phase[50]",
+        "test_fractional_cycles_preserve_the_interpolated_phase[9]",
+        "test_integer_valued_float_period_matches_integer_phase[25]",
+        "test_integer_valued_float_period_matches_integer_phase[9]",
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[130]",
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[41]",
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[50]",
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[64]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[41]",
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[50]",
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[64]",
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[130]",
+        "test_fractional_cycles_preserve_the_interpolated_phase[9]",
+        "test_fractional_cycles_preserve_the_interpolated_phase[18]",
+        "test_fractional_cycles_preserve_the_interpolated_phase[50]",
+        "test_integer_valued_float_period_matches_integer_phase[9]",
+        "test_integer_valued_float_period_matches_integer_phase[25]",
+        "test_core_public_forecast_uses_the_wrapped_phase_without_writes",
+        "test_counterfactual_wraps_without_committing_the_candidate"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "11 failed, 7 passed, 9 warnings in 0.63s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "c8268fb53e55717bbbd30d52c5a639c4a21e597866587d6c04cbd22098c26d96"
+      }
+    },
+    {
+      "case": "skip_float_phase_wrap",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[50]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_public_fractional_period_keeps_moving_beyond_one_cycle[50]"
+      ],
+      "expected_assertion": "WM_PERIOD_PHASE_FROZE",
+      "pytest_summary": "1 failed in 0.26s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "8e8395aa77f9af0c4ed415175ecab3eb2cfed395509ec54cecd010dc0d703183"
+      }
+    },
+    {
+      "case": "truncate_fractional_period",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_fractional_cycles_preserve_the_interpolated_phase[18]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_fractional_cycles_preserve_the_interpolated_phase[18]"
+      ],
+      "expected_assertion": "WM_FRACTIONAL_CYCLES_LOST",
+      "pytest_summary": "1 failed in 0.23s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "c87786ef074119363b4257eccb8f334d6966dac364be5830871a034c5aba48e5"
+      }
+    },
+    {
+      "case": "lose_whole_cycle_anchor",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_whole_cycles_return_the_last_observation_anchor"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_whole_cycles_return_the_last_observation_anchor"
+      ],
+      "expected_assertion": "WM_PERIOD_WHOLE_CYCLE_LOST_ANCHOR",
+      "pytest_summary": "1 failed in 0.24s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "1497260ff45af8ad341c16ccabed37379272b5151145ebb6cf2ca07cb353bc80"
+      }
+    },
+    {
+      "case": "drop_fractional_interpolation",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_fractional_cycles_preserve_the_interpolated_phase[18]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_fractional_cycles_preserve_the_interpolated_phase[18]"
+      ],
+      "expected_assertion": "WM_FRACTIONAL_CYCLES_LOST",
+      "pytest_summary": "1 failed in 0.25s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "a2e6f22f70ad7fceae0e4032d237d09b5af9cd6799cbe6c752b5b2b8d514cc5c"
+      }
+    }
+  ]
+}

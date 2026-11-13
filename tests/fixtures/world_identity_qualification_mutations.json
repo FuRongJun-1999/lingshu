@@ -1,0 +1,94 @@
+{
+  "guard": "tests/test_world_identity_qualification.py",
+  "total": 22,
+  "sources": [
+    "lingshu/world/world_model.py",
+    "lingshu/world/wm_simloop.py",
+    "lingshu/core/core.py"
+  ],
+  "support_sources": [
+    "lingshu/world/identity.py"
+  ],
+  "baseline_note": "Existing three production files are restored to current main. The new pure helper is copied but is unreferenced by baseline code. New API absence is an assertion, not a collection/import error.",
+  "baseline_failures": [
+    "test_separated_anonymous_tracks_are_accepted_and_explicit_ids_can_cross",
+    "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error",
+    "test_two_observations_competing_for_one_track_defer_in_both_orders",
+    "test_whole_frame_explicit_reservation_and_new_tracks_are_distinct",
+    "test_duplicate_explicit_ids_reject_both_measurements",
+    "test_readonly_preview_has_detached_candidates_and_does_not_consume_rng",
+    "test_preview_uses_only_a_prediction_for_the_observation_target_tick",
+    "test_invalid_frame_rejected_before_graph_updates[nan]",
+    "test_invalid_frame_rejected_before_graph_updates[inf]",
+    "test_invalid_frame_rejected_before_graph_updates[True]",
+    "test_invalid_frame_rejected_before_graph_updates[bad]",
+    "test_clear_evidence_resumes_after_ambiguity_and_occlusion",
+    "test_core_policy_and_readonly_actions_do_not_lazy_create_a_model",
+    "test_visual_writeback_uses_original_measurement_index",
+    "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]",
+    "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[confirmed]",
+    "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only",
+    "test_old_v1_payload_restores_legacy_even_into_a_conservative_model",
+    "test_truncated_prior_can_be_exported_and_restored_again",
+    "test_invalid_v2_recovery_does_not_replace_running_facts[policy]",
+    "test_invalid_v2_recovery_does_not_replace_running_facts[promoted_pending]"
+  ],
+  "mutations": [
+    {
+      "name": "commit_unresolved_measurement",
+      "test": "test_ambiguous_measurement_is_not_a_confirmed_fact_or_prediction_error",
+      "assertion": "unresolved measurement entered confirmed observations",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "perceive",
+          "old": "if reading is not None and reading[\"association_state\"] != \"ACCEPT\":",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "name": "zip_shortened_visual_observations",
+      "test": "test_visual_writeback_uses_original_measurement_index",
+      "assertion": "visual ID was assigned to an unresolved measurement",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "world_model",
+          "old": "source_index = (observation[\"observation_index\"]\n                                if self._wmodel.identity_policy == \"conservative\" else index)",
+          "new": "source_index = index"
+        }
+      ]
+    },
+    {
+      "name": "restore_with_legacy_association",
+      "test": "test_file_roundtrip_preserves_policy_and_pending_audit_as_prior_only",
+      "assertion": "recovery silently changed identity policy",
+      "changes": [
+        {
+          "file": "lingshu/world/wm_simloop.py",
+          "class": "SimulationLoop",
+          "method": "load_priors",
+          "old": "candidate.set_identity_policy(state[\"identity_policy\"]\n                                          if schema == \"lingshu.world-prior.v2\" else \"legacy\")",
+          "new": "candidate.set_identity_policy(\"legacy\")"
+        }
+      ]
+    },
+    {
+      "name": "advance_unresolved_hypothesis",
+      "test": "test_simloop_waits_for_subject_identity_before_advancing_a_hypothesis[candidate]",
+      "assertion": "unresolved subject advanced hypothesis verification",
+      "changes": [
+        {
+          "file": "lingshu/world/wm_simloop.py",
+          "class": "SimulationLoop",
+          "method": "_growth_tick",
+          "old": "if (self.wm.identity_policy == \"conservative\"\n                    and subject not in (self.wm._obs_snapshot or {})):",
+          "new": "if False:"
+        }
+      ]
+    }
+  ]
+}

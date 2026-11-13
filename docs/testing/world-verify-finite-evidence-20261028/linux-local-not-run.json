@@ -1,0 +1,5 @@
+{
+  "status": "not_run",
+  "scope": "local Linux replay and mutations",
+  "note": "This batch ran on Windows; no WSL launch or host configuration changes."
+}

@@ -9,7 +9,6 @@ import sys
 from copy import deepcopy
 
 import numpy as np
-sys.stdout.reconfigure(encoding='utf-8')
 
 
 # ============ 一、时空体素化（连续帧 → 3D 体素） ============
@@ -29,6 +28,10 @@ def frames_to_voxel(frames, width=None, height=None):
     # 原样、0..255 则 /255）——微小噪声保持微小；仅当输入明显超出两个已知域
     # （自造浮点域、无先验量纲）才退回整段 min-max（该分支仍带 #352 界，如实注明）。
     amin, amax = float(arr.min()), float(arr.max())
+    # F23-18（#942 清单）如实标注（审计面，判据不变）：三分支判定是**零容差
+    # 精确比较**——本应落在 [0,1] 但带 -1e-9 浮点误差的输入会翻转进 min-max
+    # 分支（被重归一）。这不是「明显超出」的模糊判据；输入域由上游（uint8
+    # 图像/本仓合成器）保证时无影响。是否加容差属行为面裁定，不在本标注内。
     if 0.0 <= amin and amax <= 1.0:
         pass                                   # 已是 0..1 量纲
     elif 0.0 <= amin and 0.0 < amax <= 255.0:
@@ -117,6 +120,18 @@ MOTION_KERNEL[0] = -1.0 / 9.0  # 前帧平均（差分 → 变化检测）
 SPATIAL_KERNEL = np.zeros((1, 3, 3), dtype=np.float32)
 SPATIAL_KERNEL[0] = 1.0 / 9.0
 
+# #352 重判（残余）：`moving` 的**强度**阈值。
+# 旧判据 `motion_mag > 0.5` 把阈值加在 motion_mag 上，而 motion_mag = |conv3d|.sum()
+# 是**广延量**（∝ 输出元素数 (T-1)(H-2)(W-2)），于是同一噪声在不同帧尺寸下判定不同：
+# 实测 σ=0.01 在 8×8 上 motion_mag=0.76（刚越阈）、在 128×128 上 296.2；而 σ=1e-4
+# 这种 0.086% 满量程的纯噪声，在 64×64/128×128 上也越 0.5 被判为 moving=True。
+# 现改为**强度量**（每元素平均响应），并与本模块对「运动」的既有定义同量纲：
+# frame_diff 的逐像素阈值 0.08 ÷ MOTION_KERNEL 的 3×3 空间平均面积 9 = 0.0089。
+# 依据：真运动的每元素响应恰为 1.0/9 = 0.1111（满对比度边沿经 3×3 平均），
+# σ=0.01 噪声为 0.0038 —— 阈值 0.0089 对噪声留 2.3× 余量、对真运动留 12.5× 余量，
+# 且跨尺寸稳定（8..128 上噪声 0.0037–0.0042、真运动 0.0159–0.1111）。
+_MOVING_INTENSITY = 0.08 / 9.0
+
 
 # ============ 三、时空原语提取（运动/方向/速度/周期） ============
 def frame_diff(frames, threshold=0.08):
@@ -128,6 +143,8 @@ def frame_diff(frames, threshold=0.08):
     `frame_rise`（每个亮灭周期只保留亮起前沿）。
     """
     arr = np.asarray(frames, dtype=np.float32)
+    if arr.ndim == 4:                        # #256：(T,H,W,C) → 灰度
+        arr = arr.mean(axis=-1)              #   与 frames_to_voxel:20-21 同口径
     diffs = np.abs(np.diff(arr, axis=0))
     return (diffs > threshold).astype(np.float32)
 
@@ -140,6 +157,8 @@ def frame_rise(frames, threshold=0.08):
     的沿，这里只保留正向变化（亮起前沿）；`detect_period` 的前沿检测正是按此设计的。
     """
     arr = np.asarray(frames, dtype=np.float32)
+    if arr.ndim == 4:                        # #256：(T,H,W,C) → 灰度
+        arr = arr.mean(axis=-1)              #   与 frames_to_voxel:20-21 同口径
     rise = np.clip(np.diff(arr, axis=0), 0.0, None)
     rise[rise <= threshold] = 0.0
     return rise
@@ -259,7 +278,7 @@ def extract_spatiotemporal_primitives(frames):
         "direction": motion_direction(centroids),
         "speed": round(motion_speed(centroids), 4),
         "period": period,
-        "moving": bool(motion_mag > 0.5),  # bool()：numpy bool 不满足 is True
+        "moving": bool(motion_mag / motion_feat.size > _MOVING_INTENSITY) if motion_feat.size else False,
         "trajectory_len": len(centroids),
         "t_first": t_first,
         "t_last": t_last,
@@ -311,20 +330,35 @@ class SpatiotemporalMemory:
         self._written.append(written)
         return event
 
+    #: recall 可查询的字段白名单＝事件契约字段面（_EVENT_FIELDS 全集）。
+    #: #162（本件）：旧白名单只有四键（direction/moving/period/label）——
+    #  `speed`/`t_start`/`t_end` 在事件里存了值却**不可查询**（静默忽略＝
+    #  假全量）。白名单对齐事件契约全集后，查询键与召回键一一对应。
+    _QUERY_KEYS = frozenset(_EVENT_FIELDS)
+
     def recall(self, query=None):
-        """回忆：按条件查询时空记忆（白箱召回，无 LLM）"""
+        """回忆：按条件查询时空记忆（白箱召回，无 LLM）。
+
+        #162（本件）：可查询键白名单对齐 `_EVENT_FIELDS` 全集——旧白名单
+        漏掉 `t_start`/`t_end`/`speed` 等事件契约字段，按这些键查询被静默
+        忽略（返回全量＝假命中）。
+        """
+        if query is not None:
+            unknown = set(query) - self._QUERY_KEYS
+            if unknown:
+                raise ValueError(
+                    "recall：查询键 %r 不在可查询字段 %s 内——旧实现静默忽略"
+                    "（返回全量＝假命中）；如需按新键查询请先扩展事件契约"
+                    % (sorted(unknown), sorted(self._QUERY_KEYS)))
         out = []
         for e in self.events:
             if query is None:
                 out.append(e)
             else:
-                hit = all(
-                    e.get(k) == v for k, v in query.items()
-                    if k in ("direction", "moving", "period", "label"))
+                hit = all(e.get(k) == v for k, v in query.items())
                 if hit:
                     out.append(e)
         return out
-
     def verify_consistency(self):
         """自校验：回忆 vs 已记事件一致性（记忆无幻觉）。
 
@@ -390,6 +424,13 @@ def synth_blinking(frames=12, size=32, period=3):
 
 # ============ 六、主演示 ============
 if __name__ == "__main__":
+    # issue #147：编码钉法只在直跑时生效。模块顶层裸调会在导入期改写全局
+    # stdout 编码（使 PYTHONIOENCODING 失效），且 stdout 被重定向时
+    # （_io.StringIO 无 reconfigure 属性）直接 AttributeError ⇒ 导入即崩。
+    # 守卫形态与 lingshu/world/scenario_cli.py:150-152 同源。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8")
     print("=== 白箱自举·多模态主线：3D 时空 CNN × 时空记忆图（零 LLM） ===\n")
     mem = SpatiotemporalMemory()
 

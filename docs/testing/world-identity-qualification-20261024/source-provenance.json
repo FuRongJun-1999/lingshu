@@ -1,0 +1,110 @@
+{
+  "baseline": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+    "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+    "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb",
+    "lingshu/world/identity.py": "740e664e06e8dc7b1bacae91f478d2e06a91480b1578be5a5aa74d7ffc6edc7e",
+    "tests/test_world_identity_qualification.py": "a0036ff5acef586071575e116c2883607ffd654e6576f649f9bff95ff1fed593",
+    "tests/fixtures/world_identity_qualification_mutations.json": "194ad10a70c9e5b39a9ce357ea3b13ebf2f7457f783845865d1d9a3399c5aa3e",
+    "tools/testing/world_identity_scenarios.py": "754e287ddfcccb799d348063c0ec3b787fa0c3846eafc80bd9dea4f16d57e133",
+    "tests/fixtures/identity_reserved_ids_mutations.json": "c52c669571be92e5ba0f46d82259232bf34da050bd253f6bbed2e8d6406c123a"
+  },
+  "runs": {
+    "windows": {
+      "platform": "Windows",
+      "python": "3.12.10",
+      "sqlite": "3.49.1",
+      "baseline": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+      "validated_commit": "0468db14a393ca80fa1cb54ec6789a2927154728",
+      "sha256_lf": {
+        "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+        "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+        "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb",
+        "lingshu/world/identity.py": "740e664e06e8dc7b1bacae91f478d2e06a91480b1578be5a5aa74d7ffc6edc7e",
+        "tests/test_world_identity_qualification.py": "a0036ff5acef586071575e116c2883607ffd654e6576f649f9bff95ff1fed593",
+        "tests/fixtures/world_identity_qualification_mutations.json": "194ad10a70c9e5b39a9ce357ea3b13ebf2f7457f783845865d1d9a3399c5aa3e"
+      },
+      "commands": [
+        {
+          "name": "scenarios",
+          "returncode": 0
+        },
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "old-id-mutations",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 36,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": [],
+      "owned_test_temp_cleaned": true,
+      "related_reading": "36 passed, 57 warnings in 3.17s"
+    },
+    "linux": {
+      "platform": "Linux",
+      "python": "3.13.12",
+      "sqlite": "3.46.1",
+      "baseline": "c6139540461aa20f72bb6aa15e1b31e83c772af3",
+      "validated_commit": "0468db14a393ca80fa1cb54ec6789a2927154728",
+      "sha256_lf": {
+        "lingshu/world/world_model.py": "c219a0b1702c8fe2853992ce0e7e88d972a16de62199962165e8f0f2bcc1fe8d",
+        "lingshu/world/wm_simloop.py": "b5cfd3b2ee73b681f987f188a5214205818cee20dc9619c4c887eb3422db801c",
+        "lingshu/core/core.py": "fa225ac118958f3e76f2ee0036b78a08b867bc30ecf8c5902872977674013cdb",
+        "lingshu/world/identity.py": "740e664e06e8dc7b1bacae91f478d2e06a91480b1578be5a5aa74d7ffc6edc7e",
+        "tests/test_world_identity_qualification.py": "a0036ff5acef586071575e116c2883607ffd654e6576f649f9bff95ff1fed593",
+        "tests/fixtures/world_identity_qualification_mutations.json": "194ad10a70c9e5b39a9ce357ea3b13ebf2f7457f783845865d1d9a3399c5aa3e"
+      },
+      "commands": [
+        {
+          "name": "scenarios",
+          "returncode": 0
+        },
+        {
+          "name": "replay",
+          "returncode": 0
+        },
+        {
+          "name": "old-id-mutations",
+          "returncode": 0
+        },
+        {
+          "name": "related",
+          "returncode": 0
+        },
+        {
+          "name": "manifest",
+          "returncode": 0
+        },
+        {
+          "name": "time-core",
+          "returncode": 0
+        }
+      ],
+      "related_total": 36,
+      "related_failures": [],
+      "related_errors": [],
+      "related_skips": [],
+      "owned_test_temp_cleaned": true,
+      "related_reading": "36 passed, 57 warnings in 22.57s"
+    }
+  },
+  "normalization": "Only workspace prefixes, line endings and trailing whitespace in public logs; raw logs retained locally."
+}

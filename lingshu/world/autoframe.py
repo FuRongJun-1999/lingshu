@@ -89,6 +89,31 @@ def frame_points(points: Sequence[Vec3], screen_w: int, screen_h: int, *,
         raise ValueError(
             "frame_points：fov_deg 必须落在开区间 (0,180)，收到 %r"
             % (fov_deg,))
+    # #2154：margin_frac 与 fov_deg 同款显式闸——上一段注释「本参数不得例外；
+    # 不静默 clamp」的承诺在 fov_deg 已落地、此处漏改。修前全值域无闸：负值挤爆
+    # 画布、>=1.0 违反模块 docstring 自述验收判据 clipped=False（主体被裁出画
+    # 布，实测 margin_frac=1.0 clipped=True）、0.5 撞除零、NaN/inf 静默出废图。
+    if (isinstance(margin_frac, bool) or not isinstance(margin_frac, (int, float))
+            or not math.isfinite(margin_frac)
+            or margin_frac < 0.0 or margin_frac >= 0.5):
+        raise ValueError("frame_points：margin_frac 须在 [0, 0.5) 内，收到 %r"
+                         % (margin_frac,))
+
+    # #2432：同段 `fov_deg`/`margin_frac` 都有闸，而 `screen_w/screen_h` 与两个
+    # 角度参数仍是裸用——`screen_w=0` 使 `k = 0` ⇒ `dist / k` 抛裸
+    # ZeroDivisionError；`screen_w=nan` ⇒ `fit_w=nan` ⇒ 相机 cx/cy/cz/yaw/pitch
+    # 全 NaN（且 `auto_view` 会把这个 NaN 相机连同 area=0.0 当「最优视角」返回）；
+    # `azimuth_deg/elevation_deg=nan` 经 `orbit_dir` 同样污染整台相机。
+    for _nm, _v, _pos in (("screen_w", screen_w, True),
+                          ("screen_h", screen_h, True)):
+        if (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                or not math.isfinite(float(_v)) or (_pos and float(_v) <= 0.0)):
+            raise ValueError("frame_points：%s 须为正有限数，收到 %r" % (_nm, _v))
+    for _nm, _v in (("azimuth_deg", azimuth_deg),
+                    ("elevation_deg", elevation_deg)):
+        if (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                or not math.isfinite(float(_v))):
+            raise ValueError("frame_points：%s 须为有限数值，收到 %r" % (_nm, _v))
 
     lo = [min(p[k] for p in pts) for k in range(3)]
     hi = [max(p[k] for p in pts) for k in range(3)]

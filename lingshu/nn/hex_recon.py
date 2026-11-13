@@ -1,24 +1,52 @@
 # -*- coding: utf-8 -*-
-"""hex_recon · 单张图像的关系连接存储与完美复原(99% 逐像素)
-====================================================================================
-荣 2026-09-08:「对单张图像的完美复原。99% 逐像素复原。图像就只是像素的
+"""hex_recon · 单张图像的关系连接存储与复原（保真度受限于包围盒）
+
+荣 2026-09-08（**原文引用** · 目标口径，**非当前达成值**，见下方「保真度边界」）:
+「对单张图像的完美复原。99% 逐像素复原。图像就只是像素的
 排布规律。其中的特征,分布,都可以使用关系连接存下来。」
 
 原理:图像 = 像素排布规律 = 连接关系网络
   存储:提取连通域(区域/形状/颜色/位置)+域间关系 → 关系描述
   复原:从关系描述 → 渲染像素 → 与原图逐像素对比
-  验证标准:逐像素匹配率 ≥99%(每像素 RGB 误差 ≤ 每通道 8)
 
-第一版:合成场景(几何参数生成→关系描述→渲染→应 100% 可复原)。
+★ 保真度边界（issue #15 · 如实收窄声明，**不改数值行为**）:
+  当前关系描述（`regions_to_connections`）只序列化
+  `center`/`size`/`color`/`pixels`/`type` 五个字段；真实像素集合 `mask_indices`
+  在 `extract_regions` 内标注「内部使用,不序列化」。`reconstruct` 因此只能按
+  `center`/`size` 画**轴对齐矩形**。故：
+    · **99% 逐像素 / 100% 可复原只在轴对齐矩形与满幅纯色上成立**；
+    · 非矩形区域（圆 / 斜置矩形 / 任意连通域）的**包围盒四角像素必然丢失**，
+      整图匹配率 ≈ `1 − ((2r+1)² − πr²) / (W·H)`（r=8..18 实测 **0.9609–0.9900**，
+      与解析式最大偏差 0.0008）；
+    · 另有一项与形状无关的**取整漂移**：`center`/`size` 序列化时 `round(4)`，
+      `reconstruct` 用 `int()` 截断与 `sw//2` ⇒ 正方形实测 **0.9932–0.9964**（非 1.0000）。
+  ⇒ 要真正达到 99%/100%，须**序列化形状本身**（mask / contour / RLE）；
+     那属**格式变更**（改变关系描述体积与兼容性），须先经设计裁定。
+  验证标准（当前实现的实际口径）:
+    逐像素匹配率 = RGB 差总和 ≤ 每通道 8 的像素占比（分母 = 整图像素数）。
+
+第一版:合成场景(几何参数生成→关系描述→渲染→轴对齐矩形区应 100% 可复原)。
 第二版(后续):真实图像 → 更复杂的关系描述。
 """
 from __future__ import annotations
 import json
+import math
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
 ALGO = "hex_recon-0.1"
+
+#: 形状保真度适用范围（issue #15）。当前关系描述只存包围盒 ⇒ 重建只出轴对齐矩形。
+#: 判据来源：本模组 `regions_to_connections` 的序列化字段集（见守卫 D）+ r=8..18 实测。
+#: 若要覆盖任意形状，须把形状本身（mask/contour/RLE）纳入序列化 —— 属格式变更，需裁定。
+SHAPE_FIDELITY_SCOPE = "axis_aligned_rectangles_only"
+
+#: 非矩形区域必然丢失的像素位置（机制）。
+SHAPE_FIDELITY_LOSS = "bbox corners of non-rectangular regions"
+
+#: 达到任意形状保真所需、而当前**未**序列化的字段（供后续裁定引用）。
+SHAPE_FIDELITY_REQUIRES = ("mask", "contour", "rle")
 
 
 # ==================== 连通域提取 ====================
@@ -27,6 +55,12 @@ def extract_regions(img: np.ndarray, color_th: int = 30
                     ) -> Tuple[List[Dict], np.ndarray]:
     """从图像提取均匀色块连通域。
     返回 (区域描述列表, 残差图)。"""
+    # #2522：`color_th=nan` 使 `diff > th*3` 恒 False ⇒ 洪泛永不拒绝任何像素，
+    # 整幅图被并成 1 个「区域」（color 取全图均值），随后 regions_to_connections
+    # 会把它当真实物体序列化——坏阈值不是报错，而是给出一个看似正常的描述。
+    if not (isinstance(color_th, (int, float)) and not isinstance(color_th, bool)
+            and math.isfinite(float(color_th)) and float(color_th) > 0.0):
+        raise ValueError("extract_regions: color_th 须为有限正数，实得 %r" % (color_th,))
     h, w = img.shape[:2]
     visited = np.zeros((h, w), dtype=bool)
     regions = []
@@ -115,10 +149,17 @@ def regions_to_connections(regions: List[Dict],
 # ==================== 复原(从关系描述渲染) ====================
 
 def reconstruct(connections: Dict) -> np.ndarray:
-    """从关系连接描述 → 重建图像。"""
+    """从关系连接描述 → 重建图像。
+
+    #305：铺 bbox 前按面积**降序**排序（大区域先铺、小区域后铺）——旧实现按
+    `extract_regions` 的扫描序逐个覆盖，物体占住 (0,0) 时先于背景入列、被背景
+    整块盖掉（实测 kept=0/25）。面积是连接描述里**已有的**字段，排序不引入
+    新语义；同面积保持原相对顺序（稳定排序）。"""
     w, h = connections["image_size"]
     img = np.full((h, w, 3), 128, dtype=np.uint8)  # 默认背景
-    for conn in connections["connections"]:
+    conns = sorted(connections["connections"],
+                   key=lambda c: c["size"][0] * c["size"][1], reverse=True)
+    for conn in conns:
         cx = int(conn["center"][0] * w)
         cy = int(conn["center"][1] * h)
         sw = int(conn["size"][0] * w)

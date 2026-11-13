@@ -1,0 +1,32 @@
+{
+  "baseline": "3090b87121dedc920d0cdae9529ff928cce9da29",
+  "validated_production_commit": "e6b1910c4b5427abf120d596f09c812752de171f",
+  "sha256_lf": {
+    "lingshu/world/world_model.py": "b3d583c31c222176273ee5e8ffbc6708313ac2ff94dbbbda119e7007c883d1c4",
+    "tests/test_world_period_phase_wrap.py": "b3dd92f2caec12e088ba7e3af16d56776c5a9772465bc41b227426e96b90f712",
+    "tests/fixtures/world_period_phase_wrap_mutations.json": "540ff3f6a42e149f3a2350935be8d38e27ed8dc025bb2adc7105e46db2ed0c2e"
+  },
+  "related_files": [
+    "test_world_observation_contracts.py",
+    "test_world_identity_qualification.py",
+    "test_world_counterfactual_isolation.py",
+    "test_world_memory_first_batch.py",
+    "test_trajectory_resolved_observations.py",
+    "test_issue418_sparse_motion_guard.py",
+    "test_wm_verify_snapshot_tick.py",
+    "test_wm_verify_unobserved.py",
+    "test_world_qualified_feedback.py",
+    "test_pursuit_prediction.py",
+    "test_world_period_silent_wrong_guard.py",
+    "test_world_rotation_tick_clock.py",
+    "test_world_observation_atomicity.py",
+    "test_issue1010_vprim_category_roundtrip.py",
+    "test_issue1011_identity_float_projection.py",
+    "test_issue1012_rot_buffer_dedupe.py"
+  ],
+  "normalization": "Only workspace/interpreter prefixes, CRLF and trailing whitespace; raw local logs retained",
+  "owned_temporary_copies_cleaned": true,
+  "only_production_function_changed": "_phase_at",
+  "local_linux": "not run this round; Linux CI is separate evidence",
+  "real_device_online_brain_dsh": "not tested"
+}

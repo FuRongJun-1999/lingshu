@@ -606,7 +606,7 @@ def _nan_history(value):
 
 @pytest.fixture
 def revert_finite_filter(monkeypatch):
-    """定点变异②：抽掉有限性过滤（`_finite_pos` 恒真）⇒ NaN/±Inf 直接传染进读数。"""
+    """旁路第一道坐标闸；算术有限性闸仍应独立阻断坏读数。"""
     monkeypatch.setattr(M, "_finite_pos", lambda pos: True)
     return True
 
@@ -621,17 +621,20 @@ def test_G4_nonfinite_coords_never_enter_the_estimate(bad):
     assert d["reason"] == "nonfinite_observation", d
 
 
-def test_G5_mutation_without_finite_filter_turns_red(revert_finite_filter):
-    """G5/定点变异②：抽掉有限性过滤 ⇒ NaN/Inf 传染（`speed` 非有限）⇒ 判据转红。"""
+def test_G5_finite_filter_bypass_is_blocked_by_arithmetic_gate(revert_finite_filter):
+    """G5：坐标闸被旁路时，第二道算术闸仍必须拒绝 NaN/Inf。
+
+    旧断言假定旁路唯一防线就会污染；新增独立算术闸后，不应为了该自证放行坏值。
+    G4 继续检查正常路径的非有限点/配对诊断，新算术变异件单独证明第二道闸可点红。
+    """
     nan = ObservationWindow(_nan_history(float("nan")), 6,
                             nested=True).motion_detail("e")
-    assert nan["estimate"] is not None, nan
-    assert math.isnan(nan["estimate"][1]), nan           # 污染可见（NaN 速度）
+    assert nan["estimate"] is None and nan["arithmetic_pairs_dropped"] == 1, nan
+    assert nan["reason"] == "invalid_motion_arithmetic", nan
     inf = ObservationWindow(_nan_history(float("inf")), 6,
                             nested=True).motion_detail("e")
-    assert inf["estimate"] is not None and not math.isfinite(inf["estimate"][1]), inf
-    # 对照：未变异时同一输入是 None + 计数（见 G4）
-    assert inf["confidence"] != 0.0 or inf["estimate"] is not None
+    assert inf["estimate"] is None and inf["arithmetic_pairs_dropped"] == 1, inf
+    assert inf["confidence"] == 0.0 and inf["nonfinite_points"] == 0, inf
 
 
 def test_G6_finite_pairs_still_used_when_mixed():

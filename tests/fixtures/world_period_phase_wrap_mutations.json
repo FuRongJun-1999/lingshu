@@ -1,0 +1,36 @@
+{
+  "guard": "tests/test_world_period_phase_wrap.py",
+  "total": 18,
+  "sources": ["lingshu/world/world_model.py"],
+  "baseline_failures": [
+    "test_public_fractional_period_keeps_moving_beyond_one_cycle[41]",
+    "test_public_fractional_period_keeps_moving_beyond_one_cycle[50]",
+    "test_public_fractional_period_keeps_moving_beyond_one_cycle[64]",
+    "test_public_fractional_period_keeps_moving_beyond_one_cycle[130]",
+    "test_fractional_cycles_preserve_the_interpolated_phase[9]",
+    "test_fractional_cycles_preserve_the_interpolated_phase[18]",
+    "test_fractional_cycles_preserve_the_interpolated_phase[50]",
+    "test_integer_valued_float_period_matches_integer_phase[9]",
+    "test_integer_valued_float_period_matches_integer_phase[25]",
+    "test_core_public_forecast_uses_the_wrapped_phase_without_writes",
+    "test_counterfactual_wraps_without_committing_the_candidate"
+  ],
+  "mutations": [
+    {"name": "skip_float_phase_wrap", "test": "test_public_fractional_period_keeps_moving_beyond_one_cycle[50]",
+      "assertion": "WM_PERIOD_PHASE_FROZE",
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_phase_at",
+        "old": "        h = h % float(P) or float(P)", "new": "        h = h"}]},
+    {"name": "truncate_fractional_period", "test": "test_fractional_cycles_preserve_the_interpolated_phase[18]",
+      "assertion": "WM_FRACTIONAL_CYCLES_LOST",
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_phase_at",
+        "old": "        h = h % float(P) or float(P)", "new": "        h = h % int(P) or float(P)"}]},
+    {"name": "lose_whole_cycle_anchor", "test": "test_whole_cycles_return_the_last_observation_anchor",
+      "assertion": "WM_PERIOD_WHOLE_CYCLE_LOST_ANCHOR",
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_phase_at",
+        "old": "        h = h % float(P) or float(P)", "new": "        h = h % float(P)"}]},
+    {"name": "drop_fractional_interpolation", "test": "test_fractional_cycles_preserve_the_interpolated_phase[18]",
+      "assertion": "WM_FRACTIONAL_CYCLES_LOST",
+      "changes": [{"file": "lingshu/world/world_model.py", "method": "_phase_at",
+        "old": "    frac = j - k", "new": "    frac = 0.0"}]}
+  ]
+}

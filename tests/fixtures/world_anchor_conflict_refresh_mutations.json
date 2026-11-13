@@ -1,0 +1,24 @@
+{
+  "guard": "tests/test_world_anchor_conflict_refresh.py", "total": 10,
+  "sources": ["lingshu/world/anchor_verify.py"],
+  "baseline_failures": [
+    "test_conflict_refreshes_confirmation[strong]", "test_conflict_refreshes_confirmation[stable]",
+    "test_conflict_clears_stable_rounds", "test_conflict_clears_prior_tier_basis",
+    "test_state_and_summary_share_immediate_downgrade", "test_core_returns_downgraded_conflict",
+    "test_graph_returns_downgraded_conflict"
+  ],
+  "mutations": [
+    {"name": "skip_conflict_refresh", "test": "test_state_and_summary_share_immediate_downgrade",
+      "assertion": "WM_CONFLICT_STATE_NOT_REFRESHED", "changes": [
+        {"file": "lingshu/world/anchor_verify.py", "class": "AnchorVerification", "method": "channel_conflict_detect",
+         "old": "        result = self.verify_anchor(anchor_id)", "new": "        result = self.anchor_state(anchor_id)"}]},
+    {"name": "retain_stable_count_after_refutation", "test": "test_conflict_clears_stable_rounds",
+      "assertion": "WM_CONFLICT_ROUNDS_SURVIVED", "changes": [
+        {"file": "lingshu/world/anchor_verify.py", "class": "AnchorVerification", "method": "verify_anchor",
+         "old": "            rec[\"verified_rounds\"] = 0", "new": "            rec[\"verified_rounds\"] = 1"}]},
+    {"name": "return_stale_conflict_reply", "test": "test_core_returns_downgraded_conflict",
+      "assertion": "WM_CORE_CONFLICT_RETURNED_OLD_ACCEPT", "changes": [
+        {"file": "lingshu/world/anchor_verify.py", "class": "AnchorVerification", "method": "channel_conflict_detect",
+         "old": "        result = self.verify_anchor(anchor_id)", "new": "        result = self.anchor_state(anchor_id)\n        self.verify_anchor(anchor_id)"}]}
+  ]
+}

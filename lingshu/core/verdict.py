@@ -23,9 +23,10 @@
     整数边界（与 #196 的 NaN 面独立），判据：条件冲突 ⇒ REJECT（四态语义同源）。
 """
 import math
+from collections.abc import Mapping
 from typing import Dict
 
-from .condition_normalize import UNASSERTED
+from .condition_normalize import INVALID, UNASSERTED
 
 # 图像大域 → 部件遮挡映射(常服/裙等覆盖 → 相应部件 occluded)
 CLOTH_OCCLUDES = {
@@ -45,6 +46,28 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
     数值非有限（NaN/±Inf）→ BLINDSPOT（#196）：此类输入下全部阈值比较恒为
     False，会静默落进 ACCEPT 分支；这里先拦，不把「数值坏了」翻成「质量门通过」。
     """
+    # 自主发现（输入契约）：`part` / `image_domains` 此前被直接当 dict 用——
+    # `part={}` 抛不可读的 `KeyError: 'type'`；`part=None` 抛 `TypeError`；
+    # `image_domains=None` 抛 `AttributeError: 'NoneType' object has no attribute 'get'`；
+    # `part_fg_px="x"` 抛 `TypeError`（`math.isfinite` 只认数值）。本模块自己的
+    # 口径是「非有限/不可判 ⇒ BLINDSPOT，不给 ACCEPT」（#196/#296）——先把**类型**
+    # 面收进同一口径：非映射是调用方 bug（fail-loud TypeError/ValueError），
+    # `image_domains=None` 等价「无大域声明」，非数值像素量落 BLINDSPOT。
+    if not isinstance(part, Mapping):
+        raise TypeError("part 必须是映射（含 type 键），收到 %s" % type(part).__name__)
+    if "type" not in part:
+        raise ValueError("part 缺少 type 键（部件类型）")
+    if image_domains is None:
+        image_domains = {}
+    elif not isinstance(image_domains, Mapping):
+        raise TypeError("image_domains 必须是映射或 None，收到 %s"
+                        % type(image_domains).__name__)
+    try:
+        part_fg_px = float(part_fg_px)
+        part_area = float(part_area)
+    except (TypeError, ValueError):
+        return {"verdict": "BLINDSPOT", "reason": "non-numeric input",
+                "fg_ratio": None}
     name = part["type"]
     if not (math.isfinite(part_fg_px) and math.isfinite(part_area)):
         return {"verdict": "BLINDSPOT", "reason": "non-finite input",
@@ -58,7 +81,26 @@ def assess(part: Dict, image_domains: Dict, part_fg_px: int, part_area: int) -> 
     # 判成 `!= "无遮挡"` ⇒ 同一张图经 canonical_condition 归一后 4 个可见部件被判
     # DEFER，与未归一输入结论相反。判据：`condition_normalize.py:67-76` 的 UNASSERTED
     # 编码「未声明」，卡 v0.2 P0-001「未声明无可校验」——不得据此判「有遮挡」。
-    if occluded == UNASSERTED:
+    # #138：非法 occlusion 取值（INVALID）同样「无从断言遮挡」——若只认 UNASSERTED，
+    # 一个写错的 occlusion 会掉进下方 `occluded != "无遮挡"` ⇒ 被判「有遮挡」DEFER，
+    # 与「未声明」结论相反。二者在此同义（报出非法值的责任在 canonical_sourced/validate_edges）。
+    if occluded in (UNASSERTED, INVALID):
+        occluded = "无遮挡"
+    # #2170：布尔域零覆盖——修前 `occluded != "无遮挡"` 把**任何**非该字符串
+    # 的值都当「有遮挡」：布尔 True/False 都不是字符串 ⇒ 两者结论相同（DEFER，
+    # 理由文案「clothing/occlusion covers」**断言有遮挡**），而输入 False 断言
+    # 的是**无遮挡**——语义完全反转。现用 `is True`/`is False`（非 `if occluded:`，
+    # 否则 0/"" 等假值重演 #135 类 falsy 吞噬）把布尔并入字符串域同档。
+    elif occluded is True:
+        occluded = "完全遮挡"
+    elif occluded is False:
+        occluded = "无遮挡"
+    # #2535：#2170 只覆盖了**布尔域**（`is True`/`is False`），非字符串的假值
+    # （JSON `null` 解码的 None、空串、0、[]）仍落进下方 `occluded != "无遮挡"`
+    # ⇒ 被判「有遮挡」DEFER。这与 #296「未知 ≠ 有遮挡」及 #2170「声明越明确结论
+    # 越差」的既有裁定方向相反；且 `canonical_condition({"occlusion": None})`
+    # 归一成 `__INVALID__` 后判 ACCEPT，两条路径对同一输入结论相反。
+    elif not isinstance(occluded, str) or occluded == "":
         occluded = "无遮挡"
     # 0) 部件区面积为零/负 ⇒ 无有效区域，条件冲突 REJECT（issue #296）。
     # 旧式 `_fg_ratio` 用 `max(1, part_area)`，零面积时比值退化为前景像素数本身

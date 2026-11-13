@@ -1,0 +1,41 @@
+===== skip_conflict_refresh =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_state_and_summary_share_immediate_downgrade _______________
+tests\test_world_anchor_conflict_refresh.py:53: in test_state_and_summary_share_immediate_downgrade
+    assert v.anchor_state("a")["confirmation"] == "NOT_ACCEPTED", "WM_CONFLICT_STATE_NOT_REFRESHED"
+E   AssertionError: WM_CONFLICT_STATE_NOT_REFRESHED
+E   assert 'ACCEPT_strong' == 'NOT_ACCEPTED'
+E
+E     - NOT_ACCEPTED
+E     + ACCEPT_strong
+=========================== short test summary info ===========================
+FAILED tests/test_world_anchor_conflict_refresh.py::test_state_and_summary_share_immediate_downgrade
+1 failed in 0.19s
+
+===== retain_stable_count_after_refutation =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_conflict_clears_stable_rounds ______________________
+tests\test_world_anchor_conflict_refresh.py:39: in test_conflict_clears_stable_rounds
+    assert v.anchor_state("a")["verified_rounds"] == 0, "WM_CONFLICT_ROUNDS_SURVIVED"
+E   AssertionError: WM_CONFLICT_ROUNDS_SURVIVED
+E   assert 1 == 0
+=========================== short test summary info ===========================
+FAILED tests/test_world_anchor_conflict_refresh.py::test_conflict_clears_stable_rounds
+1 failed in 0.20s
+
+===== return_stale_conflict_reply =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_core_returns_downgraded_conflict ____________________
+tests\test_world_anchor_conflict_refresh.py:69: in test_core_returns_downgraded_conflict
+    assert out["verification"]["confirmation"] == "NOT_ACCEPTED", "WM_CORE_CONFLICT_RETURNED_OLD_ACCEPT"
+E   AssertionError: WM_CORE_CONFLICT_RETURNED_OLD_ACCEPT
+E   assert 'ACCEPT_strong' == 'NOT_ACCEPTED'
+E
+E     - NOT_ACCEPTED
+E     + ACCEPT_strong
+=========================== short test summary info ===========================
+FAILED tests/test_world_anchor_conflict_refresh.py::test_core_returns_downgraded_conflict
+1 failed, 9 warnings in 0.51s

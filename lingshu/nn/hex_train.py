@@ -18,12 +18,19 @@
 纯 numpy + PIL（D-005 零 LLM）。
 """
 from __future__ import annotations
+import threading
 import io
 import json
 import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+# #197：参数向量「读-改-写」的原子化锁。
+# get_vec/set_vec 是**两次独立调用**，各自内部加锁并不能让裸用的 RMW 成为原子操作
+# （两线程可在 get 与 set 之间交错）。故提供 apply_delta() 把整段收进同一临界区；
+# 本锁为**模块级**（同模块内跨实例串行化），代价是不同实例之间也会互斥。
+_VEC_RMW_LOCK = threading.Lock()
 
 ALGO = "hex_train-0.1"
 
@@ -63,8 +70,13 @@ def load_cifar10_parquet(path: str, n_train: int = 2000, n_test: int = 500,
 
 def images_to_lattices(images: np.ndarray, cells_across: int = 16) -> np.ndarray:
     """批量图像 → 灰度蜂窝晶格 (N, rows, cols, 1) float32。
-    M2 用小晶格（16 列≈10 行）控制有限差分成本。"""
+    M2 用小晶格（16 列≈10 行）控制有限差分成本。
+    空批次（N=0）返回 (0, 0, 0, 1) float32 空数组（dsh-bounty #1800③：rows
+    依赖单图高度，零样本时无形状可推，用零维占位；下游按 len==0 分流）。
+    """
     from .hex_cnn import image_to_grid
+    if len(images) == 0:
+        return np.zeros((0, 0, 0, 1), dtype=np.float32)
     out = None
     for i in range(len(images)):
         img = images[i]
@@ -205,6 +217,13 @@ class HexNet:
 
     # ---- 参数向量平铺（有限差分统一索引） ----
     def get_vec(self) -> np.ndarray:
+        """取参数向量**副本**（HexNet）。
+
+        ⚠ #197：本方法与 `set_vec` 是**两次独立调用**，「get → 改 → set」这一范式
+        在多线程下**非原子** —— 两线程可各自取到同一快照、各自改、后写者覆盖先写者，
+        静默丢一次更新（不抛异常）。单线程下无影响。
+        并发场景请改用 `apply_delta()`（RMW 在同一临界区内完成）。
+        """
         return np.concatenate([self.conv.ravel(), self.mix.ravel(), self.fc.ravel()])
 
     def set_vec(self, vec: np.ndarray):
@@ -221,6 +240,29 @@ class HexNet:
         mk = self.M * self.K
         self.mix = vec[i:i + mk].reshape(self.M, self.K).copy(); i += mk
         self.fc = vec[i:i + self.C * self.M].reshape(self.C, self.M).copy()
+
+    def apply_delta(self, delta):
+        """原子读改写（#197）：在同一临界区内完成 get_vec → 应用 → set_vec。
+
+        `delta` 两种形态：
+          · 可调用对象 `fn(vec) -> ndarray | None`：收到当前向量的副本，
+            返回新向量；返回 None 表示已原地修改传入的副本。
+          · ndarray：与当前向量逐元素相加的增量（形状须一致）。
+
+        并发下多次 `apply_delta` 不会互相覆盖 —— RMW 整段被 `_VEC_RMW_LOCK` 串行化。
+        ⚠ 本方法只保证「apply_delta 之间」原子：`get_vec`/`set_vec` 的**成对裸用**
+          仍然非原子（两次调用之间可被交错）。并发场景请改用本方法，
+          或由调用方自行串行化。返回写入后的向量副本。
+        """
+        with _VEC_RMW_LOCK:
+            vec = self.get_vec()
+            if callable(delta):
+                out = delta(vec)
+                new = vec if out is None else np.asarray(out)
+            else:
+                new = vec + np.asarray(delta)
+            self.set_vec(new)
+            return self.get_vec()
 
     def n_params(self) -> int:
         return self.K * 7 + self.M * self.K + self.C * self.M
@@ -253,6 +295,10 @@ class HexNet:
         return float(-logp[np.arange(len(y)), y].mean())
 
     def accuracy(self, x: np.ndarray, y: np.ndarray, batch: int = 256) -> float:
+        # #2127：空评估集此前 `correct / len(x)` 除零——同 four_state_accuracy
+        # 口径：无样本返回 None（不显示为 0 分）。
+        if len(x) == 0:
+            return None
         correct = 0
         for i in range(0, len(x), batch):
             logits, _ = self.forward(x[i:i + batch])
@@ -391,6 +437,11 @@ def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
         if log_every and step % log_every == 0 and verbose:
             print(f"  [step {step}] D={d:.4f} 死区={dead_zone:.4f} 冻结{sample.size - updates}/{sample.size}")
 
+    # F23-12（#942 清单）如实标注（审计面，行为不变）：判停读数（每步的 d，在
+    # 随机切片 xb/yb 上测）与 final_D（固定切片 x[:batch]/y[:batch] 上测）**不是
+    # 同一批次**——两者不可直接比较（rel_drop 判停同理跨批）。仓内默认
+    # batch=128 且调用点样本量 ≤128 ⇒ 切片=全量、无差异；len(x)>batch 的场景
+    # 使用前须知此口径。切片统一属行为面裁定，不在本标注内。
     # #335：final_D 必须是**最终模型**的损失——旧实现取 `history[-1]["D"]`，那是
     # 最后一次参数更新**前**测的 d（更新后 d 不再复算），`final_D` 与 `net` 的实际
     # 状态不一致（实测 2 步训练报 0.676、模型实际 0.636）。现在循环结束后对最终
@@ -459,6 +510,17 @@ def pretrain_selfsup(net: HexNet, x: np.ndarray, mask_ratio: float = 0.25,
     initial = recon_loss(eval_masked, evaluation, eval_hole)
     conv_vec_len = net.K * 7
     n_cells = int(x.shape[1] * x.shape[2])
+    if steps <= 0:
+        # dsh-bounty #1799：对齐同族训练入口的「0 步＝无更新」契约——
+        # train_infogap（#335「steps==0 ⇒ 无更新，仍回落 d0」）、
+        # hex_hier.train_hier、hex_cnn.selfsup_finetune（「epochs<=0 表示
+        # 『不训练』：loss_curve 为空……核保持为输入核」，有守卫
+        # tests/test_hex_selfsup_epochs_zero.py）。旧 `max(1, ...)` 把显式
+        # 0/负步钳成 1 步 ⇒ 模型被静默训练一步、核被改写（curve 非空、
+        # final != init）——本函数是该家族唯一违背者。
+        return {"algo": ALGO + "+selfsup", "init": round(initial, 5),
+                "final": round(initial, 5), "curve": [], "steps": 0,
+                "n_cells": n_cells}
     REF_CELLS = 160                     # 原 steps 标定的旧晶格规模（10×16）
     eff_steps = max(1, int(round(steps * n_cells / REF_CELLS)))
     curve = []
@@ -548,6 +610,13 @@ def four_state_accuracy(net: HexNet, x: np.ndarray, y: np.ndarray,
                 stats["ACCEPT_correct"] += int(r["class"] == y[i + j])
     acc_hits = stats["ACCEPT_correct"]
     acc_total = max(1, stats["ACCEPT"])
+    # #2127：空评估集此前在 accept_coverage 的 `stats["ACCEPT"] / len(x)` 处
+    # 除零（循环 0 次、stats 全 0；同函数 acc_total 的 max(1, …) 对「判了 0 个」
+    # 有防护、对 len(x)=0 没有——同行防护不一致即遗漏）。空集按本仓「无样本
+    # 不显示为满分/零分」口径返回 None，并带 n=0 显式标量。
+    if len(x) == 0:
+        return {"accept_precision": None, "accept_coverage": None,
+                "defer": 0, "blindspot": 0, "n": 0}
     return {"accept_precision": round(acc_hits / acc_total, 4),
             "accept_coverage": round(stats["ACCEPT"] / len(x), 4),
             "defer": stats["DEFER"], "blindspot": stats["BLINDSPOT"],
@@ -559,12 +628,21 @@ def four_state_accuracy(net: HexNet, x: np.ndarray, y: np.ndarray,
 def calibrate_class_cards(net: HexNet, x: np.ndarray, y: np.ndarray) -> List[Dict]:
     """每类一张条件卡（零阶校准，免梯度）：阈值取类内统计分位——
     p_threshold = 该类样本 softmax 概率的 25% 分位；
-    margin_threshold = 类内 logit top1-top2 差的 25% 分位。白箱可复算。"""
+    margin_threshold = 类内 logit top1-top2 差的 25% 分位。白箱可复算。
+
+    退化输入（#254）：校准集**缺类** ⇒ 该类给保守卡并标注 `"missing": True`，
+    不再 `np.quantile` 空数组抛 IndexError。p_threshold=1.0 使该类判定永远进
+    DEFER（softmax 概率恒 <1，ACCEPT 的 `p_best >= pthr` 分支必不成立）；
+    复核补上该类样本后重跑校准即得真实卡。"""
     logits, _ = net.forward(x)
     probs = _softmax(logits)
     cards = []
     for c in range(net.C):
         m = logits[y == c]
+        if m.size == 0:
+            cards.append({"class": c, "p_threshold": 1.0,
+                          "margin_threshold": 1.0, "missing": True})
+            continue
         p = probs[y == c, c]
         top2 = np.sort(m, axis=1)[:, -2:]
         cards.append({"class": c,

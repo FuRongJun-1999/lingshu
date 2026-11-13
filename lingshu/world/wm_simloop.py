@@ -42,6 +42,7 @@ import os
 import time
 import uuid
 from typing import Dict, List, Optional, Tuple
+from .identity import validate_history
 
 try:
     from .world_model import UnifiedWorldModel, WMNode, WMEdge
@@ -285,6 +286,18 @@ class SimulationLoop:
         if self.wal_path:
             os.makedirs(os.path.dirname(os.path.abspath(self.wal_path)),
                         exist_ok=True)
+            # #2568（安全 P0）：`_confine_simloop_wal_path` 用 `realpath` 归一，
+            # 而 **`realpath` 不解析硬链接**——攻击者在白名单根里放一个硬链接指向
+            # 受保护认知图节点，别名看起来仍在根内 ⇒ 闸放行 ⇒ `open(..., "a")`
+            # 就地追加作用在**共享 inode** 上（实测：受保护 .md 从 53 被追加到
+            # 211 字节，frontmatter 完好 ⇒ 下游仍当合法节点解析，污染更隐蔽）。
+            # 追加语义无法靠 `os.replace` 修，写前拒绝共享 inode。
+            if os.path.exists(self.wal_path):
+                _nlink = os.stat(self.wal_path).st_nlink
+                if _nlink > 1:
+                    raise ValueError(
+                        "#2568 wal_path 是硬链接（nlink=%d）——追加会改写到共享 "
+                        "inode 上的真源，fail-closed" % _nlink)
             with open(self.wal_path, "a", encoding="utf-8") as f:
                 # #464：残行粘连面——末尾不以换行结尾（上次进程写了一半）时先补
                 # 一个换行，使新记录独立成行。正常路径（末尾本就有换行）不写任何
@@ -308,14 +321,24 @@ class SimulationLoop:
 
         external(scene, tick)：物理世界的外部演化钩子（遮蔽实体的脚本化运动/
         外部事件），在物理结算前应用——世界怎么演化是世界的自由，模型只观察。
+
+        #2412：`n` 此前 `range(max(0, int(n)))`——2.7 静默截断成 2 tick、负数被
+        `max(0,…)` 静默吞成 no-op、字符串抛不可读 ValueError（#2409 在
+        `SceneSimulator.step` 的姊妹面，另一模块另一函数，修复互不覆盖）。
+        现 fail-loud：非 int（bool 同拒）TypeError、负数 ValueError（`step(0)`
+        保持合法 no-op）。`run` 委托本方法 ⇒ 同闸覆盖。
         """
-        for _ in range(max(0, int(n))):
+        if isinstance(n, bool) or not isinstance(n, int):
+            raise TypeError("step 的 n 必须是 int tick 数，收到 %r" % (n,))
+        if n < 0:
+            raise ValueError("step 的 n 须 >= 0，收到 %r" % (n,))
+        for _ in range(n):
             self.ticks_stepped += 1
             self.wm.generate(horizon=1)               # ① 生成先验
             if external is not None:
                 external(self.scene, self.wm.tick + 1)
             self.scene.step(n=1)                      # ② 物理结算（模型不可见内部）
-            self.wm.perceive(observations=self._observe())  # ③ 观察（遮蔽注入点）
+            perceived = self.wm.perceive(observations=self._observe())  # ③ 观察（遮蔽注入点）
             v = self.wm.verify()                      # ④ 验证（外部观察者）
             if v["hit_rate"] is not None:
                 self._rolling_rates.append(v["hit_rate"])
@@ -324,7 +347,11 @@ class SimulationLoop:
                 "nodes": self._snapshot_nodes(),
                 "edges": self._snapshot_edges(),
                 "hit_rate": v["hit_rate"], "hits": v["hits"],
-                "total": v["total"], "pending": v["pending"]})
+                "total": v["total"], "pending": v["pending"],
+                **({"identity": {"policy": self.wm.identity_policy,
+                    **{key: perceived["identity"][key]
+                       for key in ("accepted", "deferred", "rejected")}}}
+                   if "identity" in perceived else {})})
         return self.state()
 
     def run(self, n: int = 10) -> Dict:
@@ -336,7 +363,11 @@ class SimulationLoop:
                                       / len(self._rolling_rates), 4)
             if self._rolling_rates else None,
             "verified_ticks": len(self._rolling_rates),
-            "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
+            # #2544：恢复场景下 `ticks_stepped` 未被恢复（0）而 `_rolling_rates`
+            # 有 5 条 ⇒ 原式给出 -5（物理上不可能的「负的未验证轮次」），且 flush
+            # 正文写「已验证轮次 5/0」。钳到 0（恢复 ticks_stepped 属另一修复面）。
+            "unverified_ticks": max(0, self.ticks_stepped
+                                    - len(self._rolling_rates)),
             "growth_summary": {
                 "born": sum(1 for g in self._growth_log
                             if g["event"] in ("growth", "re-grow")),
@@ -397,6 +428,14 @@ class SimulationLoop:
             H = self.wm.nodes.get(h["node"])
             if H is None:                       # 被外部移除 → 清账
                 self._hypotheses.pop(subject, None)
+                continue
+            if subject not in (self.wm._obs_snapshot or {}):
+                # #1111：主体缺观测（被遮挡、真实观测快照没有它）时，验证窗口与
+                # 假设置信均**等待新证据**——此时 verify() 正确返回 total=0，
+                # 没有外部验证样本，推进窗口（candidate 假 revert / confirmed
+                # 凭空加置信）都让假设验证失去「外部证据」锚。原门槛只覆盖
+                # `conservative`，默认 `legacy` 未覆盖（issue 实测：candidate
+                # 被 revert、confirmed 0.5→0.6）。
                 continue
             hit = self._hit_for(verify_result, subject)
             node_A = self.wm.nodes.get(subject)
@@ -470,6 +509,18 @@ class SimulationLoop:
                 if (cons < self.wm.entropy_threshold and per is not None
                         and per >= self.persistence_min):
                     trig = f"stochastic_mask+structure(cons={cons},per={per:.2f})"
+                elif cons >= self.wm.entropy_threshold:
+                    # #2584 后新形态：转向证据闸挡下高一致直线外推（mode 落
+                    # stochastic）——模型自认直线模型失效，结构信号改由
+                    # estimate_hidden_target 的质量闸把关（per 在该形态下
+                    # 常为 None：直线段的 toward 记账无从谈起）。
+                    # 专属信号 = cons 高 **且** 本 tick 预测确实落了 stochastic
+                    # （健康 directed 实体 cons 同样高但 mode 是 noisy——无 mode
+                    # 核验会对着健康实体乱生长，test_memory_world_scenarios 实测）。
+                    last = (self.wm._last_prediction or {}).get(eid) or {}
+                    if (last.get("mode") == "bounded_stochastic"
+                            and last.get("observation_age") == 0):
+                        trig = f"gate_blocked+structure(cons={cons:.2f})"
             if trig is None:
                 continue
             est = estimate_hidden_target(self._traj(eid), self.wm.size)
@@ -617,7 +668,12 @@ class SimulationLoop:
             seg = line.strip()[len("- entity:"):].strip()
             if " id=" not in seg or " pos=(" not in seg:
                 return None
-            category, rest = seg.split(" id=", 1)
+            # #2541：写侧格式是 `- entity: {category} id={eid} pos=(...)`，类别是
+            # **裸文本**（`add_entity` 只要求非空 str，可含 `" id="`）。`split(" id=", 1)`
+            # 取第一个标记 ⇒ 类别 `a id=b` 被读成 `a`、eid 变成 `b id=scene_...`
+            # （实测），即写→读往返损坏。从**最后一个** `" id="` 切：写侧固定把
+            # `id=` 放在类别之后、`pos=` 之前，故最后一个标记才是真分隔符。
+            category, rest = seg.rsplit(" id=", 1)
             eid, rest = rest.split(" pos=(", 1)
             pos_seg = rest.split(")", 1)[0]
             pos = tuple(float(v) for v in pos_seg.split(","))
@@ -662,11 +718,16 @@ class SimulationLoop:
             if not snapshots:
                 return {"status": "ok", "seeded": 0, "entities": [], "memory_id": None}
             memory_id, state = max(snapshots, key=lambda item: item[1]["saved_at"])
-            if state["schema"] != "lingshu.world-prior.v1":
+            schema = state["schema"]
+            if schema not in ("lingshu.world-prior.v1", "lingshu.world-prior.v2"):
                 raise ValueError("不支持的世界模型经验格式")
             selected = list(state["nodes"].items())[:max(0, limit)]
             # 先构建独立候选；后段字段或历史投影失败时，活动模型必须仍可继续使用。
             candidate = copy(self.wm)
+            candidate.set_identity_policy(state["identity_policy"]
+                                          if schema == "lingshu.world-prior.v2" else "legacy")
+            if schema == "lingshu.world-prior.v2":
+                validate_history(state["history"], state["nodes"])
             candidate.nodes = {eid: WMNode(**{**node, "pos": tuple(node["pos"])})
                                for eid, node in selected}
             candidate.edges = [WMEdge(**edge) for edge in state["edges"]
@@ -681,6 +742,11 @@ class SimulationLoop:
             # 契约就会被判据自身的记账差异打破（实测：smooth_blocked 由
             # speed_near_zero 变成 not_enough_samples）。载荷缺 "history" 时保持空。
             candidate.restore_trajectory_from_history()
+            if schema == "lingshu.world-prior.v2":
+                # 配对误差和旋转是派生缓存，不得沿用恢复前另一段身份关联的读数。
+                candidate._err_ovr = {}
+                candidate._rot_buf = {}
+                candidate._rot_stats = {"perceive_calls": 0, "quats": 0}
             candidate.tick = state["tick"]
             candidate.size = state["size"]
             candidate._motion_estimates = {eid: tuple(value) for eid, value in state["motion_estimates"].items()
@@ -816,7 +882,10 @@ class SimulationLoop:
                  if not node["attrs"].get("hypothesis") or eid in confirmed_ids}
         for eid in confirmed_ids:
             nodes[eid]["attrs"]["phase"] = "confirmed"
-        state = {"schema": "lingshu.world-prior.v1", "saved_at": fm["created_at"],
+        qualified = (self.wm.identity_policy != "legacy"
+                     or any("identity_readings" in frame for frame in self.wm.history))
+        state = {"schema": "lingshu.world-prior.v2" if qualified else "lingshu.world-prior.v1",
+                 "saved_at": fm["created_at"],
                  "tick": self.wm.tick, "size": self.wm.size, "nodes": nodes,
                  "edges": [e for e in g["edges"] if e["source"] in nodes and e["target"] in nodes],
                  "conditions": {eid: g["nodes"][eid]["conditions"] for eid in nodes},
@@ -826,6 +895,8 @@ class SimulationLoop:
                  "relation_history": self.wm.relation_history,
                  "hypotheses": confirmed, "rolling_rates": self._rolling_rates,
                  "last_verification": self.wm._compare}
+        if qualified:
+            state["identity_policy"] = self.wm.identity_policy
         lines += ["", "## 可恢复的观测经验（内部先验）", "```lingshu-world",
                   json.dumps(state, ensure_ascii=False), "```"]
         body = "\n".join(lines)
@@ -908,7 +979,13 @@ class SimulationLoop:
     # ---------- 报告 ----------
 
     def growth_events(self, limit: int = 20) -> List[Dict]:
-        return self._growth_log[-max(1, int(limit)):]
+        # #2544：`max(1, int(limit))` 是第三种 limit 语义（0 → 返回 1 条），
+        # 与同仓 `_normalize_limit`（#1795/#658：None/负数=全量、0=空）相反，
+        # 也与同门面 `wal` 的 Python 负切片不一致。此处统一：0=空、负数=全量。
+        _lim = int(limit)
+        if _lim == 0:
+            return []
+        return self._growth_log[-_lim:] if _lim > 0 else list(self._growth_log)
 
     def report(self) -> Dict:
         g = self.wm.graph()
@@ -919,7 +996,11 @@ class SimulationLoop:
                                           / len(self._rolling_rates), 4)
                 if self._rolling_rates else None,
                 "verified_ticks": len(self._rolling_rates),
-                "unverified_ticks": self.ticks_stepped - len(self._rolling_rates),
+                # #2544：恢复场景下 `ticks_stepped` 未被恢复（0）而 `_rolling_rates`
+            # 有 5 条 ⇒ 原式给出 -5（物理上不可能的「负的未验证轮次」），且 flush
+            # 正文写「已验证轮次 5/0」。钳到 0（恢复 ticks_stepped 属另一修复面）。
+            "unverified_ticks": max(0, self.ticks_stepped
+                                    - len(self._rolling_rates)),
                 "hypotheses_active": len(self._hypotheses),
                 "growth_events": len(self._growth_log),
                 "wal_records": len(self.wal),

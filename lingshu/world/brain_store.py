@@ -82,6 +82,7 @@ RCE；受信根收的是**默认配置**这一档，不是「env 面＝安全边
   （不静默）。
 """
 from __future__ import annotations
+import logging
 
 import json
 import math
@@ -93,6 +94,7 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+_log = logging.getLogger(__name__)
 
 #: M1/M2 状态槽位约定（与 ingest_scene 的 state → 呈现语义对应）
 STATE_SLOT = "状态"
@@ -428,8 +430,18 @@ class MCPClient:
         self._stderr_lock = threading.Lock()
         self._stderr_tail = b""
         self.server_info: Dict = {}
+        # #2563（安全 P0）：此前 `[python, "-X", "utf8", "-m", "md_cg.mcp_server"]`
+        # 既无 `-P` 也无 `cwd=` —— `-m` 会把**进程 cwd 插到 `sys.path[0]`**，排在
+        # `PYTHONPATH`（合法脑包）之前。攻击者只需在自己的工作目录（= lingshu 进程
+        # cwd，常见即 agent workspace）放 `md_cg/__init__.py` + `md_cg/mcp_server.py`，
+        # 即使调用方**正确**指定了 `--brain-path`，毒包仍抢先执行（实测
+        # `MARKER_ATTACKER_EXECUTED`）；子进程 env 里还带着 `MDCG_*` 身份值。
+        # 这是 `_pathguard` 模块头写明的同一威胁（「在工作目录放一个同名 .py 就能
+        # 执行任意代码」），但该防护只作用于宿主进程，脑侧子进程零防护。
+        # `-P`（Python 3.11+）不把 cwd/脚本目录加入 `sys.path` ⇒ cwd 毒包失效
+        # （实测加 `-P` 后 ModuleNotFoundError，不再执行毒包）。
         self._p = subprocess.Popen(
-            [python, "-X", "utf8", *(args or ["-m", "md_cg.mcp_server"])],
+            [python, "-X", "utf8", "-P", *(args or ["-m", "md_cg.mcp_server"])],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env=env, text=True, encoding="utf-8", errors="replace")
         self._stderr_worker = threading.Thread(target=self._drain_stderr, daemon=True)
@@ -500,6 +512,7 @@ class MCPClient:
                     self._rpc(obj)
                     outcome.put((True, self._read()))
                 except Exception as exc:
+                    _log.debug("brain_store: RPC 线程内异常，经 outcome 队列回传", exc_info=True)
                     outcome.put((False, exc))
 
             worker = threading.Thread(target=run, daemon=True)

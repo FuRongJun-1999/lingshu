@@ -95,15 +95,34 @@ def accept(out=None, brief=None, sample=5):
 
 
 def summarize(oracle_doc):
-    """一行汇总（判据票型 + 是否全绿）。"""
-    from ._det import gates
-    counts = {}
-    for c in oracle_doc.get("checks") or []:
-        counts[c.get("verdict")] = counts.get(c.get("verdict"), 0) + 1
-    return {"counts": counts,
-            "blocking": [c["name"] for c in oracle_doc.get("checks") or []
-                         if c.get("verdict") in ("REJECT",)],
-            "thresholds": len(gates.all_thresholds())}
+    """一行汇总（判据票型 + 两档结论）。
+
+    两档**都不是本函数自定**，各自委托仓内既有口径：
+
+    - `blocking` = REJECT 名字，与 `_det/acceptance.py` E 组「无 REJECT」同口径；
+      `--judge` / `--accept` 用这一档，故同一产物目录两入口结论一致。
+    - `gates_passed` / `release_blocking` = `film.oracle.gates_passed()`
+      「无 REJECT 且无 BLINDSPOT」的**发布放行**口径（BLINDSPOT 看起来像有结论，
+      比明确的 DEFER 危险），由 `--strict` 使用。
+
+    默认简报在 K2/K3/K5 上本就如实 BLINDSPOT（见 acceptance E 组
+    「K2 如实 BLINDSPOT」），把它当默认退出码会让常态产出一律判红 —— 两档分开
+    正是为了不把「验收口径」和「发布放行」混成一个数。
+
+    `thresholds` 取**本裁定声明的阈值数**（`normalize_oracle` 规范化后），与
+    `film.oracle.oracle_summary()` 一致；不是判据注册表里的总数，别拿它当
+    「阈值全不全」的读数。
+    """
+    from .. import oracle as _oracle
+    n = _oracle.normalize_oracle(oracle_doc)
+    reject = _oracle.failed_checks(n)
+    ok_release, release_blocking = _oracle.gates_passed(n)
+    return {"counts": _oracle.counts_by_verdict(n),
+            "blocking": reject,
+            "reject": reject,
+            "gates_passed": ok_release,
+            "release_blocking": release_blocking,
+            "thresholds": len(n.get("thresholds") or [])}
 
 
 def _default_out() -> str:

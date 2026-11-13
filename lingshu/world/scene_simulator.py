@@ -158,7 +158,10 @@ class Environment:
     def __post_init__(self):
         if self.gravity is None:
             self.gravity = default_gravity()
-        if isinstance(self.up, bool) or self.up not in (0, 1, 2):
+        # #1136：`1.0 in (0,1,2)` 为 True（float == int）⇒ 浮点轴曾漏到内核才抛
+        # （PhysicsError 延后到 step、set_environment 已登记污染状态）——收口为
+        # 结构化拒绝（bool 另拒）。
+        if isinstance(self.up, bool) or not isinstance(self.up, int) or self.up not in (0, 1, 2):
             raise ValueError("Environment.up 需为 0/1/2（轴索引），收到 %r" % (self.up,))
         for name in ("gravity", "slope_deg", "mu_s", "mu_k", "drag_c", "mass", "dt"):
             v = getattr(self, name)
@@ -181,7 +184,8 @@ class Environment:
         if not (0.0 <= self.slope_deg < 90.0):
             raise ValueError("Environment.slope_deg 需在 [0, 90) 度（垂直不是坡度）：%r"
                              % (self.slope_deg,))
-        if isinstance(self.incline_axis, bool) or self.incline_axis not in (0, 1, 2):
+        if (isinstance(self.incline_axis, bool) or not isinstance(self.incline_axis, int)
+                or self.incline_axis not in (0, 1, 2)):
             raise ValueError("Environment.incline_axis 需为 0/1/2，收到 %r"
                              % (self.incline_axis,))
         if self.incline_axis == self.up:
@@ -287,6 +291,13 @@ class SceneEntity:
         return asdict(self)
 
 
+def _deep_copy_readout(readout):
+    """#1136：`environment_readout` 承诺读数是**副本**——深拷贝物理读数
+    （dict/list 嵌套），外部改读数不再污染 `attrs["physics_readout"]`。"""
+    import copy
+    return copy.deepcopy(readout) if isinstance(readout, dict) else readout
+
+
 class SceneSimulator:
     """场景级世界模拟器：多自主实体 + 决策循环 + 场景演化。
 
@@ -310,6 +321,11 @@ class SceneSimulator:
         # 漏传第一处的后果：`create_scene` 的地形与 seed 完全无关（VoxelWorld 恒用
         # 自身缺省 seed=0），「换 seed 重跑」在世界构建维度上是空转。
         self.world = VoxelWorld(size=size, ground_level=ground_level, seed=seed)
+        # #1096：seed 的**可读回**。VoxelWorld 不留 seed（只吃进生成器），而
+        # `CuriosityExplorer` 在 `world=` 注入路径下需要从注入世界回填 seed
+        # （`_build_world` 重建「同世界配置」对比世界）——没有这个属性就只能
+        # 读到形参缺省值。只增只读字段，既有读取方不受影响。
+        self.seed = int(seed)
         self.entities: Dict[str, SceneEntity] = {}
         self.paths: Dict[str, List[Tuple[float, float, float]]] = {}
         # #424：环形缓冲——此前是普通 list，长期运行 / 单次大 n 只增不减，
@@ -353,7 +369,20 @@ class SceneSimulator:
     # ---- 场景构建 ----
 
     def create_scene(self, trees: int = 4, water: bool = True) -> Dict:
+        # 自主发现（参数类型）：water 此前只做真值判断——传 "yes"/1 被当成 True
+        # （实测 create_scene(trees=0, water="yes") 返回 status=ok 并生成水域），
+        # 调用方无从察觉参数类型写错。现 fail-loud：非 bool → 可读 TypeError。
+        if not isinstance(water, bool):
+            raise TypeError("water 必须是 bool，收到 %r" % (water,))
         """创建场景（体素世界 + 地形）。"""
+        # 自主发现（值域）：trees 此前不校验——负数被 range(-1) 静默吞成 0 棵树
+        # （实测 create_scene(trees=-1) 返回 status=ok、blocks=1152），调用方以为种了树；
+        # 非整数同理被 range() 抛不可读 TypeError。现 fail-loud：非整数 TypeError、
+        # 负数 ValueError（不建场景）。
+        if isinstance(trees, bool) or not isinstance(trees, int):
+            raise TypeError("trees 必须是整数，收到 %r" % (trees,))
+        if trees < 0:
+            raise ValueError("trees 不能为负，收到 %r" % (trees,))
         blocks = self.world.build_flatland(trees=trees, water=water)
         return {"status": "ok", "blocks": blocks, "size": self.world.size,
                 "scene": "flatland"}
@@ -361,8 +390,50 @@ class SceneSimulator:
     def add_entity(self, category: str, behavior: str = "wander",
                    pos: Tuple[float, float, float] = (2, 1.5, 2),
                    speed: float = 0.3, goal: str = "") -> str:
-        """添加自主行为实体。返回 entity_id。"""
-        e = SceneEntity(category=category, pos=tuple(float(v) for v in pos),
+        """添加自主行为实体。返回 entity_id。
+
+        #1134：`pos` 做**维度与有限性 fail-closed 校验**（与 `add_path` 的
+        #398 同款）——2D/超维 pos 此前照单全收，之后每次 `step` 在
+        `bx, by, bz = e.pos` 抛 ValueError：实体与路径常驻 ⇒ **一次合法调用
+        把永久崩溃注入模拟器**（坏实体踢不掉、好实体跟着停、evolution 清零）。"""
+        # 自主发现（参数类型）：behavior/category 此前不做类型闸——非 str 会被原样
+        # 存进 SceneEntity，`_decide` 的 `==` 分支全部落空后静默按 wander 走（实测
+        # behavior=123 仍移动），且 world_learner 的按类别统计把它归成新类别脏值。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（实体不注册）。
+        if not isinstance(behavior, str) or not behavior.strip():
+            raise TypeError("behavior 必须是非空字符串，收到 %r" % (behavior,))
+        if not isinstance(category, str) or not category.strip():
+            raise TypeError("category 必须是非空字符串，收到 %r" % (category,))
+        # 自主发现（参数类型）：goal 此前不做类型闸——传 int 后 `_decide` 的
+        # `self.entities.get(123)` 恒 None ⇒ 实体**静默不动**（实测 seek+goal=123
+        # 的实体 pos 不变、无告警）。seek/follow 的 goal 是实体 id 字符串，非 str
+        # 不可能是有效引用。现 fail-loud：可读 TypeError（实体不注册）。
+        if not isinstance(goal, str):
+            raise TypeError("goal 必须是字符串（目标实体 id 或空串），收到 %r" % (goal,))
+        # 自主发现（错误可读性）：pos 此前直接 `tuple(float(v) ...)`——传非数值时泄漏
+        # 裸 float() 异常（实测 pos="x" -> "could not convert string to float: 'x'"），
+        # 调用方拿不到「哪个参数、期望什么」。现 fail-loud 且可读：TypeError（含参数名）。
+        try:
+            p = tuple(float(v) for v in pos)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("pos 必须是 3 个实数的元组，收到 %r" % (pos,)) from exc
+        if len(p) != 3:
+            raise ValueError("pos 必须是 (x, y, z) 三元组，收到 %r" % (pos,))
+        if len(p) != 3 or not all(math.isfinite(v) for v in p):
+            raise ValueError(
+                "pos 需为 (x, y, z) 有限坐标三元组，收到 %r" % (pos,))
+        # 自主发现（速度值域）：speed 此前无校验——负 speed 会让实体**反向**移动
+        # （`step` 里 `step_len = e.speed` 为负），实测 speed=-1 从 (6.0, 6.0)
+        # 退到 (5.72, 6.96)；负速度还会污染 `world_learner.speed_est`（学出负速度）。
+        # 现 fail-loud：非实数 TypeError、非有限或负值 ValueError（实体不注册）。
+        try:
+            _speed = float(speed)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("speed 必须是实数，收到 %r" % (speed,)) from exc
+        if not math.isfinite(_speed) or _speed < 0.0:
+            raise ValueError("speed 必须是非负有限数，收到 %r" % (speed,))
+        speed = _speed
+        e = SceneEntity(category=category, pos=p,
                         behavior=behavior, speed=speed, goal=goal)
         self.entities[e.id] = e
         return e.id
@@ -376,7 +447,18 @@ class SceneSimulator:
         `if path:` 静默退化为随机游走，而验证器仍按 exact 判分。
         现拒绝：空路径 / 非 3 维点 / 非有限坐标。
         """
-        pts = [tuple(float(v) for v in pt) for pt in points]
+        # 自主发现（参数类型）：path_id 此前不做类型闸——传 int 也能注册进 self.paths
+        # （实测 add_path(123, ...) 成功），此后按 str 引用路径永远查不到，形成
+        # 不可见脏条目。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(path_id, str) or not path_id.strip():
+            raise TypeError("path_id 必须是非空字符串，收到 %r" % (path_id,))
+        # 自主发现（错误可读性）：points 此前直接嵌套 `float()`——传非数值时泄漏裸异常
+        # （实测 add_path("p", "x") -> could not convert string to float: 'x'），调用方无
+        # 从得知是哪个参数/哪一段出错。现 fail-loud 且可读：TypeError（含参数名）。
+        try:
+            pts = [tuple(float(v) for v in pt) for pt in points]
+        except (TypeError, ValueError) as exc:
+            raise TypeError("points 必须是 [(x, y, z), ...] 的实数点列，收到 %r" % (points,)) from exc
         if not pts or any(len(p) != 3 or not all(math.isfinite(v) for v in p)
                           for p in pts):
             raise ValueError(
@@ -415,8 +497,14 @@ class SceneSimulator:
                 dx = bx - predator.pos[0]
                 dz = bz - predator.pos[2]
                 d = self._normalize(dx, 0, dz)
-                return (d[0] + self._rng.uniform(-0.1, 0.1),
-                        0, d[2] + self._rng.uniform(-0.1, 0.1))
+                # #2579：此前单位方向 + 分量均匀噪声后直接返回 ⇒ |d| ∈ [0.90, 1.1045]
+                # ⇒ 单 tick 位移突破 speed 声明的运动学上限（实测 65/2000 tick 超限）。
+                # 同函数 wander 分支的同型缺陷已修（#27/9f17f7c），且该分支注释
+                # 逐字写「返回单位方向——与 seek/avoid/follow/flee 一致」。此处
+                # 归一化恢复单位方向契约；RNG 消耗次数与顺序不变。
+                nd = self._normalize(d[0] + self._rng.uniform(-0.1, 0.1), 0,
+                                     d[2] + self._rng.uniform(-0.1, 0.1))
+                return d if nd == (0.0, 0.0, 0.0) else nd
             return self._unresolved(e)
 
         elif e.behavior == "follow":
@@ -442,7 +530,18 @@ class SceneSimulator:
             return self._unresolved(e)
 
         # wander（默认）：随机游走（确定性随机）
-        return (self._rng.uniform(-1, 1), 0, self._rng.uniform(-1, 1))
+        # 返回**单位**方向——与 seek/avoid/follow/flee 一致。修前直接返回
+        # `(uniform(-1,1), 0, uniform(-1,1))`（未归一化），|d| 可达 sqrt(2)
+        # ⇒ 单 tick 位移可达 sqrt(2)*speed，**突破 speed 声明的运动学上限**
+        # （实测 speed=0.3 时位移/speed = 1.2983，理论上界 1.4142）。
+        # 仍消耗 2 次 RNG、且顺序与修前相同 ⇒ 不改变其它行为的随机序列。
+        d = self._normalize(self._rng.uniform(-1, 1), 0,
+                            self._rng.uniform(-1, 1))
+        if d == (0.0, 0.0, 0.0):
+            # 退化：两次采样同时落在 1e-6 内（概率 ~0）。给固定方向而不是
+            # 静默静止；不额外消耗 RNG，保持随机序列长度不变。
+            return (1.0, 0.0, 0.0)
+        return d
 
     def _unresolved(self, e: SceneEntity) -> Tuple[float, float, float]:
         """goal 不可解析时的显式失败（issue #193-C）。
@@ -537,12 +636,18 @@ class SceneSimulator:
         """登记**每实体级**环境覆盖（字段级，优先级高于整场级）。返回该实体生效值。
 
         实体不在场景中 / 字段非法 ⇒ `ValueError`（不静默忽略）。
+        #1135：与 `set_environment` 同为「字段级」语义 ⇒ **累积合并**——本次
+        覆盖基于该实体**已登记**的覆盖（无则整场级）叠加，不再整份替换（旧形态
+        连续登记 `slope_deg` 与 `mu_k` 两个合法字段，后者把前者静默抹掉退回
+        整场缺省，直接影响动力学轨迹）。
         """
         if entity_id not in self.entities:
             raise ValueError("实体 %r 不在场景中（现有：%s）"
                              % (entity_id, "/".join(sorted(self.entities))))
-        base = self._environment.merged(**kw)              # 复用同一套字段校验
-        merged = {k: base.to_dict()[k] for k in kw}        # 只留被覆盖的字段
+        prev = self.entities[entity_id].attrs.get("environment") or {}
+        base = self._environment.merged(**{**prev, **kw})   # 先叠已登记覆盖，再套本次
+        merged = {**{k: v for k, v in prev.items()},        # 保留此前已登记字段
+                  **{k: base.to_dict()[k] for k in kw}}     # 只留被本次覆盖的字段
         self.entities[entity_id].attrs["environment"] = merged
         return dict(merged)
 
@@ -571,7 +676,7 @@ class SceneSimulator:
         if entity_id is None:
             out["entities"] = {eid: {"effective_environment": self._env_for(e).to_dict(),
                                      "physics": self._physics_mode(e),
-                                     "readout": e.attrs.get("physics_readout")}
+                                     "readout": _deep_copy_readout(e.attrs.get("physics_readout"))}
                                for eid, e in self.entities.items()}
             return out
         e = self.entities.get(entity_id)
@@ -581,7 +686,9 @@ class SceneSimulator:
         out["entity"] = entity_id
         out["effective_environment"] = self._env_for(e).to_dict()
         out["physics"] = self._physics_mode(e)
-        out["readout"] = e.attrs.get("physics_readout")
+        # #1136：docstring 承诺读数是**副本**——旧实现返回活引用，外部改读数
+        # 会永久污染 `attrs["physics_readout"]`（审计读数失真）。
+        out["readout"] = _deep_copy_readout(e.attrs.get("physics_readout"))
         return out
 
     def _physics_mode(self, e: SceneEntity) -> str:
@@ -832,6 +939,10 @@ class SceneSimulator:
         """碰撞修正后**重播种**动力学初值（否则闭式解会从旧初值再穿一次）。
 
         运动学实体（`kinematic`）不重播种（它的 `velocity` 就是本 tick 实际位移）。
+        #1959（#1125）：beta/radius/mass 的保留必须取**覆盖前**的旧 state——
+        旧实现先整体替换再从新 dict 里读，三者恒 None，`set_entity_physics`
+        承诺的"原样透传给 simulate"失效（physics_readout.kind 从 rolling
+        退化 slope_friction）。
         """
         e = self.entities[entity_id]
         if "physics_state" not in e.attrs:
@@ -839,10 +950,14 @@ class SceneSimulator:
         if self._physics_mode(e) != PHYSICS_DYNAMICS:
             return
         env = self._env_for(e)
+        spec = self._collision_boxes.get(entity_id)
+        if spec is not None and spec["static"]:
+            return  # static=True ⇒ 它的 `physics_state` 不被重播种
+        old_state = e.attrs["physics_state"]          # #1125：先取旧值，再整体覆盖
         e.attrs["physics_state"] = {
             "p0": tuple(e.pos), "v0": tuple(e.velocity), "t_ref": self.tick_count * env.dt}
         for name in ("beta", "radius", "mass"):
-            old = e.attrs.get("physics_state", {}).get(name)
+            old = old_state.get(name)
             if old is not None:
                 e.attrs["physics_state"][name] = old
 
@@ -931,26 +1046,32 @@ class SceneSimulator:
             #   法向 = (d·n)n；切向 = d − (d·n)n（与朝向无关，故两侧同一式）。
             #   旧实现按"整 tick"施加切向分量并覆盖了 toi 推进 ⇒ 正面相撞时被推回起点、
             #   永久冻结（靠不近也停不下）；且对一侧用了 `comp > 0` 门控 ⇒ 另一侧完全不动。
-            # ★分离态不拦停：`sweep_aabb` 对"起始相切"一律报 hit（t=0 确实接触），
-            # 但若两者相对速度沿法向**离开**对方（dn_a 与 dn_b 同号且背向），拦停会把正在
-            # 分离的实体冻住 ⇒ 此处跳过（只处理"相向/相切且相向"）。
+            # ★分离态不拦停（#1133 门语义，按**实测 n 约定**修正）：`sweep_aabb`
+            # 返回的 `normal` 实测从 a 指向 b（本 tick 实测：a 在西 b 在东 ⇒
+            # `axis=(1,0,0)`；报告「n 让 a 离开 b」的前提与实测相反）。故：
+            #   相向接近（a 朝 b、b 朝 a）⇒ dn_a>0、dn_b<0 ⇒ `dn_a − dn_b > 0`
+            #     ⇒ **走进拦停**；
+            #   分离/同向同速 ⇒ dn_a ≤ dn_b ⇒ 跳过拦停，**落到下方 resolve 推离**
+            #     ——旧实现 `dn_a − dn_b <= 0 ⇒ 记录并 return` 把 resolve 推离
+            #     一并跳了 ⇒ 出生重叠 + 同向同速永久穿透（gap 恒 0.1，#1133 现象 A）；
+            #     而 `> 0`（相向）走进拦停时 toi 回退 + 切向滑行本就把两实体停在
+            #     接触面 ⇒ 相背初始重叠的"自由分离"不该拦停（报告现象 B）——
+            #     实测该形态 diff=−2 ⇒ 走 resolve，不重叠 ⇒ 不推离，自然分离。
             dn_a = sum(da[i] * n[i] for i in range(3))
             dn_b = sum(db[i] * n[i] for i in range(3))
-            if dn_a - dn_b <= 0.0:
-                self._collision_last.append(rec)
-                return
-            for eid, d in ((ia, da), (ib, db)):
-                if self._collision_boxes[eid]["static"]:
-                    continue
-                dn = sum(d[i] * n[i] for i in range(3))
-                tang = tuple(d[i] - dn * n[i] for i in range(3))
-                norm = tuple(dn * n[i] for i in range(3))
-                # 合规范式（本仓 time_core_lint 禁互补权重写法 `a·t + b·(1−t)` ⇒ 写 `b + (a−b)·t`）：
-                new_d = tuple(tang[i] + (norm[i] - tang[i]) * toi for i in range(3))
-                disp[eid] = new_d
-                e = self.entities[eid]
-                e.pos = tuple(self._tick_start_pos.get(eid, e.pos)[i] + new_d[i]
-                              for i in range(3))
+            if dn_a - dn_b > 0.0:
+                for eid, d in ((ia, da), (ib, db)):
+                    if self._collision_boxes[eid]["static"]:
+                        continue
+                    dn = sum(d[i] * n[i] for i in range(3))
+                    tang = tuple(d[i] - dn * n[i] for i in range(3))
+                    norm = tuple(dn * n[i] for i in range(3))
+                    # 合规范式（本仓 time_core_lint 禁互补权重写法 `a·t + b·(1−t)` ⇒ 写 `b + (a−b)·t`）：
+                    new_d = tuple(tang[i] + (norm[i] - tang[i]) * toi for i in range(3))
+                    disp[eid] = new_d
+                    e = self.entities[eid]
+                    e.pos = tuple(self._tick_start_pos.get(eid, e.pos)[i] + new_d[i]
+                                  for i in range(3))
         # 仍重叠（含 toi==0 的初始重叠）⇒ 推离
         wa, wb = self._world_box(ia), self._world_box(ib)
         over = (physics.obb_overlap(wa, wb) if is_obb else physics.aabb_overlap(wa, wb))
@@ -1087,6 +1208,16 @@ class SceneSimulator:
         ③ 自主行为（`_decide` + 沿注册路径平移）。未标记 `"dynamics"` 的实体
         **永不**进入 ② ⇒ 既有场景逐位不变（硬判据）。
         """
+        # 自主发现（参数类型）：n 此前直接 `int(n)`——传 float 被**静默截断**
+        # （实测 step(2.7) 只推进 2 tick，调用方无从察觉）；传 str 抛不可读
+        # ValueError（invalid literal for int()）。现 fail-loud：非整数值 ValueError、
+        # 非数值类型 TypeError（不推进任何 tick）。
+        try:
+            _n = int(n)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("step 的 n 必须是整数，收到 %r" % (n,)) from exc
+        if isinstance(n, float) and not float(n).is_integer():
+            raise ValueError("step 的 n 必须是整数（不接受小数），收到 %r" % (n,))
         n = int(n)
         if n < 0 or n > MAX_STEPS_PER_CALL:
             raise ValueError("step n=%d 超出范围 [0, %d]" % (n, MAX_STEPS_PER_CALL))
@@ -1094,10 +1225,14 @@ class SceneSimulator:
         for _ in range(n):
             self.tick_count += 1
             actions = []
+            # #1135：帧首记录**全部实体** pos（不再只在有碰撞箱时记录）——
+            # `actions` 按「tick 前后真实 pos 变化」计数（#193-A 口径落地：
+            # 钳制与碰撞推离都算真位移；speed=0/边界钳回原地/零位移不算）。
+            tick_start = {eid: e.pos for eid, e in self.entities.items()}
             # 碰撞层（本件）：**只在有碰撞箱时**记录 tick 起始位置（缺省零开销、
             # 不触碰任何既有状态 ⇒ 逐位不变）。
             if self._collision_boxes:
-                self._tick_start_pos = {eid: e.pos for eid, e in self.entities.items()}
+                self._tick_start_pos = dict(tick_start)
             for eid, e in self.entities.items():
                 # F08：受控动作优先——登记的动作在本 tick 消费一次，且**不**走
                 # 自主行为分支（不调用 _decide ⇒ 不消耗共享 _rng、不读目标规则）。
@@ -1154,7 +1289,16 @@ class SceneSimulator:
             # 缺省（无碰撞箱）⇒ 整段不执行 ⇒ 既有行为逐位不变（硬判据）。
             if self._collision_boxes:
                 self._resolve_collisions()
-            acted = len(actions)
+            else:
+                # #1135：本 tick 无碰撞面 ⇒ 接触清单清空（`collision_report`
+                # docstring「本 tick 的接触/分离读数」——tick 前进而 contacts
+                # 冻结在拆箱前，上游按 n_contacts 判「本 tick 有接触」被永久误导）。
+                self._collision_last = []
+            # #1135：`actions` 改按真实位移计数（含受控动作/自主行为/钳制/碰撞
+            # 推离后的净效果）——此前数「行动记录条数」，speed=0 记 1、边界钳回
+            # 原地记 2、碰撞双推离记 1，三种方向都与「实际发生位移的实体数」不符。
+            acted = sum(1 for eid, e in self.entities.items()
+                        if e.pos != tick_start.get(eid, e.pos))
             # 场景演化记录（4D 占用序列）
             self._history.append({"tick": self.tick_count,
                                   "entities": self.entity_positions()})

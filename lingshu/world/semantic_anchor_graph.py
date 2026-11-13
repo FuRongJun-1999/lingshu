@@ -257,7 +257,19 @@ class SemanticAnchorGraph:
                 lower_top = lower.center[1] + lower.size[1] / 2
                 upper_bottom = upper.center[1] - upper.size[1] / 2
                 surface_gap = upper_bottom - lower_top
-                if h_dist < distance_threshold and abs(surface_gap) < contact_tol:
+                # #2155：支撑判据必须含**水平投影重叠**——修前只看中心水平距离
+                # （< distance_threshold）与 y 方向表面差：shelf 占 [-0.1,0.1]、
+                # ball 在 dx=1.49 时占 [1.39,1.59] 水平完全分离、间隔 1.29m，仍报
+                # 「支撑」且 surface_gap=0.0（与真支撑读数逐字相同——判据无法区分
+                # 「杯子坐在桌上」与「球悬在空气里」）。水平 AABB 投影相交是接触面
+                # 存在的必要条件（SemanticAnchor.size 是轴对齐边长三元组、无旋转
+                # 表示，AABB 口径即真口径）；中心水平距离不再作为支撑条件
+                # （重叠已蕴含水平接触，且 1.5 阈值乘中心距本身不可判接触）。
+                _xd = abs(a.center[0] - b.center[0])
+                _zd = abs(a.center[2] - b.center[2])
+                _overlap = (_xd < (a.size[0] + b.size[0]) / 2.0
+                            and _zd < (a.size[2] + b.size[2]) / 2.0)
+                if _overlap and abs(surface_gap) < contact_tol:
                     self.relate(lower.id, upper.id, "支撑", 0.7,
                                 attrs={"surface_gap": round(surface_gap, 2)})
                     added += 1

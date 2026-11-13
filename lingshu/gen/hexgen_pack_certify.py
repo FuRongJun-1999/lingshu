@@ -29,8 +29,6 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from . import hexgen_self_source as S          # noqa: E402
 
 SIZE = S.SIZE
@@ -77,7 +75,16 @@ def legal_mask(cells, shape, r, zone_calib, size=SIZE):
 
 
 def support_vec(shape, r, dx, dy, dist):
-    """`S.paint_support` 的向量化版本（逐点等价，守门比对）。"""
+    """`S.paint_support` 的向量化版本（逐点等价，守门比对）。
+
+    #2131：入口先 `_v3_shape` 归一——生产侧 paint_support 首行就做
+    （自家名 `stripe` ≡ 真实名 `square`，SHAPE_SELF2V3）。修前 stripe 落到
+    末行的 paint_extent 各向同性回退（r=40、对角给 41.0），生产面归一后走
+    L1 支撑给 57.57——「与生产的判据面严格同源」声明被打破，可行方向判决
+    不健全（证书 41 而生产 57.57，slack 判错号）。同模块 legal_mask 在
+    paint_extent 前已有归一——支撑侧一张归一、一张不归一，模块内自相矛盾。
+    """
+    shape = S._v3_shape(shape)
     ax = np.abs(dx) / dist
     ay = np.abs(dy) / dist
     if shape == "square":

@@ -76,12 +76,33 @@ def clamp_axis(v, lo, hi):
     return max(lo, min(hi, v))
 
 
+def _require_bound(name, v, *, positive=False):
+    """#2432：边界参数（size/margin）的类型与有限性闸。
+
+    `size=nan` 使 `hi = nan` ⇒ `max(0.5, min(nan, v))` 返回 0.5，任意位置
+    被静默搬到世界角落 `(0.5, 1.0, 0.5)`；`margin=nan` 使 `max(nan, min(nan,
+    v))` 返回 nan，直接产出 NaN 坐标。两者都绕过 `NF_REJECT_ROUND_ALL`
+    （那条闸只查 speed/step/nx/nz，不查边界）。
+    """
+    if (isinstance(v, bool)
+            or not isinstance(v, (int, float))
+            or not math.isfinite(float(v))):
+        raise ValueError("%s 须为有限数值，收到 %r" % (name, v))
+    if positive and float(v) <= 0.0:
+        raise ValueError("%s 须为正数，收到 %r" % (name, v))
+    if not positive and float(v) < 0.0:
+        raise ValueError("%s 须为非负数，收到 %r" % (name, v))
+    return float(v)
+
+
 def clamp_xz(x, z, size, margin=BOUND_MARGIN):
     """把 (x, z) 钳到 `[margin, size - margin]`。
 
     ⚠ 算式必须与本体一字不差：`max(margin, min(size - margin, v))`。
     任何"顺手改成 `min(max(...))` 或先量化再钳"都会改掉域内 trace。
     """
+    _require_bound("size", size, positive=True)   # #2432
+    _require_bound("margin", margin)
     hi = size - margin
     return (clamp_axis(x, margin, hi), clamp_axis(z, margin, hi))
 
@@ -104,6 +125,8 @@ def apply_move(pos, speed, d, size, margin=BOUND_MARGIN, quant=QUANT,
     非 3 的序列（如空序列）此前会在 `d[0]` 处 `IndexError`，现一并落入短路
     分支返回量化后的原位置。三分量口径内的调用方行为逐位不变。
     """
+    _require_bound("size", size, positive=True)   # #2432：零方向短路前也要查
+    _require_bound("margin", margin)
     q = (lambda v: round(float(v), quant)) if quant is not None else float
     if not any(d):
         if zero_shortcut == ZERO_XZ_ONLY:
@@ -111,8 +134,16 @@ def apply_move(pos, speed, d, size, margin=BOUND_MARGIN, quant=QUANT,
         return tuple(round(float(v), quant if quant is not None else 6) for v in pos) \
             if quant is not None else tuple(float(v) for v in pos)
     step = speed if step_cap is None else min(speed, step_cap)
-    nx = pos[0] + d[0] * step
-    nz = pos[2] + d[2] * step
+    # #2151：step_cap 路径此前把非有限 speed 静默吃成有限值——`min(inf, cap)`
+    # 返回 cap ⇒ 同一份 `NF_REJECT_ROUND_ALL` 契约下，speed=inf 只因 step_cap
+    # 是否为 None 就得到「拒绝」与「移动满 cap」两种结果（实测后者 (4.0,1.0,1.0)）。
+    # 非有限 step 统一走既有拒绝闸（原位置），契约不分路径。
+    if (not math.isfinite(speed) or not math.isfinite(step))             and on_nonfinite is not NF_NONE:
+        nx = nz = float("nan")   # speed 非有限不可判（#2151：min(inf,cap)=cap
+                                 # 曾把拒绝路径吃成满 cap 移动）
+    else:
+        nx = pos[0] + d[0] * step
+        nz = pos[2] + d[2] * step
     if on_nonfinite is not NF_NONE and not (math.isfinite(nx) and math.isfinite(nz)):
         if on_nonfinite == NF_REJECT_XZ_ONLY:
             return (q(pos[0]), float(pos[1]), q(pos[2]))

@@ -27,10 +27,12 @@ t_weak ≈ 2407.9s < TTL = 3600s（差 33%）。
 纯标准库 · 零外部依赖（D-005）
 """
 from __future__ import annotations
+import logging
 
 import math
 import time
 from typing import Dict, Optional
+_log = logging.getLogger(__name__)
 
 
 DEFAULT_TTL = 3600.0          # 默认租约时长（秒，1 小时）
@@ -122,19 +124,33 @@ class StableLease:
         的情况下 renew() 就能「无证据复活」一个 weak 租约，3.2.2 的 ¬conflict 合取项
         形同虚设（与同模块 check() 忽略 lease["state"] 是同一根）。
         已有 stable 租约无新证据续期不降级（本就有效，非「提升」，不需要证据）。
+
+        #1956（本方法的判据来历）：旧实现自算「`age >= ttl` + 读缓存
+        `lease["state"]`」，不走本模块唯一的谓词 `_stable_now()`——于是 (a) 已过
+        `t_weak`（confidence 衰减至弱阈值，默认参数下 2407.9s < TTL 3600s）、仍
+        未超 TTL 的租约，无证据续期仍判 stable 并把衰减时钟无条件清零（续期本身
+        就把 `t_verified`/`confidence` 刷满）；且 (b) 同一份状态「直接 renew」与
+        「先 check 再 renew」结论相反（后者读到 check 落下的 weak）——与 #458 在
+        `acquire()` 侧修掉的是同一根，`renew()` 侧漏修。(c) 还漏掉 #729 的负 age
+        闸：`age < 0` 时 `age >= ttl` 恒 False ⇒ 判 stable。
+        现改为：**先**求值 `_stable_now()`（check/state/_acquire_ok 的同一谓词，
+        含衰减闸与负 age 闸），**再**刷新时间戳与确认度——无证据续期只在「谓词现算
+        成立」时维持 stable；带证据（evidence=True）的恢复路径不变。
         """
         lease = self._leases.get(key)
         if lease is None:
             return self.acquire(key, confidence=confidence)
         now = time.time()
-        age = now - lease["t_verified"]
-        expired = age >= lease["ttl"]
+        # 谓词必须在刷新 t_verified/confidence **之前**求值：#1956 的「无证据续期
+        # 把衰减时钟清零」正来自「先刷新、后用刷新后的读数/缓存 state 判」。
+        ok, _reason, _extra = self._stable_now(lease, now=now)
         params_ok = self._params_ok(lease["ttl"], confidence)
         lease["t_verified"] = now
         lease["confidence"] = confidence
-        # 无证据（evidence=False）时只在「原本就 stable 且未超时」才维持 stable；
-        # 已降级或已超时的租约一律回落 weak，须带证据方可回 stable（#101）。
-        if params_ok and (evidence or (lease["state"] == "stable" and not expired)):
+        # 无证据（evidence=False）时只在「谓词现算成立（本就有效）」才维持 stable；
+        # 已降级/已超时/已衰减至弱阈值/时间戳不可判的租约一律回落 weak，须带证据
+        # 方可回 stable（#101 + #1956）。
+        if params_ok and (evidence or ok):
             lease["state"] = "stable"
         else:
             lease["state"] = "weak"
@@ -151,10 +167,25 @@ class StableLease:
                 "note": "降级作用于状态，不作用于记录——验证历史仍属不可遗忘范畴"}
 
     def state(self, key: str) -> Dict:
+        """租约台账快照：`state` 字段给出**现算**结论（与 `check()` 同谓词）。
+
+        #101（残余事实 2）：旧实现 `out = {"state": lease["state"], ...}` 直接把
+        存储字段当结论返回，**不判过期、不过谓词** ⇒ 同一次返回体里同时给出
+        `state="stable"` 与 `expires_at <= now` 两个互相冲突的字段（实测
+        `expires_at - now = -0.285`，5/5 次复跑一致）。只读 `state()` 而不读
+        `check()` 的调用方，会把已过期租约当成 stable。
+
+        现改为：先经 `_stable_now()`（`check()` / `_acquire_ok()` 的同一谓词）求值，
+        谓词不成立即报 `weak`。**纯读、无副作用**：不改写 `lease["state"]`
+        （改写是 `check()` 的职责，P1-003 的「降级作用于状态」仍由它落）。
+        键集与修前**逐位相同**（#859 守卫钉死），不新增 `reason` 等字段——
+        需要原因文本的调用方仍走 `check()`。
+        """
         lease = self._leases.get(key)
         if lease is None:
             return {"key": key, "state": "unknown"}
-        out = {"key": key, "state": lease["state"],
+        ok, _reason, _extra = self._stable_now(lease)
+        out = {"key": key, "state": lease["state"] if ok else "weak",
                 "t_verified": round(lease["t_verified"], 1),
                 "ttl": lease["ttl"], "confidence": lease["confidence"],
                 # issue #19：expires_at = **实际**失效时刻（min(TTL, 弱阈值触发)），
@@ -200,6 +231,15 @@ class StableLease:
         `ttl_expires_at`（此时 `check()` 的非有限闸已把状态判为 weak，本字段仅作报时）。
         """
         ttl_exp = now + ttl
+        # #2121：confidence ≤ 0 时已然 weak（衰减至弱阈值的时刻在 now 或更早，
+        # decayed_conf=0 必落弱阈值）——修前落入「对数域非法」兜底 ⇒ weak_at/
+        # expires_at 报满 TTL，与同一返回体 check() 立即判 weak 自相矛盾
+        # （state="weak" 而 expires_at-now=3600）。兜底只留给「数值坏」（非有限/
+        # γ≤0/阈值非正），可判的 ≤0 显式落 now。
+        if (self._finite(ttl, confidence, self.gamma, self.weak_threshold)
+                and self.gamma > 0 and self.weak_threshold > 0
+                and confidence <= 0.0):
+            return {"expires_at": now, "ttl_expires_at": ttl_exp, "weak_at": now}
         weak_at = ttl_exp
         try:
             if (self._finite(ttl, confidence, self.gamma, self.weak_threshold)
@@ -207,6 +247,7 @@ class StableLease:
                     and self.weak_threshold > 0):
                 weak_at = now + math.log(confidence / self.weak_threshold) / self.gamma
         except Exception:  # pragma: no cover - 防御：非法参数退回名义到期
+            _log.debug("stable_lease: weak_at 计算失败，退回名义到期", exc_info=True)
             weak_at = ttl_exp
         return {"expires_at": min(ttl_exp, weak_at),
                 "ttl_expires_at": ttl_exp, "weak_at": weak_at}
@@ -247,6 +288,17 @@ class StableLease:
             return (False,
                     "t_verified 在未来（时钟回拨）——不可判，降级待重新验证",
                     {"age": round(age, 1)})
+        # #2122：γ≤0 是 docstring 已声明的预期输入类（_expiry_fields 兜底注释
+        # 「γ≤0 … 此时 check() 已判 weak」），但谓词路径漏防：γ<0 时 exp(-γ·age)
+        # 正指数，age 够大即 OverflowError；枠小负 γ 不溢出时 decayed_conf 随 age
+        # 增大、永不落弱阈值 ⇒ 永久 stable——同样与「γ≤0 ⇒ check() 判 weak」
+        # 矛盾。与 age<0 闸（#729）同款：闸落在 exp 计算**之前**，fail-closed
+        # 降级待重新验证。
+        if not (self.gamma > 0.0):
+            return (False,
+                    "gamma 需为正数（γ≤0 时衰减核不可判/反向）——降级待重新验证",
+                    {"gamma": self.gamma if self._finite(self.gamma)
+                     else repr(self.gamma)})
         decayed_conf = lease["confidence"] * math.exp(-self.gamma * age)
         if not self._finite(age, lease["ttl"], decayed_conf,
                             lease["confidence"], self.gamma,

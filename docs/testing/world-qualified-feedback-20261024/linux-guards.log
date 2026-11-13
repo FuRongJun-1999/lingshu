@@ -1,0 +1,401 @@
+CASE fixed
+.......................
+23 passed, 9 warnings in 1.16s
+
+CASE baseline
+.FFFFFFFFFFFFFFFFFFFFFF
+=================================== FAILURES ===================================
+________ test_constant_model_bias_is_revised_against_the_base_forecast _________
+tests/test_world_qualified_feedback.py:61: in test_constant_model_bias_is_revised_against_the_base_forecast
+    scene, observer, decision, actor, goal = _setup()
+                                             ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+__ test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero __
+tests/test_world_qualified_feedback.py:70: in test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero
+    scene, observer, decision, actor, goal = _setup()
+                                             ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+___ test_real_collision_is_execution_residual_and_does_not_revise_the_target ___
+tests/test_world_qualified_feedback.py:80: in test_real_collision_is_execution_residual_and_does_not_revise_the_target
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+____ test_joint_residuals_remain_separate_and_only_target_error_is_revised _____
+tests/test_world_qualified_feedback.py:101: in test_joint_residuals_remain_separate_and_only_target_error_is_revised
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_____________ test_stale_target_does_not_consume_a_feedback_sample _____________
+tests/test_world_qualified_feedback.py:113: in test_stale_target_does_not_consume_a_feedback_sample
+    scene, observer, decision, actor, goal = _setup()
+                                             ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+________ test_stale_self_is_not_scored_but_fresh_target_can_be_revised _________
+tests/test_world_qualified_feedback.py:124: in test_stale_self_is_not_scored_but_fresh_target_can_be_revised
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+___________ test_missing_target_forecast_keeps_revision_unqualified ____________
+tests/test_world_qualified_feedback.py:134: in test_missing_target_forecast_keeps_revision_unqualified
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_____ test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit ______
+tests/test_world_qualified_feedback.py:145: in test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit
+    scene, observer, old, actor, goal = _setup()
+                                        ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+___ test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success ____
+tests/test_world_qualified_feedback.py:157: in test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success
+    scene, observer, decision, actor, goal = _setup()
+                                             ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+________________ test_changed_revision_context_is_not_committed ________________
+tests/test_world_qualified_feedback.py:168: in test_changed_revision_context_is_not_committed
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_________ test_invalid_target_measurement_never_changes_revision[nan] __________
+tests/test_world_qualified_feedback.py:182: in test_invalid_target_measurement_never_changes_revision
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_________ test_invalid_target_measurement_never_changes_revision[inf] __________
+tests/test_world_qualified_feedback.py:182: in test_invalid_target_measurement_never_changes_revision
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_________ test_invalid_target_measurement_never_changes_revision[bool] _________
+tests/test_world_qualified_feedback.py:182: in test_invalid_target_measurement_never_changes_revision
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+________ test_invalid_target_measurement_never_changes_revision[string] ________
+tests/test_world_qualified_feedback.py:182: in test_invalid_target_measurement_never_changes_revision
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_______ test_invalid_target_measurement_never_changes_revision[huge-int] _______
+tests/test_world_qualified_feedback.py:182: in test_invalid_target_measurement_never_changes_revision
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+____________ test_feedback_requires_its_decision_target_tick[None] _____________
+tests/test_world_qualified_feedback.py:192: in test_feedback_requires_its_decision_target_tick
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+____________ test_feedback_requires_its_decision_target_tick[True] _____________
+tests/test_world_qualified_feedback.py:192: in test_feedback_requires_its_decision_target_tick
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_____________ test_feedback_requires_its_decision_target_tick[-1] ______________
+tests/test_world_qualified_feedback.py:192: in test_feedback_requires_its_decision_target_tick
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_____________ test_feedback_requires_its_decision_target_tick[99] ______________
+tests/test_world_qualified_feedback.py:192: in test_feedback_requires_its_decision_target_tick
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_______ test_vertical_residual_is_measured_but_not_claimed_as_corrected ________
+tests/test_world_qualified_feedback.py:201: in test_vertical_residual_is_measured_but_not_claimed_as_corrected
+    _scene, observer, decision, _actor, goal = _setup()
+                                               ^^^^^^^^
+tests/test_world_qualified_feedback.py:18: in _setup
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+_____________ test_coordinate_goal_is_not_a_new_target_observation _____________
+tests/test_world_qualified_feedback.py:212: in test_coordinate_goal_is_not_a_new_target_observation
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+____ test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically _____
+tests/test_world_qualified_feedback.py:224: in test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+    _require()
+tests/test_world_qualified_feedback.py:13: in _require
+    assert "feedback_policy" in inspect.signature(SevenLayerLoop.configure_action).parameters, "W1 qualified feedback is unavailable"
+E   AssertionError: W1 qualified feedback is unavailable
+E   assert 'feedback_policy' in mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">}))
+E    +  where mappingproxy(OrderedDict({'self': <Parameter "self">, 'entity_id': <Parameter "entity_id">, 'target': <Parameter "targ...">, 'policy': <Parameter "policy: 'str' = 'predictive'">, 'fixed_action': <Parameter "fixed_action: 'str' = 'east'">})) = <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'>.parameters
+E    +    where <Signature (self, entity_id, target, step_size: 'float' = 1.0, policy: 'str' = 'predictive', fixed_action: 'str' = 'east') -> 'Dict'> = <function signature at 0x7a9dbfbfab60>(<function SevenLayerLoop.configure_action at 0x7a9dbe328c20>)
+E    +      where <function signature at 0x7a9dbfbfab60> = inspect.signature
+E    +      and   <function SevenLayerLoop.configure_action at 0x7a9dbe328c20> = SevenLayerLoop.configure_action
+=========================== short test summary info ============================
+FAILED tests/test_world_qualified_feedback.py::test_constant_model_bias_is_revised_against_the_base_forecast
+FAILED tests/test_world_qualified_feedback.py::test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero
+FAILED tests/test_world_qualified_feedback.py::test_real_collision_is_execution_residual_and_does_not_revise_the_target
+FAILED tests/test_world_qualified_feedback.py::test_joint_residuals_remain_separate_and_only_target_error_is_revised
+FAILED tests/test_world_qualified_feedback.py::test_stale_target_does_not_consume_a_feedback_sample
+FAILED tests/test_world_qualified_feedback.py::test_stale_self_is_not_scored_but_fresh_target_can_be_revised
+FAILED tests/test_world_qualified_feedback.py::test_missing_target_forecast_keeps_revision_unqualified
+FAILED tests/test_world_qualified_feedback.py::test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit
+FAILED tests/test_world_qualified_feedback.py::test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success
+FAILED tests/test_world_qualified_feedback.py::test_changed_revision_context_is_not_committed
+FAILED tests/test_world_qualified_feedback.py::test_invalid_target_measurement_never_changes_revision[nan]
+FAILED tests/test_world_qualified_feedback.py::test_invalid_target_measurement_never_changes_revision[inf]
+FAILED tests/test_world_qualified_feedback.py::test_invalid_target_measurement_never_changes_revision[bool]
+FAILED tests/test_world_qualified_feedback.py::test_invalid_target_measurement_never_changes_revision[string]
+FAILED tests/test_world_qualified_feedback.py::test_invalid_target_measurement_never_changes_revision[huge-int]
+FAILED tests/test_world_qualified_feedback.py::test_feedback_requires_its_decision_target_tick[None]
+FAILED tests/test_world_qualified_feedback.py::test_feedback_requires_its_decision_target_tick[True]
+FAILED tests/test_world_qualified_feedback.py::test_feedback_requires_its_decision_target_tick[-1]
+FAILED tests/test_world_qualified_feedback.py::test_feedback_requires_its_decision_target_tick[99]
+FAILED tests/test_world_qualified_feedback.py::test_vertical_residual_is_measured_but_not_claimed_as_corrected
+FAILED tests/test_world_qualified_feedback.py::test_coordinate_goal_is_not_a_new_target_observation
+FAILED tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+22 failed, 1 passed in 2.32s
+
+CASE reuse_corrected_residual_as_base_bias
+F
+=================================== FAILURES ===================================
+________ test_constant_model_bias_is_revised_against_the_base_forecast _________
+tests/test_world_qualified_feedback.py:63: in test_constant_model_bias_is_revised_against_the_base_forecast
+    assert decision.correction == (0.9844, 0.0), "qualified revision retained the half-bias fixed point"
+E   AssertionError: qualified revision retained the half-bias fixed point
+E   assert (0.5, 0.0) == (0.9844, 0.0)
+E
+E     At index 0 diff: 0.5 != 0.9844
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_world_qualified_feedback.py::test_constant_model_bias_is_revised_against_the_base_forecast
+1 failed in 0.75s
+
+CASE accept_stale_target_feedback
+F
+=================================== FAILURES ===================================
+_____________ test_stale_target_does_not_consume_a_feedback_sample _____________
+tests/test_world_qualified_feedback.py:118: in test_stale_target_does_not_consume_a_feedback_sample
+    assert _stats(decision) == before, "stale target evidence revised state"
+E   AssertionError: stale target evidence revised state
+E   assert ((0.75, 0.0), [1.0, 0.5], 3) == ((0.5, 0.0), [1.0], 2)
+E
+E     At index 0 diff: (0.75, 0.0) != (0.5, 0.0)
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_world_qualified_feedback.py::test_stale_target_does_not_consume_a_feedback_sample
+1 failed in 0.74s
+
+CASE reuse_old_goal_context
+F
+=================================== FAILURES ===================================
+_____ test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit ______
+tests/test_world_qualified_feedback.py:151: in test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit
+    assert replacement.correction == (0.0, 0.0) and replacement.error_history == [], "old goal evidence revised a new goal"
+E   AssertionError: old goal evidence revised a new goal
+E   assert ((7.5, 0.0) == (0.0, 0.0)
+E
+E     At index 0 diff: 7.5 != 0.0
+E     Use -v to get more diff)
+=========================== short test summary info ============================
+FAILED tests/test_world_qualified_feedback.py::test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit
+1 failed in 0.77s
+
+CASE score_stale_self_position
+F
+=================================== FAILURES ===================================
+________ test_stale_self_is_not_scored_but_fresh_target_can_be_revised _________
+tests/test_world_qualified_feedback.py:128: in test_stale_self_is_not_scored_but_fresh_target_can_be_revised
+    assert out["executed"]["self_error"] is None, "stale self observation became execution error"
+E   AssertionError: stale self observation became execution error
+E   assert 97.0 is None
+=========================== short test summary info ============================
+FAILED tests/test_world_qualified_feedback.py::test_stale_self_is_not_scored_but_fresh_target_can_be_revised
+1 failed in 0.74s
+
+CASE drop_core_feedback_policy
+F
+=================================== FAILURES ===================================
+____ test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically _____
+tests/test_world_qualified_feedback.py:230: in test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+    assert result["action_config"].get("feedback_policy") == "qualified", "core dropped feedback qualification policy"
+E   AssertionError: core dropped feedback qualification policy
+E   assert None == 'qualified'
+E    +  where None = <built-in method get of dict object at 0x7b6d83beba00>('feedback_policy')
+E    +    where <built-in method get of dict object at 0x7b6d83beba00> = {'cold_starts': 0, 'correction': [0.0, 0.0], 'decisions': 0, 'entity': 'scene_df60259d', ...}.get
+=========================== short test summary info ============================
+FAILED tests/test_world_qualified_feedback.py::test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically
+1 failed, 9 warnings in 1.33s

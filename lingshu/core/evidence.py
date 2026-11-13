@@ -93,7 +93,7 @@ def normalize_source(source: Optional[str]) -> str:
 def _check_weight(weight) -> float:
     try:
         w = float(weight)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ValueError(f"evidence weight 必须是数值，收到 {weight!r}")
     if not math.isfinite(w) or w <= 0.0 or w > 1.0:
         raise ValueError(f"evidence weight 须在 (0, 1] 且有限，收到 {weight!r}")
@@ -224,12 +224,35 @@ class EvidenceLedger:
         contra: Dict[str, float] = {}
         self_count = 0
         rows = self.entries(node_id)
+        # #2153：按**来源**去重（模块 docstring 契约「同一来源只取其最大一条」）
+        # ——修前在 (极性, 来源) 两桶各自去重，同一来源跨极性双边计数：S 与 C 同时
+        # 抬高、self-refutation 与他人反驳等价（实测 A=0.655172 B=0.633333 且
+        # 换源对照完全同值）、contested 误报（单来源自相矛盾被译成多源对立）、
+        # corroborated 计数被污染（contested 判定先于 corroborated 命中）。
+        # 现先在来源维取最大权重条目，再按其极性落桶。
+        per_source: dict = {}
         for e in rows:
             if e["self_generated"]:
                 self_count += 1
                 continue
+            cur = per_source.get(e["source"])
+            # #2533：权重**相等**时此前保留先出现的那条——`record` 默认 weight=1.0
+            # 即绝大多数调用，于是同一来源先记支持后记反证时反证被吞掉（实测
+            # corroborated 0.75 vs 先反证后支持 contested 0.50，同一证据集合仅
+            # 插入顺序不同结论相反），违反模块头「一旦有人把反证记进来，置信度
+            # 会降」。同权时确定性地让反证胜出（fail-closed）。
+            if cur is None:
+                per_source[e["source"]] = e
+            else:
+                _w_new = float(e["weight"])
+                _w_cur = float(cur["weight"])
+                if _w_new > _w_cur or (
+                        _w_new == _w_cur and e["polarity"] == CONTRADICT
+                        and cur["polarity"] != CONTRADICT):
+                    per_source[e["source"]] = e
+        for src, e in per_source.items():
             bucket = support if e["polarity"] == SUPPORT else contra
-            bucket[e["source"]] = max(bucket.get(e["source"], 0.0), e["weight"])
+            bucket[src] = max(bucket.get(src, 0.0), e["weight"])
         S, C = sum(support.values()), sum(contra.values())
         conf = (PRIOR_A + S) / (PRIOR_A + PRIOR_B + S + C)
         if support and contra:

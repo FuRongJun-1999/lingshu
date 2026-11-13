@@ -355,31 +355,44 @@ def test_d5_legacy_null_edge_row_does_not_break_decay():
 
 def test_d6_setters_normalize_non_finite_delta():
     """D6[#185]：`update_node_importance` / `update_node_confidence` /
-    `verify_edge` 的非有限入参一律归一，不得落 NULL/原样存 inf。
+    `verify_edge` 的非有限入参不得落 NULL/原样存 inf。
 
     #790 口径同步（2026-10-17）：`verify_edge` 的 `new_confidence` 非有限值已从
     「归一到 0.0」升级为 `_require_finite` **拒收**（`ValueError`，先判后写）——
     修前 NaN 被静默写成凭空的 0.0 并盖章 `verified=1`。本用例的 verify_edge 段随
     之改为断言拒收（`ValueError` 且边行零改动——NULL 依旧落不了库，#185 的原
-    判据「不落 NULL」以更强形态保持）；`update_node_importance` /
-    `update_node_confidence` 仍走 #185 归一口径（不在 #790 收口面，逐字不动）。
+    判据「不落 NULL」以更强形态保持）。
+    #1359/#1360 口径同步（2026-11-09，镜像批三十六）：`update_node_importance` /
+    `update_node_confidence` 的 delta/confidence 非有限值亦从 #185 归一口径升级为
+    **拒收**（`TypeError`，先判后写）——静默归一让调用方以为更新成功；本用例两段
+    随之改为断言拒收且行零改动（#185「不落 NULL」原判据以更强形态保持）。
     """
     e = SpacetimeMemoryEngine(":memory:")
     try:
         k = e.add_perception("k", skip_dedup=True)
-        e.store.update_node_importance(k.id, NAN)
+        _imp_before = _col(e, k.id, "importance")
+        try:
+            e.store.update_node_importance(k.id, NAN)
+            raise AssertionError(
+                "#1359：update_node_importance(NaN) 被接受（修前行为：静默归一，"
+                "调用方以为更新成功）")
+        except TypeError:
+            pass
         val, typ = _col(e, k.id, "importance")
-        assert typ != "null" and val is not None, \
-            "#185：update_node_importance(NaN) 落 NULL"
-        e.store.update_node_importance(k.id, INF)
-        val, typ = _col(e, k.id, "importance")
-        assert typ != "null" and val is not None and 0.0 < val < 1.0, (
-            "#185：update_node_importance(inf) 未归一（实测 %r/%s）——钳到边界 1.0 "
-            "仍霸占排序前排" % (val, typ))
-        e.store.update_node_confidence(k.id, NAN)
+        assert (val, typ) == _imp_before, (
+            "#1359：拒收后行被改动（先判后写破了）：%r/%s" % (val, typ))
+        try:
+            e.store.update_node_importance(k.id, INF)
+            raise AssertionError("#1359：update_node_importance(inf) 被接受")
+        except TypeError:
+            pass
+        try:
+            e.store.update_node_confidence(k.id, NAN)
+            raise AssertionError("#1360：update_node_confidence(NaN) 被接受")
+        except TypeError:
+            pass
         val, typ = _col(e, k.id, "confidence")
-        assert typ != "null" and val is not None, \
-            "#185：update_node_confidence(NaN) 落 NULL"
+        assert typ != "null", "#185：confidence 行被写坏：%r/%s" % (val, typ)
         a = e.add_perception("a2", skip_dedup=True)
         b = e.add_perception("b2", skip_dedup=True)
         ed = e.add_edge(a.id, b.id, confidence=0.9)
@@ -397,8 +410,6 @@ def test_d6_setters_normalize_non_finite_delta():
             "#790：拒收后边行被改动（先判后写破了）：%r/%s" % (val, typ))
     finally:
         e.close()
-
-
 if __name__ == "__main__":  # pragma: no cover
     import pytest
     sys.exit(pytest.main([__file__, "-q", "--no-header"]))

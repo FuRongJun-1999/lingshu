@@ -1,0 +1,52 @@
+{
+  "windows": {
+    "platform": "Windows",
+    "python": "3.12.10",
+    "imports": 84,
+    "import_failures": [],
+    "documentation_tests_passed": 12,
+    "skipped": 0,
+    "command": [
+      "python",
+      "-X",
+      "utf8",
+      "-m",
+      "pytest",
+      "tests/test_doc_module_counts_guard.py",
+      "tests/test_public_docs_privacy_guard.py",
+      "-q"
+    ],
+    "sha256_lf": {
+      "README.md": "01281959e0eaa9f8cf44058d1cfc1aeb534ec3217e1c7c592e8c25815c2179bc",
+      "docs/architecture.md": "f306360641fcf1d34180dda52d543c59164fdf24331ef187dd582bcf92f60d21",
+      "docs/world_identity_qualification.md": "824768dcc21f4e169f9b40a9b21b74d737578c34cf0dd78da27b2dd37cbc0853",
+      "docs/testing/world-identity-qualification-20261024.md": "8abc816c3b6b83534c4d2826f78938ede8da9e9d215543ab090c36272a81123f"
+    },
+    "owned_temp_cleaned": true
+  },
+  "linux": {
+    "platform": "Linux",
+    "python": "3.13.12",
+    "imports": 84,
+    "import_failures": [],
+    "documentation_tests_passed": 12,
+    "skipped": 0,
+    "command": [
+      "python",
+      "-X",
+      "utf8",
+      "-m",
+      "pytest",
+      "tests/test_doc_module_counts_guard.py",
+      "tests/test_public_docs_privacy_guard.py",
+      "-q"
+    ],
+    "sha256_lf": {
+      "README.md": "01281959e0eaa9f8cf44058d1cfc1aeb534ec3217e1c7c592e8c25815c2179bc",
+      "docs/architecture.md": "f306360641fcf1d34180dda52d543c59164fdf24331ef187dd582bcf92f60d21",
+      "docs/world_identity_qualification.md": "824768dcc21f4e169f9b40a9b21b74d737578c34cf0dd78da27b2dd37cbc0853",
+      "docs/testing/world-identity-qualification-20261024.md": "8abc816c3b6b83534c4d2826f78938ede8da9e9d215543ab090c36272a81123f"
+    },
+    "owned_temp_cleaned": true
+  }
+}

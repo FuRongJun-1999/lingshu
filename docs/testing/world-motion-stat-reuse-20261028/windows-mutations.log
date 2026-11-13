@@ -1,0 +1,51 @@
+===== recompute_between_accessors =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_accessors_estimate_once[motion-flat] __________________
+tests\test_world_motion_stat_reuse.py:36: in test_accessors_estimate_once
+    assert len(calls) == 1, "WM_MOTION_REESTIMATED_WITHIN_VIEW"
+E   AssertionError: WM_MOTION_REESTIMATED_WITHIN_VIEW
+E   assert 2 == 1
+E    +  where 2 = len([1, 1])
+=========================== short test summary info ===========================
+FAILED tests/test_world_motion_stat_reuse.py::test_accessors_estimate_once[motion-flat]
+1 failed in 0.19s
+
+===== read_mutable_public_estimate =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_public_diagnostic_mutation_cannot_change_motion[detail] _________
+tests\test_world_motion_stat_reuse.py:110: in test_public_diagnostic_mutation_cannot_change_motion
+    assert view.motion("a") == original, "WM_MUTABLE_DIAGNOSTIC_CHANGED_MOTION"
+E   AssertionError: WM_MUTABLE_DIAGNOSTIC_CHANGED_MOTION
+E   assert (0, 999, 999, None) == (1.0, 1.0, 1, (1.0, 0.0, 0.0))
+E
+E     At index 0 diff: 0 != 1.0
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_motion_stat_reuse.py::test_public_diagnostic_mutation_cannot_change_motion[detail]
+1 failed in 0.20s
+
+===== share_cache_between_views =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_new_view_refreshes_after_new_observation ________________
+tests\test_world_motion_stat_reuse.py:119: in test_new_view_refreshes_after_new_observation
+    assert new.motion("a")[1] == 5, "WM_MOTION_CACHE_ESCAPED_VIEW"
+E   AssertionError: WM_MOTION_CACHE_ESCAPED_VIEW
+E   assert 1.0 == 5
+=========================== short test summary info ===========================
+FAILED tests/test_world_motion_stat_reuse.py::test_new_view_refreshes_after_new_observation
+1 failed in 0.20s
+
+===== force_diagnostics_for_motion_only =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_motion_only_does_not_build_public_diagnostics ______________
+tests\test_world_motion_stat_reuse.py:143: in test_motion_only_does_not_build_public_diagnostics
+    assert not calls and not view._details, "WM_MOTION_ONLY_FORCED_DIAGNOSTICS"
+E   AssertionError: WM_MOTION_ONLY_FORCED_DIAGNOSTICS
+E   assert (not [1])
+=========================== short test summary info ===========================
+FAILED tests/test_world_motion_stat_reuse.py::test_motion_only_does_not_build_public_diagnostics
+1 failed in 0.19s

@@ -33,7 +33,12 @@ _NEG_MARKERS = ("并非", "并不", "毫无", "从未", "尚未", "没有", "不
 _NON_NEG = ("非常", "无论", "未来", "否则", "不断", "不仅", "不少", "不过，", "不过,",
             "别人", "别的", "特别", "区别", "分别", "莫名", "无比", "毫无疑问", "未必然",
             "没错", "不错", "没关系", "不客气", "不用谢", "不好意思", "无聊", "无数", "非洲")
-_EN_NEG = re.compile(r"\b(not|no|never|none|cannot|n't|without)\b", re.I)
+# dsh-bounty #1796：旧式 `\b(...|n't|...)\b` 的 `\b` 在缩约词（doesn't/isn't/
+# can't…）的 "n" 前永不成立（前一字符是词字符），`n't` 备选不可满足——
+# 「doesn't work」被判无否定而「does not work」判有（语义等价裁决相反）。
+# 修法：缩约从 alternation 拆出，用 `\w+n't` 形态（词尾 n't，前邻词字符），
+# 不再依赖 `n't` 前的 `\b`；其余备选维持整词边界不变。
+_EN_NEG = re.compile(r"\b(?:not|no|never|none|cannot|without)\b|\w+n't\b", re.I)
 _ANTONYMS = (("已", "未"), ("成功", "失败"), ("允许", "禁止"), ("增加", "减少"),
              ("上升", "下降"), ("通过", "否决"), ("支持", "反对"), ("同意", "拒绝"),
              ("接受", "拒绝"), ("正确", "错误"), ("真", "假"), ("在线", "离线"),
@@ -59,8 +64,16 @@ def _has_neg(seg: str) -> bool:
 
 
 def _nums(s: str) -> Counter:
+    # #2169：中文数字折算成数值再入 Counter（与阿拉伯数字共用同一值域）——
+    # 修前阿拉伯走 float 归一（25/25.0/007 都收敛）、中文走 "cn:"+原串 字符串
+    # 键，两条路从不汇合 ⇒ 「数量25」与「数量二十五」的多重集不同 ⇒ 误报矛盾。
+    # 解析复用同仓 retrieval.cn_number()（1–999 中文数字）；无法解析时保留
+    # "cn:"+原串 作兜底（现状行为，不引入新误报）。
+    from .retrieval import cn_number
     c = Counter(float(x) for x in _NUM.findall(s))
-    c.update("cn:" + x for x in _CN_NUM.findall(_NUM.sub(" ", s)))
+    for x in _CN_NUM.findall(_NUM.sub(" ", s)):
+        v = cn_number(x)
+        c[v if v is not None else ("cn:" + x)] += 1
     return c
 
 

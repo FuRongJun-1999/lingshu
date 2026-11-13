@@ -26,6 +26,10 @@ SpacetimeConsistency = SceneSimulator + 时空一致性验证闭环：
 """
 from __future__ import annotations
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
 import math
 from collections import deque
 from typing import Dict, List, Optional, Tuple
@@ -43,10 +47,12 @@ HISTORY_MAXLEN = 5000
 # 3D 场景模拟器实现已迁移至 AEIS——大脑保留接口，缺失时 SceneSimulator=None
 try:
     from .scene_simulator import SceneSimulator
-except Exception:
+except Exception as _e:
+    _logger.debug("#170 3D 场景模拟器已迁移 AEIS，缺失回落 SceneSimulator=None：%s", _e)
     try:
         from .scene_simulator import SceneSimulator
-    except Exception:
+    except Exception as _e2:
+        _logger.debug("#170 二次回落仍缺失，SceneSimulator=None：%s", _e2)
         SceneSimulator = None
 
 
@@ -80,6 +86,30 @@ class SpacetimeConsistency:
         # 透传即覆盖整条随机轴；影子预测（`_predict_next`）不消耗 RNG。
         self.scene = SceneSimulator(size=size, ground_level=ground_level,
                                     seed=seed)
+        # #2419：三个 rate 参数此前裸 float() 零值域闸——`hit_threshold=nan`
+        # 使逐 tick `rate >= threshold` 恒 False ⇒ 同种子同场景 overall
+        # 1.0→0.0、假漂移告警（实测）；±inf 同理，负阈值则恒 True（假自洽）。
+        # 同段的离散参数已有 max(1, int(…)) 闸，rate 族补齐同一维口径。
+        for _name, _raw in (("hit_threshold", hit_threshold),
+                            ("drift_rate", drift_rate),
+                            ("consistent_rate", consistent_rate)):
+            _f = float(_raw)
+            if not (0.0 <= _f <= 1.0):
+                raise ValueError("%s 需为 [0,1] 内的有限数值，收到 %r"
+                                 % (_name, _raw))
+
+        # #2427：#2419 只收了 rate 三参数，同段的 wander_bound_* 与 ground_level
+        # 仍裸 float()——`wander_bound_factor=inf` 使 `_reach_bound` 为 inf ⇒
+        # 任意偏差都判命中（23 m/tick 瞬移被判 self_consistent，漂移检测恒不
+        # 触发）；`nan` 被 `max(0.5, nan)` 吃成 0.5 ⇒ 正常 wander 全判失败（假
+        # 漂移）。`ground_level=nan/-inf` 使 `y < gnd + 0.4` 恒假 ⇒ below_ground
+        # 不变量整条变死代码（地下 100 m 的世界判 self_consistent）。
+        for _name, _raw in (("wander_bound_factor", wander_bound_factor),
+                            ("wander_bound_pad", wander_bound_pad)):
+            if isinstance(_raw, bool) or not isinstance(_raw, (int, float))                     or not math.isfinite(float(_raw)) or float(_raw) < 0.0:
+                raise ValueError("%s 需为有限非负数，收到 %r" % (_name, _raw))
+        if isinstance(ground_level, bool) or not isinstance(ground_level, (int, float))                 or not math.isfinite(float(ground_level)):
+            raise ValueError("ground_level 需为有限数值，收到 %r" % (ground_level,))
         self.window = max(1, int(window))
         self.hit_threshold = float(hit_threshold)
         self.drift_rate = float(drift_rate)
@@ -294,6 +324,10 @@ class SpacetimeConsistency:
         issues = []
         size = self.scene.world.size
         gnd = float(self.scene.world.ground_level)
+        if not math.isfinite(gnd):
+            # #2427 纵深：直接改 `scene.world.ground_level` 也要拦——
+            # 否则 `y < nan + 0.4` 恒假会让 below_ground 判据静默失效。
+            issues.append("bad_ground_level:%r" % (gnd,))
         for eid, e in self.scene.entities.items():
             x, y, z = e.pos
             if not (0.5 <= x <= size - 0.5 and 0.5 <= z <= size - 0.5):

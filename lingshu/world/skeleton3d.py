@@ -229,7 +229,16 @@ class Skeleton3D:
 
         # 关节点
         for n, sp in screen.items():
-            r = max(1, int(self.joints[n].radius * cam.focal(screen_w) / max(world[n][2], 0.1)))
+            # #1066：半径按**相机前向深度**换算（与 `cam.project` 同一相机坐标）。
+            # 旧实现除 `world[n][2]`（世界 z）冒充深度：默认 Camera3D（cz=0、
+            # 无旋转）下二者恰好相等故基线看不出来，但经 look_at 摆位（本仓
+            # demo 即 cz=-2.20/pitch=-8°）后实测 6 m 处关节画成 41px（应为
+            # 0.69px，约 59 倍）；`max(..., 0.1)` 的下限亦让世界 z≤0.1 的关节
+            # 无论远近恒 41px。非正深度（相机后方/平面上）不画。
+            depth = cam.depth_of(world[n])
+            if depth <= 0.1:
+                continue
+            r = max(1, int(self.joints[n].radius * cam.focal(screen_w) / depth))
             draw.ellipse([sp[0] - r, sp[1] - r, sp[0] + r, sp[1] + r], fill=self._joint_color)
         return img
 
@@ -384,8 +393,11 @@ def frame_motion(sk: "Skeleton3D", n: int, screen_w: int, screen_h: int,
     """
     mover = apply_walk if apply is None else apply      #: 运行时解析：本函数定义在
     pts = []                                            #: `apply_walk` **之前**，默认参数
-    for i in range(max(1, int(n))):                     #: 求值时那个名字还不存在
-        mover(sk, i / float(n))
+    samples = max(1, int(n))                            #: 求值时那个名字还不存在
+    # #1067：除数同样钳到 samples——旧实现 `i / float(n)` 在 n=0 时抛
+    # ZeroDivisionError（range 已表达「n≤0 至少采样一次」的意图，除数却未同步）。
+    for i in range(samples):
+        mover(sk, i / float(samples))
         pts.extend(sk.world_pos(k) for k in sk.joints)
     return fit_camera(pts, screen_w, screen_h, **kw)
 
@@ -443,7 +455,18 @@ def apply_walk(sk: "Skeleton3D", phi: float, *, step: float = WALK_STEP,
         hip_y = min(ay + math.sqrt(max(0.0, ((l1 + l2) * WALK_LEG_EXT) ** 2 - dz * dz))
                     for dz, ay, _ in tgt.values())
     cz = math.radians(tilt)
-    sk.center = (lateral + h0 * math.sin(cz), hip_y - h0 * math.cos(cz), z_root)
+    # #1067：x 基准与 z_root 对称保留。旧实现 x 分量纯由骨盆侧摆 `lateral`
+    # （±2.5cm）构成、丢弃原 center.x ⇒ `human_skeleton(center=(2.0,...))` 走
+    # 一步横向瞬移约 2 m（实测 2.0 → 0.096）。
+    # `apply_walk` 是**就地累积式**（每帧读 `sk.center` 再写回），故基准 x 必须
+    # 只冻结一次：首次调用时记入 `sk._walk_x0`，后续帧都从它出发，否则每帧把
+    # 上一帧的 lateral 再累加进去（实测 x=0 骨架会漂成 0.096/0.144/0.096/…）。
+    x_root = getattr(sk, "_walk_x0", None)
+    if x_root is None:
+        x_root = sk.center[0]
+        sk._walk_x0 = x_root
+    sk.center = (x_root + lateral + h0 * math.sin(cz),
+                 hip_y - h0 * math.cos(cz), z_root)
     # ── 腿：支撑 IK × 摆动曲线，切换处交叉淡化
     for side in ("l", "r"):
         psi = psi_of[side]

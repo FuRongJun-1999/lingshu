@@ -24,13 +24,18 @@ import time
 _log = logging.getLogger(__name__)
 
 
+import math
+
+
 class LongTermMemoryGate:
     """长期记忆写入决策器（挂载于引擎，纯标准库）。"""
 
     # 默认权重（可配；场景化权重调整留作后续）
     DEFAULT_WEIGHTS = {
         "novelty": 0.30,   # 新信息度（核心词新颖比例；参考集 = 全库既有知识）
-        "trust": 0.25,     # 信任（来源可信度）
+        "trust": 0.25,     # 信任（#501 如实标注：取 self_model.trust_state 的
+                           #   会话级全局信任，**非**本次快照的来源维度——
+                           #   evaluate 的 source 形参当前未参与评分）
         "d2": 0.15,        # 信息差二阶变化（加速=新领域涌现）
         "t2": 0.15,        # 信任二阶变化（信任跃升=里程碑/校准锚点）
         "mention": 0.15,   # 提及次数（重复=重要性信号）
@@ -310,6 +315,65 @@ class LongTermMemoryGate:
         self._known_total_len = total_len
         return union, counts, per_node, sig
 
+    @staticmethod
+    def _template_of(text: str):
+        """把 ASCII token 抹成占位符 ⇒ (句型模板, token 集合)。#573 / #213 建议2。
+
+        模板 = 正文里每个「ASCII 标识符整体」（数字/主机名/域名/IP/CVE 号/账号…）
+        被替换成 `\\x00` 之后的字符串；token 集合 = 被抹掉的那些 token。
+
+        「同模板、不同 token」⇒ 内容确实变了（高新奇）；「同模板、同 token」⇒ 重复。
+        这是 `_core_grams` 比例判据的补充：比例判据里新增/消失的 gram 会相互抵消，
+        句越长上限越低（实测 25 字句上限仅 6/25=0.24，远低于 0.75 阈值）。
+        """
+        import re as _re
+        if LongTermMemoryGate._ASCII_TOKEN is None:
+            LongTermMemoryGate._ASCII_TOKEN = _re.compile(
+                r'[A-Za-z0-9][A-Za-z0-9_.\-:/@]*')
+        toks = []
+
+        def _sub(m):
+            tok = m.group(0)
+            if len(tok) >= 2:        # 与 _core_grams 同口径：单字符 token 是噪音
+                toks.append(tok)
+                return "\x00"
+            return tok
+
+        tpl = LongTermMemoryGate._ASCII_TOKEN.sub(_sub, text or "")
+        return tpl, frozenset(toks)
+
+    def _known_templates(self, exclude_id: str = None) -> dict:
+        """已知内容的「句型模板 → token 集合的集合」索引（带签名缓存）。"""
+        sig = self._known_sig
+        cache = getattr(self, "_tpl_cache", None)
+        if (cache is not None and sig is not None
+                and getattr(self, "_tpl_sig", None) == sig):
+            idx = cache
+        else:
+            rows = self.engine.store.conn.execute(
+                "SELECT id, content FROM nodes").fetchall()
+            idx = {}
+            for nid, content in rows:
+                tpl, toks = LongTermMemoryGate._template_of(content)
+                idx.setdefault(tpl, set()).add(toks)
+            self._tpl_cache = idx
+            self._tpl_sig = sig
+        if exclude_id:
+            # 排除自身节点：其模板/token 不应让「自己」显得已知
+            node = self.engine.store.get_node(exclude_id)
+            if node is not None:
+                tpl, toks = LongTermMemoryGate._template_of(node.content)
+                seen = idx.get(tpl)
+                if seen is not None and toks in seen:
+                    idx = dict(idx)
+                    rest = set(seen)
+                    rest.discard(toks)
+                    if rest:
+                        idx[tpl] = rest
+                    else:
+                        idx.pop(tpl, None)
+        return idx
+
     def _novelty(self, content: str, existing_id: str = None) -> float:
         """新信息度（v1.27 改：参考集覆盖全库，并真正使用 existing_id）。
 
@@ -317,6 +381,19 @@ class LongTermMemoryGate:
         v1.15 起用核心词新颖比例（非整句相似度），但参考集取的是排名前 80 条，
         「库里的老知识」对它不可见：同一内容只改写入先后/importance，
         新奇度就在 1.0 与 0.0 两端跳变。现按全库统计，且 existing_id 生效。
+
+        #573（#213 建议2 落地）：**比例判据在中等长度句子上有系统性上限**——
+        同模板只换一个 ASCII token 时，新增 gram 与消失 gram 数量相等，
+        比例上相互抵消，且上限随句长下降（实测 25 字句仅 6/25=0.24）。
+        故在比例之外**并列一条模板判据**（任一命中即判变更）：
+          · 模板命中已知模板，但 **token 集合不同** ⇒ 内容确实变了 ⇒ 取 1.0；
+          · 模板命中且 token 集合相同 ⇒ 真重复 ⇒ 保持比例值（会被判低）；
+          · 模板未命中（新句型）⇒ 保持比例值（比例判据本就够用）。
+        这样既修好「换数字/账号/域名/IP」这一族，又不动「真重复」与「全新句型」
+        的既有语义（比例判据仍是这两类的唯一依据）。
+        判据来源：issue #573 正文 + `_core_grams` docstring 的「未修」条 + #213 §六·建议2。
+        削掉的判别力：模板相同而 token 不同时**不再看比例**（一律 1.0）——
+        这是有意的：该族的比例上限由句长决定、与改动重要性无关，继续用比例就是错的。
         """
         try:
             grams = self._core_grams(content)
@@ -327,8 +404,19 @@ class LongTermMemoryGate:
                 return 0.5  # 无参照：中性
             novel_grams = sum(1 for g in grams if g not in known)
             ratio = novel_grams / max(1, len(grams))
-            return max(0.0, min(1.0, ratio))
+            ratio = max(0.0, min(1.0, ratio))
+            # #573：模板判据（同模板换 token ⇒ 变更）
+            try:
+                tpl, toks = LongTermMemoryGate._template_of(content)
+                seen = self._known_templates(exclude_id=existing_id).get(tpl)
+                if seen is not None and toks not in seen:
+                    return 1.0
+            except Exception:
+                _log.debug("longterm_gate: 模板判据失败，退回 bigram ratio 主判据", exc_info=True)
+                pass                      # 模板判据失败不得影响主判据
+            return ratio
         except Exception:
+            _log.debug("longterm_gate: novelty 参照读取失败，按 0.5 中性继续", exc_info=True)
             pass
         return 0.5  # 无参照：中性
 
@@ -348,18 +436,40 @@ class LongTermMemoryGate:
 
         novelty：调用方已算出的新奇度（如 prefeed 已算过）。给了就复用，
         避免对同一输入重复全库扫描（lingshu #389）。语义与内部计算一致。
+
+        #501 如实标注（审计面，判据不变）：`source` 与 `tags` 形参当前**未参与
+        评分**（保留以维持调用方契约）；`trust` 分量取 `self_model.trust_state`
+        的**会话级全局信任**，不是本次快照来源（user/assistant/external/…）的
+        可信度。把来源真正接进评分属设计裁定（改变落层行为），不在本标注内。
         """
         if novelty is None:
             novelty = self._novelty(content, existing_id)
+        # #2379：调用方直传的 novelty 此前零校验——NaN 经 min(1.0, nan)=1.0
+        # 的语义陷阱被译成 imp=1.0 长期层满分（与 #2124/#457/#402 的「非有限
+        # 不得给出对己有利结论」相反），features.novelty=nan 还使返回体严格
+        # JSON 不可序列化；5.0/-1.0/inf 同样直通。内部自算路径 _novelty 有
+        # [0,1] 钳制（:403-404），调用方路径对齐同款值域（fail-closed）。
+        if isinstance(novelty, bool) or not isinstance(novelty, (int, float)):
+            raise ValueError("novelty 必须是数值，收到 %r" % (novelty,))
+        if not math.isfinite(novelty) or not (0.0 <= novelty <= 1.0):
+            raise ValueError("novelty 必须落在 [0,1]，收到 %r" % (novelty,))
         trust = self._trust()
         d2 = self._d_second()
         t2 = self._trust_second()
         n = self._mention(existing_id)
         w = self.weights
-        imp = (w["novelty"] * novelty + w["trust"] * trust
+        raw = (w["novelty"] * novelty + w["trust"] * trust
                + w["d2"] * d2 + w["t2"] * t2
                + w["mention"] * min(1.0, 0.15 * (n + 1) / (n + 2)))  # log 平滑近似
-        imp = max(0.0, min(1.0, imp))
+        # B-10（lingshu #114 待裁清单）：权重按各自分量上确界重归一（不改阈值）。
+        # 分量上确界：novelty/trust/mention ∈ [0,1] ⇒ 1.0；d2/t2 钳制 ⇒ 0.5。
+        # 旧实现合计上确界 = 0.85 < 1.0 ⇒ 满特征也只有 0.85，与 0.5 中性信任
+        # 组合后结构性压低长期层可达性（#114 主诉）。重归一后任意权重下
+        # imp ∈ [0,1] 且上确界恢复 1.0；自定义 weights 同步自适应。
+        sup = (w["novelty"] * 1.0 + w["trust"] * 1.0
+               + w["d2"] * 0.5 + w["t2"] * 0.5
+               + w["mention"] * 1.0)
+        imp = max(0.0, min(1.0, raw / sup if sup > 0 else 0.0))
         if imp >= self.LONG_TERM_THRESHOLD:
             layer = "long_term"
         elif imp >= self.KNOWLEDGE_THRESHOLD:
@@ -499,6 +609,7 @@ class LongTermMemoryGate:
                     else:
                         existing_id = cand.id
         except Exception:
+            _log.debug("longterm_gate: 相似节点预判失败，按无既有继续", exc_info=True)
             pass
         return {"existing_id": existing_id, "divergent_id": divergent_id,
                 "ev": self.evaluate(content, source, tags, existing_id)}
@@ -545,6 +656,7 @@ class LongTermMemoryGate:
                                          source_evidence="inferred")
             return len([x for x in links if x[0].id != node_id])
         except Exception:
+            _log.debug("longterm_gate: 相似边推断失败，按 0 条继续", exc_info=True)
             return 0
 
     def _snapshot_write(self, content: str, source: str, tags: list,
@@ -593,13 +705,10 @@ class LongTermMemoryGate:
         else:
             decided = "context"
 
-        # 情境层（<0.4）且无显式提示：快照不落库（返回评估，防低价值快照污染）。
-        if decided == "context" and importance_hint is None:
-            return {"status": "discarded", "importance": round(imp, 3),
-                    "layer": "context", "features": ev["features"],
-                    "decision": ev["decision"],
-                    "write_failed": False, "write_error": None}
-
+        # B-12（lingshu #114 待裁清单）：情境层快照**落库**（旧实现直接丢弃
+        # ——丢弃不可逆，情境层记忆在睡眠巩固时无法再评估提升）。快照以
+        # context 层身份走下方 add_context 既有腿落库，返回 node_id。
+        # 「防低价值快照污染」由既有 decay/回收机制承担，不在入口丢弃。
         node_id = None
         if existing_id:
             node = engine.store.get_node(existing_id)
@@ -676,6 +785,7 @@ class LongTermMemoryGate:
                 engine.protect_node(node_id, f"LongTermMemoryGate:{source}")
                 result["protected"] = True
             except Exception:
+                _log.warning("longterm_gate: protect_node 失败（node=%s source=%s），protected=False", node_id, source, exc_info=True)
                 result["protected"] = False
             # #770：关联边（与最相似知识节点建 similar 边）移到**事务提交之后**
             # ——该段调 `search_content`，其命中计数腿自开独立连接写回，留在本事务
@@ -707,6 +817,7 @@ class LongTermMemoryGate:
         try:
             novelty = self._novelty(content)
         except Exception:
+            _log.debug("longterm_gate: novelty 计算失败，按 0.5 中性继续", exc_info=True)
             novelty = 0.5
         if novelty < self.NOVEL_TRIGGER:
             # #292：`degraded` 键**恒在场**（本路径无降级面 ⇒ `[]`），使 docstring
@@ -797,7 +908,15 @@ class LongTermMemoryGate:
         try:
             from .core import MemoryLayer, _finite_clamp
             nodes = engine.store.get_layer_nodes(MemoryLayer.CONTEXT)
-            for node in nodes:
+            # dsh-bounty #1794（#665 纪律漏网点）：旧实现循环体内裸
+            # `engine.store.conn.commit()`——它不是 `@_transactional` 方法、体内
+            # 无 `_tx` 包装，`_commit_locked()` 在调用方外层事务（depth==1）内
+            # 仍会真提交 ⇒ 调用方「先 promote 再失败回滚」时提升被固化成
+            # 「回滚了但已生效」（假原子性）。修法对齐 `write_snapshot`：整段
+            # 写入包进 `with store._tx():`——独立调用时 depth==1 真提交（行为
+            # 不变）；被外层事务调进来时 depth==2 走 SAVEPOINT，提交权归外层。
+            with engine.store._tx():
+              for node in nodes:
                 if len(promoted) >= limit:
                     break
                 ev = self.evaluate(node.content, "promote", node.tags, node.id)
@@ -815,15 +934,19 @@ class LongTermMemoryGate:
                         "UPDATE nodes SET importance=?, layer=?, tags=? WHERE id=?",
                         (new_imp, MemoryLayer.KNOWLEDGE.value,
                          _json.dumps(tags_new, ensure_ascii=False), node.id))
-                    engine.store.conn.commit()
+                    # #665/#770①：提交走 `_commit_locked()`（本块已包在 `_tx()`
+                    # 内：嵌套时 no-op、推迟到外层；独立调用时真提交）。
+                    engine.store._commit_locked()
                     if ev["layer"] == "long_term":
                         try:
                             engine.protect_node(node.id, "LongTermMemoryGate:promote")
                         except Exception:
+                            _log.warning("longterm_gate: 提升后 protect_node 失败（node=%s）", node.id, exc_info=True)
                             pass
                     promoted.append({"node_id": node.id,
                                      "importance": ev["importance"],
                                      "layer": ev["layer"]})
         except Exception:
+            _log.warning("longterm_gate: promote 批处理中途失败，返回已收集部分", exc_info=True)
             pass
         return promoted

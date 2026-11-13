@@ -1,0 +1,104 @@
+{
+  "guard": "tests/test_world_qualified_feedback.py",
+  "sources": [
+    "lingshu/world/seven_layer_loop.py",
+    "lingshu/core/core.py"
+  ],
+  "total": 23,
+  "baseline_failures": [
+    "test_constant_model_bias_is_revised_against_the_base_forecast",
+    "test_a_corrected_forecast_is_not_decayed_just_because_its_residual_is_zero",
+    "test_real_collision_is_execution_residual_and_does_not_revise_the_target",
+    "test_joint_residuals_remain_separate_and_only_target_error_is_revised",
+    "test_stale_target_does_not_consume_a_feedback_sample",
+    "test_stale_self_is_not_scored_but_fresh_target_can_be_revised",
+    "test_missing_target_forecast_keeps_revision_unqualified",
+    "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit",
+    "test_replayed_feedback_is_idempotent_and_preserves_the_recorded_success",
+    "test_changed_revision_context_is_not_committed",
+    "test_invalid_target_measurement_never_changes_revision[nan]",
+    "test_invalid_target_measurement_never_changes_revision[inf]",
+    "test_invalid_target_measurement_never_changes_revision[bool]",
+    "test_invalid_target_measurement_never_changes_revision[string]",
+    "test_invalid_target_measurement_never_changes_revision[huge-int]",
+    "test_feedback_requires_its_decision_target_tick[None]",
+    "test_feedback_requires_its_decision_target_tick[True]",
+    "test_feedback_requires_its_decision_target_tick[-1]",
+    "test_feedback_requires_its_decision_target_tick[99]",
+    "test_vertical_residual_is_measured_but_not_claimed_as_corrected",
+    "test_coordinate_goal_is_not_a_new_target_observation",
+    "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically"
+  ],
+  "mutations": [
+    {
+      "name": "reuse_corrected_residual_as_base_bias",
+      "test": "test_constant_model_bias_is_revised_against_the_base_forecast",
+      "assertion": "qualified revision retained the half-bias fixed point",
+      "changes": [
+        {
+          "file": "lingshu/world/seven_layer_loop.py",
+          "class": "ActionDecision",
+          "method": "_qualified_outcome",
+          "old": "innovation = [err[i] + applied[i] for i in range(2)]",
+          "new": "innovation = [err[i] for i in range(2)]"
+        }
+      ]
+    },
+    {
+      "name": "accept_stale_target_feedback",
+      "test": "test_stale_target_does_not_consume_a_feedback_sample",
+      "assertion": "stale target evidence revised state",
+      "changes": [
+        {
+          "file": "lingshu/world/seven_layer_loop.py",
+          "class": "ActionDecision",
+          "method": "_qualified_outcome",
+          "old": "target = self._feedback_component(forecast.get(\"predicted\"), observed_target, target_fresh)",
+          "new": "target = self._feedback_component(forecast.get(\"predicted\"), observed_target, True)"
+        }
+      ]
+    },
+    {
+      "name": "reuse_old_goal_context",
+      "test": "test_changed_goal_rejects_the_old_trace_without_rewriting_its_audit",
+      "assertion": "old goal evidence revised a new goal",
+      "changes": [
+        {
+          "file": "lingshu/world/seven_layer_loop.py",
+          "class": "ActionDecision",
+          "method": "_qualified_outcome",
+          "old": "if not isinstance(ctx, dict) or any(ctx.get(k) != v for k, v in expected.items()):",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "name": "score_stale_self_position",
+      "test": "test_stale_self_is_not_scored_but_fresh_target_can_be_revised",
+      "assertion": "stale self observation became execution error",
+      "changes": [
+        {
+          "file": "lingshu/world/seven_layer_loop.py",
+          "class": "ActionDecision",
+          "method": "_qualified_outcome",
+          "old": "execution = self._feedback_component(executed.get(\"predicted_self\"), observed_self, self_fresh)",
+          "new": "execution = self._feedback_component(executed.get(\"predicted_self\"), observed_self, True)"
+        }
+      ]
+    },
+    {
+      "name": "drop_core_feedback_policy",
+      "test": "test_core_forwards_qualified_policy_and_rejects_bad_policy_atomically",
+      "assertion": "core dropped feedback qualification policy",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "seven_layer_loop",
+          "old": "**feedback_options)",
+          "new": "**{})"
+        }
+      ]
+    }
+  ]
+}

@@ -155,8 +155,12 @@ REPO_DATA = os.path.join(REPO, "lingshu", "data")
 _GOLDEN_PIXELS = {
     "skeleton_walk.png": (
         "247c38432b4449ad03857c73f6ccb7fa5850ffee7704198f9d928165db174355", 1036800, (1440, 240)),
+    # 2026-10-27 #1066（关节半径改按相机深度换算）：demo 相机经 `look_at` 摆位
+    # （cz=-2.20 / pitch=-8°），关节世界 z=5.0 而真实相机深度约 7.2 ⇒ 旧公式把
+    # 关节画大了约 30%，像素金标随之更新。`skeleton_walk.png`（默认机位，世界 z
+    # 恰等于深度）逐像素不变（247c3843… 前后一致）——可作「影响面仅限非默认机位」的证据。
     "skeleton_demo.png": (
-        "365e6a3166984e6351d5871a9cd9b15a20383461c700e8cbfa9f199aa69dda74", 1440000, (1200, 400)),
+        "0a7b79bf0c83a56c52433a6c2eb3bbe43e9b8ec2454ec398a13b9baf70fbf1b2", 1440000, (1200, 400)),
 }
 
 # 文件字节级金标（**作者原设计的那一层，2026-10-15 恢复**）：分档键从 `PIL.__version__`
@@ -165,16 +169,25 @@ _GOLDEN_PIXELS = {
 # ⇒ 同一组合内**逐字节必须相等**（保住字节级判别力）；未登记组合**显式 SKIP 并打印当前组合**
 #   （不静默通过、也不误红）。像素层（上方 `_GOLDEN_PIXELS`）在任何组合下都恒验。
 _ZLIB_VERSION = getattr(Image.core, "zlib_version", "unknown")
+# 字节档断言口径（2026-11-02 二次定因）：sha 登记为**前缀**（16 hex = 64 bit）＋
+# **文件字节数**双验——runner 轮重打包会使同 combo 的字节漂移（见上），完整 sha
+# 无法预先登记（CI 日志只打 `got[:16]`）；像素层金标（`_GOLDEN_PIXELS`）仍为
+# 全长 sha 恒验。前缀+长度已足以判别「编码/元数据被动过」。
 _GOLDEN_PNG = {
-    # 记录机（Lead 出值的环境）：stock zlib
+    # 记录机（Lead 出值的环境）：stock zlib。
+    # 2026-11-01 CI runner 轮更新：同 ('12.3.0', '1.3.1') 组合下 skeleton_demo.png
+    # 字节 4068 → 4213（像素层金标 0a7b79bf… **恒验仍过**；同 run 里 skeleton_walk.png
+    # 与金标逐字节一致 ⇒ 渲染未变，变的只是打包轮的 IDAT 编码——即 :151 「版本串相同
+    # 而打包后端不同 ⇒ 字节仍变」的再现）。demo 档按 CI 新实测更新；walk 档不变。
     ("12.3.0", "1.3.1"): {
         "skeleton_walk.png": ("9fd99af8acf41522b7687b812712f55e573bb7df2ee95309558f0a9b4c38ad00", 3465),
-        "skeleton_demo.png": ("59ba23047da29e96d82ace9221ca5e99764992e6aab45bcc8836126eefa2ecbe", 4068),
+        "skeleton_demo.png": ("435cb60d6e7fa23d", 4213),
     },
-    # 本机（Windows / zlib-ng 构建的 Pillow 轮）：2026-10-15 实测
+    # 本机（Windows / zlib-ng 构建的 Pillow 轮）：2026-10-27 #1066 后实测
+    # `skeleton_walk.png` 未变；`skeleton_demo.png` 因关节半径修正而重压。
     ("12.3.0", "1.3.1.zlib-ng"): {
         "skeleton_walk.png": ("c5d21eb5ad9df7237b3b20c7a0a3033f436e58deeba199a55e32d43155db3d45", 3403),
-        "skeleton_demo.png": ("b786d387c77e3eac088e2329434cc0eb3c4cfb7014dc2bea2ace2385ba2fcc09", 3988),
+        "skeleton_demo.png": ("5456cab39aeb60dc9c4929d1e52ce8c6af678a0711483a8c265f6ed6d857e4d5", 4134),
     },
 }
 
@@ -721,12 +734,13 @@ def test_f1_demo_strip_bytes_frozen_and_gif_appended(tmp_path):
         print(f"[F1] 字节层 SKIP：未登记组合 {combo}（像素层与 PNG 结构仍已验）")
     else:
         for name, path in (("skeleton_walk.png", strip_png), ("skeleton_demo.png", demo_png)):
-            sha, nbytes = tier[name]
+            sha_prefix, nbytes = tier[name]
             got = _sha256(path); size = path.stat().st_size
             print(f"[F1] {name} 字节档 {combo}: file_sha256={got[:16]}…/{size} "
-                  f"金标={sha[:16]}…/{nbytes}")
+                  f"金标={sha_prefix[:16]}…/{nbytes}")
             assert size == nbytes, f"{name} 文件字节数变了：{size} != {nbytes}"
-            assert got == sha, f"{name} 文件字节与金标不同（像素未变而字节变 ⇒ 编码/元数据被动过）"
+            assert got.startswith(sha_prefix), (
+                f"{name} 文件字节与金标前缀不同（像素未变而字节变 ⇒ 编码/元数据被动过）")
 
     # ---- 追加的真 GIF
     assert open(gif, "rb").read(6) in (b"GIF87a", b"GIF89a"), "skeleton_walk.gif 不是合法 GIF"

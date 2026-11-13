@@ -1,12 +1,10 @@
 # silent_except_lint baseline —— 已登记的既有静默宽 except（issue #170）
 # 格式：<仓内相对路径><TAB><静默数>   （`#` 起为注释）
 # 语义：每文件**允许存在**的静默宽 except 上限；超上限或出现基线外新文件 ⇒ 退出 1。
+# 2026-11-12（#170 清偿第七批）lingshu/core/core.py 77 → 0：77 处防御性宽 except 补 _log.debug 审计（追溯链：#609「46→76」→ #653「76→78」→ 78→77 → 本笔「77→0」）；pathguard 29 处刻意静默有台账理由保留。
 # 基线来源：HEAD b846086 实测（python -X utf8 tools/silent_except_lint.py --update-baseline）。
-#   口径 = issue #170 统计脚本逐字（宽 except=Exception/裸；静默=handler 体无 warn/log/print/raise/audit/error）。
+#   口径：宽 except=Exception/裸；静默=#609 起 AST 结构判定（调用名链含 warn/log/print/raise/audit/error 子串，或 raise 语句）。
 #   两组读数对表：issue 原基线 a215d8b = 108/81；本 worktree b846086 实测 = 151 宽 / 114 静默。
-#   #609 判定 AST 化后重测（2026-10-15，fix/silent-except-ast-judgment）：core.py 46→76、
-#   TOTAL 114→144——新增 30 条均为旧子串口径的**伪记录放行面**（self._*_error = str(e) 纯赋值、
-#   error 仅出现在字典键/字符串字面量的 return/info.update），非新增缺陷；其余 19 文件零变化。
 #   （并行批次已改源码的那棵树会更高——本基线取**本工作区** b846086 的值，不与其它工作区混比。）
 #   重生成后请更新上一行的 HEAD 号。
 # ★基线可移植性：本值是 b846086 快照。合入其它在飞批次（#243/#248/#183/#299…）后
@@ -59,40 +57,50 @@
 
 # 2026-10-20 35b64f6（#487②） lingshu/_pathguard.py 25 → 29：新增 `_capture_argv_script_dir` 的 argv[0] 防御式兜底（`sys.argv` 读取 / `abspath`+`isfile` / `realpath` / 外层共 4 处宽 except ⇒ 返回中性值），与本模块既有「任何异常都不得改变导入语义」承重契约同款；不改 lint 判据。
 
+# 2026-11-08 (本笔) lingshu/core/longterm_gate.py 8 → 0，**只下调、无上调**（真实修复，非放宽判据）：
+#   · issue #170 第四批（#114 三条裁决落地后的联动清偿）：残余 8 处
+#     `except Exception: pass/缺省` 全部补 `_log.debug/_log.warning` 审计留痕
+#     （模板判据退回／novelty 参照 0.5／相似节点预判／相似边推断 4 处 debug；
+#     protect_node 失败 2 处＋promote 批处理 1 处 warning；novelty 计算失败 1 处 debug）——
+#     控制流零变化（返回值/缺省语义逐位不变），⇒ 按本文件语义「补审计动作」
+#     让工具数不到，不是把判据放宽。lint 读数：TOTAL 126 → 118。
+
+# 2026-11-08 (本笔) world 四文件 5 → 0，**只下调、无上调**（真实修复，非放宽判据；#170 第五批）：
+#   · brain_store.py 1→0：RPC 线程 except 补 _log.debug（异常仍经 outcome 队列回传，控制流零变化）；
+#   · channel_credibility.py 2→0：持久化读/写两处补 _log.debug（构造器先验/内存态语义不变）；
+#   · seven_layer_loop.py 1→0：可选导入回落补 _log.debug（「无模拟器」降级形态不变——
+#     2026-10-13 5603e28 登记的刻意静默面本轮升格为可观测，非取消降级）；
+#   · stable_lease.py 1→0：weak_at 防御计算补 _log.debug（名义到期回退不变，#pragma 注释保留）。
+#   ⇒ 五处均按本文件语义「补审计动作」让工具数不到。lint 读数：TOTAL 118 → 113。
+
+# 2026-11-08 (本笔) lingshu/core/component_resolver.py 7 → 0，**只下调、无上调**（真实修复，非放宽判据；#170 第六批）：
+#   · 7 处防御性宽 except（非法路径 realpath／cwd 不可用×2／帧不可用／帧内路径非法／
+#     告警通道失败×2）全部补 _log.debug 审计留痕——「任何异常都不得改变导入语义」
+#     承重契约与全部降级语义逐位不变（_pathguard 同族形态）。
+#   ⇒ 按本文件语义「补审计动作」让工具数不到。lint 读数：TOTAL 113 → 106。
+
 # ── 登记面 · 结束 ──
 
 lingshu/_pathguard.py	29
-lingshu/core/component_resolver.py	7
-lingshu/core/core.py	77
-lingshu/core/longterm_gate.py	7
-lingshu/core/provenance.py	4
+lingshu/core/activation.py	0
+lingshu/core/component_resolver.py	0
+lingshu/core/core.py	0
+lingshu/core/longterm_gate.py	0
 lingshu/core/structure_service.py	0
 lingshu/nn/hex_cnn.py	0
-lingshu/world/brain_store.py	1
-lingshu/world/channel_credibility.py	2
-lingshu/world/prediction.py	14
+lingshu/nn/hex_query.py	0
+lingshu/world/brain_store.py	0
+lingshu/world/channel_credibility.py	0
+lingshu/world/mesh_gen.py	0
+lingshu/world/prediction.py	0
+lingshu/world/scenario_cli.py	0
 lingshu/world/scene_model.py	0
-lingshu/world/seven_layer_loop.py	1
-lingshu/world/spacetime_consistency.py	2
-lingshu/world/stable_lease.py	1
+lingshu/world/seven_layer_loop.py	0
+lingshu/world/spacetime_consistency.py	0
+lingshu/world/stable_lease.py	0
 lingshu/world/wm_simloop.py	0
-lingshu/world/world3d.py	2
-lingshu/world/world_learner.py	3
-lingshu/world/world_model.py	2
+lingshu/world/world3d.py	0
+lingshu/world/world_learner.py	0
+lingshu/world/world_model.py	0
 
-# TOTAL 148
-
-# 2026-10-15 2d3bf15e（PR #429 重放） lingshu/core/core.py 47→46：#329 的 `_write_structure_record` 由「except Exception: return None」改为向调用方传播（留史失败即回滚，见 core.py 该处 docstring）⇒ 少 1 条静默；新增 lingshu/core/structure_service.py = 0。仅按合并态实读登记，不增豁免、不放宽 lint 判据。
-
-# 2026-10-15 6020eab lingshu/core/core.py  +1：FTS 索引挂载失败 ⇒ self._fts=None 回退原检索路径（LINGSHU_FTS 默认关闭，Retrieval docstring 声明「失败只回退原路径」）
-# 2026-10-15 6020eab lingshu/core/retrieval.py  新增 1：_doc() 的 json.loads 兜底 → 回退空标签（同模块 docstring：「所有方法失败都只让调用方回退原路径」）
-# 2026-10-15 #609 判定 AST 化后重测  lingshu/core/core.py 46→76（TOTAL 114→144）：静默判据由
-#   unparse 整体子串匹配改为 AST 结构判定（调用名链含 warn/log/print/raise/audit/error 子串＋raise
-#   语句）。新增 30 条＝旧口径伪记录放行面——10 条 self._vision_error/_body_error/... = str(e) 纯赋值
-#   （连调用都没有），20 条 error 仅出现在字典键名/字符串字面量（return {'status':'error','error':str(e)}
-#   / info.update(status='failed', error=str(e))，无任何日志/告警/上抛）。属判据收紧后的如实计入，
-#   非新增缺陷；源代码本身未动。其余 19 个文件计数零变化。
-# 2026-10-15 #653（fix/stedge-from-row-tolerant） lingshu/core/core.py 76→78（TOTAL 144→146）：新增
-#   `_tolerant_edges` 边侧逐行容错（#267 `_tolerant_nodes` 同款口径、同款双 except 形态——外层
-#   `except Exception` 跳过坏边、内层兜底取 row[0] 计数），理由已写在 core.py 该方法 docstring。
-#   仅按实读登记，不增豁免、不放宽 lint 判据。
+# TOTAL 29

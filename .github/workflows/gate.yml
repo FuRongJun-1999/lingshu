@@ -9,7 +9,7 @@ name: gate
 # 运行器：**GitHub 托管**（ubuntu-latest）——公开仓免费；**绝不用自托管 runner**
 #   （fork PR 可在自托管 runner 上执行任意代码 ⇒ 等于把内网/凭据暴露给任何提 PR 的人）。
 # 权限：最小化 contents: read（本 workflow 只读仓、不回写）。
-# 编码：PYTHONUTF8=1（对齐仓工作纪律第 15 条——命令执行统一 UTF-8，规避 GBK）。
+# 编码：PYTHONUTF8=1（对齐仓工作纪律「统一 UTF-8」——命令执行统一 UTF-8，规避 GBK）。
 #
 # 测试面实况（2026-10-08 本机实测，证据见报告）：
 #   · **脚本式**（PASS/FAIL + 退出码）：test_brain_store / test_wm_verify_unobserved /
@@ -74,6 +74,76 @@ env:
     tests/test_prediction_path_nodes_single_fetch.py
     tests/test_coggraph_utf8_bom.py
     tests/test_issue454_unpack_out_guard.py
+    tests/test_issue_get_edge_id_type_guard.py
+    tests/test_issue_increment_access_id_type_guard.py
+    tests/test_issue_traverse_start_id_type_guard.py
+    tests/test_issue_prune_action_logs_type_guard.py
+    tests/test_issue_get-incoming-edges_id_type_guard.py
+    tests/test_issue_get-outgoing-edges_id_type_guard.py
+    tests/test_issue_escalation_code_type_guard.py
+    tests/test_issue_prune_self_keep_type_guard.py
+    tests/test_issue_get_nodes_by_tag_type_guard.py
+    tests/test_issue_update_importance_type_guard.py
+    tests/test_issue_update_confidence_type_guard.py
+    tests/test_issue_get_skill_by_name_type_guard.py
+    tests/test_issue_search_skills_query_type_guard.py
+    tests/test_issue_recent_context_limit_type_guard.py
+    tests/test_issue_update_skill_confidence_type_guard.py
+    tests/test_issue_append_skill_procedure_type_guard.py
+    tests/test_issue_jaccard_arg_type_guard.py
+    tests/test_issue_expand_terms_query_type_guard.py
+    tests/test_issue_range_time_layer_type_guard.py
+    tests/test_issue_by_time_type_guard.py
+    tests/test_issue_subgraph_root_type_guard.py
+    tests/test_issue_find_cycles_depth_type_guard.py
+    tests/test_issue_spatiotemporal_center_type_guard.py
+    tests/test_issue_insight_content_type_guard.py
+    tests/test_issue_count_layer_type_guard.py
+    tests/test_issue_get_meta_key_type_guard.py
+    tests/test_issue_tag_node_missing_guard.py
+    tests/test_issue_verify_edge_id_type_guard.py
+    tests/test_issue_scene_pos_readable_guard.py
+    tests/test_issue_scene_path_points_readable_guard.py
+    tests/test_issue_untag_node_id_type_guard.py
+    tests/test_issue_query_layer_type_guard.py
+    tests/test_issue_scene_step_int_guard.py
+    tests/test_issue_rejected_path_type_guard.py
+    tests/test_issue_scene_trees_range_guard.py
+    tests/test_issue_search_layers_type_guard.py
+    tests/test_issue_insight_evidence_str_guard.py
+    tests/test_issue_scene_goal_str_guard.py
+    tests/test_issue_scene_water_bool_guard.py
+    tests/test_issue_blindspot_str_args_guard.py
+    tests/test_issue_scene_behavior_str_guard.py
+    tests/test_issue_add_path_id_str_guard.py
+    tests/test_issue_insight_importance_range_guard.py
+    tests/test_issue_auto_decay_interval_guard.py
+    tests/test_issue_conflict_self_guard.py
+    tests/test_issue_insight_conditions_type_guard.py
+    tests/test_issue_dedup_config_args_guard.py
+    tests/test_issue_insight_window_type_guard.py
+    tests/test_issue_add_edge_cs_type_guard.py
+    tests/test_issue_register_conflict_cs_type_guard.py
+    tests/test_issue_spatial_coords_type_guard.py
+    tests/test_issue_search_content_query_type_guard.py
+    tests/test_issue_export_path_type_guard.py
+    tests/test_issue_import_path_type_guard.py
+    tests/test_issue_set_meta_key_type_guard.py
+    tests/test_issue_decay_factor_range_guard.py
+    tests/test_issue_min_confidence_range_guard.py
+    tests/test_issue_scene_speed_negative_guard.py
+    tests/test_issue_time_core_arg_types_guard.py
+    tests/test_issue_gap_dual_arg_types_guard.py
+    tests/test_issue_protect_reason_empty_guard.py
+    tests/test_issue_blindspot_input_guard.py
+    tests/test_issue_hex_extract_args_guard.py
+    tests/test_issue_insight_level_type_guard.py
+    tests/test_issue_add_edge_missing_endpoint_guard.py
+    tests/test_issue_condition_normalize_nondict_guard.py
+    tests/test_issue281_insight_report_conditions_guard.py
+    tests/test_issue_context_cap_negative_guard.py
+    tests/test_issue_verdict_input_guard.py
+    tests/test_issue274_structural_influence_guard.py
     tests/test_issue521_activation_conflict_veto.py
     tests/test_issue481_snapshot_divergence.py
     tests/test_issue487b_launch_dir.py

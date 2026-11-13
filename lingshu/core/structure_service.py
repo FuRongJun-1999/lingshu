@@ -14,6 +14,7 @@ import sqlite3
 import ssl
 import struct
 import threading
+import time
 
 from .core import LayeredStore, Role
 from .structure_permissions import check_protected_directory
@@ -23,9 +24,26 @@ from .structure_writer import (ActorContext, Conflict, EventInput, PermissionDen
 MAX_MESSAGE = 1024 * 1024
 
 
-def _read_exact(connection, size):
+def _grant_names(grant, field):
+    """#1132：启动配置的名单必须是 JSON 数组；字符串不得被拆成逐字符授权。
+
+    `frozenset("instance-1")` 会得到 {'i','n','s',...} ⇒ 真正被指派的
+    `instance-1` 被拒，而单字符反而通过 `capabilities` 检查（授权面反转）。"""
+    value = grant.get(field, [] if field == "instances" else None)
+    if not isinstance(value, list) or not all(
+            isinstance(item, str) and item.strip() for item in value):
+        raise WriteError(f"grant {field} must be an array of nonempty strings")
+    return frozenset(value)
+
+
+def _read_exact(connection, size, *, deadline=None):
     parts = []
     while size:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("message read deadline exceeded")
+            connection.settimeout(remaining)
         part = connection.recv(size)
         if not part:
             raise EOFError("connection ended before the response")
@@ -35,17 +53,57 @@ def _read_exact(connection, size):
 
 
 def _receive(connection):
-    size = struct.unpack("!I", _read_exact(connection, 4))[0]
-    if size > MAX_MESSAGE:
-        raise WriteError("message exceeds the service limit; use history pagination")
-    return json.loads(_read_exact(connection, size).decode("utf-8"))
+    # 每次 recv 的超时不是整帧预算：持续发小片段的连接不能一直占住服务槽。
+    timeout = connection.gettimeout()
+    deadline = time.monotonic() + timeout if timeout is not None and timeout > 0 else None
+    try:
+        size = struct.unpack("!I", _read_exact(connection, 4, deadline=deadline))[0]
+        if size > MAX_MESSAGE:
+            raise WriteError("message exceeds the service limit; use history pagination")
+        # #1106：深层 JSON（~2 万层）让 json.loads 抛 RecursionError——它不是
+        # ValueError 子类，曾穿透 handler ⇒ 客户端只收 EOF，无法区分成功与失败。
+        try:
+            return json.loads(_read_exact(connection, size, deadline=deadline).decode("utf-8"))
+        except RecursionError as exc:
+            raise WriteError("message is too deeply nested") from exc
+        except json.JSONDecodeError as exc:
+            raise WriteError("message is not valid JSON") from exc
+    finally:
+        connection.settimeout(timeout)
 
 
 def _send(connection, value):
-    payload = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    try:
+        payload = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except RecursionError as exc:
+        raise WriteError("response is too deeply nested") from exc
     if len(payload) > MAX_MESSAGE:
         raise WriteError("response exceeds the service limit; request a smaller page")
     connection.sendall(struct.pack("!I", len(payload)) + payload)
+
+
+def _parse_grant(grant):
+    """#1107：启动期 grant 必须是显式类型——字符串会被 frozenset() 拆成单字符集。"""
+    if not isinstance(grant, dict):
+        raise WriteError("grant must be a JSON object")
+    identity = grant.get("identity")
+    if not isinstance(identity, str) or not identity.startswith("urn:lingshu:"):
+        raise WriteError("configure a unique certificate identity")
+    for name in ("subject", "namespace", "source"):
+        value = grant.get(name)
+        if not isinstance(value, str) or not value.strip():
+            raise WriteError("grant subject, namespace and source must be configured")
+    capabilities = grant.get("capabilities")
+    if not isinstance(capabilities, list) or not all(
+            isinstance(item, str) and item.strip() for item in capabilities):
+        raise WriteError("grant capabilities must be a list of text")
+    instances = grant.get("instances", [])
+    if not isinstance(instances, list) or not all(
+            isinstance(item, str) and item.strip() for item in instances):
+        raise WriteError("grant instances must be a list of text")
+    return identity, ActorContext(
+        grant["subject"], grant["namespace"], grant["source"],
+        frozenset(capabilities), frozenset(instances))
 
 
 def dispatch(writer, actor, request):
@@ -78,6 +136,11 @@ def dispatch(writer, actor, request):
         return result
     except TypeError as exc:
         raise WriteError("arguments do not match this business command") from exc
+    except (OverflowError, RecursionError) as exc:
+        # #1106：合法 JSON 也能让 sqlite3/astimezone 溢出或递归过深
+        # （before_rowid=10**100、occurred_at 时区越界）；不能让它穿过
+        # handler（客户端只会收到 EOF，无法区分成功与失败）。
+        raise WriteError("arguments are out of range or too deeply nested") from exc
 
 
 class _Handler(socketserver.BaseRequestHandler):
@@ -169,15 +232,10 @@ def load_service(config_file, *, bind_and_activate=True):
     check_protected_directory(root, [*files.values(), *extra])
     principals = {}
     for grant in config["principals"]:
-        identity = grant["identity"]
-        if not identity.startswith("urn:lingshu:") or identity in principals:
+        identity, actor = _parse_grant(grant)
+        if identity in principals:
             raise WriteError("configure a unique certificate identity")
-        if not all(isinstance(grant.get(name), str) and grant[name].strip()
-                   for name in ("subject", "namespace", "source")):
-            raise WriteError("grant subject, namespace and source must be configured")
-        principals[identity] = ActorContext(
-            grant["subject"], grant["namespace"], grant["source"],
-            frozenset(grant["capabilities"]), frozenset(grant.get("instances", ())))
+        principals[identity] = actor
     tls = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=str(files["ca"]))
     tls.keylog_filename = None
     tls.minimum_version = ssl.TLSVersion.TLSv1_2

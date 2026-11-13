@@ -1,0 +1,84 @@
+  PASS A1 同帧两条同类别匿名观测 → 两个节点（不被静默合并）
+  PASS A2 快照有两个不同 eid（每观测一个键）
+  PASS A3 两个观测位置都被如实保留
+.  PASS B1 连续帧不新增 eid（两个实体各自被追踪，身份稳定）
+  PASS B2 两个实体位置各自推进到本帧观测值
+.  PASS C1 两条观测占用两个不同节点（无重复占用同一 eid）
+  PASS C2 占用者是既有的 X 与 Y（各一次）
+.  PASS D1 显式 eid 优先占用 → 匿名观测另起新节点（不抢 A）
+  PASS D2 A 的节点位置由显式观测更新
+.  PASS E1 单条匿名观测仍复用 2 体素内同类别既有节点（追踪半径未破）
+.== A 组：同帧不合并 ==
+  PASS A1 同帧两条同类别匿名观测 → 两个节点（不被静默合并）
+  PASS A2 快照有两个不同 eid（每观测一个键）
+  PASS A3 两个观测位置都被如实保留
+== B 组：跨帧连续追踪 ==
+  PASS B1 连续帧不新增 eid（两个实体各自被追踪，身份稳定）
+  PASS B2 两个实体位置各自推进到本帧观测值
+== C 组：匹配基于帧起点位置 ==
+  PASS C1 两条观测占用两个不同节点（无重复占用同一 eid）
+  PASS C2 占用者是既有的 X 与 Y（各一次）
+== D 组：显式 eid 优先 ==
+  PASS D1 显式 eid 优先占用 → 匿名观测另起新节点（不抢 A）
+  PASS D2 A 的节点位置由显式观测更新
+== E 组：兼容（单观测复用） ==
+  PASS E1 单条匿名观测仍复用 2 体素内同类别既有节点（追踪半径未破）
+
+===== SUMMARY 10/10 通过 =====
+VERDICT=PASS（issue #226 守卫：身份关联一一匹配；就地改写不污染匹配）
+...............................
+36 passed, 57 warnings in 22.57s
+
+OLD ID REPLAY
+CASE fixed
+......
+6 passed in 0.42s
+
+CASE ignore_reserved_short_ids
+F
+=================================== FAILURES ===================================
+_________ test_anonymous_allocation_cannot_consume_a_later_explicit_id _________
+tests/test_identity_reserved_ids.py:24: in test_anonymous_allocation_cannot_consume_a_later_explicit_id
+    assert len(set(ids)) == 2, "anonymous allocation consumed a reserved explicit ID"
+E   AssertionError: anonymous allocation consumed a reserved explicit ID
+E   assert 1 == 2
+E    +  where 1 = len({'wm_308774'})
+E    +    where {'wm_308774'} = set(['wm_308774', 'wm_308774'])
+=========================== short test summary info ============================
+FAILED tests/test_identity_reserved_ids.py::test_anonymous_allocation_cannot_consume_a_later_explicit_id
+1 failed in 0.55s
+
+CASE ignore_existing_long_ids
+F
+=================================== FAILURES ===================================
+____________ test_long_fallback_cannot_overwrite_an_existing_entity ____________
+tests/test_identity_reserved_ids.py:36: in test_long_fallback_cannot_overwrite_an_existing_entity
+    assert len(model.nodes) == 3, "long fallback ID overwrote an existing entity"
+E   AssertionError: long fallback ID overwrote an existing entity
+E   assert 2 == 3
+E    +  where 2 = len({'wm_000000': WMNode(eid='wm_000000', category='old-a', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknow...tegory='old-b', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=1, last_seen=2, attrs={})})
+E    +    where {'wm_000000': WMNode(eid='wm_000000', category='old-a', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknow...tegory='old-b', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=1, last_seen=2, attrs={})} = <lingshu.world.world_model.UnifiedWorldModel object at 0x70708fa8ea50>.nodes
+=========================== short test summary info ============================
+FAILED tests/test_identity_reserved_ids.py::test_long_fallback_cannot_overwrite_an_existing_entity
+1 failed in 0.57s
+
+CASE ignore_reserved_long_ids
+F
+=================================== FAILURES ===================================
+____________ test_long_fallback_cannot_consume_a_later_explicit_id _____________
+tests/test_identity_reserved_ids.py:47: in test_long_fallback_cannot_consume_a_later_explicit_id
+    assert len(model.nodes) == 3, "long fallback consumed a reserved explicit ID"
+E   AssertionError: long fallback consumed a reserved explicit ID
+E   assert 2 == 3
+E    +  where 2 = len({'wm_000000': WMNode(eid='wm_000000', category='old', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknown'...category='new', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=2, last_seen=2, attrs={})})
+E    +    where {'wm_000000': WMNode(eid='wm_000000', category='old', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknown'...category='new', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=2, last_seen=2, attrs={})} = <lingshu.world.world_model.UnifiedWorldModel object at 0x7ffa6cdcea50>.nodes
+=========================== short test summary info ============================
+FAILED tests/test_identity_reserved_ids.py::test_long_fallback_cannot_consume_a_later_explicit_id
+1 failed in 0.59s
+
+MANIFEST
+ORIGINS origin-only=3 src-only=61 both=0 neither=0
+SUMMARY manifests=2 entries=64 match=64 mismatch=0 bytes_mismatch=0 missing=0 malformed=0 unparseable=0 exit_code=0
+
+TIME CORE
+exit=0; full JSON SHA256 2a03f5db4e3fae7c1f7e7906595aa01dfc2a23d42077c574c451d7554564605b

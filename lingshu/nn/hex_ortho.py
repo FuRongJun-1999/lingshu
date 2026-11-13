@@ -31,6 +31,7 @@ min_share 声明了却从未生效)。本模块把它显式化为可调用、可
 from __future__ import annotations
 from typing import Dict, List, Optional, Sequence, Tuple
 
+import math
 import numpy as np
 
 ALGO = "hex_ortho-0.1"
@@ -82,13 +83,22 @@ def gram_schmidt_kernels(kernels: Sequence[np.ndarray],
                 explainers.append(j)
             v = v - proj * u
         n1 = float(np.linalg.norm(v))
-        ratio = n1 / n0 if n0 > 1e-12 else 0.0
-        redundant = ratio < tol
+        # #2132：n0/n1 非有限时 ratio 落 0.0 会把损坏核报告成「完全重复解释」
+        # （new_info_ratio=0.0、redundant=True 无声剔除）——ratio 不可判时保持
+        # None 并点名，fail-closed 交给上层入口闸（本件 residual_pyramid 已在
+        # 入面拦截非有限）。
+        if not (math.isfinite(n0) and math.isfinite(n1)):
+            ratio = None
+        else:
+            ratio = n1 / n0 if n0 > 1e-12 else 0.0
+        redundant = ratio is not None and ratio < tol
         if not redundant:
             kept.append(v / (n1 + 1e-12))
             kept_idx.append(i)
         report.append({"idx": i, "name": kname(i, names),
-                       "norm": round(n0, 4), "new_info_ratio": round(ratio, 4),
+                       "norm": round(n0, 4),
+                       "new_info_ratio": (round(ratio, 4) if ratio is not None
+                                          else None),  # #2132
                        "redundant": bool(redundant),
                        "explained_by": explainers if redundant else []})
     return report
@@ -129,6 +139,35 @@ def residual_pyramid(lattice: np.ndarray, kernels: Sequence[np.ndarray],
         F0 = F0[0]
     flat0 = F0.ravel()
     norm0 = float(np.linalg.norm(flat0)) + 1e-12
+    # #2132：输入面 fail-closed——晶格/核含 NaN/inf 时 NaN 比较恒 False，两个
+    # 语义停因（orthogonal_exhausted/dead_zone）全部失效 ⇒ 逐层剥到核族耗尽并
+    # 误标良性 stop_reason="card_exhausted"（实测 NaN 晶格 + 2 核）、「判据已失效」
+    # 被伪装成正常耗尽；报告整体 NaN 化还静默违反声明值域 [0,1]。核族的 NaN 由
+    # gram_schmidt_kernels 的 ratio 判据另行消声（见下同票补钉）。
+    if not (np.isfinite(F0).all() and
+            all(np.isfinite(np.asarray(k, dtype=np.float64)).all() for k in kernels)):
+        return {"algo": ALGO, "layers": [], "depth": 0,
+                "stop_reason": "invalid_input", "energy_spectrum": [],
+                "orthogonality_audit": {}, "residual_share": None,
+                "error": "lattice/kernels 含非有限值（NaN/inf）——判据不可判（#2132）"}
+    # #2521：#2132 只收了**输入面**（lattice/kernels），参数面一个闸都没有。
+    # 三个比较对 NaN 恒 False ⇒ `max_layers=nan` 让工程保险上界失效（depth 8→12）、
+    # `tol=nan` 让正交去重整段失效（dropped 7→0）、`dead_zone=nan`/负值让死区停因
+    # 永不触发（本该在 residual 0.0847 停第 1 层，实际剥到 0.0 并**改标**
+    # orthogonal_exhausted——停因读数是错的）。
+    for _n, _v in (("dead_zone", dead_zone), ("tol", tol)):
+        if not (isinstance(_v, (int, float)) and not isinstance(_v, bool)
+                and math.isfinite(float(_v)) and float(_v) >= 0.0):
+            return {"algo": ALGO, "layers": [], "depth": 0,
+                    "stop_reason": "invalid_input", "energy_spectrum": [],
+                    "orthogonality_audit": {}, "residual_share": None,
+                    "error": "%s=%r 非有限或为负——判据不可判（#2521）" % (_n, _v)}
+    if (isinstance(max_layers, bool) or not isinstance(max_layers, (int, np.integer))
+            or int(max_layers) < 1):
+        return {"algo": ALGO, "layers": [], "depth": 0,
+                "stop_reason": "invalid_input", "energy_spectrum": [],
+                "orthogonality_audit": {}, "residual_share": None,
+                "error": "max_layers=%r 须为正整数（#2521）" % (max_layers,)}
     keep, ortho_report = (orthogonal_pool(kernels, tol, names)
                           if use_orthogonal_pool
                           else (list(range(len(kernels))), []))
@@ -214,6 +253,14 @@ def residual_pyramid(lattice: np.ndarray, kernels: Sequence[np.ndarray],
 def pyramid_report(lattice: np.ndarray, kernels: Sequence[np.ndarray], **kw) -> Dict:
     """金字塔 + 一行式摘要(层数/停因/能量谱/去重数)——审计与日志用。"""
     r = residual_pyramid(lattice, kernels, **kw)
+    # #2521：#2132 让 residual_pyramid 对非法输入返回**不含** cumulative_share /
+    # orthogonality 的 dict；本函数此前无条件读这两个键 ⇒ 对恰好是 fail-closed
+    # 设计目标的输入抛 KeyError，把「不可判」变成崩溃并丢失 error 文案。
+    if r.get("stop_reason") == "invalid_input":
+        return {"depth": 0, "stop_reason": "invalid_input",
+                "residual_share": None, "cumulative_share": None,
+                "energy_spectrum": [], "dropped_redundant": 0,
+                "layers": [], "error": r.get("error")}
     return {"depth": r["depth"], "stop_reason": r["stop_reason"],
             "residual_share": r["residual_share"],
             "cumulative_share": r["cumulative_share"],

@@ -170,7 +170,13 @@ def solve_linear(a, b):
     n = len(a)
     if n == 0 or any(len(row) != n for row in a) or len(b) != n:
         raise PhysicsError("solve_linear：维度不匹配（A %d×?，b %d）" % (n, len(b)))
-    m = [[float(a[i][j]) for j in range(n)] + [float(b[i])] for i in range(n)]
+    n = len(b)
+    # #2426：docstring 逐字承诺「奇异 ⇒ PhysicsError（不返回 NaN 让下游静默拿
+    # 垃圾）」，但闸只有 `abs(pivot) < 1e-14`——`abs(nan) < 1e-14` 恒假 ⇒ 此前
+    # NaN 主元直接除法产出 [nan, nan]、inf 主元经 inf/inf 得 0.0 而返回一个
+    # 「看起来像真解」的 [0.0, 2.0]。构造增广矩阵时逐项过有限性闸。
+    m = [[_finite_num(a[i][j], "solve_linear.A[%d][%d]" % (i, j)) for j in range(n)]
+         + [_finite_num(b[i], "solve_linear.b[%d]" % i)] for i in range(n)]
     for col in range(n):
         piv = max(range(col, n), key=lambda r: abs(m[r][col]))
         if abs(m[piv][col]) < 1e-14:
@@ -238,10 +244,15 @@ def samples_from_track(track, eid=None):
         return []
     if eid is None:
         eid = track[0].get("entity", "_")
-    return samples_from_observations(
-        [{"tick": r["tick"], "entities": {r.get("entity", eid): {"pos": r["pos"]}}} for r in track],
-        eid, nested=True,
-    )
+    rows = []
+    for r in track:
+        p = r.get("pos")
+        if p is None:
+            # docstring 契约：「缺 pos ⇒ 由下游跳过」——旧实现 `r["pos"]` 直接 KeyError，
+            # `pos=None` 下游 TypeError，两种都不「跳过」（#2062）。
+            continue
+        rows.append({"tick": r["tick"], "entities": {r.get("entity", eid): {"pos": p}}})
+    return samples_from_observations(rows, eid, nested=True)
 
 
 def _check_samples(samples, need):
@@ -288,24 +299,31 @@ def fit_static(samples):
 
 
 def fit_uniform(samples):
-    """匀速直线：一次多项式逐轴 LS。"""
+    """匀速直线：一次多项式逐轴 LS（**tau 化**：拟合坐标 = t − t_ref，p0 即 t_ref 处取值）。
+
+    #2053：旧实现按**绝对 t** 拟合、`c[0]`（t=0 截距）直存 `p0`，而 `predict_at` 按
+    `t − t_ref` 锚定外推 ⇒ 观测不从第 0 拍起时预测整体平移 `v0·t_ref`（实测端到端
+    100 m）。tau 化后 `t_ref == 0` 的既有调用逐位不变（`t − 0.0 == t`）。
+    """
     ts = _check_samples(samples, 2)
-    c, rms = _per_axis(samples, ts, 1)
+    t0 = ts[0]
+    c, rms = _per_axis(samples, [t - t0 for t in ts], 1)
     return {"schema": PHYSICS_SCHEMA, "kind": "uniform",
             "p0": tuple(c[i][0] for i in range(3)),
             "v0": tuple(c[i][1] for i in range(3)),
-            "t_ref": ts[0], "residual_rms": rms, "n_samples": len(samples)}
+            "t_ref": t0, "residual_rms": rms, "n_samples": len(samples)}
 
 
 def fit_accelerated(samples):
-    """匀加速：二次多项式逐轴 LS（**加速度自由**）。"""
+    """匀加速：二次多项式逐轴 LS（**加速度自由**；tau 化同 #2053）。"""
     ts = _check_samples(samples, 3)
-    c, rms = _per_axis(samples, ts, 2)
+    t0 = ts[0]
+    c, rms = _per_axis(samples, [t - t0 for t in ts], 2)
     return {"schema": PHYSICS_SCHEMA, "kind": "accelerated",
             "p0": tuple(c[i][0] for i in range(3)),
             "v0": tuple(c[i][1] for i in range(3)),
             "a": tuple(2.0 * c[i][2] for i in range(3)),
-            "t_ref": ts[0], "residual_rms": rms, "n_samples": len(samples)}
+            "t_ref": t0, "residual_rms": rms, "n_samples": len(samples)}
 
 
 def fit_projectile(samples, gravity=DEFAULT_G, up=1):
@@ -323,14 +341,16 @@ def fit_projectile(samples, gravity=DEFAULT_G, up=1):
         raise PhysicsError("gravity 须为正有限值，得到 %r" % (gravity,))
     t0 = ts[0]
     gvec = tuple(-g if i == up else 0.0 for i in range(3))
+    taus = [t - t0 for t in ts]
     coeffs = []
     rms = 0.0
     for ax in range(3):
-        ys = [float(s[1][ax]) - 0.5 * gvec[ax] * (t - t0) ** 2 for t, s in zip(ts, samples)]
-        c = polyfit(ts, ys, 1)
+        ys = [float(s[1][ax]) - 0.5 * gvec[ax] * tu ** 2 for tu, s in zip(taus, samples)]
+        # #2053：残差拟合同样 tau 化——p0/v0 锚定 t_ref，与 predict_at 的外推口径一致
+        c = polyfit(taus, ys, 1)
         coeffs.append(c)
-        rms += sum((c[0] + c[1] * t + 0.5 * gvec[ax] * (t - t0) ** 2 - float(s[1][ax])) ** 2
-                   for t, s in zip(ts, samples))
+        rms += sum((c[0] + c[1] * tu + 0.5 * gvec[ax] * tu ** 2 - float(s[1][ax])) ** 2
+                   for tu, s in zip(taus, samples))
     return {"schema": PHYSICS_SCHEMA, "kind": "projectile", "gravity": g, "up": up,
             "g_vec": gvec,
             "p0": tuple(coeffs[i][0] for i in range(3)),
@@ -558,10 +578,26 @@ def predict_at(model, t):
             u_dir = [0.0, 0.0, 0.0]
             u_dir[ax] = math.cos(th)
             u_dir[up] = -math.sin(th)
-        a = 0.0 if model.get("locked") else float(model.get("accel", 0.0))
+        a_raw = float(model.get("accel", 0.0))
         v_s0 = float(model.get("v_s0", sum(float(model["v0"][i]) * u_dir[i] for i in range(3))))
-        s = v_s0 * tau + 0.5 * a * tau * tau
-        v_s = v_s0 + a * tau
+        if model.get("locked") and v_s0 <= 0.0:
+            # held（与 slope_friction_truth 的 `held = locks and v_s0 <= 0` 同口径）：
+            # 静摩擦托住——v_s0 < 0（上坡中）同样不动，旧实现 a=0 却照用 v_s0·tau
+            # ⇒ 匀速上坡永不停（#2054）。
+            s = 0.0
+            v_s = 0.0
+        else:
+            # stopping（a<0, v_s0>0）：摩擦只反对运动——t 超过 stop_time 后钳在
+            # stop_dist、v=0，不沿闭式二次式倒退上坡（#2088）。停止点位移用
+            # **完整二次式**在 t_stop 处取值（= v_s0²/2|a|，即 truth 的 stop_dist），
+            # 不得把 a 置零冻结整段历史（那会丢掉减速项，位移恰好多一倍）。
+            t_stop = v_s0 / (-a_raw) if (a_raw < 0.0 and v_s0 > 0.0) else None
+            if t_stop is not None and tau >= t_stop:
+                s = v_s0 * t_stop + 0.5 * a_raw * t_stop * t_stop
+                v_s = 0.0
+            else:
+                s = v_s0 * tau + 0.5 * a_raw * tau * tau
+                v_s = v_s0 + a_raw * tau
         drift = model.get("drift") or (0.0, 0.0, 0.0)
         p = tuple(float(model["p0"][i]) + u_dir[i] * s + float(drift[i]) * tau for i in range(3))
         v = tuple(u_dir[i] * v_s + float(drift[i]) for i in range(3))
@@ -584,7 +620,10 @@ def predict_trajectory(model, times, reflector=None):
 def projectile_truth(p0, v0, gravity=DEFAULT_G, up=1, ground=None):
     """抛体闭式真值：顶点时刻/**世界坐标**顶点高度（p0[up]+v0_up²/2g，#786 与 projectile_state 同口径）、（给地面时）落地时刻/水平射程/落地速度。"""
     up = _axis_of(up)
-    g = float(gravity)
+    # #2426：重力此前全裸——g=0 在 t_apex=v_up/g 抛裸 ZeroDivisionError；
+    # g=nan 时 t_apex/apex_height 双双为 None，与合法输入 v_up=0（「没有顶点」）
+    # 的返回形状完全相同，调用方无法判读是「无顶点」还是「重力坏了」。
+    g = _positive_num(gravity, "gravity")
     v_up = float(v0[up])
     p_up = float(p0[up])
     out = {"gravity": g, "up": up, "t_apex": None, "apex_height": None}
@@ -608,8 +647,9 @@ def projectile_truth(p0, v0, gravity=DEFAULT_G, up=1, ground=None):
 
 def damped_truth(p0, v0, k):
     """阻尼真值：时间常数、总滑行距离 `v0/k`、速度半衰期、位移半程时刻。"""
-    if k <= 0:
-        raise PhysicsError("damped_truth：k 须 > 0，得到 %r" % (k,))
+    # #2426：`k <= 0` 对 NaN 恒假 ⇒ 此前 k=nan 静默返回全 NaN 真值。改走
+    # `_positive_num`（有限性 + 正值双闸，同文件 drag2_truth 的既有口径）。
+    k = _positive_num(k, "k")
     return {"k": k, "tau": 1.0 / k, "stop_distance": vlen(v0) / k,
             "half_life": math.log(2.0) / k,
             "half_distance_time": math.log(2.0) / k,
@@ -625,8 +665,10 @@ def accelerated_truth(p0, v0, a, t):
 
 def circular_truth(center, radius, omega, up=1):
     """圆周真值：周期、线速度、向心加速度、每周期转角。"""
-    if radius <= 0:
-        raise PhysicsError("circular_truth：radius 须 > 0")
+    # #2426：`radius <= 0` 对 NaN 恒假 ⇒ 此前 radius=nan 时 speed/centripetal_accel
+    # 为 NaN 而 period/rev_per_second 仍是有限正常值（同一 dict 混两种可信度）。
+    radius = _positive_num(radius, "radius")
+    omega = _finite_num(omega, "omega")   # omega=0 合法（period=None 保留）
     w = abs(omega)
     return {"radius": radius, "omega": omega, "period": (2.0 * math.pi / w) if w > 0 else None,
             "speed": radius * w, "centripetal_accel": radius * w * w,
@@ -1313,8 +1355,22 @@ def slope_friction_truth(slope_deg, mu_k=0.0, mu_s=None, v_s0=None, gravity=DEFA
     out["incline_dir"] = tuple(u)
     if t is not None:
         t = _finite_num(t, "t")
-        s_along = 0.0 if held else (v_s0 * t + 0.5 * a * t * t)
-        v_along = 0.0 if held else (v_s0 + a * t)
+        if held:
+            s_along, v_along = 0.0, 0.0
+        elif a < 0.0 and v_s0 > 0.0:
+            # stopping：摩擦只反对运动——t 超过 stop_time 后钳在 stop_dist、v=0，
+            # 不再沿闭式二次式「倒退上坡」（#2088：同一返回体 stops/stop_dist 与
+            # s/v 自相矛盾；对 μ_s≥μ_k 的正常材料停后即被静摩擦托住）。
+            t_stop = v_s0 / (-a)
+            if t >= t_stop:
+                s_along = (v_s0 * v_s0) / (2.0 * (-a))
+                v_along = 0.0
+            else:
+                s_along = v_s0 * t + 0.5 * a * t * t
+                v_along = v_s0 + a * t
+        else:
+            s_along = v_s0 * t + 0.5 * a * t * t
+            v_along = v_s0 + a * t
         out["t"] = t
         out["s"] = s_along
         out["v"] = v_along
@@ -1374,7 +1430,12 @@ def fit_slope_friction(samples, up=1, gravity=DEFAULT_G, slope_deg=None, mu_k=No
         u = [0.0, 0.0, 0.0]
         u[incline_axis] = math.cos(th)
         u[up] = -math.sin(th)
-    c, _rms0 = _per_axis(samples, ts, 2)          # 第二项已是 rms；统一用 _fit_rms 复核
+    # #2560：此前用**绝对** `ts` 拟合 ⇒ `p0`/`v0` 锚在 t=0，而 `predict_at` 按
+    # `tau = t - t_ref` 外推。观测不从 0 开始时（实测 t0=100 s）解出
+    # `v_s0=-227.18`（真值 1.5）、tau=0.5 预测误差 34,901 m，而 rms 仍 0.000000。
+    # 改用 tau 坐标（`uniform/accelerated/projectile/damped` 已按 #2053/#673 tau 化）。
+    _tau = [t - ts[0] for t in ts]
+    c, _rms0 = _per_axis(samples, _tau, 2)          # 第二项已是 rms；统一用 _fit_rms 复核
     # ⚠ 必须投影：up 轴坐标沿下坡是**减小**的（a_up = a·(−sinθ)），直接用 a_up 会把
     #    μ_k 解错（实测 a_up=−1.6025 而沿坡 a=+3.2050）。
     a_fit = sum(2.0 * c[i][2] * u[i] for i in range(3))
@@ -1494,7 +1555,8 @@ def fit_rolling(samples, up=1, gravity=DEFAULT_G, slope_deg=None, beta=None,
         u = [0.0, 0.0, 0.0]
         u[incline_axis] = math.cos(th)
         u[up] = -math.sin(th)
-    c, _rms0 = _per_axis(samples, ts, 2)
+    # #2560：同 fit_slope_friction——tau 坐标（否则 t0!=0 时整体错位）。
+    c, _rms0 = _per_axis(samples, [t - ts[0] for t in ts], 2)
     a_fit = sum(2.0 * c[i][2] * u[i] for i in range(3))   # 投影到下坡方向（同 slope_friction）
     if beta is None:
         if a_fit <= _EPS:
@@ -2134,12 +2196,25 @@ def _sim_model_from_state(state, env, dt):
     if med is not None and ter is not None:
         return base, False, "medium+terrain 同时作用：三维二次阻力+斜面摩擦无闭式解"
     if med is not None:
-        beta = med["drag_beta"]
-        mass = state.get("mass", med["mass"]) if has_kind else med["mass"]
+        # #2090：docstring 承诺 state「可另带 beta/mass 覆盖环境缺省」——旧实现
+        # beta 恒取环境值、mass 仅 has_kind 时认，拟合值静默作废（终端速度差 √2）。
+        beta = state.get("beta", med["drag_beta"])
+        beta = _finite_num(float(beta), "state['beta']")
+        if beta <= 0.0:
+            raise PhysicsError("state['beta'] 须为正有限值，得到 %r" % (beta,))
+        mass = state.get("mass", med["mass"])
+        mass = _finite_num(float(mass), "state['mass']")
         p0 = _vec3(base["p0"], "state['p0']")
         v0 = _vec3(base["v0"], "state['v0']")
         if state.get("v_s0") is not None:          # 命名口径（#①）：标量沿"下落方向"（正=向下）
             vs = _finite_num(state["v_s0"], "state['v_s0']")
+            if abs(v0[up]) > 1e-12 and abs(v0[up] - (-vs)) > 1e-9 * max(1.0, abs(vs)):
+                # #2091：v0 的 up 分量**非零**且与 v_s0 不一致 ⇒ 口径冲突（对齐
+                # _slide_state_v0 冻结口径 #①）。v0[up]==0（裸 state 的结构占位）
+                # 不算冲突——v_s0 是唯一有效声明，静默覆盖即既有语义（E2 依赖）。
+                raise PhysicsError(
+                    "state 同时携带 v_s0=%r 与不一致的 v0[up]=%r（口径 #①：二者只给其一）"
+                    % (vs, v0[up]))
             v0 = tuple(-vs if i == up else v0[i] for i in range(3))
         vt = math.sqrt(g / beta)
         v_up = v0[up]
@@ -2164,6 +2239,15 @@ def _sim_model_from_state(state, env, dt):
         beta = state.get("beta", state.get("i_over_mr2"))
         if state.get("v_s0") is not None:          # 命名口径（#①）：标量沿下坡方向
             v_s = _finite_num(state["v_s0"], "state['v_s0']")
+            v_s_from_v0 = sum(v0[i] * u[i] for i in range(3))
+            if abs(v_s_from_v0) > 1e-12 and abs(v_s_from_v0 - v_s) > 1e-9 * max(1.0, abs(v_s)):
+                # #2091：v0 的沿坡分量**非零**且与 v_s0 不一致 ⇒ 口径冲突（冻结口径 #①）。
+                # v0 沿坡分量为结构零（裸 state 占位）不算冲突——v_s0 即唯一有效声明
+                # （E2 依赖）；拟合模型的派生 v0（沿坡分量与 v_s0 一致）放行，
+                # 横向分量不参与本判据，留给 drift 面。
+                raise PhysicsError(
+                    "state 同时携带 v_s0=%r 与沿坡分量不一致的 v0=%r（口径 #①：二者只给其一）"
+                    % (v_s, v0))
             v0 = tuple(u[i] * v_s for i in range(3))
         else:
             v_s = sum(v0[i] * u[i] for i in range(3))
@@ -2251,13 +2335,30 @@ def _integrate_env(model, env, t, dt):
                 a[i] -= g_n * nrm[i]
             v_s = sum(v[i] * u[i] for i in range(3))
             mu_a = ter["mu_k"] * env["gravity"] * math.cos(ter["slope_rad"])
-            if abs(v_s) > _EPS:
-                dec = min(mu_a * h, abs(v_s)) / h          # 一步内不反向
+            g_a = sum(g_vec[i] * u[i] for i in range(3))       # 重力沿坡分量（nrm⊥u）
+            mu_s_a = ter["mu_s"] * env["gravity"] * math.cos(ter["slope_rad"])
+            if abs(v_s) <= _EPS and mu_s_a >= abs(g_a):
+                # #2578：静止且坡度不足以克服静摩擦 ⇒ 托住不起步
+                # （#2088 闭式裁定同口径：正常材料停后即被静摩擦托住）。
+                for i in range(3):
+                    a[i] -= g_a * u[i]
+            elif abs(v_s) > _EPS:
                 sgn = 1.0 if v_s > 0.0 else -1.0
                 for i in range(3):
-                    a[i] -= sgn * dec * u[i]
+                    a[i] -= sgn * mu_a * u[i]   # 全量动摩擦；防反向交给下方过零钳
         for i in range(3):
             v[i] += a[i] * h
+        # #2578：摩擦+重力合成使沿坡速度过零 ⇒ 停（静摩擦托住，#2088 同口径，
+        # 钳在速度更新与位置更新之间）。旧实现把摩擦冲量钳在 |v_s|
+        # （`min(mu_a*h, |v_s|)`"一步内不反向"），但重力沿坡分量在其上照加 ⇒
+        # `v_s' = g·sinθ·h` 恒非零，停止场景永不停止、每步匀速爬行
+        # （闭式停 0.399 vs 积分 1.93，误差 ∝ dt）。
+        if ter is not None and abs(v_s) > _EPS:
+            v_s2 = sum(v[i] * u[i] for i in range(3))
+            if v_s * v_s2 <= 0.0:
+                for i in range(3):
+                    v[i] -= v_s2 * u[i]      # 沿坡分量清零（停）
+        for i in range(3):
             p[i] += v[i] * h
         if ter is not None:
             # 接触约束：去掉法向速度分量，并把位置拉回 p0 所在的坡面（法向零位移）
@@ -2596,10 +2697,20 @@ def projectile_state(decl, t):
     p0 = _vec3(decl["p0"], "projectile_state.p0")
     v0 = _vec3(decl["v0"], "projectile_state.v0")
     g = _vec3(default_g_vec(up) if decl.get("g") is None else decl["g"], "projectile_state.g")
-    tau = float(t) - float(decl.get("t0") or 0.0)
+    # #2166：标量入口与向量入口（_vec3 族 isfinite 全检）同口径——修前 NaN 穿透：
+    # t0=nan/ground_z=nan 直接产出全 NaN 状态（p0=(0,nan,0) 走向量闸却被
+    # `decl.get("t0") or 0.0` 的标量通路绕过）。
+    def _finite_scalar(v, label):
+        f = float(v)
+        if not math.isfinite(f):
+            raise PhysicsError("projectile_state.%s 须为有限数，得到 %r" % (label, v))
+        return f
+    tau = float(t) - _finite_scalar(float(decl.get("t0") or 0.0), "t0")
     if tau <= 0.0:
         return p0, v0
     ground = decl.get("ground_z")
+    if ground is not None:
+        ground = _finite_scalar(float(ground), "ground_z")
     e = float(decl.get("restitution") or 0.0)
     if not decl.get("bounce") or ground is None or e <= 0.0:
         return (tuple(p0[i] + v0[i] * tau + 0.5 * g[i] * tau * tau for i in range(3)),

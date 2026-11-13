@@ -75,8 +75,6 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from . import hexgen_c1_real as C          # noqa: E402
 from . import hexgen_self_source as S      # noqa: E402  只读复用：8 类**解析原型**（词表）
 
@@ -448,6 +446,14 @@ def split_subjects(img, tol=C.TOL, d=6, min_px=C.MIN_PX, seam_min=None,
     `split_crit`/`n_split_events`。
     `jitter`：只供守门做**确定性**检查用（对提议点做固定抖动并比较结果是否同构）。"""
     img = np.asarray(img, np.float64)
+    # #2614（批一百一十九）：通道数 fail-loud——`bg_color` 的 `reshape(-1, 3)`
+    # 硬编码 3 通道，RGBA/灰度输入裸 ValueError（"cannot reshape array of
+    # size 256 into shape (3)"，不可读且不指参数名）。沿 #2528/#2528 族
+    # fail-loud 纪律（add_entity pos 参数裸 float() 已裁决同款）。
+    if img.ndim != 3 or img.shape[2] != 3:
+        raise TypeError(
+            "split_subjects: img 须为 H×W×3 的 RGB 数组，收到 shape=%r"
+            % (tuple(img.shape),))
     if seam_min is None:
         seam_min = SEAM_MIN if (seam_stat or SEAM_STAT) == "median" else SEAM_MIN_PROFILE
     merge_margin = MERGE_MARGIN if merge_margin is None else merge_margin

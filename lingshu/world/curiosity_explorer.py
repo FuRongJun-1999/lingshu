@@ -60,6 +60,15 @@ class CuriosityExplorer(WorldLearner):
 
     def __init__(self, size: int = 24, ground_level: int = 1, seed: int = 42,
                  window: int = 6, world=None):
+        if world is not None:
+            # #1096：注入路径回填 seed/ground_level（与 size 的 #345 反推同口径
+            # ——真实值在注入世界身上，形参缺省值与此刻实例无关）。否则
+            # `_build_world` 重建的是「形参缺省」的另一个世界，compare_policies
+            # 的「同世界配置（seed 固定 → 轨迹完全一致）」承诺在注入路径下失效
+            # （仓内 test_pursuit_prediction / test_world_qualified_feedback 都
+            # 是 world= 用法）。
+            seed = getattr(world, "seed", seed)
+            ground_level = getattr(world.world, "ground_level", ground_level)
         super().__init__(size=size, ground_level=ground_level, seed=seed,
                          window=window, world=world)
         # 保留构造配置（#345）：compare_policies 需按本实例的 size/seed 重建
@@ -69,6 +78,10 @@ class CuriosityExplorer(WorldLearner):
         self.last_observed: Dict[str, int] = {}
         self.obs_counts: Dict[str, int] = {}
         self._anomaly_counts: Dict[str, int] = {}
+        # #1095：同一 tick 已计过异常的 (eid, tick) 集——`_count_anomalies` 的
+        # 语义是「本轮观测 vs 上一预测」每轮一次，主链每 tick 调用一次；任何
+        # 外部诊断/审计再调一次不得重复累计（IG 的 anom_rate 会把它变成奖励）。
+        self._anomaly_counted_ticks: set = set()
         self._last_prediction: Dict = {}   # 生成先验（predict 填充，异常检测用）
         self.exploration_log: List[Dict] = []
         self.uncertainty_curve: List[float] = []
@@ -228,7 +241,12 @@ class CuriosityExplorer(WorldLearner):
     # ================= 好奇探索循环 =================
 
     def _count_anomalies(self, chosen: List[str]) -> int:
-        """生成先验注入理解：本轮观测 vs 上一预测 → 预测-观测不一致计数。"""
+        """生成先验注入理解：本轮观测 vs 上一预测 → 预测-观测不一致计数。
+
+        #1095：同一 tick 内重复调用**不重复累计**——语义是「本轮」观测 vs 上一
+        预测、每轮一次；计数按 (eid, tick) 去重（主链每 tick 调一次，外部诊断
+        /审计再调一次不得把同一不一致重复计入 IG 的 anom_rate）。
+        """
         n_anom = 0
         for eid in chosen:
             exp = self._last_prediction.get(eid)
@@ -237,12 +255,22 @@ class CuriosityExplorer(WorldLearner):
                     or exp.get("target_tick", self.tick) != self.tick):
                 continue
             if math.dist(exp["predicted"], tuple(n.pos)) >= exp["bound"]:
+                if (eid, self.tick) in self._anomaly_counted_ticks:
+                    continue
+                self._anomaly_counted_ticks.add((eid, self.tick))
                 self._anomaly_counts[eid] = self._anomaly_counts.get(eid, 0) + 1
                 n_anom += 1
         return n_anom
 
     def explore_tick(self, budget: int = 2, policy: str = "curiosity") -> Dict:
-        """探索一步：选择→预测→世界演化→真实观测→对比→学习。"""
+        """探索一步：选择→预测→世界演化→真实观测→对比→学习。
+
+        #2420：budget 浮点静默截断与 explore 同款（第三处姊妹面）——非 int
+        fail-loud；负数走 `_select` 既有钳 0 口径。
+        """
+        if isinstance(budget, bool) or not isinstance(budget, int):
+            raise TypeError("explore_tick 的 budget 必须是 int，收到 %r"
+                            % (budget,))
         chosen, scores = self._select(budget, policy)
         self.predict(horizon=1)
         self.world.step(n=1)
@@ -265,7 +293,17 @@ class CuriosityExplorer(WorldLearner):
         「ticks: 0」——返回值与实际行为矛盾（改前实测：tick 0→1、curve 长 1、
         返回 ticks=0）。final_uncertainty 在零 tick（curve 仍空）时回落到
         现场 `uncertainty()`，不再借偷跑的那一步撑出读数。
+
+        #2420：`ticks`/`budget` 的**浮点**此前 `int()` 静默截断（2.7→2）——
+        tick/预算计数非 int fail-loud 的裁决已在 #2409（SceneSimulator.step）
+        与 #2412（SimulationLoop.step/run）两处落地，本处是第三处姊妹面。
+        负数钳 0 的既有文档口径保持不变（bool 同拒）。
         """
+        if isinstance(ticks, bool) or not isinstance(ticks, int):
+            raise TypeError("explore 的 ticks 必须是 int tick 数，收到 %r"
+                            % (ticks,))
+        if isinstance(budget, bool) or not isinstance(budget, int):
+            raise TypeError("explore 的 budget 必须是 int，收到 %r" % (budget,))
         n = max(0, int(ticks))
         # #732：报数面与观测面同源——`budget` 仍如实回填输入，另加
         # `effective_budget`＝本轮每 tick **真正允许**的观测上限（`budget<=0`
@@ -291,9 +329,20 @@ class CuriosityExplorer(WorldLearner):
         return round(sum(bounds) / len(bounds), 4) if bounds else 1.0
 
     def probe(self, ticks: int = 15) -> Dict:
-        """全带宽冻结参数评估，沿用统一点误差与范围覆盖口径。"""
-        result = self.eval_phase(ticks, include_oracle=False)
-        return {**result, "probe_ticks": int(ticks)}
+        """全带宽冻结参数评估，沿用统一点误差与范围覆盖口径。
+
+        返回诚实（#1095，与 explore/#497 同口径）：ticks<=0 ⇒ 一步不推进、
+        `probe_ticks` 如实回传钳 0 后的值；零步时各 rate 无样本 ⇒ None。
+
+        #2421：浮点此前 `int()` 静默截断（2.7→2）——#2420 闸了同文件的
+        explore/explore_tick，本入口是同族第四处漏网；负数钳 0 口径不变。
+        """
+        if isinstance(ticks, bool) or not isinstance(ticks, int):
+            raise TypeError("probe 的 ticks 必须是 int tick 数，收到 %r"
+                            % (ticks,))
+        n = max(0, int(ticks))
+        result = self.eval_phase(n, include_oracle=False)
+        return {**result, "probe_ticks": n}
 
     def _build_world(self) -> "CuriosityExplorer":
         """标准测试世界：追逐链 player(wander)←wolf(seek)←rabbit(flee)。
@@ -319,14 +368,27 @@ class CuriosityExplorer(WorldLearner):
         """同世界配置（seed 固定 → 世界轨迹完全一致）公平对比各策略。
 
         返回每策略：探针命中率 / 最终不确定度 / 观测分布 / 不确定度曲线。
+        #1095：explore_ticks<=0 ⇒ 探索段零步（与 explore/#497 同口径），
+        `explore_ticks` 如实回传钳 0 后的值。
+
+        #2421：三参数浮点此前 `int()` 静默截断；且 `budget` 原样传给已被
+        #2420 闸住的 `explore_tick` ⇒ `compare_policies(budget=1.5)` 从底层
+        炸出不可读 TypeError（中层不自闸的半截状态）——本入口同款闸收口。
         """
+        for _nm, _v in (("explore_ticks", explore_ticks),
+                        ("probe_ticks", probe_ticks),
+                        ("budget", budget)):
+            if isinstance(_v, bool) or not isinstance(_v, int):
+                raise TypeError("compare_policies 的 %s 必须是 int，收到 %r"
+                                % (_nm, _v))
+        n_explore = max(0, int(explore_ticks))
         results = {}
         for pol in ("curiosity", "random", "round_robin"):
             ex = self._build_world()
             ex.observe()
             # 预热：全带宽观测 window tick（让关系/速度先成形，探索决策才有依据）
             ex.run(n=self.window)
-            for _ in range(max(1, int(explore_ticks))):
+            for _ in range(n_explore):
                 ex.explore_tick(budget=budget, policy=pol)
             pr = ex.probe(ticks=probe_ticks)
             results[pol] = {
@@ -337,12 +399,17 @@ class CuriosityExplorer(WorldLearner):
                 "bound_coverage": pr["bound_coverage"],
                 "mean_distance": pr["mean_distance"],
                 "mean_bound": pr["mean_bound"],
-                "final_uncertainty": ex.uncertainty_curve[-1],
-                "uncertainty_min": min(ex.uncertainty_curve),
+                "final_uncertainty": (ex.uncertainty_curve[-1]
+                                      if ex.uncertainty_curve
+                                      else ex.uncertainty()),
+                "uncertainty_min": (min(ex.uncertainty_curve)
+                                    if ex.uncertainty_curve
+                                    else ex.uncertainty()),
                 "obs_distribution": dict(ex.obs_counts),
                 "curve": list(ex.uncertainty_curve),
             }
-        return {"metric_version": 2, "budget": int(budget), "explore_ticks": int(explore_ticks),
+        return {"metric_version": 2, "budget": int(budget),
+                "explore_ticks": n_explore,
                 "results": results}
 
     # ================= 导出 =================

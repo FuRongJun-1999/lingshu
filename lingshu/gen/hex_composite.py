@@ -18,6 +18,8 @@ from typing import Dict, List, Optional, Tuple
 
 import math
 
+import re
+
 import numpy as np
 
 ALGO = "hex_composite-0.1"
@@ -288,6 +290,19 @@ def extract_attributes(img: np.ndarray, quadrant: str, color: str,
     尺寸档只在圆形部件上定义(配方语义如此;三角/条纹面积尺度不同,
     混标会扭曲分割点)——shape_hint 非 circle 时 size=None(诚实不猜)。
     """
+    # 自主发现（参数契约）：入口此前直接下标 `quadrant[1]` 并查 `_COLORS_RGB[color]`——
+    # `quadrant=None` 抛不可读 TypeError（'NoneType' object is not subscriptable）、
+    # `color="nope"` 抛裸 KeyError、`calib="x"` 抛 TypeError。现 fail-loud 且可读：
+    # quadrant 必须形如 r0/r1/r2；color 必须在 _COLORS_RGB；calib 必须是 dict/None。
+    if not isinstance(quadrant, str) or not re.fullmatch(r"r[0-8]", quadrant):
+        raise ValueError("quadrant 需为 9 宫格 pos（r0-r8），收到 %r" % (quadrant,))
+        raise ValueError("quadrant 需形如 r0/r1/r2（象限 0-2），收到 %r" % (quadrant,))
+    if not isinstance(color, str) or color not in _COLORS_RGB:
+        raise ValueError("color 必须是 _COLORS_RGB 中的颜色，收到 %r" % (color,))
+    if calib is not None and not isinstance(calib, dict):
+        raise TypeError("calib 必须是 dict 或 None，收到 %s" % type(calib).__name__)
+    if not hasattr(img, "shape") or len(img.shape) != 3:
+        raise TypeError("img 必须是 HxWxC 的 numpy 数组")
     qy, qx = divmod(int(quadrant[1]), 3)
     h, w = img.shape[0] // 3, img.shape[1] // 3
     crop = img[qy * h:(qy + 1) * h, qx * w:(qx + 1) * w].astype(int)
@@ -437,6 +452,17 @@ def judge_density(match: Optional[Dict], density: float,
     if not (math.isfinite(density) and math.isfinite(th_dense)):
         return {"state": "DEFER", "reason": "非有限输入",
                 "composite": match["composite"] if match else None}
+    # #2431：#196 的非有限闸只覆盖 density/th_dense，`match["score"]` 自己
+    # 没有闸——`nan < 0.999` 恒假 ⇒ 损坏的匹配分数被当成「配方完整」直落
+    # ACCEPT。函数 docstring 逐字承诺「任一非有限 ⇒ DEFER，不给通过态」，
+    # score 是同一判据链上的第三个数值，此处补齐。
+    if match is not None:
+        _sc = match.get("score")
+        if (isinstance(_sc, bool)
+                or not isinstance(_sc, (int, float))
+                or not math.isfinite(float(_sc))):
+            return {"state": "DEFER", "reason": "非有限输入",
+                    "composite": match.get("composite")}
     if match is None or match["score"] < 0.999:
         return {"state": "DEFER", "reason": "配方不完整",
                 "composite": match["composite"] if match else None}

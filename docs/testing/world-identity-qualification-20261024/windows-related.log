@@ -1,0 +1,56 @@
+....................................                                     [100%]
+36 passed, 57 warnings in 3.17s
+
+OLD ID REPLAY
+CASE fixed
+......                                                                   [100%]
+6 passed in 0.26s
+
+CASE ignore_reserved_short_ids
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_anonymous_allocation_cannot_consume_a_later_explicit_id _________
+tests\test_identity_reserved_ids.py:24: in test_anonymous_allocation_cannot_consume_a_later_explicit_id
+    assert len(set(ids)) == 2, "anonymous allocation consumed a reserved explicit ID"
+E   AssertionError: anonymous allocation consumed a reserved explicit ID
+E   assert 1 == 2
+E    +  where 1 = len({'wm_308774'})
+E    +    where {'wm_308774'} = set(['wm_308774', 'wm_308774'])
+=========================== short test summary info ===========================
+FAILED tests/test_identity_reserved_ids.py::test_anonymous_allocation_cannot_consume_a_later_explicit_id
+1 failed in 0.40s
+
+CASE ignore_existing_long_ids
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_long_fallback_cannot_overwrite_an_existing_entity ____________
+tests\test_identity_reserved_ids.py:36: in test_long_fallback_cannot_overwrite_an_existing_entity
+    assert len(model.nodes) == 3, "long fallback ID overwrote an existing entity"
+E   AssertionError: long fallback ID overwrote an existing entity
+E   assert 2 == 3
+E    +  where 2 = len({'wm_000000': WMNode(eid='wm_000000', category='old-a', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknow...tegory='old-b', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=1, last_seen=2, attrs={})})
+E    +    where {'wm_000000': WMNode(eid='wm_000000', category='old-a', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknow...tegory='old-b', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=1, last_seen=2, attrs={})} = <lingshu.world.world_model.UnifiedWorldModel object at 0x000001ADDA4F9010>.nodes
+=========================== short test summary info ===========================
+FAILED tests/test_identity_reserved_ids.py::test_long_fallback_cannot_overwrite_an_existing_entity
+1 failed in 0.40s
+
+CASE ignore_reserved_long_ids
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_long_fallback_cannot_consume_a_later_explicit_id ____________
+tests\test_identity_reserved_ids.py:47: in test_long_fallback_cannot_consume_a_later_explicit_id
+    assert len(model.nodes) == 3, "long fallback consumed a reserved explicit ID"
+E   AssertionError: long fallback consumed a reserved explicit ID
+E   assert 2 == 3
+E    +  where 2 = len({'wm_000000': WMNode(eid='wm_000000', category='old', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknown'...category='new', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=2, last_seen=2, attrs={})})
+E    +    where {'wm_000000': WMNode(eid='wm_000000', category='old', pos=(2.0, 1.5, 2.0), confidence=0.5, behavior_inferred='unknown'...category='new', pos=(8.0, 1.5, 8.0), confidence=0.5, behavior_inferred='unknown', first_seen=2, last_seen=2, attrs={})} = <lingshu.world.world_model.UnifiedWorldModel object at 0x000001C572E51130>.nodes
+=========================== short test summary info ===========================
+FAILED tests/test_identity_reserved_ids.py::test_long_fallback_cannot_consume_a_later_explicit_id
+1 failed in 0.40s
+
+MANIFEST
+ORIGINS origin-only=3 src-only=61 both=0 neither=0
+SUMMARY manifests=2 entries=64 match=64 mismatch=0 bytes_mismatch=0 missing=0 malformed=0 unparseable=0 exit_code=0
+
+TIME CORE
+exit=0; full JSON SHA256 2a03f5db4e3fae7c1f7e7906595aa01dfc2a23d42077c574c451d7554564605b

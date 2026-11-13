@@ -115,8 +115,14 @@ def test_pick_prompts_nonpositive_returns_empty(tmp_path):
            for i, z in enumerate(("center", "top left", "bottom right", "top", "left side"))]
     p = tmp_path / "lib.json"
     p.write_text(json.dumps(lib), encoding="utf-8")
-    assert M.pick_prompts(0, str(p)) == [], "pick_prompts(0) 应返回空集"
-    assert M.pick_prompts(-3, str(p)) == [], "pick_prompts(-3) 应返回空集"
+    # F23-21（#942 清单）：`n <= 0` 的口径由「返回空集」收紧为 **fail-closed**
+    # （与 CLI `_positive_int` 同一契约：非正整数 ValueError）——旧口径（返回空集）
+    # 的守卫随契约升级同步更新；正数照旧取前 N 条。
+    import pytest
+    with pytest.raises(ValueError, match="pick_prompts"):
+        M.pick_prompts(0, str(p))
+    with pytest.raises(ValueError, match="pick_prompts"):
+        M.pick_prompts(-3, str(p))
     assert len(M.pick_prompts(2, str(p))) == 2
     assert len(M.pick_prompts(5, str(p))) == 5
 

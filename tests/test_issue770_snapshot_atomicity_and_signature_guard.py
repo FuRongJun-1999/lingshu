@@ -466,11 +466,13 @@ def test_g9_transaction_boundary_not_leaked(tmp_path):
         assert r.get("node_id"), r
         assert not _in_transaction(e.store), (
             "write_snapshot 返回后连接仍在事务中 ⇒ 写锁泄漏给后续语句")
-        # 情境层且无 hint ⇒ 不落库腿同样不得留事务
+        # 情境层且无 hint ⇒ B-12 裁决后**落库**（丢弃不可逆）——落库腿同样
+        # 不得留事务（#114 裁决联动更新：旧「status=discarded」断言随裁决反转）。
         r2 = g.write_snapshot("事务边界探针：情境层不落库腿", source="probe")
-        assert r2.get("status") == "discarded", r2
+        assert r2.get("status") != "discarded", r2
+        assert r2.get("node_id"), r2
         assert not _in_transaction(e.store), (
-            "discarded 腿返回后连接仍在事务中（写锁泄漏）")
+            "情境层落库腿返回后连接仍在事务中（写锁泄漏）")
     finally:
         e.close()
 
@@ -488,10 +490,15 @@ def test_g10_return_shape_unchanged():
         assert r["write_failed"] is False and r["write_error"] is None, r
         assert set(r["features"]) == {"novelty", "trust", "d2", "t2", "mention"}, r
         assert r["layer"] in ("knowledge", "long_term", "context"), r
-        # 情境层且无 hint ⇒ 不落库（#214/#224 既有腿）
+        # 情境层且无 hint ⇒ B-12 裁决后落库（丢弃不可逆 ⇒ 以 context 层身份
+        # 走 add_context 既有腿；#114 裁决联动更新：旧「status=discarded」
+        # 断言随裁决反转——返回形态含 node_id 且 write_failed=False）。
+        # layer 不硬钉 context——B-10 重归一后同内容 imp 上移过 0.40 知识层
+        # 阈值是合法涟漪；只钉「落库成功＋键集完整＋非丢弃」。
         r2 = g.write_snapshot("正对照探针：情境层不落库腿内容")
-        assert r2.get("status") == "discarded", r2
-        assert r2.get("layer") == "context", r2
+        assert r2.get("status") != "discarded", r2
+        assert r2.get("layer") in ("knowledge", "long_term", "context"), r2
+        assert r2.get("node_id"), r2
         assert r2.get("write_failed") is False and r2.get("write_error") is None, r2
         # 层级/重要度提升失败仍可观测（#292 腿：键在且取值与成功路径不同）
         assert LongTermMemoryGate is not None

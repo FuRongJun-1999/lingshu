@@ -1,0 +1,44 @@
+===== skip_frame_preflight =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_bad_later_row_preserves_the_live_frame[conditions] ___________
+tests\test_world_observation_atomicity.py:54: in test_bad_later_row_preserves_the_live_frame
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b'\xb0' != b'8'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_observation_atomicity.py::test_bad_later_row_preserves_the_live_frame[conditions]
+1 failed in 0.27s
+
+===== validate_first_row_only =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_bad_later_row_preserves_the_live_frame[conditions] ___________
+tests\test_world_observation_atomicity.py:54: in test_bad_later_row_preserves_the_live_frame
+    assert frozen(model) == before, "WM_REJECTED_FRAME_CHANGED_STATE"
+E   AssertionError: WM_REJECTED_FRAME_CHANGED_STATE
+E   assert b'\x80\x04\x9...zero\x94uusu.' == b'\x80\x04\x9...zero\x94uusu.'
+E
+E     At index 3 diff: b';' != b'8'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_observation_atomicity.py::test_bad_later_row_preserves_the_live_frame[conditions]
+1 failed in 0.28s
+
+===== initialize_buffers_before_validation =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+__ test_first_rejection_does_not_initialize_prediction_buffers[conservative] __
+tests\test_world_observation_atomicity.py:78: in test_first_rejection_does_not_initialize_prediction_buffers
+    assert frozen(model) == before, "WM_FIRST_REJECTION_INITIALIZED_BUFFERS"
+E   AssertionError: WM_FIRST_REJECTION_INITIALIZED_BUFFERS
+E   assert b'\x80\x04\x9...st\x94}\x94u.' == b'\x80\x04\x9...?\xe6ffffffu.'
+E
+E     At index 3 diff: b'|' != b'N'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_world_observation_atomicity.py::test_first_rejection_does_not_initialize_prediction_buffers[conservative]
+1 failed in 0.28s

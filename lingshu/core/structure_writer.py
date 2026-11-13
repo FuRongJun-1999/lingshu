@@ -3,6 +3,7 @@
 Standard library only. Use through structure_service for untrusted workers;
 this in-process API is reserved for the trusted host.
 """
+import os
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -11,6 +12,10 @@ import sqlite3
 import uuid
 
 from .core import Role
+
+
+#: 与服务端 MAX_MESSAGE（1 MiB）同值，留出外层 JSON/帧头开销。
+MAX_RECORD_BYTES = 1024 * 1024 - 4096
 
 
 class WriteError(Exception):
@@ -83,6 +88,37 @@ def _text(value: str, name: str) -> str:
     return value
 
 
+def _integer(value, name: str, *, minimum: int = 1, maximum: int | None = None) -> int:
+    """#1107：整数参数在进入 SQL 前校验（含 bool 排除与上界）。"""
+    if type(value) is not int:
+        raise WriteError(f"{name} must be an integer")
+    if value < minimum or (maximum is not None and value > maximum):
+        raise WriteError(f"{name} is out of range")
+    return value
+
+
+def _optional_integer(value, name: str, *, minimum: int = 1,
+                      maximum: int | None = None) -> int | None:
+    return None if value is None else _integer(value, name, minimum=minimum, maximum=maximum)
+
+
+def _optional_text(value, name: str) -> str | None:
+    return None if value is None else _text(value, name)
+
+
+def _require_readable(value, what: str = "record") -> None:
+    """#1106：写入前按**读取视图**估算响应尺寸，保证「可写入 ⊆ 可读出」。"""
+    try:
+        size = len(json.dumps({"ok": True, "result": value}, ensure_ascii=False,
+                              allow_nan=False).encode("utf-8"))
+    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+        raise WriteError(f"{what} cannot be serialized for read-back") from exc
+    if size > MAX_RECORD_BYTES:
+        raise WriteError(
+            f"{what} is too large to be read back within the service limit; "
+            "split the payload")
+
+
 def _json(value: dict) -> str:
     if not isinstance(value, dict):
         raise WriteError("payload must be a JSON object")
@@ -90,6 +126,16 @@ def _json(value: dict) -> str:
         return json.dumps(value, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError, OverflowError) as exc:
         raise WriteError("payload must be JSON serializable") from exc
+
+
+def _canon_payload(obj) -> str:
+    """#1108：payload 的规范序列化（键序归一、**JSON 类型敏感**）。
+
+    幂等重放判等不能直接用 Python 真值相等——`True == 1`、`1 == 1.0` 在 Python
+    成立，但它们是**不同的 JSON 正文**（序列化结果不同、库内原文不同）：按契约
+    正文变化须抛 `Conflict` 要求「追加纠正事件」，不是静默重放旧记录。键序差异
+    不算正文变化（`sort_keys` 归一）。"""
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True)
 
 
 def _time(value: str | None) -> str | None:
@@ -194,8 +240,32 @@ class StructureWriter:
         alone is not a full governance backup. Call outside a transaction.
         """
         from pathlib import Path
-        if self.store.db_path != ":memory:" and Path(path).resolve() == Path(self.store.db_path).resolve():
-            raise WriteError("backup must not overwrite the live database")
+        # #2577（安全 P1）：`Path.resolve()` 不解析硬链接——攻击者在 storage 里
+        # 放一个硬链接指向同卷另一个合法 SQLite 库，别名路径看起来仍在 storage
+        # 内 ⇒ `check_protected_directory` 放行 ⇒ 下方活库守卫对硬链接别名恒
+        # False ⇒ `sqlite3.connect(硬链接别名)` 打开受害库 inode ⇒ 全库页覆写
+        # （实测：受害库 8192→204800 字节、`secret` 表被销毁）。
+        # 三层收口：① `resolve()` 判等（同一路径）；② `samefile`（活库 inode，
+        # `_guard_export_source_path` 现成写法）；③ `st_nlink > 1` 拒绝一切硬
+        # 链接别名——samefile 只对活库生效，**受害库是另一个 SQLite 文件时
+        # inode 不同、samefile 恒 False**，票面复现（victim 8192→204800、
+        # `secret` 表销毁）必须靠 nlink 围栏（#2566/#2568/#2569 同族口径）。
+        if self.store.db_path != ":memory:":
+            if Path(path).resolve() == Path(self.store.db_path).resolve():
+                raise WriteError("backup must not overwrite the live database")
+            try:
+                if os.path.samefile(path, self.store.db_path):
+                    raise WriteError(
+                        "backup must not overwrite the live database (samefile)")
+            except (FileNotFoundError, OSError):
+                pass
+            try:
+                if os.stat(path).st_nlink > 1:
+                    raise WriteError(
+                        "backup 目标是硬链接别名（st_nlink>1）：写入会覆写共享"
+                        " inode 上的另一 SQLite 库——请改用普通文件路径")
+            except (FileNotFoundError, OSError):
+                pass
         with self._lock:
             if self._db.in_transaction:
                 raise WriteError("finish the caller transaction before backup")
@@ -207,12 +277,17 @@ class StructureWriter:
         if capability not in actor.capabilities:
             raise PermissionDenied(capability)
 
-    def _audit(self, actor: ActorContext, action: str, object_id: str, note=""):
+    def _audit(self, actor: ActorContext, action: str, object_id: str, note="",
+               outcome: str = "ok"):
+        # #2160：outcome 列修前恒写 "{}"——业务结果（review 的 decision 等）被塞
+        # 进 summary 列、outcome 列永远占位（实测 proposal.created/reviewed 两行
+        # outcome 全 '{}'）。审计列的语义是「业务结果」：outcome 形参默认 "ok"，
+        # 带真实结果的调用点显式传入。
         import time
         self._db.execute(
             "INSERT INTO action_logs(ts,action_type,summary,node_ids,outcome,context) "
             "VALUES (?,?,?,?,?,?)",
-            (time.time(), action, note, json.dumps([object_id]), "{}",
+            (time.time(), action, note, json.dumps([object_id]), outcome,
              json.dumps({"namespace": actor.namespace, "subject": actor.subject})))
 
     def _proposal(self, actor: ActorContext, proposal_id: str):
@@ -252,7 +327,7 @@ class StructureWriter:
                 (actor.namespace, actor.source, event.source_event_id)).fetchone()
             if old is not None:
                 if (old["kind"] != event.kind or old["origin"] != origin
-                        or json.loads(old["payload"]) != json.loads(payload)):
+                        or _canon_payload(json.loads(old["payload"])) != _canon_payload(json.loads(payload))):
                     raise Conflict("event ID holds different content; append a correction")
                 return self._event_view(old, replayed=True)
             node = self.store._record_structure_event(
@@ -271,11 +346,15 @@ class StructureWriter:
                  event.occurred_at, _now(), json.dumps(warnings)))
             self._audit(actor, "event.recorded", event_id)
             row = self._db.execute("SELECT * FROM structure_events WHERE id=?", (event_id,)).fetchone()
-            return self._event_view(row)
+            item = self._event_view(row)
+            _require_readable([item], "event")
+            return item
 
     def record_version_result(self, actor: ActorContext, result: VersionResult) -> dict:
         """Record an authenticated executor's actual result; no code is executed."""
         self._permit(actor, "versions.report")
+        _text(result.instance_id, "instance_id")
+        _optional_text(result.from_version, "from_version")
         if result.instance_id not in actor.instances:
             raise PermissionDenied("executor is not assigned this instance")
         if result.outcome not in {"applied", "failed", "rolled_back", "uncertain"}:
@@ -294,6 +373,8 @@ class StructureWriter:
         self._permit(actor, "structure.propose")
         _text(request.request_id, "request_id")
         _text(request.aggregate_key, "aggregate_key")
+        event_id = _optional_text(request.event_id, "event_id")
+        prior_proposal_id = _optional_text(request.prior_proposal_id, "prior_proposal_id")
         if request.kind not in {"anchor", "rule"} or request.operation not in {"set", "revoke"}:
             raise WriteError("use an explicit anchor/rule and set/revoke operation")
         if type(request.expected_revision) is not int or request.expected_revision < 0:
@@ -301,8 +382,8 @@ class StructureWriter:
         payload = _json(request.payload)
         end = _time(request.valid_until)
         snapshot = (
-            request.aggregate_key, request.kind, request.operation, json.loads(payload),
-            request.expected_revision, request.event_id, request.prior_proposal_id, end)
+            request.aggregate_key, request.kind, request.operation, _canon_payload(json.loads(payload)),
+            request.expected_revision, event_id, prior_proposal_id, end)
         with self._transaction():
             old = self._db.execute(
                 "SELECT * FROM structure_proposals WHERE namespace=? AND proposer=? AND request_id=?",
@@ -310,19 +391,19 @@ class StructureWriter:
             if old is not None:
                 previous = (
                     old["aggregate_key"], old["kind"], old["operation"],
-                    json.loads(old["payload"]), old["expected_revision"],
+                    _canon_payload(json.loads(old["payload"])), old["expected_revision"],
                     old["event_id"], old["prior_proposal_id"], old["valid_until"])
                 if previous != snapshot:
                     raise Conflict("request ID already holds another proposal")
                 return {"proposal_id": old["id"], "state": old["state"], "replayed": True}
-            if request.event_id:
+            if event_id:
                 event = self._db.execute(
                     "SELECT 1 FROM structure_events WHERE id=? AND namespace=?",
-                    (request.event_id, actor.namespace)).fetchone()
+                    (event_id, actor.namespace)).fetchone()
                 if event is None:
                     raise WriteError("source event not found in this namespace")
-            if request.prior_proposal_id:
-                prior = self._proposal(actor, request.prior_proposal_id)
+            if prior_proposal_id:
+                prior = self._proposal(actor, prior_proposal_id)
                 if (prior["aggregate_key"] != request.aggregate_key
                         or prior["event_id"] != request.event_id
                         or prior["kind"] != request.kind):
@@ -338,14 +419,19 @@ class StructureWriter:
                 "INSERT INTO structure_proposals VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (proposal_id, actor.namespace, actor.subject, request.request_id,
                  request.aggregate_key, request.kind, request.operation, payload,
-                 request.expected_revision, request.event_id,
-                 request.prior_proposal_id, end, _now(), "pending"))
+                 request.expected_revision, event_id,
+                 prior_proposal_id, end, _now(), "pending"))
             self._audit(actor, "proposal.created", proposal_id)
+            item = dict(self._db.execute(
+                "SELECT * FROM structure_proposals WHERE id=?", (proposal_id,)).fetchone())
+            item["payload"] = json.loads(item["payload"])
+            _require_readable(item, "proposal")
             return {"proposal_id": proposal_id, "state": "pending", "replayed": False}
 
     def get_proposal(self, actor: ActorContext, proposal_id: str) -> dict:
         """Return the saved approval object; changing this copy cannot change it."""
         self._permit(actor, "structure.read")
+        proposal_id = _text(proposal_id, "proposal_id")
         with self._lock:
             item = dict(self._proposal(actor, proposal_id))
             item["payload"] = json.loads(item["payload"])
@@ -353,6 +439,9 @@ class StructureWriter:
 
     def review(self, actor: ActorContext, proposal_id: str, decision: str, note="") -> dict:
         self._permit(actor, "structure.review")
+        proposal_id = _text(proposal_id, "proposal_id")
+        if not isinstance(note, str):
+            raise WriteError("note must be text")
         if decision not in {"approve", "needs_info", "reject"}:
             raise WriteError("unknown review decision")
         with self._transaction():
@@ -366,13 +455,27 @@ class StructureWriter:
                 "INSERT INTO structure_reviews VALUES (?,?,?,?,?,?)",
                 (_id(), proposal_id, actor.subject, decision, note, _now()))
             self._db.execute("UPDATE structure_proposals SET state=? WHERE id=?", (state, proposal_id))
-            self._audit(actor, "proposal.reviewed", proposal_id, decision)
+            self._audit(actor, "proposal.reviewed", proposal_id, decision,
+                        outcome=decision)
             return {"proposal_id": proposal_id, "state": state}
 
     def approve(self, actor: ActorContext, proposal_id: str) -> dict:
         self._permit(actor, "structure.approve")
+        proposal_id = _text(proposal_id, "proposal_id")
         with self._transaction():
             proposal = self._proposal(actor, proposal_id)
+            # #2152：幂等早退（committed 直接回读）必须排在**三权互异校验之后**
+            # ——修前早退排在最前 ⇒ 「提报人/复核人/终裁人必须互异」的权限契约对
+            # 已提交提案整体失效：同一批主体在 reviewed 态被拒、在 committed 后
+            # 提报人/复核人/任意第三方全部拿到记录（实测 alice 提报后已提交态
+            # approve 直接返回 revision，未抛 PermissionDenied）——同一函数同一批
+            # 主体因状态不同给出相反的权限裁决。互异校验前置后，幂等回读仍合法
+            # （真正终裁人不在 proposer|reviewers 集合里）。
+            reviewers = {row["reviewer"] for row in self._db.execute(
+                "SELECT DISTINCT reviewer FROM structure_reviews WHERE proposal_id=?",
+                (proposal_id,))}
+            if actor.subject in {proposal["proposer"]} | reviewers:
+                raise PermissionDenied("proposer, reviewer and approver must be distinct")
             if proposal["state"] == "committed":
                 return dict(self._db.execute(
                     "SELECT * FROM structure_records WHERE proposal_id=?", (proposal_id,)).fetchone())
@@ -438,6 +541,7 @@ class StructureWriter:
     def target_status(self, actor: ActorContext, aggregate_key: str) -> dict:
         """Keep the target revision visible even after revocation or expiry."""
         self._permit(actor, "structure.read")
+        aggregate_key = _text(aggregate_key, "aggregate_key")
         with self._lock:
             row = self._db.execute(
                 "SELECT r.*,p.kind,p.operation,p.payload,p.valid_until "
@@ -465,7 +569,11 @@ class StructureWriter:
 
     def event_history(self, actor: ActorContext, *, limit=100, before_rowid=None) -> list[dict]:
         self._permit(actor, "structure.read")
-        limit = max(1, min(limit, 200))
+        # #1107：游标必须是正整数或 None（SQLite 会按类型序把字符串游标判为恒真、
+        # NaN 绑成 NULL、超大整数 OverflowError）；limit 必须是 1..200 的整数。
+        limit = _integer(limit, "limit", minimum=1, maximum=200)
+        before_rowid = _optional_integer(before_rowid, "before_rowid",
+                                         minimum=1, maximum=2**63 - 1)
         with self._lock:
             rows = self._db.execute(
                 "SELECT rowid AS cursor,* FROM structure_events WHERE namespace=? "
@@ -476,7 +584,10 @@ class StructureWriter:
     def structure_history(self, actor: ActorContext, aggregate_key: str, *,
                           limit=100, before_revision=None) -> list[dict]:
         self._permit(actor, "structure.read")
-        limit = max(1, min(limit, 200))
+        aggregate_key = _text(aggregate_key, "aggregate_key")
+        limit = _integer(limit, "limit", minimum=1, maximum=200)
+        before_revision = _optional_integer(before_revision, "before_revision",
+                                            minimum=1, maximum=2**63 - 1)
         with self._lock:
             rows = self._db.execute(
                 "SELECT r.*,p.kind,p.operation,p.payload FROM structure_records r "

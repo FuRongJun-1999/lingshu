@@ -1,0 +1,90 @@
+FFFFFFFFFF.....FFF                                                       [100%]
+================================== FAILURES ===================================
+__________________ test_finite_speed_mean_does_not_overflow ___________________
+tests\test_world_motion_finite_arithmetic.py:22: in test_finite_speed_mean_does_not_overflow
+    assert math.isfinite(out["estimate"][1]), "WM_MOTION_MEAN_OVERFLOW"
+E   AssertionError: WM_MOTION_MEAN_OVERFLOW
+E   assert False
+E    +  where False = <built-in function isfinite>(inf)
+E    +    where <built-in function isfinite> = math.isfinite
+______________ test_recoverable_interval_uses_divided_endpoints _______________
+tests\test_world_motion_finite_arithmetic.py:30: in test_recoverable_interval_uses_divided_endpoints
+    assert out["estimate"][1] == pytest.approx(2e307), "WM_MOTION_INTERVAL_STILL_OVERFLOWED"
+E   AssertionError: WM_MOTION_INTERVAL_STILL_OVERFLOWED
+E   assert inf == 2e+307 ± 2.0e+301
+E
+E     comparison failed
+E     Obtained: inf
+E     Expected: 2e+307 ± 2.0e+301
+________________ test_unrepresentable_pair_is_not_an_estimate _________________
+tests\test_world_motion_finite_arithmetic.py:37: in test_unrepresentable_pair_is_not_an_estimate
+    assert out["estimate"] is None and not out["adopted"], "WM_MOTION_UNREPRESENTABLE_PAIR_ACCEPTED"
+E   AssertionError: WM_MOTION_UNREPRESENTABLE_PAIR_ACCEPTED
+E   assert ((nan, inf, 1, (nan, 0.0, 0.0)) is None)
+_________________ test_unrepresentable_speed_norm_is_rejected _________________
+tests\test_world_motion_finite_arithmetic.py:45: in test_unrepresentable_speed_norm_is_rejected
+    assert out["estimate"] is None and out["arithmetic_pairs_dropped"] == 1, "WM_MOTION_INFINITE_NORM_ACCEPTED"
+E   AssertionError: WM_MOTION_INFINITE_NORM_ACCEPTED
+E   assert ((0.0, inf, 1, (0.0, 0.0, 0.0)) is None)
+__________________ test_mixed_pairs_keep_usable_measurements __________________
+tests\test_world_motion_finite_arithmetic.py:51: in test_mixed_pairs_keep_usable_measurements
+    assert out["estimate"][2] == 2, "WM_MOTION_BAD_PAIR_COUNTED"
+E   AssertionError: WM_MOTION_BAD_PAIR_COUNTED
+E   assert 3 == 2
+__________ test_recent_direction_never_returns_nonfinite_components ___________
+tests\test_world_motion_finite_arithmetic.py:59: in test_recent_direction_never_returns_nonfinite_components
+    assert M.recent_direction(records, "a") is None, "WM_MOTION_RECENT_DIRECTION_POISONED"
+E   AssertionError: WM_MOTION_RECENT_DIRECTION_POISONED
+E   assert (nan, 0.0, 0.0) is None
+E    +  where (nan, 0.0, 0.0) = <function recent_direction at 0x0000018355D4E3E0>([{'tick': 0, 'entities': {'a': [-1e+308, 1.5, 4]}}, {'tick': 1, 'entities': {'a': [1e+308, 1.5, 4]}}], 'a')
+E    +    where <function recent_direction at 0x0000018355D4E3E0> = M.recent_direction
+_____ test_coordinate_gate_requires_three_convertible_finite_axes[empty] ______
+tests\test_world_motion_finite_arithmetic.py:71: in test_coordinate_gate_requires_three_convertible_finite_axes
+    assert result is False, "WM_MOTION_COORDINATE_SHAPE_ACCEPTED"
+E   AssertionError: WM_MOTION_COORDINATE_SHAPE_ACCEPTED
+E   assert True is False
+_____ test_coordinate_gate_requires_three_convertible_finite_axes[short] ______
+tests\test_world_motion_finite_arithmetic.py:71: in test_coordinate_gate_requires_three_convertible_finite_axes
+    assert result is False, "WM_MOTION_COORDINATE_SHAPE_ACCEPTED"
+E   AssertionError: WM_MOTION_COORDINATE_SHAPE_ACCEPTED
+E   assert True is False
+_____ test_coordinate_gate_requires_three_convertible_finite_axes[extra] ______
+tests\test_world_motion_finite_arithmetic.py:71: in test_coordinate_gate_requires_three_convertible_finite_axes
+    assert result is False, "WM_MOTION_COORDINATE_SHAPE_ACCEPTED"
+E   AssertionError: WM_MOTION_COORDINATE_SHAPE_ACCEPTED
+E   assert True is False
+____ test_coordinate_gate_requires_three_convertible_finite_axes[overflow] ____
+tests\test_world_motion_finite_arithmetic.py:70: in test_coordinate_gate_requires_three_convertible_finite_axes
+    assert error is None, "WM_MOTION_COORDINATE_VALIDATION_ESCAPED"
+E   AssertionError: WM_MOTION_COORDINATE_VALIDATION_ESCAPED
+E   assert OverflowError('int too large to convert to float') is None
+_________________ test_world_model_patterns_keep_finite_speed _________________
+tests\test_world_motion_finite_arithmetic.py:103: in test_world_model_patterns_keep_finite_speed
+    assert out["speed_estimates"]["a"] == 1e308, "WM_MOTION_MODEL_SPEED_POISONED"
+E   AssertionError: WM_MOTION_MODEL_SPEED_POISONED
+E   assert inf == 1e+308
+____________________ test_world_learner_keeps_finite_speed ____________________
+tests\test_world_motion_finite_arithmetic.py:114: in test_world_learner_keeps_finite_speed
+    assert out["per_entity"][eid]["speed_est"] == 1e308, "WM_MOTION_LEARNER_SPEED_POISONED"
+E   AssertionError: WM_MOTION_LEARNER_SPEED_POISONED
+E   assert inf == 1e+308
+_____________ test_core_patterns_keep_finite_speed_without_writes _____________
+tests\test_world_motion_finite_arithmetic.py:126: in test_core_patterns_keep_finite_speed_without_writes
+    assert out["speed_estimates"]["a"] == 1e308, "WM_MOTION_CORE_SPEED_POISONED"
+E   AssertionError: WM_MOTION_CORE_SPEED_POISONED
+E   assert inf == 1e+308
+=========================== short test summary info ===========================
+FAILED tests/test_world_motion_finite_arithmetic.py::test_finite_speed_mean_does_not_overflow
+FAILED tests/test_world_motion_finite_arithmetic.py::test_recoverable_interval_uses_divided_endpoints
+FAILED tests/test_world_motion_finite_arithmetic.py::test_unrepresentable_pair_is_not_an_estimate
+FAILED tests/test_world_motion_finite_arithmetic.py::test_unrepresentable_speed_norm_is_rejected
+FAILED tests/test_world_motion_finite_arithmetic.py::test_mixed_pairs_keep_usable_measurements
+FAILED tests/test_world_motion_finite_arithmetic.py::test_recent_direction_never_returns_nonfinite_components
+FAILED tests/test_world_motion_finite_arithmetic.py::test_coordinate_gate_requires_three_convertible_finite_axes[empty]
+FAILED tests/test_world_motion_finite_arithmetic.py::test_coordinate_gate_requires_three_convertible_finite_axes[short]
+FAILED tests/test_world_motion_finite_arithmetic.py::test_coordinate_gate_requires_three_convertible_finite_axes[extra]
+FAILED tests/test_world_motion_finite_arithmetic.py::test_coordinate_gate_requires_three_convertible_finite_axes[overflow]
+FAILED tests/test_world_motion_finite_arithmetic.py::test_world_model_patterns_keep_finite_speed
+FAILED tests/test_world_motion_finite_arithmetic.py::test_world_learner_keeps_finite_speed
+FAILED tests/test_world_motion_finite_arithmetic.py::test_core_patterns_keep_finite_speed_without_writes
+13 failed, 5 passed, 9 warnings in 0.63s

@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .hex_text import parse_description
+from .hex_text import POS_WORDS, parse_description
 from .hex_composite import _COLORS_RGB, _paint
 
 ALGO = "hex_gen-0.1"
@@ -238,6 +238,24 @@ def _match_attr(seg: str, table: Dict[str, tuple]) -> Optional[str]:
             return key
     return None
 
+# #307：方位词/花纹词/尺寸词里的单字（心/方/条/圆/星/菱）会被形状词表误配
+# （「中心」→heart、「右下方」→square、「条纹」→stripe）。`_match_open` 的最长
+# 匹配解决不了单字碰撞——必须先整词扣掉这些「非形状词」再匹配形状。
+# 「右下方」要整段扣（只扣「右下」会留下「方」仍误配 square），故正则带可选「方」。
+_NONSHAPE_POS = ("左上", "上中", "右上", "左中", "中心", "中央",
+                 "右中", "左下", "下中", "右下", "中间",
+                 "左", "右", "上", "下")
+_NONSHAPE_WORDS = _NONSHAPE_POS + tuple(
+    w for words in PATTERN_WORDS.values() for w in words) + tuple(
+    w for words in SIZE_WORDS.values() for w in words)
+_NONSHAPE_RE = re.compile(
+    "(?:%s)方?" % "|".join(sorted(set(_NONSHAPE_WORDS), key=len, reverse=True)))
+
+
+def _strip_nonshape(seg: str) -> str:
+    """扣掉方位词/花纹词/尺寸词，只留可能承载形状词的正文（#307）。"""
+    return _NONSHAPE_RE.sub("", seg)
+
 
 def compile_description(text: str) -> Dict:
     """中文描述 → {parts: [{shape, color, zone, pattern, size}], defaults_applied}。
@@ -252,7 +270,12 @@ def compile_description(text: str) -> Dict:
     segments = [s.strip() for s in re.split(r"[,，、;;；。]+", text) if s.strip()]
     parts, defaults = [], []
     for seg in segments:
-        base = parse_description(seg)
+        # #306：先剥背景词再喂 parse_description——窄词表也会从「渐变蓝底」抓到「蓝」
+        seg_scan = seg
+        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
+            if bg_w in seg_scan:
+                seg_scan = seg_scan.replace(bg_w, "")
+        base = parse_description(seg_scan)
         cl = base[0] if base else {}
         # 开放词汇优先（连接库生长面），回落 hex_text 基础三词
         pos = cl.get("pos")
@@ -262,11 +285,39 @@ def compile_description(text: str) -> Dict:
                 if zcn in seg:
                     pos = ZONE_CN[zcn]
                     break
-        given = {"shape": _match_open(seg, OPEN_SHAPES) or cl.get("shape"),
-                 "color": _match_open(seg, OPEN_COLORS) or cl.get("color"),
+        # #306：背景词（白底/灰底/渐变X底/深色底）是**画布**词汇，其中的色字
+        # （白/灰/蓝/粉/绿/深）不得参与部件颜色竞争——「渐变绿底中间有蓝色圆形」
+        # 应得 blue、「白底中间有灰色圆形」应得 gray。先把本子句命中的背景词
+        # 从文本里剥掉，再做开放词表匹配；**纯背景子句**（剥掉背景词后没有
+        # 部件词——形状/颜色/方位皆无）不产部件（「渐变蓝底，左上有红色圆」
+        # 的前半段不该在 r4 生成幻影圆）。
+        seg_parts = seg
+        for bg_w in sorted(BACKGROUND_WORDS, key=len, reverse=True):
+            if bg_w in seg_parts:
+                seg_parts = seg_parts.replace(bg_w, "")
+        # #307：形状匹配只认「扣掉方位/花纹/尺寸词」后的正文，否则「中心」→心、
+        # 「右下方」→方、「条纹」→条 会被当成用户写的形状词。颜色仍用原句。
+        # 与上游 #306 的 seg_parts 叠加：先剥背景词（#306），再剥方位/花纹/尺寸（#307）。
+        shape_seg = _strip_nonshape(seg_parts)
+        has_part_word = bool(_match_open(shape_seg, OPEN_SHAPES)
+                             or _match_open(seg_parts, OPEN_COLORS)
+                             or (pos is not None)
+                             or cl.get("shape") or cl.get("color") or pos)
+        if pos is None and has_part_word:
+            # 剥掉背景词后才暴露的方位词（如「渐变蓝底中间有圆形」的「中间」）
+            for zcn in sorted(ZONE_CN, key=len, reverse=True):
+                if zcn in seg_parts:
+                    pos = ZONE_CN[zcn]
+                    break
+        given = {"shape": (_match_open(shape_seg, OPEN_SHAPES)
+                           if has_part_word else None) or cl.get("shape"),
+                 "color": _match_open(seg_parts, OPEN_COLORS) or cl.get("color"),
                  "zone": pos,
                  "pattern": _match_attr(seg, PATTERN_WORDS),
                  "size": _match_attr(seg, SIZE_WORDS)}
+        # #306：纯背景子句（剥掉背景词后无任何部件词）⇒ 不产部件
+        if not has_part_word:
+            continue
         part = {}
         for k, v in given.items():
             if v is None:
@@ -332,12 +383,35 @@ def render_relations(parts: List[Dict], size: int = 48, seed: int = 7,
                     "pattern": pattern, "size": size_attr,
                     "pattern_period": period, "center": (cx, cy)})
     if noise:
-        img += (rng.random(img.shape) * 18).astype(np.uint8)
+        # issue #150：旧实现 `img += (rng.random(img.shape) * 18).astype(np.uint8)` 是
+        # **uint8 原地加** ⇒ 超过 255 的像素按模 256 回绕。噪声幅度 0..17，故凡基色 >237
+        # 的像素都会回绕：白（245）在 noise>=11 时 245+11=256→0，白盘/白底因此出现
+        # 近黑散点（实测 white disk min channel-sum=1、n(sum<100)=35/529；
+        # clean_white 背景 567/9216=6.15%，理论值 (7/18)^3=5.88%）。
+        # 修法：先在 int16 上做**饱和**加法再夹回 0..255 —— 噪声的语义是「亮度微扰」，
+        # 不是模运算；回绕是 uint8 容器的溢出，不是设计。
+        # 判据来源：issue #150 正文（white disk 变黑 / clean_white 背景变黑）；
+        # 仓内无任何守卫或 docstring 把回绕钉为有意行为（`git grep 回绕` 仅命中
+        # hexgen_pack_certify / hex_gen:725 两处**无关**语义）。
+        # 削掉的判别力：基色接近 255 的像素不再出现「亮变暗」；其余颜色（基色 ≤237）
+        # 的逐像素输出**完全不变**（回绕概率为 0，夹取不触发）。rng 抽样次数与顺序未动
+        # ⇒ 同 seed 的噪声序列与旧实现逐位相同。
+        img = np.clip(img.astype(np.int16)
+                      + (rng.random(img.shape) * 18).astype(np.int16),
+                      0, 255).astype(np.uint8)
     if supersample > 1:
         # R44 软边缘：高分辨率渲染→LANCZOS 降采（自动抗锯齿）
+        # #151：本函数的 `size` 是**渲染尺寸**（调用方 `refine_render` 已按
+        # `size*supersample` 传入，见其 docstring「渲染尺寸 = size*supersample」）
+        # ⇒ 降采目标必须是**请求尺寸** `size // supersample`。旧实现 resize 到
+        # `(size, size)`,与渲染尺寸同值 ⇒ 降采是**空操作**：返回图边长仍为
+        # `size*supersample`（size=48/ss=4 ⇒ 192px 而非 48px），抗锯齿亦未发生。
+        # 边界（如实标注）：`log[i]["center"]` 仍是**高分辨率坐标**，与返回图的
+        # 请求坐标系不一致——是否换算属维护者决定（#151 附注），本件不动。
         from PIL import Image as _Im
+        _out = max(1, size // supersample)
         img = np.asarray(_Im.fromarray(img).resize(
-            (size, size), _Im.LANCZOS))
+            (_out, _out), _Im.LANCZOS))
     return img, log
 
 
@@ -504,7 +578,7 @@ def verify_readback(img: np.ndarray, parts: List[Dict], log: List[Dict],
                 size_misses.append({"part": rec["part"], "spec_size": rec["size_spec"],
                                     "read": read.get("size"), "span": read.get("span"),
                                     "zone": rec["zone"]})
-    return {"pattern_acc": round(pat_ok / max(1, pat_n), 4), "n_pattern": pat_n,
+    return {"pattern_acc": round(pat_ok / pat_n, 4) if pat_n else None, "n_pattern": pat_n,
             "size_acc": round(size_ok / max(1, size_n), 4) if size_n else None,
             "n_size": size_n, "misses": misses, "size_misses": size_misses}
 
@@ -648,13 +722,16 @@ def refine_render(parts: List[Dict], size: int = REFINE_MIN_SIZE, seed: int = 7,
         }
 
     if supersample != 1:
-        # ATTR_CALIB_96 是按 96px 渲染口径标定的；supersample≠1 时图像尺度变了，
-        # 该标定不成立 ⇒ 回读不可用（与 48px 同等处置：verifiable=False、
-        # before/after=None、不修正、不声称成功——数值再像也不是可判读数）。
+        # #151 修正后：渲染在 size*supersample 后经 LANCZOS **降采回请求尺寸**
+        # （旧实现降采是空操作、输出尺度为 size*supersample）。故本分支的判据不再是
+        # 「图像尺度变了」，而是：**降采引入的抗锯齿使像素统计与 ATTR_CALIB_96 的
+        # 直接渲染标定不同源** ⇒ 该标定不成立、回读不可用（与 48px 同等处置：
+        # verifiable=False、before/after=None、不修正、不声称成功——数值再像也不是可判读数）。
         return result(f"supersample={supersample}≠1：回读标定口径不符（不修正、不声称成功）",
                       verifiable=False,
-                      note=(f"supersample={supersample}≠1：ATTR_CALIB_96 的 96px 标定"
-                            f"口径不成立，本次读数不可判（不修正、不声称成功）"))
+                      note=(f"supersample={supersample}≠1：经 LANCZOS 降采的图像与"
+                            f"ATTR_CALIB_96 的直接渲染标定不同源，本次读数不可判"
+                            f"（不修正、不声称成功）"))
     if not base["verifiable"]:
         return result(base["note"])
     if cap <= 0:

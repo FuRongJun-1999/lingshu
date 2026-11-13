@@ -1,139 +1,34 @@
-
-# ── 已登记的既有违规（本笔重编号）──────────────────────────────
-# ── 2026-10-22（#830 合并）后重编号：activation.py 336 → 348（激活侧插入 12 行）──
-# 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。
-# ── 2026-10-23（#505 工作集 query 落库）后重编号：activation.py 348 → 355 ──
-# 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。
-lingshu/core/activation.py:355:R3      # 形状级命中（**非**时间衰减）：issue #53 的节点对级条件衰减修正
-lingshu/world/physics.py:359:R1      # 物理阻尼：`fit_damped` 代价函数的基函数 exp(-k·x)（线性阻尼振子闭式解），非时间核
-lingshu/world/physics.py:387:R1      # 物理阻尼：`fit_damped` 代价函数的基函数 exp(-k·x)（线性阻尼振子闭式解），非时间核
-lingshu/world/physics.py:504:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
-lingshu/world/physics.py:508:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
-lingshu/world/physics.py:512:R1      # 物理阻尼：`predict_at('damped')` 的解析解 exp(-kk·τ)，非时间核
-lingshu/world/physics.py:512:R3      # 与本行已登记 R1 同一阻尼式的 `* tau` 名字形状命中，非独立违规
-lingshu/world/physics.py:519:R3      # 运动学外推：圆周角度推进 θ=θ0+ω·τ，tau 非保持率
-lingshu/world/physics.py:522:R3      # 运动学外推：圆周竖直漂移 z=z0+v_up·τ，tau 非保持率
-lingshu/world/physics.py:539:R3      # 运动学外推：drag2 的 tanh 参数 u=u0+g·τ/v_t，tau 非保持率
-lingshu/world/physics.py:548:R3      # 运动学外推：横向匀速漂移/世界坐标分解 p=p0+drift·τ，tau 非保持率
-lingshu/world/physics.py:563:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
-lingshu/world/physics.py:564:R3      # 运动学外推：slope_friction 沿坡速度 v_s=v_s0+a·τ，tau 非保持率
-lingshu/world/physics.py:566:R3      # 运动学外推：横向匀速漂移/世界坐标分解 p=p0+drift·τ，tau 非保持率
-lingshu/world/physics.py:969:R1      # 物理量：`_log_cosh`（softplus）用于 drag2 位置闭式，纯函数无时间衰减语义
-lingshu/world/physics.py:2453:R1      # 物理阻尼：欠阻尼振子包络 exp(-ζωt)，非时间核
-lingshu/world/physics.py:2456:R1      # 物理阻尼：临界阻尼响应 (1+ωt)·exp(-ωt)，非时间核
-lingshu/world/physics.py:2458:R1      # 物理阻尼：欠阻尼振子包络 exp(-ζωt)，非时间核
-lingshu/world/physics.py:2474:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
-lingshu/world/physics.py:2573:R1      # 物理量：对数衰减率 exp(-2πζ/√(1-ζ²))，非时间核
-lingshu/world/physics.py:2605:R3      # 运动学外推：匀加速/抛体/沿坡闭式 p=p0+v0·τ+½a·τ²，tau=流逝时间非保持率
-lingshu/world/shade_paint.py:215:R1      # 色调映射：软肩曲线 1-exp(-(v-S)/S)（呈现层光学变换），非时间演化
-# ── 2026-10-22（#859 acquire history 落盘）后重编号：stable_lease.py 222 → 250 ──
-# 同上处置：条目数与性质未变（23 条 → 23 条），不是新增豁免、不是放宽判据。
-lingshu/world/stable_lease.py:250:R1      # 既有：手写同核 exp(-γ·t)（与 time_core.cred_factor 同一指数核），未转交统一时间核
-
-#
-# ── 2026-10-16（物理仿真深化 + 碰撞箱）后重编号 ──
-# 按本文件头部明文处置。复核结论：命中 23 条，全部属既有两类豁免（R1 物理阻尼/振子闭式解与 `_log_cosh`；
-# R3 运动学外推，tau=流逝时间非保持率）。**无一条**是 time_core 的时间可信度衰减核。
-# (file,rule) 多重集：base 17 条 + 本笔新增（physics R1 +1、R3 +5；另 physics 碰撞内核新增 2 条）⇒ 只增不减，**无删除**。
-# ★另：`scene_simulator.py` 的接线初版曾命中 1 条 R2（互补权重写法 `a·t+b·(1−t)`）—— 已按本仓合规范式改写为
-#   `b+(a−b)·t`（见该文件 `_collide_pair`），**未登记豁免**（这是真违规、已修）。
-# ★削掉的判别力（如实）：这些行若将来真改成时间衰减核，本工具不会点名；替代防线＝物理守卫。
-#
-# ── 2026-10-16（#709 cond_match 元素级守卫）后重编号 ──
-# 按本文件头部明文处置（「若在已登记文件的行号之上插入/删除行…届时请重跑 --update-baseline
-# 并重新补写性质注释」）。本次为**单条行号同步**：`lingshu/core/activation.py` 的既有登记
-# 条目 224 → 298（`cond_match` 的守卫补丁在该行之上插入代码）。条目**数与性质均未变**
-# （23 条 → 23 条，性质注释逐字保留）；不是新增豁免、不是放宽判据。
-# ── 2026-10-16（#729 stable_lease 负 age 闸）后重编号 ──
-# 同上处置：`lingshu/world/stable_lease.py` 的既有登记条目 88 → 102
-# （#729 的负 age 闸插在该行之上，14 行）。条目**数与性质均未变**
-# （23 条 → 23 条，性质注释逐字保留）；不是新增豁免、
-# 不是放宽判据。
-# ── 2026-10-21（#458 acquire 谓词收口）后重编号 ──
-# 同上处置：`lingshu/world/stable_lease.py` 的既有登记条目 102 → 222
-# （#458 抽出 `_stable_now` 并补 docstring，插在该行之上，120 行）。条目**数与性质均未变**
-# （23 条 → 23 条，性质注释逐字保留）；不是新增豁免、不是放宽判据。
 # time_core_lint baseline —— 已登记的既有违规（E5 衰减核审计）
-# 格式：<仓内相对路径>:<行号>:<规则id>   （R1=exp_decay / R2=keep_rate / R3=ema）
-# `#` 起为注释；规则表 / 豁免表 / 退出码 / 已知局限见 tools/time_core_lint.py 头部。
-# 本文件由人工复核并逐条注明性质；`--update-baseline` 只做机械重写，覆盖后请重新补注释。
-# 运维提示：本文件按**行号**定位。若在已登记文件的行号之上插入/删除行，旧条目会变成
-#   stale_baseline_entries（不失败），而同一违规会以新行号出现在 new_violations → 退出 1；
-#   届时请重跑 --update-baseline 并重新补写性质注释（tests 里 EXPECTED_MARKERS 用**形态锚**，
-#   按源码片段定位、不随行号同步，故此处行号仅作人工参考，漂移不会让测试恒真）。
-# 输出以 {file,line,rule} 为键：同一语句同时命中 R2 与 R3 会输出 2 行，baseline 也必须写 2 行。
-# 显式 `--baseline FILE --update-baseline` 而 FILE 不存在 → 退出码 2 且不创建（防写错路径）。
-#
-# 实跑记录（pr-work @ 上游 b5f480c，2026-10-08）：
-#   python tools/time_core_lint.py               → 1 条命中，全部已在下方登记 → 退出码 0
-#   python tools/time_core_lint.py --baseline <空文件>
-#                                               → 退出码 1，命中 stable_lease.py:88:R1
-#                                                 （证明规则确实在命中，baseline 不是摆设）
-# #607 三缺口修复后重测（2026-10-15，fix/time-core-keepword-vocab）：命中 11→17——
-#   _KEEP_WORD 补 tau 使 physics.py 新增 6 条 R3 形状级命中（见下方 #607 段，逐条已核）；
-#   同行多违规划账与冗余括号剥离在本仓内零新增（仓内无 `;` 同行多违规、无括号包裹的
-#   自指衰减写法）。更新后全量跑退出码 0。
-# #662 重编号（2026-10-15，fix/physics-check-samples-time）：`_check_samples` 补时间
-#   isfinite 校验在 physics.py 行号之上插入 6 行 ⇒ 该文件全部已登记条目行号 +6
-#   （339→345、467→473 等），性质注释逐条原样保留。重跑 lint 退出 0。
-# ── 已登记的既有违规 ──────────────────────────────────────────────────────
-#   `d *= cond_match(两端条件空间)`。R3(b) 的口径是「增量乘性赋值 `x *= …`」——**任何** `*=` 都命中，
-#   规则本身不区分因子语义（lint 头部 L4b 已自陈「宁可漏判、不误判」的取向）。
-#   判为「不按时间衰减核违规处理」的判据：`cond_match` 返回的是**条件空间重合率**（4 维逐维比对，
-#   见 lingshu/core/activation.py 的 `cond_match` docstring），与 time_core 的 cred_factor/cred_step
-#   的**时间**衰减不是同一量；且 `d` 是装载期局部标量（边衰减系数），无状态自指、无逐 tick 演化。
-#   ★削掉的判别力（如实）：本条登记后，该行若将来**真的**改成时间衰减核也不会被本工具点名。
-#   替代防线＝issue #53 的守卫 tests/test_issue7_161_293_314_53_activation_contract.py 钉住该式语义。
-# ── 曾评估但判定为「不按违规处理」的候选（故未登记；判据见 tools/time_core_lint.py 头部 L9）──
-# lingshu/world/gap_dual.py:103:R2         # `retain=1.0 - self.decay` 落在 cred_blend 实参括号内 → EX5（位置级）：参数派生留在调用方是核 docstring 认可的形态（`retain = 1-λ`），乘法本体在核内
-# lingshu/nn/hex_train.py:348:R3           # `d_after <= d_before * retain_gain` 是生长验证的**阈值比较**，非乘性更新（无状态改写、无自指）→ R3 不匹配
-# lingshu/world/channel_credibility.py:123 # `evidence = 1.0 - alpha`：跨语句且名字未登记 ⇒ 机制上抓不到（**不是**性质上不是保持率，值得人工看一眼）
-# lingshu/core/core.py（片段定位：`math.sqrt(cer * (1 - cer) / n)` 与 `math.sqrt(max(p1 * (1 - p1) / len(with_), 1e-4))` 一族）:R2   # 伯努利标准误 → EX3（行号会随 core.py 增长漂移，故按片段定位）
-# lingshu/gen/hexgen_c1_real.py:464-465:R2 # 双线性插值权重 `*(1 - fy)` → EX4
-# lingshu/gen/hexgen_self_source.py:236/240/411/413:R2|R3  # alpha 合成 `obj*(1-pc)+dark*pc` → EX4
-# 以上每一条都有对应的豁免回归测试（tests/test_time_core_lint.py::test_judgement_regressions_not_reported
-# 带「形态锚」EXPECTED_MARKERS：按源码片段在文件内定位，片段被删除/改写会当场报错而不是恒真）。
-# ── 2026-10-14 新增登记：物理仿真与色调映射的 R1「形状级」命中 ────────────────
-# 性质：以下 9 条**都不是** time_core 的时间可信度衰减核——
-#   ① `lingshu/world/physics.py`：**物理阻尼**。阻尼振子的闭式响应
-#      `e = exp(-ζω t)`、欠阻尼频率项、阻尼比的对数衰减率 `exp(-2πζ/√(1-ζ²))`、
-#      以及 `fit_damped` 的基函数 `exp(-k·t)` —— 全部来自牛顿力学/线性阻尼振子，
-#      与「记忆/可信度随时间衰减」在语义上无关。
-#   ② `lingshu/world/shade_paint.py:215`：**软肩色调映射**（`1 - exp(-(v-S)/S)`），
-#      呈现层的光学变换，不是时间演化。
-# 判据与先例 `lingshu/core/activation.py:224:R3` 完全同类（「形状级命中、非时间衰减」）：
-#   R1 的口径是「`exp(` 括号内以负号开头」，属**形状级**规则；该文件头部已自陈
-#   「宁可漏判、不误判」的取向。本批为**新能力**（物理运动预测 / 零依赖着色）引入，
-#   已逐条人工复核性质后登记，而非放宽判据。
-# 若日后这些公式改为走 time_core 的统一核，请删除本段条目。
-# ── 2026-10-15 新增登记（#607）：_KEEP_WORD 补 tau 后 physics.py 的 6 条 R3「形状级」命中 ──
-# 性质：#607 把 gamma/alpha/rho/tau/discount/lr 补进 R3 的保持率词表（与 RULE_R2C 自列的
-#   衰减名对齐——修「`x = x * (1 - gamma)` 被报、`x = x * gamma` 零命中」的口径自相矛盾）。
-#   收紧后仓内新增 6 条命中，全部集中在 lingshu/world/physics.py，全部是 R3(c) 的
-#   `* tau` 形状命中，且该文件的 tau 一律是 **predict_at / projectile_state 里的流逝时间
-#   变量**（`tau = float(t) - t0`），不是保持率/衰减因子：
-#   · 473/477：匀加速/抛体闭式位置 `p = p0 + v0·τ + ½a·τ²`（运动学外推，乘 τ 是位移）；
-#   · 481：`e = math.exp(-kk * tau)`——与上方已登记的 R1 同一行同一式（阻尼解析真值），
-#     R3 是该式内 `* tau` 的名字形状命中（一行两条：R1+R3 各记一条，口径如此）；
-#   · 488：圆周运动角度推进 `θ = θ0 + ω·τ`；
-#   · 491：圆周运动竖直漂移 `z = z0 + v_up·τ`；
-#   · 937：抛体闭式 `(p0[i] + v0[i]·τ + ½g[i]·τ², v0[i] + g[i]·τ)`（同一 return 语句
-#     首处 `* tau` 记 937；938 行的 `g[i] * tau` 属同一语句，R3(c) 每语句记首处）。
-# 判据与先例（activation.py:224:R3「形状级命中」、上方 2026-10-14 物理阻尼 R1 批）同类：
-#   R3(c) 是**名字形状级**规则（lint 头部 L1「名字启发式」自陈），名字撞车不构成
-#   「时间衰减核」判据；逐条核实均为运动学外推，非记忆/可信度保持率 ⇒ 登记而非放宽词表
-#   （tau 必须在册——否则 `x = x * tau` 这类真衰减写法漏报，正是 #607 要修的缺口）。
-# 削掉的判别力（如实）：本段登记后，physics.py 这些行若将来真的改写成时间衰减核，
-#   本工具不会点名。若这些公式改走 time_core 统一核或 tau 改名（如 dt/elapsed），
-#   请删除本段条目。
+# ── 2026-11-10（批一百零五 #2578 _integrate_env 停止钳重写）后重测 ──
+# --update-baseline 机械重写：physics.py 6 处行号移位条目同步
+# （2537/2540/2542/2558/2657/2699 → 2554/2557/2559/2575/2674/2716，净 +17 行移位），
+# 其余 17 处不变。条目数守恒 23 → 23，不是新增豁免、不是放宽判据。
+# #607 重测留痕见 git 历史（#1282 同款）；R3 形态锚 11 条、R1 形态锚 9 条不变
+# （test_issue607_time_core_shapes_guard.py::test_g4 同口径）。
+# 格式：<仓内相对路径>:<行号>:<规则id>    （R1=exp_decay / R2=keep_rate / R3=ema）
+# `#` 起为注释；本文件由人工复核，--update-baseline 只做机械重写。
+# 规则表 / 豁免表 / 退出码 / 已知局限见 tools/time_core_lint.py 头部。
 
-#
-# ── 2026-10-16（issue #777 弹跳抛体不穿地）后**单条行号同步** ──
-# `lingshu/world/physics.py::projectile_state` 的弹跳循环加了「退出时是否仍处空中」判定 +
-# 贴地钳位（`max_bounces` 用尽 / 贴地初值 ⇒ 落到 ground_z 停住），docstring 同步说真话。
-# 该函数在已登记的 2580 行**之上**插入 8 行 ⇒ 同一违规（无弹跳分支的自由抛体闭式
-# `p0 + v0·τ + ½g·τ²`）以新行号 2588 出现，登记条目 2580 → 2588。
-# 按本文件头部明文处置（「若在已登记文件的行号之上插入/删除行…请重跑 --update-baseline
-# 并重新补写性质注释」）。本次为**单条行号同步**：条目**数与性质均未变**（23 条 → 23 条，
-# 性质注释逐字保留）；**不是**新增豁免、**不是**放宽判据。该行仍是运动学外推
-# （`tau = float(t) - t0` 是流逝时间，不是保持率），未走 time_core 统一核。
+lingshu/core/activation.py:355:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:379:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:407:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:524:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:528:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:532:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:532:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:539:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:542:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:559:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:568:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:599:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:600:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:602:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:1011:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2554:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2557:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2559:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2575:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2674:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2716:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/shade_paint.py:215:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/stable_lease.py:302:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核

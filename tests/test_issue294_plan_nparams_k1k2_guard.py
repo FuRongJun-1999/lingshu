@@ -101,7 +101,7 @@ def test_p3_all_five_call_sites_forward_k1_k2(monkeypatch):
     seen = []
     curve = np.zeros(2)
 
-    def fake_plan(n, steps, batch, samples, seed, k1=6, k2=6):
+    def fake_plan(n, steps, batch, samples, seed, k1=6, k2=6, n_params=None):
         seen.append((k1, k2))
         return {"plan_batch": [[0] * batch for _ in range(steps)],
                 "plan_sample": [[0] * samples for _ in range(steps)]}

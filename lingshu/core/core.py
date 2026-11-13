@@ -25,6 +25,8 @@ from .. import _pathguard as _ling_pathguard  # noqa: F401  (import 即执行，
 
 import sqlite3
 import json
+from collections import namedtuple as _namedtuple
+from collections.abc import Mapping
 import time
 import math
 import uuid
@@ -57,6 +59,9 @@ except ImportError:  # 直跑 fallback（裸名互导）
 # 只放开 ① 层（非白名单名的 cwd 解析面）；② 层自 #750 残余修复起不随逃生口
 # 放开——白名单名受控面未命中即失败，不再交还标准 PathFinder（A/D/E 臂封死）。
 from . import contradiction as _contradiction
+import logging
+_log = logging.getLogger(__name__)
+
 
 from .component_resolver import (
     COMPONENT_NAMES as _COMPONENT_NAMES,
@@ -96,7 +101,12 @@ def verify_designer(designer_key) -> bool:
     expected = os.environ.get("AEIS_DESIGNER_KEY")
     if not expected or not designer_key:
         return False
-    return _hmac.compare_digest(str(designer_key), str(expected))
+    # #51：`hmac.compare_digest` 对**非 ASCII str** 抛 TypeError（CPython 文档化
+    # 行为）⇒ 中文密钥下终裁门禁从「干净拒绝」变成「崩」（6 条终裁通路全部
+    # 不可用）。修法：统一 encode 成 bytes 再比较——时序安全语义不变、对任意
+    # Unicode 密钥成立；不匹配 ⇒ False（fail-closed 原样），不再抛。
+    return _hmac.compare_digest(str(designer_key).encode("utf-8"),
+                                str(expected).encode("utf-8"))
 
 
 # main 侧 #29② 判据的原因名 → 矛盾感知（contradiction.py）的原因名，供 conflict:{reason} 标签统一口径
@@ -106,6 +116,9 @@ _MAIN_DIVERGENCE_REASON = {"negation": "polarity", "numeric": "number"}
 # =============================================================================
 # 条件空间（四维声明）
 # =============================================================================
+
+_DEDUP_CAND = _namedtuple("_DedupCand", ["id", "content", "tags", "condition_space"])
+
 
 @dataclass
 class ConditionSpace:
@@ -146,6 +159,22 @@ class ConditionSpace:
         elif not isinstance(d['time_window'], (tuple, list)):
             d['time_window'] = (d['time_window'], d['time_window'])
         d['time_window'] = tuple(d['time_window'])
+        # #2610（批一百一十五）：time_window 归一为**二元数值**窗——外部卡可写
+        # 任意长度/任意类型（实测 `[0, 10, 20]` 落成 3-tuple、`["a","b"]` 落成
+        # 混型），`_conditions_mergeable` 的二元组 unpack 对其
+        # ValueError/TypeError（M5 判同链对毒窗口崩）。沿本方法既有健壮性
+        # 口径（缺字段补默认/#267 丢未知键）：非二元或含非数值元素 ⇒ 补默认窗。
+        _tw = d['time_window']
+        # #342 契约形态（全 None 窗）原样保留：core 产出的 [null, null] 经
+        # from_legacy 回落到 created_at（test_342 构造式锚）。
+        if not all(v is None for v in _tw):
+            # #2610（批一百一十五）：非 #342 形态的元数/数值性闸——外部卡
+            # `[0, 10, 20]` 落成 3-tuple、`["a","b"]` 落成混型 tuple ⇒ M5 判同
+            # 链 unpack ValueError/TypeError（实测函数级崩）。补默认窗。
+            if (len(_tw) != 2
+                    or not all(isinstance(v, (int, float))
+                               and not isinstance(v, bool) for v in _tw)):
+                d['time_window'] = (0.0, 0.0)
         return cls(**d)
 
 
@@ -359,6 +388,24 @@ def _require_finite(name: str, x) -> float:
     return v
 
 
+def _normalize_limit(limit):
+    """把检索族的 limit 归一为非负 int（dsh-bounty #1795，#658 口径收口）。
+
+    #658 已把 query_nodes 族的「None＝全量、0＝空、负数＝全量（SQLite
+    `LIMIT -1`＝不限）」钉为契约并配守卫，但切片族读函数漏归一：
+      · `seq[:limit]` 对 `-1` 做 Python 负切片——静默丢掉最后一条命中
+        （实测 5 条命中 `search_content(limit=-1)` 只回 4 条）；
+      · FTS 腿 `max(int(limit) * 5, 100)` 对 `None` 抛 `TypeError`
+        （`LINGSHU_FTS=1` 时 `search_content(limit=None)` 崩溃，LIKE 腿同输入
+        却正常全量——同一公开入口两条腿行为分叉）。
+    本单点把 None／负数归一为哨兵大数 10**9（切片与 int() 两用皆安全，
+    远小于 SQLite LIMIT 上界 2^63-1）；`0` 原样保留（＝空，#658 G2 口径）。
+    判据来源：dsh-bounty #1795（含逐字读数）＋ #658 守卫
+    tests/test_issue658_limit_none_full_return_guard.py 的 G1/G2 判据。
+    """
+    return 10 ** 9 if (limit is None or limit < 0) else limit
+
+
 def _finite_clamp(x, lo: float, hi: float, default: float = None) -> float:
     """把浮点入参归一为 [lo, hi] 内的**有限**值（非有限/非数 → `default`）。
 
@@ -489,13 +536,19 @@ def _scan_esc_number(text: str, i: int):
     if j < n and text[j] in "+-":
         j += 1
     int_start = j
-    while j < n and text[j].isdigit():
+    # #2607（批一百一十四）：只认 ASCII 数字——`isdigit()` 对全角/阿拉伯-印度
+    # 等非 ASCII 数字也为 True，但**全角小数点 `．` 不被消费** ⇒ 词元在全角
+    # 数字后截断（实测 `"value > ０．９"` 词元="０" ⇒ threshold=0.0，设计者
+    # 意图 0.9——**阈值静默塌缩到 0.0，危机触发器对一切值无条件触发**，#747
+    # 自述的最危险方向）。非 ASCII 数字词元一律"读不准" ⇒ None 回落（不猜，
+    # 与 #747 三闸同纪律）。
+    while j < n and text[j] in "0123456789":
         j += 1
     has_int = j > int_start
     if j < n and text[j] == ".":
         j += 1
         frac_start = j
-        while j < n and text[j].isdigit():
+        while j < n and text[j] in "0123456789":
             j += 1
         if not has_int and j == frac_start:
             return None
@@ -506,7 +559,7 @@ def _scan_esc_number(text: str, i: int):
         if k < n and text[k] in "+-":
             k += 1
         exp_start = k
-        while k < n and text[k].isdigit():
+        while k < n and text[k] in "0123456789":
             k += 1
         if k > exp_start:
             j = k
@@ -519,10 +572,15 @@ def _esc_has_second_comparison(text: str) -> bool:
     #747：本解析器只认**单个**简单比较。`"value > 0.1 and value < 0.2"` 这类复合
     条件若只取首个界，会让后半静默失效 ⇒ 检出即让调用方**回落**（`None`），不猜。
     """
-    if any(ch in "<>=!" for ch in text):
+    if any(ch in "<>=!|&" for ch in text):
+        # #2595（批一百一十三）：检出集补 `|`/`&`——`"value > 0.9 || x"` 的
+        # 管道符不在旧检出集，`||` 也不是独立词 "or" ⇒ 复合 OR 分支静默失效
+        # （闸把设计者的 OR 收紧成 AND，危机该触发时不触发；与 #747 的
+        # 「后半静默失效」失效方向同族）。fail-closed：检出即回落。
         return True
-    return (_find_standalone_word(text, "and") >= 0
-            or _find_standalone_word(text, "or") >= 0)
+    lowered = text.lower()
+    return (_find_standalone_word(lowered, "and") >= 0
+            or _find_standalone_word(lowered, "or") >= 0)
 
 
 def _parse_escalation_value_bound(condition: str):
@@ -594,7 +652,19 @@ def _parse_escalation_value_bound(condition: str):
 
 
 def _eval_escalation_value_bound(op: str, threshold: float, value) -> bool:
-    """按解析出的算符比较 `value` 与 `threshold`（#57 求值侧，纯函数）。"""
+    """按解析出的算符比较 `value` 与 `threshold`（#57 求值侧，纯函数）。
+
+    #2150：`value` 侧补类型/有限性闸（与阈值侧 #747 的三闸同口径）——
+    修前裸比较：非数值对象可用富比较伪造布尔让触发器**无条件命中**、`str`
+    让 TypeError 逃出公开 API（无 error 返回体）。不可判一律 False（fail-closed，
+    与 NaN 比较恒假的既有语义一致）。
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, float) and math.isnan(value):
+        return False    # NaN 无序（触发器语义不可判）⇒ fail-closed；
+                        # ±inf 的**有序**比较语义保留（-inf < 0.2 照常触发，
+                        # 与 #2162 的边界声明一致）
     if op == ">":
         return value > threshold
     if op == ">=":
@@ -885,6 +955,7 @@ class SelfModel:
         try:
             hook()
         except Exception:  # noqa: BLE001 —— 持久化是旁路，失败不阻断模型变更
+            _log.debug("core.py silent-except：持久化是旁路，失败不阻断模型变更", exc_info=True)
             pass
 
     def update(self, **kwargs):
@@ -1094,6 +1165,14 @@ class SelfModel:
         （待裁清单尚无该条；D-54/D-55 是 #114 的权重与 0 值语义，非本件）。
         """
         t_total = _require_finite("t_total", t_total)
+        # 值域闸（lingshu #206 待裁两分支的「归一信任值」分支，2026-11-07 裁决）：
+        # T ∈ [0,1]（_trust() 声明口径）——有限越界值（如 42.0）不再原样接受，
+        # 长期层不可被越界值无条件推过阈值。既有「累计量」读法（0..99）随裁决
+        # 一并改归一口径（tests/test_self_model_history.py 同步适配）。
+        if not (0.0 <= t_total <= 1.0):
+            raise ValueError(
+                "#206 t_total 须为归一信任值 [0,1]，收到 %r"
+                % (t_total,))
         self.trust_state["t_total"] = t_total
         if p_trust is not None:
             self.trust_state["p_trust"] = _require_finite("p_trust", p_trust)
@@ -1239,6 +1318,7 @@ class _ThreadConn:
         try:
             self.conn.close()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass  # 已关闭/被其它线程回收：关闭是尽力而为，不阻断生命周期收尾
 
     def __del__(self):
@@ -1246,6 +1326,7 @@ class _ThreadConn:
         try:
             self.close()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
 
@@ -1513,8 +1594,10 @@ class LayeredStore:
                 try:
                     self.conn.execute("PRAGMA journal_size_limit=512000000")
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     pass
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
         # ③ 启动重试（2026-09-01 修复③）：建表/初始化失败（写锁竞争超时）
         #    指数退避重试 3 次再退出——不再一次性崩溃
@@ -1598,6 +1681,7 @@ class LayeredStore:
             if not _is_mem:
                 c.execute("PRAGMA journal_size_limit=512000000")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # #93：外键强制是**连接级**开关——SQLite 默认 `foreign_keys=OFF`，建表块里
         # 声明的两条 `FOREIGN KEY ... REFERENCES nodes(id)` 因此**没有约束力**，
@@ -1766,6 +1850,7 @@ class LayeredStore:
                 else:
                     conn.rollback()
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
             raise
         finally:
@@ -1797,6 +1882,7 @@ class LayeredStore:
                                 for t, c in self._SCHEMA_COLUMNS.items())):
                     return
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass  # 只读校验异常 → 保守回退到原建表路径（IF NOT EXISTS 幂等）
         # 节点表（含层标识）
         c.execute('''
@@ -1838,6 +1924,7 @@ class LayeredStore:
             try:
                 c.execute(f"ALTER TABLE nodes ADD COLUMN {col_sql}")
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
         # 边表
         c.execute('''
@@ -1854,6 +1941,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE edges ADD COLUMN source_evidence TEXT DEFAULT 'extracted'")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # 索引
         c.execute('CREATE INDEX IF NOT EXISTS idx_nodes_layer ON nodes(layer)')
@@ -1872,6 +1960,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE blindspots ADD COLUMN predictability TEXT DEFAULT 'pending_assessment'")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         c.execute('''
             CREATE TABLE IF NOT EXISTS skills (
@@ -1892,6 +1981,7 @@ class LayeredStore:
         try:
             c.execute("ALTER TABLE promotion_proposals ADD COLUMN content_hash TEXT DEFAULT ''")
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # #778-F4（加固不对称）：本表**不声明** `FOREIGN KEY(node_id) REFERENCES
         # nodes(id)`——对照边表（`edges` 有两条 `REFERENCES nodes(id)` ＋ #93 孤儿
@@ -2227,6 +2317,11 @@ class LayeredStore:
 
     def get_meta(self, key: str = None) -> dict:
         """读引擎元数据：key 指定返回 {key: value}，None 返回全部。"""
+        # 自主发现（参数类型，与 set_meta 对称）：key 此前不做类型闸——传 int 会直接
+        # 当 SQL 参数（实测 get_meta(123) -> {}），调用方把「参数写错」误读成「该键不存在」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（与 set_meta 的 key 闸同口径）。
+        if key is not None and (not isinstance(key, str) or not key.strip()):
+            raise TypeError("get_meta 的 key 必须是非空字符串或 None，收到 %r" % (key,))
         if key is not None:
             c = self.conn.cursor()
             c.execute("SELECT value FROM engine_meta WHERE key = ?", (key,))
@@ -2288,6 +2383,11 @@ class LayeredStore:
         实例写治理键 ⇒ `PermissionError`（判据与边界见
         `_assert_meta_key_writable` docstring）。非治理键照旧放行。
         """
+        # 自主发现（key 类型）：set_meta 此前不校验 key——传 int 可把非字符串键写进
+        # engine_meta（实测 set_meta(123, "v") 成功），此后按 str 键读取永远查不到，
+        # 形成不可见的脏行。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(key, str) or not key.strip():
+            raise TypeError("set_meta 的 key 必须是非空字符串，收到 %r" % (key,))
         self._assert_meta_key_writable(key)
         with self._lock:
             c = self.conn.cursor()
@@ -2798,6 +2898,12 @@ class LayeredStore:
         ⇒ `PermissionError`（fail-closed、零落库）。本地层（knowledge/context/self）
         的增信路径不受影响（SUB 对自己节点的复核照旧放行——`#191` 裁定 SELF 属本地层）。
         """
+        # 自主发现（参数类型/值域）：delta 此前不做类型闸——传 "x"/None 静默返回
+        # None（实测 update_node_confidence(nid, "x") -> None），置信度其实没变。
+        # 现 fail-loud：非实数或非有限 → 可读 TypeError。
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_node_confidence 的 delta 必须是有限实数，收到 %r" % (delta,))
         delta = _finite_or(delta, 0.0)
         # 闸落在 UPDATE 之前（本方法已挂 @_transactional ⇒ 被拒时零落库）。
         self.assert_node_writable_by_role(node_id, action="改写共享层节点的 confidence")
@@ -2831,6 +2937,11 @@ class LayeredStore:
         ★本笔合成：两分支都委派给批量单点（不复制实现）——`touch=True` 走与 #571
         逐位一致的默认入口，`touch=False` 多传一个 `touch` 形参；故「单节点入口委派
         批量单点」与「不刷新近因」两套语义并存。"""
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 会被当 SQL 参数，
+        # 静默返回 None（实测 increment_access(123) -> None），近因计数实际没写，调用方
+        # 以为刷新成功。现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("increment_access 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         if touch:
             self.increment_access_many([node_id])
         else:
@@ -2866,20 +2977,55 @@ class LayeredStore:
         把「被吞掉的失败」改为「被上报的失败」，**不**改锁等待取向（改锁等待属
         语义变更，见报告「取向题：要不要为访问计数等锁」）。
         """
+        # 自主发现（参数类型 · 批量兄弟入口）：`increment_access` 已在类型闸镜像里补了
+        # 非空 str 闸，但**它委派的批量入口零闸**——三条静默失效：
+        # ① `increment_access_many([123])` 把 int 当 SQL 参数，UPDATE 命中 0 行、
+        #   不抛（实测返回 None，access_count 不变）⇒ 调用方以为刷新成功；
+        # ② `increment_access_many("ab")`（忘包 list）按**逐字符**迭代，实测
+        #   把 `a`/`b` 两个单字符 id 各 +1、目标 `ab` 纹丝不动——**静默写错实体**，
+        #   这是本方法最重的失效方向；
+        # ③ 混批里的非 str/空串被 `if i` 静默丢弃，调用方无从得知少记了几条。
+        # 修法：入口 fail-loud（容器类型 + 逐元素非空 str）——非 list/tuple 容器
+        # 直接拒，逐字符迭代即 ② 的成因。`None`/空序列保持既有「无事可做」语义。
+        if node_ids is None:
+            return
+        if not isinstance(node_ids, (list, tuple)):
+            raise TypeError(
+                "increment_access_many 的 node_ids 必须是 list/tuple（不是单个字符串——"
+                "逐字符迭代会更新错误实体），收到 %r" % (type(node_ids).__name__,))
+        bad = [i for i in node_ids if not isinstance(i, str) or not i.strip()]
+        if bad:
+            raise TypeError(
+                "increment_access_many 的 node_ids 每项必须是非空字符串，收到非法项 %r"
+                % (bad[:3],))
         ids = [i for i in (node_ids or []) if i]
         if not ids:
             return
         try:
-            obs = sqlite3.connect(self.db_path, timeout=0)
+            # #52：`:memory:` 后端时 `self.db_path` 是 ":memory:" 字面量——
+            # `sqlite3.connect(":memory:")` 得到**另一个空库**（每连接一个独立库），
+            # UPDATE 落在 `no such table` 上被吞 ⇒ 访问计数静默失效（实测 3 次调用
+            # 后 access_count=0，文件库=3）。内存库实际载体是 shared-cache DSN
+            # （`_memory_dsn`，见 `__init__`），旁路连接必须带 `uri=True` 连它才看
+            # 得到同一份数据；`timeout=0` 的非阻塞设计保留不动。文件库路径原样。
+            dsn = self._memory_dsn or self.db_path
+            obs = sqlite3.connect(dsn, timeout=0,
+                                  uri=dsn.startswith("file:"))
             try:
                 # #93：本连接独立于 `_connect`（访问计数为尽力而为的旁路写），
                 # 连接级外键开关必须逐连接重设，否则该连接上外键不生效。
                 obs.execute("PRAGMA foreign_keys=ON")
                 if touch:
+                    # #52：整批共用**一个**时间戳——此前逐行 time.time()，而 ids 是
+                    # 按检索得分序传入的（高分在前）⇒ 低分节点拿到更晚的
+                    # last_access，下一次 recall 的近因项反向偏向低分节点
+                    # （:memory: 上该刷新曾因 #52 静默丢失而从未生效，修复后暴露，
+                    # W6 在依赖下界档复现）。一次检索事件＝一个时刻。
+                    ts = time.time()
                     obs.executemany(
                         'UPDATE nodes SET access_count = access_count + 1,'
                         ' last_access = ? WHERE id=?',
-                        [(time.time(), nid) for nid in ids])
+                        [(ts, nid) for nid in ids])
                 else:
                     obs.executemany(
                         'UPDATE nodes SET access_count = access_count + 1 WHERE id=?',
@@ -2997,6 +3143,11 @@ class LayeredStore:
         `EdgeType(row[3])` / `ConditionSpace.from_json(row[4])` 使单条坏边
         中断所有边读取）。
         """
+        # 自主发现（参数类型）：edge_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_edge(123) -> None），调用方把「参数写错」误读成
+        # 「该边不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(edge_id, str) or not edge_id.strip():
+            raise TypeError("get_edge 的 edge_id 必须是非空字符串，收到 %r" % (edge_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE id=?", (edge_id,))
         row = c.fetchone()
@@ -3039,6 +3190,11 @@ class LayeredStore:
         SUB 可自行把结构层间的边置为 `verified=1`、`confidence=1.0`。
         判据来源：公开 issue #234「建议修复 2」＋ `_assert_edge_role`。
         """
+        # 自主发现（参数类型）：edge_id 此前不做类型闸——传 None/int 直接当 SQL 参数，
+        # 静默返回 None/False（实测 verify_edge(None) -> None），调用方把「参数写错」
+        # 误读成「该边不存在/未验证」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(edge_id, str) or not edge_id.strip():
+            raise TypeError("verify_edge 的 edge_id 必须是非空字符串，收到 %r" % (edge_id,))
         if self.role != Role.PRIMARY:
             edge = self.get_edge(edge_id)
             if edge is not None:
@@ -3112,6 +3268,11 @@ class LayeredStore:
         """
         conditions = []
         params = []
+        # 自主发现（参数类型）：layer 此前直接读 `.value`——传 str/int 抛不可读
+        # AttributeError（'str' object has no attribute 'value'）。现 fail-loud：
+        # 非 MemoryLayer 且非 None → 可读 TypeError（不查库）。
+        if layer is not None and not isinstance(layer, MemoryLayer):
+            raise TypeError("layer 必须是 MemoryLayer 或 None，收到 %r" % (layer,))
         if layer is not None:
             conditions.append("layer=?")
             params.append(layer.value)
@@ -3148,9 +3309,11 @@ class LayeredStore:
             try:
                 nodes.append(STNode.from_row(tuple(row)))
             except Exception:      # noqa: BLE001 —— 坏行不该毒化整层（#267）
+                _log.debug("core.py silent-except：坏行不该毒化整层（#267）", exc_info=True)
                 try:
                     skipped.append(row[0])
                 except Exception:  # noqa: BLE001
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     skipped.append(None)
         return nodes, skipped
 
@@ -3175,11 +3338,68 @@ class LayeredStore:
             try:
                 edges.append(STEdge.from_row(tuple(row)))
             except Exception:      # noqa: BLE001 —— 坏行不该毒化整批（#653）
+                _log.debug("core.py silent-except：坏行不该毒化整批（#653）", exc_info=True)
                 try:
                     skipped.append(row[0])
                 except Exception:  # noqa: BLE001
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     skipped.append(None)
         return edges, skipped
+
+    def _dedup_candidates(self, modality: str):
+        """#661：M5 去重候选的窄列投影（id / content / tags / condition_space）。
+
+        修前 `add_perception` 经 `query_nodes(layer=KNOWLEDGE, limit=-1)` 全列
+        装载候选——每行 `STNode.from_row` 严格反序列化（spatial/semantic/state
+        三处 json.loads ＋ 全字段构造），而判同循环实际只访问 4 个字段 ⇒ 写入
+        代价随知识层规模线性增长且大头花在「判同根本不用的列」上（issue #661
+        实测 7.1→52.6 ms/条随规模增长）。
+
+        本方法保持与 `query_nodes` **同 WHERE**（layer=KNOWLEDGE ＋ modality ＋
+        importance≥0）、**同 ORDER**（importance DESC, last_access DESC）、
+        **同 LIMIT -1 语义**，仅把投影收窄到判同四列 ⇒ 候选集合与顺序逐位等价、
+        判同输入逐位不变 ⇒ 判同结果逐位不变。坏行容错与 #267 同款（跳过该行，
+        id 如实计入 `last_skipped_rows`）。命中后的合并路径仍由
+        `get_node(best.id)` 回捞完整节点（#223 并面），不经窄行——窄行仅允许
+        在判同循环内使用（守卫
+        `tests/test_issue661_dedup_narrow_projection_guard.py` 钉源码锚）。
+
+        判据来源：issue #661（写入代价随库规模线性增长）＋「零语义风险窄列
+        优化」路径（判同输入不变 ⇒ 判同结果不变；预筛/截断类修法须先有召回
+        等价判据，另案）。
+        边界（如实标注）：①仍是全表行扫描——`nodes.content` 无索引，`LIKE`
+        预筛同样全扫（#297 边界已声明），本修只省「判同不用的列的反序列化」，
+        不改线性复杂度，根治（倒排索引）待召回判据补齐；②`_conditions_mergeable`
+        的 `cs` 侧（新写入侧）不受影响；③`last_skipped_rows` 与全列装载共用
+        同一槽位——`add_perception` 内无其它 query_nodes 调用，语义不变。
+        """
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT id, content, tags, condition_space FROM nodes"
+            " WHERE layer=? AND modality=? AND importance>=?"
+            " ORDER BY importance DESC, last_access DESC",
+            (MemoryLayer.KNOWLEDGE.value, modality, 0.0),
+        )
+        out, skipped = [], []
+        for row in c.fetchall():
+            try:
+                out.append(_DEDUP_CAND(
+                    id=row[0],
+                    content=row[1],
+                    # #2380：tags 列与 from_row 同口径（无条件 json.loads）——
+                    # 修前 `if row[2] else []` 对 tags=NULL 宽容收进候选，而
+                    # from_row 对同一行抛 TypeError 跳过 ⇒ 候选集合不等价、
+                    # M5 判同结果变化（违背 #1265「逐位不变」承诺）。
+                    tags=json.loads(row[2]),
+                    condition_space=ConditionSpace.from_json(row[3]),
+                ))
+            except (IndexError, ValueError, TypeError, KeyError):
+                # 坏行真实面：坏 JSON（JSONDecodeError ⊂ ValueError）/缺字段
+                # （KeyError/TypeError）/列越界（IndexError）——收窄类型而非
+                # 宽 except（#170 口径：新增不进基线）。跳过该行并如实计数。
+                skipped.append(row[0])
+        self.last_skipped_rows = skipped
+        return out
 
     def query_nodes_by_time(self, start_ts: float = None, end_ts: float = None,
                             limit: int = None) -> List[STNode]:
@@ -3200,6 +3420,17 @@ class LayeredStore:
         ——`session_summary` 本就需全量分窗，代价与既有行为同阶（旧实现也扫表，
         只是多了 500 截断）。
         """
+        # 自主发现（参数类型）：start_ts/end_ts/limit 此前都不做类型闸——传 str 的时间边界
+        # 静默返回 []（实测 query_nodes_by_time("x", "y") -> []）；limit 传 str 直接进 SQL
+        # 抛不可读 `IntegrityError: datatype mismatch`。现 fail-loud：可读 TypeError。
+        for _n, _v in (("start_ts", start_ts), ("end_ts", end_ts)):
+            if _v is not None and (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                                   or not math.isfinite(float(_v))):
+                raise TypeError("query_nodes_by_time 的 %s 必须是有限实数或 None，收到 %r"
+                                % (_n, _v))
+        if limit is not None and (isinstance(limit, bool)
+                                 or not isinstance(limit, (int, float))):
+            raise TypeError("query_nodes_by_time 的 limit 必须是数值或 None，收到 %r" % (limit,))
         conds, params = [], []
         if start_ts is not None:
             conds.append("temporal_coordinate >= ?")
@@ -3251,6 +3482,11 @@ class LayeredStore:
         ② `subgraph` 的同款 IN 查询（其候选集来自本函数返回的 ≤max_nodes 条，天然
         有界）不在本件。
         """
+        # 自主发现（参数类型）：start_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 traverse(123) -> []），调用方把「参数写错」误读成「该起点无后继」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(start_id, str) or not start_id.strip():
+            raise TypeError("traverse 的 start_id 必须是非空字符串，收到 %r" % (start_id,))
         c = self.conn.cursor()
         rel_clause, params = "", []
         if relation_types:
@@ -3337,6 +3573,11 @@ class LayeredStore:
         返回 {root, node_count, edge_count, nodes: {id: {name, importance}}, edges}
         """
         # ① 递归遍历收集子图节点（默认沿归属/因果/相似三类边向指定方向扩展）
+        # 自主发现（参数类型）：root_id 此前不做类型闸——传 int/None 会被原样回填进
+        # 结果（实测 subgraph(123) -> {'root': 123, 'node_count': 1, ...}），调用方拿到
+        # 一个「根是整数」的伪子图。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(root_id, str) or not root_id.strip():
+            raise TypeError("subgraph 的 root_id 必须是非空字符串，收到 %r" % (root_id,))
         nodes = self.traverse(root_id, relation_types=relation_types or
                               ["hierarchical", "causal", "similar"],
                               direction=direction, max_depth=max_depth)
@@ -3360,6 +3601,7 @@ class LayeredStore:
                 nm = json.loads(row["state_attributes"] or "{}").get("name", "") \
                     or row["id"][:24]
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 nm = row["id"][:24]
             names[row["id"]] = {"name": nm, "importance": row["importance"]}
         return {"root": root_id, "node_count": len(node_ids),
@@ -3381,14 +3623,45 @@ class LayeredStore:
         200：总节点=200 找到目标，201 起一律找不到（9/9 与候选集一致）。
         改为全量候选（`limit=-1`，SQLite `LIMIT -1` = 不限条数，与同文件
         `get_layer_nodes` / #258 / #297 同款口径），本机实测总节点 502 时仍能命中。
+        if (isinstance(time_radius, bool) or not isinstance(time_radius, (int, float))
+                or not math.isfinite(time_radius) or time_radius < 0):
+            raise ValueError("spatiotemporal_query：time_radius 须为非负有限值，收到 %r"
+                             % (time_radius,))
+        if (isinstance(space_radius, bool) or not isinstance(space_radius, (int, float))
+                or not math.isfinite(space_radius) or space_radius < 0):
+            raise ValueError("spatiotemporal_query：space_radius 须为非负有限值，收到 %r"
+                             % (space_radius,))
         判据来源：公开 issue #264（「低 importance 但时空紧邻的记忆永远查不到」）
         ＋ 分诊表 `triage_lingshu_ALL.md` 行 264。
+
+        #2163：两半径此前零校验——`abs(...) > time_radius` 对 NaN 恒 False ⇒
+        半径传 NaN 等价于「无限大」（实测把时间相隔 365 天、空间相隔 1000 的节点
+        拉进结果）；±inf 时分数 `t_dist/radius + s_dist/radius` 的分母为 inf
         边界（削掉的判别力/代价，如实标注）：①全量候选使每次调用为 O(N) 全表
         扫描并逐行反序列化，代价随库规模线性增长（旧实现固定 ≤200 条）；②issue
         建议 1 的「几何/时间谓词下推 SQL」**未**采纳——那属取数路径的独立面，
         本件只做「候选视野与 docstring 声明对齐」这一最小修法；③仍不返回
         `truncated` 标记（issue 建议 2），因为本修法后已无截断。
+
+        #2163：两半径 fail-closed——`abs(...) > time_radius` 对 NaN 恒 False ⇒
+        半径传 NaN 等价于「无限大」（实测把时间相隔 365 天、空间相隔 1000 的节点
+        拉进结果）；±inf 时分数 `t_dist/radius + s_dist/radius` 分母为 inf ⇒
+        相隔一年的节点被评为 0.0 零距离排最前。半径必须非负有限。
         """
+        # 自主发现（参数类型）：center_node_id 此前不做类型闸——传 int/None 直接当 SQL
+        # 参数（实测 spatiotemporal_query(123) -> []），调用方把「参数写错」误读成
+        # 「该中心无时空近邻」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(center_node_id, str) or not center_node_id.strip():
+            raise TypeError("spatiotemporal_query 的 center_node_id 必须是非空字符串，收到 %r"
+                            % (center_node_id,))
+        if (isinstance(time_radius, bool) or not isinstance(time_radius, (int, float))
+                or not math.isfinite(time_radius) or time_radius < 0):
+            raise ValueError("spatiotemporal_query：time_radius 须为非负有限值，收到 %r"
+                             % (time_radius,))
+        if (isinstance(space_radius, bool) or not isinstance(space_radius, (int, float))
+                or not math.isfinite(space_radius) or space_radius < 0):
+            raise ValueError("spatiotemporal_query：space_radius 须为非负有限值，收到 %r"
+                             % (space_radius,))
         center = self.get_node(center_node_id)
         if center is None:
             return []
@@ -3425,6 +3698,11 @@ class LayeredStore:
         等图算法的取边都经本入口，一条坏边即整体中断的历史（issue #653 读数）
         就此消除。跳过的边 id 记入 `self.last_skipped_edges`（每次调用刷新）。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 get_outgoing_edges(123) -> []），调用方把「参数写错」误读成「该节点无出边」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("get_outgoing_edges 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE source_id=?", (node_id,))
         edges, skipped = self._tolerant_edges(c.fetchall())
@@ -3436,6 +3714,11 @@ class LayeredStore:
 
         #653：与 `get_outgoing_edges` 同款逐行容错（见其 docstring）。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 []（实测 get_incoming_edges(123) -> []），调用方把「参数写错」误读成「该节点无入边」。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("get_incoming_edges 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM edges WHERE target_id=?", (node_id,))
         edges, skipped = self._tolerant_edges(c.fetchall())
@@ -3598,6 +3881,11 @@ class LayeredStore:
         语义（#145/#215 判据不动），也**不**把 `find_cycles` 改成生成器（保留列表
         返回以兼容既有调用）。
         """
+        # 自主发现（参数类型）：max_depth 此前不做类型闸——传 str 的深度上限静默返回 []
+        # （实测 find_cycles("x") -> []），调用方把「参数写错」误读成「无环」。现 fail-loud：
+        # 非整数 → 可读 TypeError。
+        if isinstance(max_depth, bool) or not isinstance(max_depth, int):
+            raise TypeError("find_cycles 的 max_depth 必须是整数，收到 %r" % (max_depth,))
         out_edges: Dict[str, List[STEdge]] = {}
         nodes: Set[str] = set()
         # #653：批量读经 `_tolerant_edges`——坏边（如 condition_space 非法 JSON
@@ -3816,6 +4104,25 @@ class LayeredStore:
         """
         if x is None:
             return 0.0
+        # 自主发现（衰减因子值域）：`factor` 是**每周期衰减量**，契约 ∈[0,1]
+        # （见 `time_core.cred_step` docstring「decay 是每周期衰减量」），但本入口
+        # 旧实现不做任何值域闸：
+        #   · factor < 0 ⇒ ratio > 1 ⇒ gamma < 0 ⇒ cred 按 e^{+|γ|dt} **放大**，
+        #     confidence/importance 越过 [0,1] 上界（实测 factor=-0.5 把 0.8 抬到
+        #     1.2，随后阈值/排序都把它当「最高可信」）；
+        #   · factor = NaN ⇒ ratio = NaN ⇒ gamma = NaN ⇒ cred 返回 NaN ⇒ 写库为
+        #     NULL——本函数**自己造出** #185 那类坏行（该 issue 的前提正是「不得让
+        #     已入库数据把整轮衰减打断」）；
+        #   · factor > 1 经 `ratio <= 0` 分支静默归 0 ⇒ 一次调用清空全部置信度，
+        #     调用方无法察觉参数写错。
+        # 现 fail-loud：非有限或越界一律拒绝（零写入），合法 [0,1] 行为不变。
+        try:
+            _f = float(factor)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("decay factor 必须是实数，收到 %r" % (factor,)) from exc
+        if not math.isfinite(_f) or not (0.0 <= _f <= 1.0):
+            raise ValueError("decay factor 必须是 [0, 1] 内的有限值，收到 %r" % (factor,))
+        factor = _f
         ratio = 1.0 - factor
         if ratio <= 0.0:
             return 0.0
@@ -3887,6 +4194,18 @@ class LayeredStore:
         ③仅把「周期」钉为 `_DECAY_PERIOD_SECONDS`（默认 60s，与
         `start_auto_decay` 默认 interval 同源），未把 γ 拆成独立配置项。
         """
+        # 自主发现（删除阈值值域）：`min_confidence` 是「低于即删」的阈值，契约
+        # ∈[0,1]；旧实现不校验——`>1` 时 `new_conf < min_confidence` 恒真 ⇒ 一次
+        # 删光全部未验证边与低于阈值的节点（实测 5 ⇒ 边 1→0、情境节点 3→0）；
+        # `<0` 时永不删除，遗忘机制整体失效且无任何信号。现 fail-loud：非实数
+        # TypeError、非有限或越界 ValueError（零写入）。
+        try:
+            _mc = float(min_confidence)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("min_confidence 必须是实数，收到 %r" % (min_confidence,)) from exc
+        if not math.isfinite(_mc) or not (0.0 <= _mc <= 1.0):
+            raise ValueError("min_confidence 必须是 [0, 1] 内的有限值，收到 %r" % (min_confidence,))
+        min_confidence = _mc
         dt = self._decay_dt(now)
         # #720：本轮逐行容错计数（写路径也刷新一次；语义＝「本次调用跳过的坏行 id」，
         # 与装载面 `_tolerant_nodes` 的刷新口径同名同义）。下方情境段/知识段遇到
@@ -4079,6 +4398,9 @@ class LayeredStore:
     @staticmethod
     def char_bigram_jaccard(a: str, b: str) -> float:
         """中文二元组 Jaccard 相似度（对中文友好，解决按词分割失效问题）"""
+        for _n, _v in (("a", a), ("b", b)):
+            if not isinstance(_v, str):
+                raise TypeError("char_bigram_jaccard 的 %s 必须是字符串，收到 %r" % (_n, _v))
         if not a or not b:
             return 0.0
         def bigrams(s):
@@ -4098,7 +4420,7 @@ class LayeredStore:
         {"语义", "含义", "意思", "意义", "概念"},
         {"识别", "检测", "感知", "探测", "发现"},
         {"转换", "转化", "映射", "变换"},
-        {"实验", "试验", "集成", "实现", "验证", "测试"},
+        {"实验", "试验", "集成", "验证", "测试"},
         {"评测", "评估", "跑分", "基准", "benchmark", "评审", "考核"},
         {"记忆", "记录", "库"},
         {"智能", "智能体", "灵枢", "AI"},
@@ -4120,6 +4442,12 @@ class LayeredStore:
         """
         if not word:
             return False
+        # #132（建议 1 后半）：中文**单字**不得触发（「库」这类单字泛词把无关候选
+        # 灌进 LIKE 预筛——`数据库迁移` 曾展开出 `记忆/记录/库`）。不引入分词器：
+        # 只要求中文词长度 ≥2 才算一个「词」。C 组口径不受影响——`记忆库` 仍由
+        # 两字词 `记忆` 触发整组，展开结果照旧含 `记忆/记录/库`。
+        if not word.isascii() and len(word) < 2:
+            return False
         if word.isascii() and any(ch.isalnum() or ch == "_" for ch in word):
             start = query.find(word)
             while start != -1:
@@ -4139,6 +4467,8 @@ class LayeredStore:
         """查询同义词展开：原查询整句 + 命中组词（含命中词本身，词级预筛）+ 组内同义词。
         命中词本身必须加入——整句 LIKE 无法命中只含词级的节点。
         触发判据见 `_synonym_trigger_hit`（#132：ASCII 词边界，杜绝 EMAIL→AI）。"""
+        if not isinstance(query, str):
+            raise TypeError("expand_query_terms 的 query 必须是字符串，收到 %r" % (query,))
         terms = [query]
         for group in LayeredStore.SYNONYM_GROUPS:
             for w in group:
@@ -4191,6 +4521,25 @@ class LayeredStore:
         返回前会把命中节点的 `last_access` 刷成「现在」⇒ 同一节点的分数在两次调用
         间漂移（issue 实测 ~1.9e-08），主排序键不稳定 ⇒ 排序翻转。打分路径不写回
         打分输入（检索只计数、不刷新近因），分数即成为固定输入的纯函数。"""
+        # dsh-bounty #1795：#658「None／-1＝全量」口径在此入口收口（FTS 腿
+        # `int(limit)` 对 None 崩、两腿 `scored[:limit]` 对 -1 负切片丢尾条）。
+        # 自主发现（参数类型）：query 此前直接 `.strip()`——传 None/非字符串抛不可读
+        # AttributeError（'NoneType' object has no attribute 'strip'）。现 fail-loud：
+        # 非字符串 → 可读 TypeError（空串语义不变：返回空列表）。
+        if not isinstance(query, str):
+            raise TypeError("search_content 的 query 必须是字符串，收到 %s"
+                            % type(query).__name__)
+        # 自主发现（参数类型）：layers 此前直接迭代并读 `.value`——传 str/元素非
+        # MemoryLayer 抛不可读 AttributeError（'str' object has no attribute 'value'）。
+        # 现 fail-loud：非列表/元组，或元素非 MemoryLayer → 可读 TypeError（不查库）。
+        if layers is not None:
+            if not isinstance(layers, (list, tuple)):
+                raise TypeError("layers 必须是列表/元组或 None，收到 %s"
+                                % type(layers).__name__)
+            for _lay in layers:
+                if not isinstance(_lay, MemoryLayer):
+                    raise TypeError("layers 的元素必须是 MemoryLayer，收到 %r" % (_lay,))
+        limit = _normalize_limit(limit)
         q = query.strip()
         if not q:
             return []
@@ -4253,6 +4602,28 @@ class LayeredStore:
                   f"ORDER BY importance DESC, last_access DESC, id ASC LIMIT 300",
                   params + like_params)
         rows = c.fetchall()
+        # #2111：同义词展开预筛 × 300 候选池按 importance 截断 ⇒ 正文**逐字包含
+        # 查询原文**的节点在打分之前就被同义词强命中者挤出池——FTS 腿「逐字含
+        # 原文者排最前」的仓内检索契约在默认 LIKE 腿被截断面整个打破（实测 320 条
+        # 填充（importance 0.95）+ 1 条逐字命中（importance 0.1）⇒ needle 整条
+        # 不可见，返回全是同义词弱命中）。修法：预筛池拆**两段**——①逐字含原文池
+        # （content LIKE 整句原文，同款 #35/#613 定序 + LIMIT 300）置前；②同义词
+        # 池（原口径不变）；合并去重（同 id 以逐字段为准）。打分仍是 Jaccard 排序
+        # ——本修只保证「进打分池的资格」，最终次序由打分决定（逐字命中分值必然
+        # 高，契约由打分自然成立，不硬抬次序）。
+        # 边界（如实标注）：①查询超 1000 字节或纯通配符时不新增逐字段（与修前单
+        # 段口径一致——#266 的模式长度现实与 #183 的转义面都不放大）；②两段合并
+        # 最坏 600 行，打分量翻倍但在同量级。
+        _q_esc = self._escape_like(q)
+        if q and len(q.encode("utf-8")) <= 1000 and any(ch not in "%_" for ch in q):
+            c.execute("SELECT * FROM nodes WHERE "
+                      + " AND ".join(conds + ["content LIKE ? ESCAPE '\\'"])
+                      + " ORDER BY importance DESC, last_access DESC, id ASC LIMIT 300",
+                      params + ["%" + _q_esc + "%"])
+            _exact_rows = c.fetchall()
+            if _exact_rows:
+                _exact_ids = {r[0] for r in _exact_rows}
+                rows = _exact_rows + [r for r in rows if r[0] not in _exact_ids]
         # #183：预筛已转义（`%`/`_` 按字面匹配）。但**空结果会触发下面的全表
         # 二元组兜底**，把整库当零分候选返回 ⇒ `search_content("%")` /
         # `search_content("_")` 在库内无字面 `%`/`_` 时仍返回全库（issue 判据
@@ -4507,6 +4878,13 @@ class LayeredStore:
         `no_forget` 加配额或审批——后两条属设计取向（谁有权把一条记忆标成不可
         遗忘），见 issue #781 回帖。
         """
+        # 自主发现（静默失败）：tag_node 此前不校验节点是否存在——对不存在的 nid
+        # 调用（实测 tag_node("nope", "x") -> None）静默成功，调用方以为标签已写入。
+        # 现 fail-loud：节点不存在 → 可读 LookupError（零写入）。
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise TypeError("tag_node 的 node_id 必须是非空字符串，收到 %r" % (node_id,))
+        if self.get_node(node_id) is None:
+            raise LookupError("tag_node 的节点不存在：%r" % (node_id,))
         if self.role != Role.PRIMARY:
             n = self.get_node(node_id)
             if n is not None and n.layer in self.SHARED_LAYERS:
@@ -4520,10 +4898,20 @@ class LayeredStore:
         # 同一事务：多进程 0 异常但标签静默丢失」＋ 其修法建议「把标签改动收进单条 SQL
         # （同一事务内读改写，或 BEGIN IMMEDIATE）」。取后者（IMMEDIATE）——不改
         # `nodes.tags` 的**整列覆盖**语义，只把读改写收进一个原子边界。
+        # #928：`tag` 必须是**非空字符串**——旧实现来者不拒，传 list 时整个列表被
+        # 当作**一个元素** append 进 tags（`["甲"]` ⇒ `[["甲"]]`），串行两次即得嵌套
+        # `[[甲],[乙]]`；`get_nodes_by_tag` 对嵌套形态匹配必失配 ⇒ 按标签检索丢节点。
+        # 跨进程+字符串 tag 本身无恙（#344 的 BEGIN IMMEDIATE 保证），损坏源是
+        # **类型未校验**，与进程数无关。fail-closed：非 str/空串当场 ValueError，
+        # 不静默改造、不落半截数据。
         # 边界（削掉的判别力，如实标注）：①本件只保证 `tags` 的读改写原子；同一节点上
         # **其它列**的并发读改写（如 `longterm_gate` 的 importance+tags 合并写）不归本件；
         # ②`_lock` 是**进程内**锁、跨进程无效，故此处用 DB 级 `BEGIN IMMEDIATE`（跨进程
         # 亦成立），而非复用 `_lock`；③已在事务中（嵌套调用）则不插手，交由外层边界。
+        if not isinstance(tag, str) or not tag:
+            raise ValueError(
+                "tag_node：tag 须为非空字符串（写入 nodes.tags 扁平数组），"
+                "实得 %r（%s）——列表请改多次调用或先归一为字符串" % (tag, type(tag).__name__))
         own_tx = not self.conn.in_transaction
         if own_tx:
             self.conn.execute("BEGIN IMMEDIATE")
@@ -4562,6 +4950,13 @@ class LayeredStore:
         扩张与收缩都应可追）；撤销 `archived` 本方法不单独记——经
         `restore_archived` 走时会落 `archived_restored`，直接调本方法属普通编辑。
         """
+        # 自主发现（参数类型）：node_id 此前不做类型闸——把 STNode 当 id 传入时，
+        # 值会一路进 SQL 绑定，抛不可读 `sqlite3.ProgrammingError: Error binding
+        # parameter 1: type 'STNode' is not supported`（实测 untag_node(节点对象) 即如此）。
+        # 现 fail-loud：非 str → 可读 TypeError（零写入）。
+        if not isinstance(node_id, str):
+            raise TypeError("untag_node 的 node_id 必须是字符串，收到 %s"
+                            % type(node_id).__name__)
         self.assert_node_writable_by_role(node_id, action="移除共享层节点的标签")
         own_tx = not self.conn.in_transaction
         if own_tx:
@@ -4678,6 +5073,18 @@ class LayeredStore:
         建议 3（`add_node` 拒绝未来时间戳）与建议 4（可注入时钟）——那是另两条
         独立面；③`created_at` 仍是 `created_at` 列的值，未改其语义。
         """
+        # 自主发现（负上限）：`max_size < 0` 时旧实现照走 `ids[:len - max_size]`
+        # ——切片上界超出列表长度 ⇒ **删除全部情境节点**（实测 -5 ⇒ 5 条清空），
+        # 而 docstring 的语义是「情境层 FIFO 上限」（负上限无语义），且同一参数的
+        # `set_context_cap` 已被 `_to_int_or(..., lo=1)` 夹到 ≥1：两条路径对同一
+        # 参数结论相反。现 fail-loud：非整数类型 TypeError、负值 ValueError，
+        # 零删除；0 与正数行为不变（0 = 清空，是明确可表达的语义）。
+        if not isinstance(max_size, int) or isinstance(max_size, bool):
+            raise TypeError("情境层上限必须是整数，收到 %r" % (max_size,))
+        _cap = max_size
+        if _cap < 0:
+            raise ValueError("情境层上限不能为负，收到 %r" % (max_size,))
+        max_size = _cap
         c = self.conn.cursor()
         c.execute("SELECT id FROM nodes WHERE layer='context' ORDER BY rowid ASC")
         ids = [r[0] for r in c.fetchall()]
@@ -4694,6 +5101,11 @@ class LayeredStore:
         #267：经 `_tolerant_nodes` 逐行容错——单条坏行不毒化整层读取。
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 类型闸（#1409）：只拦非整数——None/负数**放行**（#658 已定谳：
+        # `limit=None` ⇒ 全量、`limit=-1` ⇒ 同全量（SQLite LIMIT -1 语义）；
+        # bool 是 int 子类须显式排除）。负数 ValueError 口径与 #658 G2 冲突，不采。
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
+            raise TypeError("get_recent_context 的 limit 必须是整数，收到 %r" % (limit,))
         c = self.conn.cursor()
         sql = "SELECT * FROM nodes WHERE layer='context' ORDER BY rowid DESC"
         if limit is not None:
@@ -4718,9 +5130,27 @@ class LayeredStore:
         `e.store.add_blindspot(category='meta')` 原样把元盲区落库（宣称的「零记录」
         约束可被绕过）。现与门面同闸：`_is_meta_category` 命中即 `ValueError`。
         """
+        # 自主发现（空标识）：code/description 是盲区注册表的**标识与说明**，旧实现
+        # 照收空串（实测 add_blindspot("", "") 返回 bs_xxx）——一条无代码、无说明
+        # 的盲区记录既无法被 resolve 引用，也无法被人读懂。现 fail-loud：非 str 或
+        # 纯空白 ValueError（零写入）。
+        if not isinstance(code, str) or not code.strip():
+            raise ValueError("add_blindspot 需要非空 code，收到 %r" % (code,))
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError("add_blindspot 需要非空 description，收到 %r" % (description,))
         if _is_meta_category(category):
             raise ValueError(
                 "元盲区零记录（#386）：拒绝把 category 规范化后为 meta 的盲区写入注册表")
+        # 自主发现（参数类型）：severity/category 此前不做类型闸——传 int 会被原样
+        # 写入 blindspots 表（实测 severity=123 / category=123 均成功），此后按 str
+        # 过滤（severity='high'、category='operational'）永远查不到，形成脏行。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(severity, str) or not severity.strip():
+            raise TypeError("add_blindspot 的 severity 必须是非空字符串，收到 %r"
+                            % (severity,))
+        if not isinstance(category, str) or not category.strip():
+            raise TypeError("add_blindspot 的 category 必须是非空字符串，收到 %r"
+                            % (category,))
         bid = f"bs_{uuid.uuid4().hex[:8]}"
         c = self.conn.cursor()
         c.execute("INSERT INTO blindspots (id, code, description, severity, category, status, created_at, resolved_at, predictability) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -4778,6 +5208,14 @@ class LayeredStore:
     @_transactional
     def add_skill(self, name: str, description: str, procedure: str, confidence: float = 0.5) -> str:
         """登记技能卡（名称/描述/步骤/初始置信度），返回技能 id。"""
+        # dsh-bounty #1797（#185/#790 族在 skills 表漏网）：confidence 零校验直插
+        # ⇒ NaN 被 SQLite 存成 NULL，此后 `NULL + ?` 恒 NULL、MIN/MAX 遇 NULL 回
+        # NULL——`update_skill_confidence` 的 clamp 对该技能卡永不兑现（成功/失败
+        # 经验增减信全部失效），`search_skills` 的 ORDER BY confidence DESC 里
+        # NULL 恒沉底。接 `_require_finite` 单点闸（#206/#790 同款 fail-closed
+        # 拒收，判据写侧读侧共用）；值域超界不在本闸收口（与 update 的
+        # MIN/MAX clamp 语义兼容）。
+        confidence = _require_finite("confidence", confidence)
         sid = f"sk_{uuid.uuid4().hex[:8]}"
         c = self.conn.cursor()
         c.execute("INSERT INTO skills VALUES (?,?,?,?,?,?,?,?)",
@@ -4801,6 +5239,11 @@ class LayeredStore:
         的**模糊**检索，`record_action_sequence` 用它绑定技能 ⇒ hint「备份」会
         命中「删除备份」，把备份步骤拼进删除技能并为其增信（分诊表行 200 第 1 条）。
         """
+        # 自主发现（参数类型）：name 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_skill_by_name(123) -> None），调用方把「参数写错」
+        # 误读成「该技能不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(name, str) or not name.strip():
+            raise TypeError("get_skill_by_name 的 name 必须是非空字符串，收到 %r" % (name,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM skills WHERE name = ? LIMIT 1", (name,))
         r = c.fetchone()
@@ -4848,6 +5291,16 @@ class LayeredStore:
         有界候选池（`LIMIT 100`）的取舍同族，属已知边界。
         判据来源：公开 issue #492（复现条件与读数为本件复核实测）。
         """
+        # 自主发现（参数类型 · 公开 API 直通面）：`recall_skill`（引擎公开入口）
+        # 原样转发到本方法，而本方法 `query.strip()` 裸调用——`recall_skill(None)`
+        # 抛 `AttributeError: 'NoneType' object has no attribute 'strip'`，
+        # `recall_skill(123)` 抛 `'int' object has no attribute 'strip'`——不可读且
+        # 不指参数名。同文件 `search_content` 早有 `"search_content 的 query 必须是
+        # 字符串"` 闸（#1396 类型闸族同款纪律），本方法零闸属同族漏网。修法同款
+        # fail-loud；空串/纯空白保持既有「列出前 100 张」语义（不改为报错）。
+        if not isinstance(query, str):
+            raise TypeError("search_skills 的 query 必须是字符串，收到 %r"
+                            % (type(query).__name__,))
         q = query.strip()
         c = self.conn.cursor()
         if q:
@@ -4879,6 +5332,12 @@ class LayeredStore:
     @_transactional
     def update_skill_confidence(self, skill_id: str, delta: float):
         """技能置信度增量更新（clamp 到 [0,1]，正=成功经验/负=失败经验）。"""
+        if not isinstance(skill_id, str) or not skill_id.strip():
+            raise TypeError("update_skill_confidence 的 skill_id 必须是非空字符串，收到 %r"
+                            % (skill_id,))
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_skill_confidence 的 delta 必须是有限实数，收到 %r" % (delta,))
         c = self.conn.cursor()
         c.execute("UPDATE skills SET confidence = MIN(1.0, MAX(0.0, confidence + ?)), updated_at=? WHERE id=?",
                   (delta, time.time(), skill_id))
@@ -5067,6 +5526,7 @@ class LayeredStore:
                     outcome={"proposal_id": proposal_id, "node_id": node_id,
                              "adjudicated_by": adjudicated_by})
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
             return None
         if bound_hash and self._content_hash(node.content if node else "") != bound_hash:
@@ -5121,6 +5581,12 @@ class LayeredStore:
         保护名单可被非属主单向扩张却无留痕。审计只加在**本方法**与 `tag_node` 的
         `no_forget` 一支，**不**扩到全部标签面（避免大面积行为变更）。
         """
+        # 自主发现（空理由）：`reason` 是保护登记的**唯一审计理由**（protections
+        # 表第二列，供事后追「为什么不可遗忘」）；旧实现照收空串/None/纯空白，
+        # 登记行成为无可解释的永久保护。现 fail-loud：非 str 或纯空白 ValueError。
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("protect_node 需要非空理由（记入 protections.reason），"
+                             "收到 %r" % (reason,))
         own_tx = not self.conn.in_transaction
         if own_tx:
             self.conn.execute("BEGIN IMMEDIATE")
@@ -5246,6 +5712,12 @@ class LayeredStore:
         #   `_lay[nid] is None` ⇔ 该 id 不存在（与旧 `get_node(...) is None` 同义）。
         # `MemoryLayer(...)` 与 `STNode.from_row` 同款裸露转换 ⇒ 非法 layer 的
         # 失败语义一致。
+        # 自主发现（自冲突）：两端同一 id 时旧实现照建 `OPPOSITE` 自环边并把该节点
+        # 打上 `conflict` 标签——「X 与 X 矛盾」没有语义，却让节点永久带冲突标记
+        # （`delete_node` 的标签清理只在对端边消失时移除，自环边自己就是两端）。
+        # 现 fail-loud：自冲突一律 ValueError，零写入。
+        if a_id == b_id:
+            raise ValueError("冲突两端不能是同一节点：%r" % (a_id,))
         _c0 = self.conn.cursor()
         _lay: Dict[str, Optional[MemoryLayer]] = {}
         for _nid0 in (a_id, b_id):
@@ -5261,6 +5733,12 @@ class LayeredStore:
                         f"{_l0.value}）的冲突，共享层由父节点主控（#234）")
         if _lay[a_id] is None or _lay[b_id] is None:
             return None
+        # 自主发现（参数类型）：condition_space 此前直接进 STEdge，落库时 `.to_json()`
+        # 对非 ConditionSpace 抛不可读 AttributeError。现 fail-loud：非 ConditionSpace
+        # 且非 None → 可读 TypeError（零写入）。
+        if condition_space is not None and not isinstance(condition_space, ConditionSpace):
+            raise TypeError("register_conflict condition_space 必须是 ConditionSpace 或 None，"
+                            "收到 %s" % type(condition_space).__name__)
         edge = STEdge(
             id=f"edge_{uuid.uuid4().hex[:8]}_{int(time.time()*1000)}",
             source_id=a_id, target_id=b_id,
@@ -5328,11 +5806,26 @@ class LayeredStore:
         # 本件只补**保护谓词**（选面 `tags LIKE '%self_snapshot%'` 口径不动，
         # 不顺手扩大改动面）；受保护件既不计入 `doomed` 也不删其关联边。
         # 谓词直传入口（`node_id` + `tags`）与 `decay_cycle` 同款，判据本体同一段。
+        # 自主发现（参数类型）：keep 此前不做类型闸——传 str 会一路走到比较运算，抛不可读
+        # `TypeError: '>' not supported between instances of 'int' and 'str'`
+        # （实测 prune_self_snapshots("x")）。现 fail-loud：非整数/负数 → 可读错误。
+        if isinstance(keep, bool) or not isinstance(keep, int):
+            raise TypeError("prune_self_snapshots 的 keep 必须是整数，收到 %r" % (keep,))
+        if keep < 0:
+            raise ValueError("prune_self_snapshots 的 keep 不能为负，收到 %r" % (keep,))
         c = self.conn.cursor()
-        c.execute("SELECT id, tags FROM nodes WHERE layer='self' AND tags LIKE ? "
-                  "ORDER BY rowid DESC", ("%self_snapshot%",))
-        rows = c.fetchall()
-        if len(rows) <= keep:
+        # #201 残留③：选面从**单标签**扩到**两类自动快照**——旧实现只选
+        # `self_snapshot`，而 `update_trust_state` 落的 `trust_snapshot` 永不入选
+        # （实测 prune(5) 后 trust_snapshot 恒 50 条不动）。keep 按**各标签分别**
+        # 生效（不是两类合计），故 self_snapshot 的既有上界语义按条数不变。
+        rows = []
+        for _tag in ("self_snapshot", "trust_snapshot"):
+            c.execute("SELECT id, tags FROM nodes WHERE layer='self' AND tags LIKE ? "
+                      "ORDER BY rowid DESC", ("%" + _tag + "%",))
+            _r = c.fetchall()
+            if len(_r) > keep:
+                rows.extend(_r[keep:])
+        if not rows:
             return 0
         # #769 ②（治理列写面补角色闸）：SELF 层在 `IMMUTABLE_LAYERS` 内——`delete_node`
         # 对 SELF 行一律返回 `False`，而本方法此前**零角色判据**直接 `DELETE` ⇒
@@ -5353,13 +5846,16 @@ class LayeredStore:
                 "#769 prune_self_snapshots 拒绝：role=%s 无权回收自我层快照"
                 "（SELF 属不可遗忘层，与 delete_node 同判据）——本次跳过 %d 条候选，"
                 "零删除；如需回收请以 PRIMARY 身份执行。"
-                % (self.role.value, len(rows) - keep),
+                % (self.role.value, len(rows)),
                 RuntimeWarning, stacklevel=2)
             return 0
         protected = set(self.get_protected_nodes())
         # keep 保留的是**最近** keep 条（rowid 降序前缀）；保护件在淘汰候选里跳过。
         doomed = []
-        for nid, tags_json in rows[keep:]:
+        # #201 残留③：`rows` 此时已是**各标签超出 keep 的候选**（选面处已按标签
+        # 各切 `[keep:]`）——此处**不得再切** `[keep:]`。旧实现 `rows` 是全量
+        # 有序列表，故原写法正确；选面改动后若沿用原写法会二次切片、几乎不删。
+        for nid, tags_json in rows:
             try:
                 _tags = json.loads(tags_json) if tags_json else []
             except (ValueError, TypeError):
@@ -5381,6 +5877,12 @@ class LayeredStore:
         return len(doomed)
 
     def count_layer(self, layer: MemoryLayer) -> int:
+        # 自主发现（参数类型）：layer 此前直接读 `.value`——传 str/None 抛不可读
+        # AttributeError（实测 count_layer("knowledge") / (None) 各抛 'str'/'NoneType'
+        # object has no attribute 'value'）。现 fail-loud：非 MemoryLayer → 可读
+        # TypeError（不查库）。
+        if not isinstance(layer, MemoryLayer):
+            raise TypeError("count_layer 的 layer 必须是 MemoryLayer，收到 %r" % (layer,))
         """统计指定记忆层的节点数。"""
         c = self.conn.cursor()
         c.execute("SELECT COUNT(*) FROM nodes WHERE layer=?", (layer.value,))
@@ -5415,6 +5917,12 @@ class LayeredStore:
 
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 自主发现（参数类型）：tag 此前不做类型闸——传 int/None 直接进 SQL 参数，
+        # 恒返回 []（实测 get_nodes_by_tag(123) -> []），调用方会把「参数写错」误读成
+        # 「没有该标签的节点」，形成静默假阴性。现 fail-loud：非 str/纯空白 → 可读
+        # TypeError（不查库）。
+        if not isinstance(tag, str) or not tag.strip():
+            raise TypeError("get_nodes_by_tag 的 tag 必须是非空字符串，收到 %r" % (tag,))
         c = self.conn.cursor()
         sql = ("SELECT * FROM nodes WHERE EXISTS ("
                "SELECT 1 FROM json_each("
@@ -5466,6 +5974,18 @@ class LayeredStore:
 
         #658：`limit=None` ⇒ 全量返回（与同族 `query_nodes_by_time` 同口径）。
         """
+        # 自主发现（参数类型）：start_ts/end_ts/layer 此前都不做类型闸——传 str 或 NaN
+        # 的边界静默返回 []（实测 get_nodes_in_range("x", "y") -> []），layer 传 str 则
+        # 抛不可读 AttributeError。两者都把「参数写错」伪装成「无数据」。现 fail-loud：
+        # 非有限实数 / 非 MemoryLayer → 可读 TypeError（None 仍表示无边界/全层）。
+        for _n, _v in (("start_ts", start_ts), ("end_ts", end_ts)):
+            if _v is not None and (isinstance(_v, bool) or not isinstance(_v, (int, float))
+                                   or not math.isfinite(float(_v))):
+                raise TypeError("get_nodes_in_range 的 %s 必须是有限实数或 None，收到 %r"
+                                % (_n, _v))
+        if layer is not None and not isinstance(layer, MemoryLayer):
+            raise TypeError("get_nodes_in_range 的 layer 必须是 MemoryLayer 或 None，收到 %r"
+                            % (layer,))
         conds, params = ["temporal_coordinate >= ?", "temporal_coordinate <= ?"], [start_ts, end_ts]
         if layer is not None:
             conds.append("layer=?")
@@ -5497,6 +6017,12 @@ class LayeredStore:
         `add_perception` 去重 / 巩固周期）一律先经各自入口的层判，故本闸对它们
         只做**兜底**，不改变 PRIMARY 侧读数。
         """
+        # 自主发现（参数类型/值域）：delta 此前不做类型闸——传 "x"/None 静默返回
+        # None（实测 update_node_importance(nid, "x") -> None），重要度其实没变，
+        # 调用方却以为更新成功。现 fail-loud：非实数或非有限 → 可读 TypeError。
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_node_importance 的 delta 必须是有限实数，收到 %r" % (delta,))
         delta = _finite_or(delta, 0.0)
         self.assert_node_writable_by_role(node_id, action="改写共享层节点的 importance")
         c = self.conn.cursor()
@@ -5590,12 +6116,13 @@ class LayeredStore:
         # `id, importance` 同表同行 ⇒ 一并取出、按 `_state_attr_of` 单点解析一次。
         # #769/#780：`layer` 一并取出——下方**逐节点**判「目标行层 × 角色」，避免
         # 每节点一次 `SELECT layer`（与既有 N+1 收口同法）。
-        c_.execute("SELECT id, importance, state_attributes, layer FROM nodes")
+        # #274：tags 一并取出——归档/驳回节点不参与本轮结构重算。
+        c_.execute("SELECT id, importance, state_attributes, layer, tags FROM nodes")
         rows = c_.fetchall()
         imp_map = {nid: (imp if imp is not None else 0.5)
-                   for nid, imp, _sa, _ly in rows}
+                   for nid, imp, _sa, _ly, _tg in rows}
         _sb_map = {nid: self._state_attr_of(_sa, "structural_boost", 0.0)
-                   for nid, _imp, _sa, _ly in rows}
+                   for nid, _imp, _sa, _ly, _tg in rows}
 
         # 因果上游度传播（BFS · 深度上限 · 节点去重 · 路径置信度加权）
         influence: Dict[str, float] = {}
@@ -5613,7 +6140,11 @@ class LayeredStore:
                         continue
                     nconf = pc * causal_conf.get((node, t), 0.5)
                     visited.add(t)
-                    infl += nconf * imp_map.get(t, 0.5) / nd
+                    target_imp = imp_map.get(t)
+                    # #274：悬空边（目标节点已删）不计；普通 importance 的
+                    # 扇出也不得把上游抬过保护阈——只让「重要下游」贡献。
+                    if target_imp is not None and target_imp >= 0.7:
+                        infl += nconf * target_imp / nd
                     frontier.append((t, nconf, nd))
             if infl > 0:
                 influence[src] = round(infl, 4)
@@ -5622,7 +6153,12 @@ class LayeredStore:
         protected = []
         skipped_shared = []
         applied = 0
-        for nid, imp, _sa, nid_layer in rows:
+        for nid, imp, _sa, nid_layer, nid_tags in rows:
+            # #274：已归档/已驳回/已废弃的节点不参与本轮重算（旧实现会把它们
+            # 从 0.1 拉回 0.9 并重新登记保护，抵消主动遗忘）。
+            if any(tag in {"archived", "refuted", "deprecated"}
+                   for tag in _json_tags(nid_tags)):
+                continue
             infl = influence.get(nid, 0)
             # #769/#780：**逐节点隔离**——非 PRIMARY 时共享层行整体跳过（既不写
             # `state_attributes`、也不抬 `importance`、也不登记 `protections`）。
@@ -5634,6 +6170,7 @@ class LayeredStore:
             if not self.layer_writable_by_role(nid_layer):
                 skipped_shared.append(nid)
                 continue
+            # #274：archive/refute 的节点已在循环开头跳过。
             # 上游度写入 state_attributes（可检索/可查）
             if infl > 0 and not dry_run:
                 self._write_influence(nid, infl)
@@ -5724,6 +6261,7 @@ class LayeredStore:
             try:
                 sa = json.loads(row[0])
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 sa = {}
         sa[key] = infl
         c.execute("UPDATE nodes SET state_attributes=? WHERE id=?",
@@ -5801,13 +6339,32 @@ class LayeredStore:
 
     def _normalize_conditions(self, conditions: dict) -> dict:
         """规范化条件快照（C1–C8 + confidence）：显式提供=0.7，默认值=0.3（未自动提取）。"""
+        # 自主发现（参数类型）：conditions 此前直接 `.items()`——传 list/str 抛不可读
+        # AttributeError（'list' object has no attribute 'items'）。现 fail-loud：非映射
+        # 且非 None → 可读 TypeError；None 仍等价「未提供」。
+        if conditions is not None and not isinstance(conditions, Mapping):
+            raise TypeError("insight conditions 必须是映射或 None，收到 %s"
+                            % type(conditions).__name__)
         vals = dict(self.INSIGHT_DEFAULT_CONDITIONS)
         given = set()
         if conditions:
             for k, v in conditions.items():
-                if k in vals:
-                    vals[k] = v
-                    given.add(k)
+                if k not in vals:
+                    # #2591（批一百一十）：未知键 fail-loud——旧实现静默丢弃，
+                    # 调用方以为条件已记录实则无痕丢失（对照同方法对
+                    # content/importance 的 fail-loud 纪律）。
+                    raise ValueError(
+                        "insight conditions 未知键 %r（合法键 %s）——静默丢弃"
+                        "会让调用方以为条件已记录" % (k, sorted(vals)))
+                vals[k] = v
+                given.add(k)
+        # #2591：非有限值 fail-loud——NaN/inf 落库会序列化成非标准 JSON
+        # 字面量（strict 解析必崩，实测 DB 行 `"memory_retrievability": NaN`），
+        # 且按「显式提供=0.7」拿到高置信度——NaN 冒充已测可靠条件。
+        for k, v in vals.items():
+            if isinstance(v, float) and not math.isfinite(v):
+                raise ValueError(
+                    "insight conditions %s 须为有限值，收到 %r" % (k, v))
         conf = {k: (0.7 if k in given else 0.3) for k in vals}
         return {"values": vals, "confidence": conf}
 
@@ -5817,6 +6374,23 @@ class LayeredStore:
 
         conditions 可显式提供（自动提取待 I2 接入）；未提供时用中性默认 + 低置信。
         """
+        # 自主发现（值域/类型）：importance 此前不校验——传 "x" 时**返回值**原样回
+        # "x"、而落库被 STNode 的 _finite_clamp 兜成 0.5（返回与存储不一致，调用方
+        # 会以为写入成功）；传 2.0 则落库被 clamp 到上限、返回值仍是 2.0。
+        # 现 fail-loud：非实数 TypeError、非有限或越界 ValueError（零写入）。
+        # 自主发现（参数类型）：content 此前不做类型闸——传 int/None 会被 f-string
+        # 原样字符串化后落库（实测 insight_record(123) 成功生成洞见节点），洞见
+        # 内容变成 "123"，下游按内容检索/取证永远对不上。现 fail-loud：非 str
+        # 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(content, str) or not content.strip():
+            raise TypeError("insight_record 的 content 必须是非空字符串，收到 %r" % (content,))
+        try:
+            _imp = float(importance)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("insight importance 必须是实数，收到 %r" % (importance,)) from exc
+        if not math.isfinite(_imp) or not (0.0 <= _imp <= 1.0):
+            raise ValueError("insight importance 必须是 [0, 1] 内的有限值，收到 %r" % (importance,))
+        importance = _imp
         now = time.time()
         nid = f"insight_{uuid.uuid4().hex[:8]}_{int(now * 1000)}"
         cond_pack = self._normalize_conditions(conditions)
@@ -5824,6 +6398,10 @@ class LayeredStore:
             "conditions": cond_pack,
             "verification": {"level": None, "evidence": [], "status": "pending", "updated_at": now},
             "source": source,
+            # #281（附带 3）：REFUTED 时要能回落到**记录时的初始值**——
+            # 旧实现只在 verified 时把 importance 抬到 0.9，之后即使被证伪也不回落，
+            # 被证伪的洞见继续以高重要度排在检索前面。初始值随快照落库。
+            "initial_importance": importance,
         }}
         node = STNode(
             id=nid, content=f"【洞见事件】{content}", modality="text",
@@ -5908,12 +6486,28 @@ class LayeredStore:
             # importance 直升 0.9。改为「与已合并结果比」逐条去重（保持出现顺序），
             # 同时覆盖旧列表与本次提交内部两处重复。
             for e in add:
+                # 自主发现（证据类型）：证据此前只有「去重」没有类型闸——传 [1, 2]
+                # 会把整数塞进 evidence 列表（实测 status=verified），随后按证据
+                # 文本取证的查询永远匹配不到，证据链出现不可读条目。现 fail-loud：
+                # 非 str 或纯空白 → 可读 TypeError（整个 verify 回滚）。
+                if not isinstance(e, str) or not e.strip():
+                    raise TypeError("insight evidence 的每条必须是非空字符串，收到 %r" % (e,))
                 if e not in ev:
                     ev.append(e)
+        # 自主发现（参数类型）：level 此前直接 `.upper()`——传非字符串（数字/列表）
+        # 抛不可读 AttributeError（'int' object has no attribute 'upper'）。现 fail-loud：
+        # 非 str 且非 None → 可读 TypeError（None 仍按既有语义归一为空串）。
+        if level is not None and not isinstance(level, str):
+            raise TypeError("insight_verify 的 level 必须是字符串或 None，收到 %s"
+                            % type(level).__name__)
         level = (level or "").upper()
         status = "pending"
         if level in ("REFUTED", "X"):
-            status = "refuted"
+            # #2593（批一百一十一，#38 同族补完）：零证据不得自报**证伪**——
+            # B-9/D-34 口径对称扩展：REFUTED/X 同样是自报裁定（X 更是任意调用
+            # 方字符串），零证据证伪让任何调用方无成本打压有效洞见（importance
+            # 回落 + refuted 标签）。有任意证据（本次或历史）才认 refuted。
+            status = "refuted" if len(ev) >= 1 else "pending"
         elif level == "V1":
             status = "verified" if len(ev) >= 3 else "pending"
         elif level in ("V2", "V3"):
@@ -5934,6 +6528,16 @@ class LayeredStore:
         new_imp = node.importance
         if status == "verified" and (new_imp is None or new_imp < 0.9):
             new_imp = 0.9
+        # #281（附带 3）：被证伪的洞见回落到记录时的初始重要度——旧实现
+        # 只抬不落，refuted 的洞见仍以 0.9 排在检索前面（实测 20 条 refuted
+        # 全部保持 importance=0.9）。没有初始值记录（旧库样本/裸 SQL 构造）时
+        # 回落到 insight_record 的默认 0.7。
+        if status == "refuted":
+            try:
+                _base = float(ins.get("initial_importance", 0.7))
+            except (TypeError, ValueError):
+                _base = 0.7
+            new_imp = min(node.importance if node.importance is not None else 0.9, _base)
         c = self.conn.cursor()
         c.execute("UPDATE nodes SET state_attributes=?, tags=?, importance=? WHERE id=?",
                   (_dumps_json(sa, ensure_ascii=False, where="state_attributes"),
@@ -5994,6 +6598,13 @@ class LayeredStore:
         cer = nv / n if n else 0.0
         se = math.sqrt(cer * (1 - cer) / n) if n else 0.0
         layer_status = "degraded" if n < 20 else ("watch" if n < 40 else "reliable")
+        # #281（根因 2/3）：`pressure` / `tone` 是**分类条件**——真值分组会把
+        # low/medium/high 全并进同一组，「低压力 vs 非低压力」这个对比在分组方式上
+        # 就做不出来；且 `_normalize_conditions` 的默认值是恒真字符串（medium /
+        # calm），without 组永远是 0 条 ⇒ 这两个条件**永远不出统计**。分类条件改按
+        # **取值**分组：每个出现 ≥5 的取值 vs「显式提供且取值为其它值」的样本；
+        # 布尔条件保持真值分组。判据来源：公开 issue #281「修复建议 1」。
+        _CATEGORICAL_CONDS = ("pressure", "tone")
         cond_stats = []
         for k in ("premise_questioned", "externalized", "pressure", "tone", "cross_domain"):
             # #281：旧实现 `x["conditions"].get(k)` 按**真值**分组，把「键存在但值为
@@ -6011,13 +6622,35 @@ class LayeredStore:
                         return False
                 return _k in (x["conditions"] or {})     # 回落：旧库样本 / 裸 SQL 构造
             present = [x for x in candidates if _explicit(x)]
+
+            def _rate(rows):
+                p = sum(1 for x in rows if x["status"] == "verified") / len(rows)
+                se_ = math.sqrt(max(p * (1 - p) / len(rows), 1e-4))
+                return p, se_
+
+            if k in _CATEGORICAL_CONDS:
+                values = sorted({str(x["conditions"].get(k)) for x in present})
+                for _val in values:
+                    grp = [x for x in present if str(x["conditions"].get(k)) == _val]
+                    rest = [x for x in present if str(x["conditions"].get(k)) != _val]
+                    if len(grp) < 5 or len(rest) < 5:
+                        continue
+                    p1, se1 = _rate(grp)
+                    p0, se0 = _rate(rest)
+                    diff = p1 - p0
+                    sig = abs(diff) >= 2 * math.sqrt(se1 ** 2 + se0 ** 2)
+                    cond_stats.append({
+                        "condition": k, "value": _val,
+                        "n_with": len(grp), "n_without": len(rest),
+                        "cer_with": round(p1, 3), "cer_without": round(p0, 3),
+                        "diff": round(diff, 3), "significant": sig,
+                        "judge": "确认" if (sig and diff > 0) else ("反证" if sig else "不判定")})
+                continue
             with_ = [x for x in present if x["conditions"].get(k)]
             without = [x for x in present if not x["conditions"].get(k)]
             if len(with_) >= 5 and len(without) >= 5:
-                p1 = sum(1 for x in with_ if x["status"] == "verified") / len(with_)
-                p0 = sum(1 for x in without if x["status"] == "verified") / len(without)
-                se1 = math.sqrt(max(p1 * (1 - p1) / len(with_), 1e-4))
-                se0 = math.sqrt(max(p0 * (1 - p0) / len(without), 1e-4))
+                p1, se1 = _rate(with_)
+                p0, se0 = _rate(without)
                 diff = p1 - p0
                 sig = abs(diff) >= 2 * math.sqrt(se1 ** 2 + se0 ** 2)
                 cond_stats.append({
@@ -6025,7 +6658,11 @@ class LayeredStore:
                     "cer_with": round(p1, 3), "cer_without": round(p0, 3),
                     "diff": round(diff, 3), "significant": sig,
                     "judge": "确认" if (sig and diff > 0) else ("反证" if sig else "不判定")})
-        return {"total": n, "verified": nv, "pending": n - nv,
+        # #281（附带 1）：`pending = n - nv` 把被证伪的洞见也算成 pending（实测
+        # 20 条 refuted 全报 pending，报告没有 refuted 计数）。现按状态分计。
+        n_ref = sum(1 for x in candidates if x["status"] == "refuted")
+        n_pending = sum(1 for x in candidates if x["status"] == "pending")
+        return {"total": n, "verified": nv, "refuted": n_ref, "pending": n_pending,
                 "cer": round(cer, 3), "se": round(se, 4),
                 "layer_status": layer_status,
                 "note": "样本<20 不判定（与迁移测试同标准）" if n < 20 else "样本达标，可出显著性",
@@ -6037,6 +6674,12 @@ class LayeredStore:
 
         conditions 传入当前会话快照；缺省字段不参与判定。
         """
+        # 自主发现（参数类型）：conditions 此前直接当映射用——传 str/list 抛不可读
+        # AttributeError（'str' object has no attribute 'get'）。现 fail-loud：非映射
+        # 且非 None → 可读 TypeError；None 仍等价「未提供」（缺省字段不参与判定）。
+        if conditions is not None and not isinstance(conditions, Mapping):
+            raise TypeError("insight_window conditions 必须是映射或 None，收到 %s"
+                            % type(conditions).__name__)
         cond = conditions or {}
         c1 = cond.get("memory_retrievability")
         c3 = cond.get("cross_domain")
@@ -6051,6 +6694,11 @@ class LayeredStore:
     @_transactional
     def append_skill_procedure(self, skill_id: str, step: str):
         """技能程序追加（P1-3 技能获取：版本+1）"""
+        if not isinstance(skill_id, str) or not skill_id.strip():
+            raise TypeError("append_skill_procedure 的 skill_id 必须是非空字符串，收到 %r"
+                            % (skill_id,))
+        if not isinstance(step, str) or not step.strip():
+            raise TypeError("append_skill_procedure 的 step 必须是非空字符串，收到 %r" % (step,))
         c = self.conn.cursor()
         c.execute("SELECT procedure FROM skills WHERE id=?", (skill_id,))
         row = c.fetchone()
@@ -6072,6 +6720,13 @@ class LayeredStore:
     def add_rejected_path(self, path_type: str, description: str, reason: str,
                           evidence: str = "") -> str:
         """登记被否决的路径（负路由沉淀：错误答案留档防重蹈），返回 id。"""
+        # 自主发现（参数类型）：path_type 此前不做类型闸——传 int 会原样写进
+        # rejected_paths 表（实测 add_rejected_path(123, ...) 成功），此后按 str
+        # 过滤（path_type='promotion'）永远查不到，负记忆面出现不可见脏行。
+        # 现 fail-loud：非 str 或纯空白 → 可读 TypeError（零写入）。
+        if not isinstance(path_type, str) or not path_type.strip():
+            raise TypeError("add_rejected_path 的 path_type 必须是非空字符串，收到 %r"
+                            % (path_type,))
         rid = f"rp_{uuid.uuid4().hex[:8]}"
         c = self.conn.cursor()
         c.execute("INSERT INTO rejected_paths VALUES (?,?,?,?,?,?,?,?)",
@@ -6331,8 +6986,22 @@ class LayeredStore:
         删」这件事反而不可审计；该审计行是删后插入的，必在保留窗口内，不会自删）；
         ④不动 `engine_meta` 等其它表。
         """
+        # 自主发现（参数类型）：keep_rows 此前不做类型闸——传 str 会一路走到比较运算，
+        # 抛不可读 `TypeError: '>' not supported between instances of 'int' and 'str'`
+        # （实测 prune_action_logs("x")）。现 fail-loud：非整数或负数 → 可读 TypeError/ValueError。
+        if keep_rows is not None and (isinstance(keep_rows, bool)
+                                      or not isinstance(keep_rows, int)):
+            raise TypeError("prune_action_logs 的 keep_rows 必须是整数或 None，收到 %r"
+                            % (keep_rows,))
         if keep_rows is None:
             keep_rows = self.ACTION_LOGS_KEEP_ROWS
+        # #2103：负 keep_rows 无治理语义——SQLite LIMIT -1 = 无上限 ⇒ 子查询取
+        # 全部 id ⇒ DELETE 删 0 行，但 removed = before - keep_rows 照报
+        # before+1，且落一条内容为假的 action_logs_pruned 审计（append-only
+        # 表被永久写入假记录）。fail-closed：显式拒绝。
+        if keep_rows < 0:
+            raise ValueError("prune_action_logs：keep_rows 不得为负，得到 %r"
+                             % (keep_rows,))
         c = self.conn.cursor()
         c.execute("SELECT COUNT(*) FROM action_logs")
         before = c.fetchone()[0]
@@ -6412,6 +7081,11 @@ class LayeredStore:
         才按 `enabled=1` 过滤）；③返回形状与 `list_escalation_points` 的单行同形
         （NULL 经 `or ""` 归一，与 #656 同口径）。
         """
+        # 自主发现（参数类型）：code 此前不做类型闸——传 int/None 直接当 SQL 参数，
+        # 恒返回 None（实测 get_escalation_point_by_code(123) -> None），调用方把
+        # 「参数写错」误读成「该升级点不存在」。现 fail-loud：非 str 或纯空白 → 可读 TypeError。
+        if not isinstance(code, str) or not code.strip():
+            raise TypeError("get_escalation_point_by_code 的 code 必须是非空字符串，收到 %r" % (code,))
         c = self.conn.cursor()
         c.execute("SELECT * FROM escalation_points WHERE code=? ORDER BY rowid LIMIT 1",
                   (code,))
@@ -6565,6 +7239,21 @@ def _filter_min_score(scored, min_score):
 # =============================================================================
 # 时空记忆引擎（SpacetimeMemoryEngine）
 # =============================================================================
+
+# #500：验证标准参数的**读取点登记表**（不是「允许的参数表」——任何 param 都能写入
+# `_verifier_config`）。语义：该集合内的参数在引擎内确有读取点（会改变可观测行为）；
+# 集合外者当前**只登记、不影响行为**（幻影旋钮），结构层记录必须如实标注这一点，
+# 不能让记录读起来像「已生效」。
+# 判据来源：本件普查（`git grep deviation_threshold` 全仓 19 处，无一为读取：
+# 定义 core.py:6667 / 回放赋值 6729 / 终裁赋值 13540 / 注释 13546 + 5 份测试的断言与
+# fixture）＋ 行为实验（应用 0.99 后 `_reflect_verify` 偏差判定、`check_escalation`
+# 对 ESC-004 条件串、`_dedup_static` 逐项不变；对照组 `dedup_static` 可被检出变化）。
+# 未查到仓内对该参数「取向属设计裁定」的先例（`docs/` 无命中、`tests/` 无相关守卫），
+# 故按「只钉事实」处置，**不**让该参数真的去影响判据（那属设计裁定）。
+_VERIFIER_PARAMS_WITH_READERS = frozenset({"dedup_static"})
+
+# 结构层记录里对「无读取点」参数的如实标注（#500）。
+_NO_READER_NOTE = "无读取点：仅登记，当前不影响行为"
 
 class SpacetimeMemoryEngine:
     """
@@ -6803,6 +7492,7 @@ class SpacetimeMemoryEngine:
                 return p
             self._vision_error = "ultralytics 未安装（pip install ultralytics）"
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             # #602：无消息异常（bare `raise ImportError`）str(e)=="" ⇒ 回落 repr/类名，
             # 保证失败一定带**可读**标识（空串会被状态面误读成「从未尝试」）。
             self._vision_error = str(e) or repr(e) or type(e).__name__
@@ -6818,6 +7508,7 @@ class SpacetimeMemoryEngine:
             self._body_registry = build_default_registry(
                 workspace=_os.environ.get("AEIS_WORKSPACE", ""))
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._body_error = str(e)
 
     def _setup_v111(self):
@@ -6827,6 +7518,7 @@ class SpacetimeMemoryEngine:
             from flywheel_engine import FlywheelEngine
             self._flywheel = FlywheelEngine(self, self._prediction)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._flywheel_error = str(e)
 
     def _setup_v112(self):
@@ -6836,6 +7528,7 @@ class SpacetimeMemoryEngine:
             from self_cognition_engine import SelfCognitionEngine
             self._self_cognition = SelfCognitionEngine(self)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._self_cognition_error = str(e)
 
     def _note_action(self, action_type: str, summary: str = "",
@@ -6847,6 +7540,7 @@ class SpacetimeMemoryEngine:
         try:
             self._self_cognition.log_action(action_type, summary, node_ids, outcome, context)
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
     def _setup_v110(self):
@@ -6857,6 +7551,7 @@ class SpacetimeMemoryEngine:
             self._lifecycle = LifecycleEngine(self, self._prediction,
                                               self._learning_loop, self._attention_policy)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._lifecycle_error = str(e)
 
     def _setup_v19(self):
@@ -6879,6 +7574,7 @@ class SpacetimeMemoryEngine:
             try:
                 from prediction_engine import PredictionEngine
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 # 本仓形态：无顶层 `prediction_engine` 模块 ⇒ 回退仓内自带实现
                 from ..world.prediction import PredictionEngine
             self._prediction = PredictionEngine(self, self._attention_policy)
@@ -6891,8 +7587,10 @@ class SpacetimeMemoryEngine:
                 if hits:
                     self._prediction._hit_history = hits[-200:]
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._prediction_error = str(e)
 
     def _setup_v18(self):
@@ -6902,6 +7600,7 @@ class SpacetimeMemoryEngine:
             from attention_policy import AttentionPolicy
             self._attention_policy = AttentionPolicy()
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._attention_error = str(e)
 
     def _setup_v16(self):
@@ -6911,6 +7610,7 @@ class SpacetimeMemoryEngine:
             from semantic_space import SemanticSpaceProvider
             self._semantic_provider = SemanticSpaceProvider()
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._semantic_error = str(e)
 
     def _setup_v13(self):
@@ -6929,6 +7629,7 @@ class SpacetimeMemoryEngine:
             self._cognition = CognitiveOrchestrator(self, self.entity_registry)
             self._v13_ready = True
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             self._v13_error = str(e)
 
     # ==================== 感知入口 ====================
@@ -7163,6 +7864,13 @@ class SpacetimeMemoryEngine:
                 "#805 add_perception 拒绝非白名单 modality %r：合法值 "
                 "text/audio/image/code（感知通道模态，防下游按 modality 过滤出现"
                 "意外分组；白名单定义见 _PERCEPTION_MODALITIES 注释）" % (modality,))
+        # 自主发现（参数类型）：spatial_coordinates 此前不做类型闸——传 list 会被
+        # json.dumps 原样存成 `[1, 2, 3]`，读回成 list ⇒ 节点上的
+        # `spatial_coordinates.get(...)` 抛 AttributeError（坏行注入）。现 fail-loud：
+        # 非映射且非 None → 可读 TypeError（零落库）。
+        if spatial_coordinates is not None and not isinstance(spatial_coordinates, Mapping):
+            raise TypeError("spatial_coordinates 必须是映射或 None，收到 %s"
+                            % type(spatial_coordinates).__name__)
         self._interaction_count += 1
         self._note_action("perception", content, None,
                           {"importance": importance, "modality": modality})
@@ -7243,8 +7951,11 @@ class SpacetimeMemoryEngine:
                 # （本仓索引只有 `idx_nodes_layer/idx_edges_source/idx_edges_target`，
                 # core.py:988-990），故不引入；③issue 建议 3（维持 200 并显式声明）**不**
                 # 采纳——那只是把漏去重写进文档，缺陷仍在；④仍按 `modality` 过滤（#223）。
-                candidates = self.store.query_nodes(layer=MemoryLayer.KNOWLEDGE,
-                                                    modality=modality, limit=-1)
+                # #661（叠加）：候选装载改走窄列投影 `_dedup_candidates`（判同四列，
+                # 同 WHERE/ORDER/LIMIT 语义 ⇒ 判同结果逐位不变），免掉全列
+                # `STNode.from_row` 的三处 JSON 解析；命中后合并面仍走
+                # `get_node(best.id)` 回捞完整节点（见下），窄行不逃出判同循环。
+                candidates = self.store._dedup_candidates(modality)
                 best, best_sim = None, 0.0
                 # #225：极性闸——**成败极性不同的节点不得合并**。旧实现只比正文二元组，
                 # 而 `record_action_sequence` 把成败写成正文前缀（`成功：`/`失败：`，且
@@ -7544,6 +8255,23 @@ class SpacetimeMemoryEngine:
         ③`LayeredStore.add_edge(STEdge)` 直写面不去重（同步/导入路径须保真，非本件
         收口面）；④查重是 check-then-act，与 `add_node` 的旧行检查同款并发口径。"""
         rt = relation_type if isinstance(relation_type, EdgeType) else EdgeType(relation_type)
+        # 自主发现（参数类型）：condition_space 此前直接交给 STEdge.to_row 调 `.to_json()`——
+        # 传字符串抛不可读 AttributeError（'str' object has no attribute 'to_json'）。
+        # 现 fail-loud：非 ConditionSpace 且非 None → 可读 TypeError（零落库）。
+        if condition_space is not None and not isinstance(condition_space, ConditionSpace):
+            raise TypeError("condition_space 必须是 ConditionSpace 或 None，收到 %s"
+                            % type(condition_space).__name__)
+        # 自主发现（端点存在性）：旧实现把两端 id 直接交给 `LayeredStore.add_edge`
+        # 的 `INSERT OR REPLACE`，不存在的一端由 SQLite 外键约束抛裸
+        # `sqlite3.IntegrityError: FOREIGN KEY constraint failed`——调用方无法区分
+        # 「节点不存在」与其它完整性错误，且异常类型泄漏存储实现（同仓
+        # `TruthMaintenance.add_justification` 对同一形态已用
+        # `KeyError("节点不存在：...")"` 先行判存在性）。此处**先判后写**：两端
+        # 任一缺失即 KeyError，零落库。`store.add_edge(STEdge)` 直写面（同步/导入
+        # 路径，须允许「先边后节点」的批量导入顺序）**不改**。
+        for _nid in (source_id, target_id):
+            if self.store.get_node(_nid) is None:
+                raise KeyError("节点不存在：%r（add_edge 需要两端节点都已落库）" % (_nid,))
         if dedup:
             row = self.store.conn.execute(
                 "SELECT * FROM edges WHERE source_id=? AND target_id=? AND relation_type=? "
@@ -7635,8 +8363,11 @@ class SpacetimeMemoryEngine:
           truncated；链尾遇回边/自环 ⇒ 存链并标 cyclic（可达部分不丢弃）；
           空列表=确无因果后果，不再混同于「链太长/有环」（issue #145）
         - max_depth：正整数=深度预算；**None=不限深度**（显式要求「必须找到」）
-        - causal_stats：可选出参 dict，两分支同口径填充
-          `{max_depth, truncated, complete, truncated_dropped}`——截断事实外传
+        - causal_stats：可选出参 dict，两分支填充——但**键集随是否传 `end_id`
+          而不同**（#2128 实测）：传 `end_id` 分支含 `budget_exhausted`/
+          `enumerated`；不传分支含 `cyclic`；共有四键为
+          `{max_depth, truncated, complete, truncated_dropped}`——截断事实外传。
+          调用方按单一键集读取会 KeyError（如无 `end_id` 时读 `budget_exhausted`）。
 
         #327：两个分支都受 `max_paths`（默认 `_CAUSAL_MAX_PATHS`）约束。旧实现
         无上限——同一条因果事实被记录 k 次时路径数是 k⁵，6 节点无环链 k=24 约
@@ -7751,6 +8482,7 @@ class SpacetimeMemoryEngine:
                 try:
                     sg = self.store.subgraph(tail, max_depth=2)
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     sg = None
                 decorated.append({"path": p, "subgraph": sg})
             return decorated
@@ -7966,6 +8698,7 @@ class SpacetimeMemoryEngine:
             try:
                 return json.loads(raw), self.SELF_MODEL_META_KEY
             except Exception:  # noqa: BLE001 —— 权威键损坏则继续走回退腿
+                _log.debug("core.py silent-except：权威键损坏则继续走回退腿", exc_info=True)
                 pass
         c = self.store.conn.cursor()
         c.execute("SELECT content FROM nodes WHERE layer='self' AND tags LIKE ? "
@@ -7998,6 +8731,7 @@ class SpacetimeMemoryEngine:
         try:
             loaded = self._load_self_snapshot()
         except Exception as e:  # noqa: BLE001 —— 坏快照：回退默认 + 显式标注
+            _log.debug("core.py silent-except：坏快照：回退默认 + 显式标注", exc_info=True)
             info.update(status="failed", error=str(e))
             return info
         if not loaded:
@@ -8006,6 +8740,7 @@ class SpacetimeMemoryEngine:
         try:
             model = SelfModel.from_dict(data)
         except Exception as e:  # noqa: BLE001
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             info.update(status="failed", error=str(e))
             return info
         snap_identity = getattr(model, "identity", "")
@@ -8060,6 +8795,8 @@ class SpacetimeMemoryEngine:
 
     def semantic_search(self, query: str, limit: int = 10) -> List[Tuple[STNode, float]]:
         """v1.7 语义检索：优先结构化语义坐标相似度；无坐标节点回退文本相似度（D-005 降级）"""
+        # dsh-bounty #1795：同款负切片/None 收口（本方法 `scored[:limit]` 两处）。
+        limit = _normalize_limit(limit)
         if not self._semantic_provider:
             return self.store.search_content(query, limit=limit)
         q_sc = self._semantic_provider.to_semantic_coordinates(query)
@@ -8139,6 +8876,8 @@ class SpacetimeMemoryEngine:
         自身语料标定（本仓不内置）。边界：矛盾配对（`LINGSHU_CONTRADICTION=1`）
         与阈值同时启用时，低于阈值的对侧仍会被截掉（配对可能被拆开）——阈值
         优先生效，调用方需自行评估该组合。"""
+        # dsh-bounty #1795: #658 None/-1=full semantics (scored[:limit] x4 here).
+        limit = _normalize_limit(limit)
         # #787：touch=False——recall 的打分输入（last_access）不得被自己的检索腿
         # 写回（根修「分数漂移」）；候选池/排序其余口径逐位不变。
         results = self.store.search_content(context_content, limit=50, touch=False)
@@ -8179,6 +8918,12 @@ class SpacetimeMemoryEngine:
     #: 无界堆积并以普通记忆身份挤占召回。上界口径与 `SelfModel.HISTORY_MAX`
     #: （同类的状态变更历史钳制）同族；经验标定（#201 修复轮；理论章节追不到）。
     SELF_SNAPSHOT_MAX = 200
+
+    #: 信任状态快照有界保留上界（lingshu #201 残留②）。`update_trust_state` 每次
+    #: 调用新建一条 `trust_snapshot`（importance=0.85）——修前只有 `add_node`、
+    #: **无任何回收面**（实测 400 轮 → 400 条，无上界）。取值与同族
+    #: `SELF_SNAPSHOT_MAX` 同档；经验标定（#201 修复轮；理论章节追不到）。
+    TRUST_SNAPSHOT_MAX = 200
 
     #: `self_check` 的环枚举上限（lingshu #252）。`cycle_details` 只取 `cycles[:5]`，
     #: 故枚举到 5 条即可满足自检；旧实现无上限，稠密 SCC 使枚举耗时/内存随环数
@@ -8304,6 +9049,19 @@ class SpacetimeMemoryEngine:
     # ==================== 去重配置（M5 · D-004 动态阈值） ====================
 
     def set_dedup_config(self, static_threshold: float = 0.85, window: int = 30):
+        # 自主发现（参数类型）：阈值/窗口此前直接参与 min/max——传字符串抛不可读
+        # TypeError（'>' not supported between 'float' and 'str'）。现 fail-loud：
+        # 非实数 TypeError、非有限阈值 ValueError、非整数窗口 TypeError。
+        try:
+            _st = float(static_threshold)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("static_threshold 必须是实数，收到 %r"
+                            % (static_threshold,)) from exc
+        if not math.isfinite(_st):
+            raise ValueError("static_threshold 必须是有限值，收到 %r" % (static_threshold,))
+        if not isinstance(window, int) or isinstance(window, bool):
+            raise TypeError("window 必须是整数，收到 %r" % (window,))
+        static_threshold = _st
         self._dedup_static = min(0.95, max(0.5, static_threshold))
         self._dedup_window = max(5, window)
 
@@ -8543,6 +9301,10 @@ class SpacetimeMemoryEngine:
                 "自我认知", "信任状态观测", (time.time(), time.time()+3600), "协议实例运行中"),
             importance=0.85, confidence=1.0, layer=MemoryLayer.SELF, tags=["trust_snapshot"])
         self.store.add_node(snapshot)
+        # #201 残留②：信任状态快照同样**有界保留**——旧实现只有 add_node、
+        # 无任何回收面（实测 400 轮后 trust_snapshot 400 条，无上界；对照
+        # self_snapshot 被 SELF_SNAPSHOT_MAX 钳住）。上界取同族 TRUST_SNAPSHOT_MAX。
+        self.store.prune_self_snapshots(self.TRUST_SNAPSHOT_MAX)
         return snapshot
 
     # ==================== v1.11 知识飞轮（FLYWHEEL-REV1） ====================
@@ -8617,8 +9379,14 @@ class SpacetimeMemoryEngine:
                 "DELETE FROM flywheel_reuse WHERE rowid NOT IN"
                 " (SELECT rowid FROM flywheel_reuse ORDER BY rowid DESC LIMIT ?)",
                 (self.FLYWHEEL_REUSE_MAX_ROWS,))
-            conn.commit()
+            # #665 同款（dsh-bounty #1794）：本方法是 `@_transactional`，体内裸
+            # `conn.commit()` 会提交整条事务并销毁外层 SAVEPOINT——`recall`/
+            # `search_content` 等读 API 在调用方外层事务内命中时会以
+            # `no such savepoint` 崩溃。改走 `_commit_locked()`（委托 store，
+            # 只有最外层真提交）。此处位于 try 内：观测落库失败仍静默。
+            self._commit_locked()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass  # 观测落库失败静默（不阻断检索）
 
     def notify_event(self, event_type: str, payload: Dict = None):
@@ -8633,19 +9401,24 @@ class SpacetimeMemoryEngine:
                                   "ts": now, "count": 1})
 
     def consume_events(self) -> Dict:
-        """P1-4：批量消费事件标记（定时轮询优先；P0 危机期间暂停）"""
+        """P1-4：批量消费事件标记（定时轮询优先；P0 危机期间暂停）。
+
+        #54：paused 时**不消费也不清空**队列——事件保留到恢复后一并处理；
+        旧实现先清空再判 paused ⇒ paused 期间排队的事件被静默丢弃。"""
+        if self._lifecycle and self._lifecycle.state == "paused":
+            return {"status": "paused", "consumed": 0,
+                    "pending": len(self._event_queue),
+                    "note": "P0 危机期间暂停非 P0 处理（3.4 节）；队列保留"}
         events = list(self._event_queue)
         self._event_queue = []
         consumed = 0
-        if self._lifecycle and self._lifecycle.state == "paused":
-            return {"status": "paused", "consumed": 0,
-                    "note": "P0 危机期间暂停非 P0 处理（3.4 节）"}
         for ev in events:
             if ev["type"] in ("perception", "write", "condition_switch") and self._flywheel:
                 try:
                     self._flywheel.distill_cycle()
                     consumed += 1
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     pass
         return {"status": "ok", "consumed": consumed, "pending": len(self._event_queue)}
 
@@ -8737,6 +9510,7 @@ class SpacetimeMemoryEngine:
             return _pi(self, image_path, provider,
                        conf_threshold, importance, classes)
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             # 视觉实现已迁 AEIS 身体库：缺失按能力不可用降级（契约 status）
             return {"status": "vision_unavailable", "error": str(e)}
 
@@ -8759,6 +9533,7 @@ class SpacetimeMemoryEngine:
                 devices = [h["name"] for h in health]
                 devices_available = [h["name"] for h in health if h.get("available")]
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return {
             "modalities": {
@@ -8945,6 +9720,7 @@ class SpacetimeMemoryEngine:
                         expected = m.group(1)
                         break
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
 
         # 2. 对照前复核落点（#745：纵深防御——「提取」与「使用」之间仍有一次复核；
@@ -9099,6 +9875,20 @@ class SpacetimeMemoryEngine:
         for r in roots:
             root = os.path.normcase(os.path.realpath(r))
             if target == root or target.startswith(root + os.sep):
+                # #2566（安全 P0）：`realpath` **不解析硬链接**——攻击者在白名单根里
+                # 放一个硬链接指向受保护文件，别名路径看起来仍在根内 ⇒ 围栏放行，
+                # 而 `img.save()` 就地截断会作用在**共享 inode** 上，直接改写真源
+                # （实测：受保护 .md 从 67 字节被覆盖成 2868 字节 PNG、frontmatter
+                # 不可恢复）。写前拒绝 nlink > 1。
+                try:
+                    _st = os.stat(out_path)
+                except OSError:
+                    _st = None
+                if _st is not None and _st.st_nlink > 1:
+                    raise ValueError(
+                        "#2566 render 拒绝：输出路径是硬链接（nlink=%d）——"
+                        "就地写会改写到共享 inode 上的真源，fail-closed"
+                        % _st.st_nlink)
                 return out_path
         raise ValueError(
             "#277 render 拒绝：path 越出白名单根（%s 不在 %r 之下）"
@@ -9114,10 +9904,11 @@ class SpacetimeMemoryEngine:
           （no_camera_pose / camera_pose_incomplete / bad_camera_pose），
           不退回单视角、不伪造位姿；显式 multiview=False 保留旧单视角观测
           路径。F04/#211）
-        - render: 渲染 3D 世界为图像（params: path 输出路径, yaw/pitch/cx
-          相机参数——任意视角透视投影；2D 是 3D 透视下的情况；screen_w/h
-          单边上限 MAX_SCREEN_DIM，超限返回 error 而非分配位图（#416）；
-          path 须落在白名单根内，否则返回 error（#277））
+        - render: 渲染 3D 世界为图像（params: path 输出路径, yaw/pitch/cx/cy/
+          cz/fov_deg（fov 为别名）相机参数——任意视角透视投影（#2382 前 cz 与
+          fov_deg 被静默丢弃，「任意视角」名不副实）；2D 是 3D 透视下的情况；
+          screen_w/h 单边上限 MAX_SCREEN_DIM，超限返回 error 而非分配位图
+          （#416）；path 须落在白名单根内，否则返回 error（#277））
         - status: 当前 3D 世界状态（物体/相机）
         - add: 手动添加物体（params: category, bbox 或 center/size/color；另可给
           eid/tick/screen_w/h 与 camera——给了**真实位姿**的观测会按该位姿反投影
@@ -9140,6 +9931,7 @@ class SpacetimeMemoryEngine:
                                              CameraMetaError, parse_camera_observation,
                                              format_camera_observation)
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "world3d_not_ready", "error": str(e)}
         # 世界状态（跨调用保持于引擎）
         if not hasattr(self, "_world3d"):
@@ -9175,11 +9967,34 @@ class SpacetimeMemoryEngine:
                                            tags=["vprim"], condition_space=cs,
                                            skip_dedup=True)
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return None, {"status": "error",
                               "reason": "observation_not_persisted",
                               "error": "#F04 观测未落库（%s: %s）——拒绝只做内存融合"
                                        % (type(e).__name__, e)}
             return getattr(node, "id", None), None
+
+        def resolve_screen(p, default_w=800, default_h=600):
+            """`screen_w`/`screen_h` → `(整数像素对, None)`，不合法 → `(None, 门面 error dict)`。
+
+            #2422：4 个动作此前各自 `int(p.get(...))`——`screen_w=nan` 裸
+            ValueError（"cannot convert float NaN to integer"）穿透门面、负数
+            在 PIL 内部抛 `Width and height must be >= 0`（泄露实现层）、浮点
+            静默截断。#416 的 MAX 闸在 `int()` 之后，挡不住这三类。现统一
+            预闸：非 int（bool 同拒）/非正 ⇒ 可读 error dict（同门面
+            fail-closed 惯例）；MAX 上限仍由 #416 的既有闸承担。
+            """
+            out = []
+            for _nm, _d in (("screen_w", default_w), ("screen_h", default_h)):
+                _v = p.get(_nm, _d)
+                if isinstance(_v, bool) or not isinstance(_v, int):
+                    return (None, None), {"status": "error", "reason": "bad_screen_size",
+                                          "error": "%s 必须是整数像素，收到 %r" % (_nm, _v)}
+                if _v <= 0:
+                    return (None, None), {"status": "error", "reason": "bad_screen_size",
+                                          "error": "%s 必须为正整数，收到 %r" % (_nm, _v)}
+                out.append(_v)
+            return tuple(out), None
 
         def resolve_ingest_camera(raw):
             """显式 `camera` 入参 → `(Camera3D, None)`，不合法 → `(None, 门面 error dict)`。
@@ -9232,8 +10047,10 @@ class SpacetimeMemoryEngine:
             except ImportError:
                 from ..world.vprim import parse_anchor  # noqa: F401
             nodes = self.store.get_nodes_by_tag("vprim", limit=int(p.get("limit", 20)))
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
+            res, err = resolve_screen(p)  # #2422
+            if err is not None:
+                return err
+            sw, sh = res
             multiview = bool(p.get("multiview", False))  # 多视角融合（阶段1 里程碑1.1）
             if multiview:
                 # F04：多视角三角化**必须有真实相机位姿**——#211 先砍掉了「按索引凭空
@@ -9349,10 +10166,19 @@ class SpacetimeMemoryEngine:
                     "scene": world.scene_text(),
                     "detail": world.to_dict()}
         if action == "render":
+            # #2382：cz 与 fov_deg 此前不读取——传参与缺省渲染**逐字节相同**
+            # （F04 注释点名的「Camera3D(yaw,pitch,cx,cy) 四参构造静默丢
+            # cz/fov」病残留；R6 返工只收了摄取侧）。默认值与 Camera3D 字段
+            # 默认逐位相同（cz=0.0/fov_deg=60.0）⇒ 不传参调用方行为不变；
+            # fov 别名对齐 add 动作六参契约。
             cam = Camera3D(yaw=float(p.get("yaw", 0)), pitch=float(p.get("pitch", 0)),
-                           cx=float(p.get("cx", 0)), cy=float(p.get("cy", 1.2)))
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
+                           cx=float(p.get("cx", 0)), cy=float(p.get("cy", 1.2)),
+                           cz=float(p.get("cz", 0.0)),
+                           fov_deg=float(p.get("fov_deg", p.get("fov", 60.0))))
+            res, err = resolve_screen(p)  # #2422（#416 的 MAX 闸保持不动）
+            if err is not None:
+                return err
+            sw, sh = res
             # #416：门面在**任何分配之前**先判上限（fail-closed 返回 error dict，
             # 与门面既有校验惯例一致；不静默钳尺寸）。上限真源在
             # `world3d.MAX_SCREEN_DIM`（`render` 内另有一道，覆盖直调 API）。
@@ -9397,8 +10223,14 @@ class SpacetimeMemoryEngine:
             strong = p.get("strong")
             if not aid:
                 return {"status": "error", "error": "anchor_id 必填"}
-            r = self._world3d.verify_anchor(aid, channel, evidence,
-                                            strong=strong if strong is not None else None)
+            # #2399：通道键闭集（anchor_verify.KNOWN_CHANNELS）——域外键在门面
+            # 转 error dict（与同门面 fail-closed 惯例一致，不把 ValueError 抛给
+            # 模型驱动面）；修前任意字符串入账，拼错两次即伪造「多通道一致」。
+            try:
+                r = self._world3d.verify_anchor(aid, channel, evidence,
+                                                strong=strong if strong is not None else None)
+            except ValueError as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "verification": r}
         if action == "verify_conflict":
             """多通道矛盾检测（里程碑1.4）：通道观测与锚点声明冲突 → 降级。
@@ -9422,12 +10254,39 @@ class SpacetimeMemoryEngine:
             bbox = p.get("bbox")
             if not category or not bbox or len(bbox) != 4:
                 return {"status": "error", "error": "category 与 bbox=[x1,y1,x2,y2] 必填"}
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
+            # #2418：bbox 有限性闸——修前无 camera 路径 `VPrim(tuple(float(v)…))`
+            # 零校验，NaN/±inf 直通进世界图 ⇒ graph/status 导出严格 JSON 崩；
+            # 而**带 camera 的持久化路径**经 format_camera_observation 已有同款
+            # 闸（"bbox[0] 必须是有限实数"）——同一动作两口径。复用 _require_finite
+            # （同一文案），先拒先返回；带 camera 路径行为不变。
+            try:
+                for _i, _v in enumerate(bbox):
+                    _require_finite("bbox[%d]" % _i, _v)
+            except ValueError as _e:
+                return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
+            res, err = resolve_screen(p)  # #2422
+            if err is not None:
+                return err
+            sw, sh = res
             eid = str(p["eid"]) if p.get("eid") is not None else ""
-            tick = p.get("tick")
-            ts = float(p.get("timestamp", time.time()))
-            confidence = float(p.get("confidence", 0.5))
+            # #2148：与姊妹实现（world3d 的 _meta_number 闸）同口径——修前
+            # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
+            # 导出面漏出（严格 JSON dumps 直接 ValueError）；tick/ts 同一裸
+            # 取值形态一并收口。
+            # 不新增 core→world 导入行（import_direction_lint 基线只准减不准增），
+            # 改用本函数内既有的 World3D 模块对象取闸函数。
+            _mn = getattr(sys.modules.get("lingshu.world.world3d"),
+                         "_meta_number", None)
+            try:
+                tick = (None if p.get("tick") is None
+                        else (_mn(p["tick"], "tick") if _mn else p["tick"]))
+                ts = (_mn(p.get("timestamp", time.time()), "timestamp")
+                      if _mn else float(p.get("timestamp", time.time())))
+                confidence = (_mn(p.get("confidence", 0.5), "confidence")
+                              if _mn else float(p.get("confidence", 0.5)))
+            except CameraMetaError as _e:
+                return {"status": "error", "reason": getattr(_e, "reason", "meta"),
+                        "error": str(_e)}
             # F04：给 `camera`（真实位姿）时，这条单视角观测同样**绑定位姿落库**
             # （与 add_view 同一条通路/同一块格式），供后续或跨引擎
             # `build(multiview=True)` 读回三角化；不给 camera ⇒ 行为与旧版逐位一致
@@ -9475,11 +10334,35 @@ class SpacetimeMemoryEngine:
             bbox = p.get("bbox")
             if not category or not bbox or len(bbox) != 4:
                 return {"status": "error", "error": "category 与 bbox=[x1,y1,x2,y2] 必填"}
-            sw = int(p.get("screen_w", 800))
-            sh = int(p.get("screen_h", 600))
-            tick = p.get("tick")
-            ts = float(p.get("timestamp", time.time()))
-            confidence = float(p.get("confidence", 0.5))
+            # #2418：同 add——无 camera 路径的 bbox 此前零有限闸（持久化路径
+            # 经 format_camera_observation 已有），NaN 直通进世界图。
+            try:
+                for _i, _v in enumerate(bbox):
+                    _require_finite("bbox[%d]" % _i, _v)
+            except ValueError as _e:
+                return {"status": "error", "reason": "bad_bbox", "error": str(_e)}
+            res, err = resolve_screen(p)  # #2422
+            if err is not None:
+                return err
+            sw, sh = res
+            # #2148：与姊妹实现（world3d 的 _meta_number 闸）同口径——修前
+            # confidence 走裸 float()，NaN/±inf 原样入世界并经 status/graph
+            # 导出面漏出（严格 JSON dumps 直接 ValueError）；tick/ts 同一裸
+            # 取值形态一并收口。
+            # 不新增 core→world 导入行（import_direction_lint 基线只准减不准增），
+            # 改用本函数内既有的 World3D 模块对象取闸函数。
+            _mn = getattr(sys.modules.get("lingshu.world.world3d"),
+                         "_meta_number", None)
+            try:
+                tick = (None if p.get("tick") is None
+                        else (_mn(p["tick"], "tick") if _mn else p["tick"]))
+                ts = (_mn(p.get("timestamp", time.time()), "timestamp")
+                      if _mn else float(p.get("timestamp", time.time())))
+                confidence = (_mn(p.get("confidence", 0.5), "confidence")
+                              if _mn else float(p.get("confidence", 0.5)))
+            except CameraMetaError as _e:
+                return {"status": "error", "reason": getattr(_e, "reason", "meta"),
+                        "error": str(_e)}
             # 视角相机（可选：缺省当前相机）。F04：**六参数全量**保留
             # （cx/cy/cz/yaw/pitch/fov_deg，`fov` 为别名）——旧实现只取
             # yaw/pitch/cx/cy，静默丢掉 cz 与 fov ⇒ 三角化按错位姿收敛
@@ -9529,23 +10412,44 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.voxel_world import VoxelWorld
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "voxel_not_ready", "error": str(e)}
         if not hasattr(self, '_voxel'):
             self._voxel = VoxelWorld(size=int(p.get('size', 16)),
                                     ground_level=int(p.get('ground_level', 1)))
         if action == "build":
-            blocks = self._voxel.build_flatland(trees=int(p.get("trees", 2)),
-                                               water=bool(p.get("water", True)))
+            # #2424：门面 fail-closed——坏 trees 等在门面转 error dict（下同）。
+            try:
+                blocks = self._voxel.build_flatland(trees=int(p.get("trees", 2)),
+                                                   water=bool(p.get("water", True)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "blocks": blocks, "world": self._voxel.world_state()}
         if action == "spawn":
-            category = str(p.get("category", "entity"))
-            pos = tuple(float(v) for v in p.get("pos", [0, 1, 0]))
-            vel = tuple(float(v) for v in p.get("velocity", [0, 0, 0]))
-            eid = self._voxel.spawn_entity(category, pos, velocity=vel)
+            try:
+                category = str(p.get("category", "entity"))
+                pos = tuple(float(v) for v in p.get("pos", [0, 1, 0]))
+                vel = tuple(float(v) for v in p.get("velocity", [0, 0, 0]))
+                # #2424 续：float(nan) 不抛异常——try 拦不住非有限值，
+                # 须显式 _require_finite（同 world3d bbox 闸口径）；修前
+                # nan pos 落进 trail 且 state 导出严格 JSON 崩（实测）。
+                for _i, _v in enumerate(pos):
+                    _require_finite("pos[%d]" % _i, _v)
+                for _i, _v in enumerate(vel):
+                    _require_finite("velocity[%d]" % _i, _v)
+                eid = self._voxel.spawn_entity(category, pos, velocity=vel)
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "simulate":
-            steps = int(p.get("steps", 1))
-            moved = self._voxel.simulate(steps=steps)
+            # #2424：steps 非 int 预闸（nan 裸崩实测）+ 既有 int() 截断收口。
+            try:
+                steps = p.get("steps", 1)
+                if isinstance(steps, bool) or not isinstance(steps, int):
+                    raise TypeError("simulate 的 steps 必须是整数，收到 %r" % (steps,))
+                moved = self._voxel.simulate(steps=steps)
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entities_moved": moved, "step": self._voxel._step}
         if action == "trail":
             eid = str(p.get("entity_id", ""))
@@ -9717,6 +10621,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.wm_simloop import SimulationLoop
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "simloop_not_ready", "error": str(e)}
         if action == "attach":
             if not hasattr(self, '_wmodel'):
@@ -9768,7 +10673,11 @@ class SpacetimeMemoryEngine:
             return {"status": "error", "error": "推演循环未初始化（先 setup）"}
         sl = self._simloop
         if action == "run":
-            n = int(p.get("n", 10))
+            # #2412：同 step——n 判型后进底层（浮点/字符串不再静默截断）。
+            n = p.get("n", 10)
+            if isinstance(n, bool) or not isinstance(n, int):
+                return {"status": "error",
+                        "error": "run 的 n 必须是整数 tick 数，收到 %r" % (n,)}
             script = str(p.get("script", ""))
             target = str(p.get("target", ""))
             if script == "drift_sinusoid" and target in sl.scene.entities:
@@ -9786,7 +10695,14 @@ class SpacetimeMemoryEngine:
                 sl.run(n=n)
             return {"status": "ok", "report": sl.report()}
         if action == "step":
-            return {"status": "ok", "state": sl.step(n=int(p.get("n", 1)))}
+            # #2412：n 此前 `int(p.get("n", 1))`——模型面传 2.7 被静默截断成 2、
+            # 传 "x" 抛不可读 ValueError。现门面判型后转 error dict（同门面
+            # fail-closed 惯例），底层 SimulationLoop.step 另有同形闸。
+            _n = p.get("n", 1)
+            if isinstance(_n, bool) or not isinstance(_n, int):
+                return {"status": "error",
+                        "error": "step 的 n 必须是整数 tick 数，收到 %r" % (_n,)}
+            return {"status": "ok", "state": sl.step(n=_n)}
         if action == "load":
             # #744：读向与写向对称——模型面给的 mdcg_root 先过白名单读根闸
             # （先判后读，越界即拒）；空值不设闸（回落 MDCG_ROOT 由 load_priors 承担，
@@ -9826,11 +10742,23 @@ class SpacetimeMemoryEngine:
             except FileExistsError:
                 return {"status": "error", "error": (
                     "#480 flush 拒绝：目标文件已存在，O_EXCL 拒覆盖（out_path=%s）" % out)}
+            # #2544：`flush_payloads` 返回的 `memory_id` 是脑端新节点的唯一句柄，
+            # 而门面白名单把它滤掉 ⇒ `note` 说「经验已经 MCP 摄取」但调用方拿不到
+            # id，无法执行 docs/world_memory_first_batch.md:75-79 的
+            # `load_priors(brain=..., memory_id=saved["memory_id"])`。
             return {"status": "ok",
-                    "flush": {k: r[k] for k in ("payload", "written", "note")}}
+                    "flush": {k: r[k] for k in
+                              ("payload", "written", "note", "memory_id")}}
         if action == "wal":
-            lim = int(p.get("limit", 20))
-            return {"status": "ok", "wal": sl.wal[-lim:]}
+            # #2544：`sl.wal[-lim:]` 对 0 是 `[0:]`（全量）、对 -1 是 `[1:]`
+            # （丢首条）——与同仓 `_normalize_limit`（#1795/#658：None/负数=全量、
+            # 0=空）相反，且与同门面 `growth` 的 `max(1, ...)` 又是第三种口径。
+            # 此处统一为 `_normalize_limit` 口径。
+            _lim = int(p.get("limit", 20))
+            if _lim == 0:
+                return {"status": "ok", "wal": []}
+            return {"status": "ok",
+                    "wal": sl.wal[-_lim:] if _lim > 0 else list(sl.wal)}
         if action == "growth":
             return {"status": "ok",
                     "growth": sl.growth_events(limit=int(p.get("limit", 20)))}
@@ -9856,28 +10784,46 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.scene_simulator import SceneSimulator
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "scene_not_ready", "error": str(e)}
         if not hasattr(self, '_scene'):
             self._scene = SceneSimulator(size=int(p.get('size', 24)),
                                        ground_level=int(p.get('ground_level', 1)),
                                        seed=int(p.get('seed', 42)))
         if action == "create":
-            r = self._scene.create_scene(trees=int(p.get("trees", 4)),
-                                        water=bool(p.get("water", True)))
+            # #2424：同 voxel_world——门面 fail-closed。
+            try:
+                r = self._scene.create_scene(trees=int(p.get("trees", 4)),
+                                            water=bool(p.get("water", True)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._scene.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2424：pos/speed 闸的可读 ValueError 也在门面收口（修前裸穿）。
+            try:
+                eid = self._scene.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._scene.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2424：points 闸的可读 ValueError 在门面收口。
+            try:
+                self._scene.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "step":
-            r = self._scene.step(n=int(p.get("n", 1)))
+            # #2424：n 的 fail-loud 闸在 #2409 落地（SceneSimulator.step），
+            # 门面把可读 ValueError 转 error dict（修前裸穿）。
+            try:
+                r = self._scene.step(n=int(p.get("n", 1)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "step": r}
         if action == "state":
             return {"status": "ok", "scene": self._scene.scene_state()}
@@ -9905,6 +10851,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.spacetime_consistency import SpacetimeConsistency
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "stc_not_ready", "error": str(e)}
         # #243：`init` 必须有独立分支——docstring/兜底错误信息都列了它，旧实现
         # 无此分支，`init` 落到 `hasattr` 惰性构造：①首次调用被顺带构造却返回
@@ -9926,29 +10873,52 @@ class SpacetimeMemoryEngine:
         if not hasattr(self, '_stc'):
             self._stc = SpacetimeConsistency()
         if action == "create":
-            r = self._stc.create_scene(trees=int(p.get("trees", 4)),
-                                       water=bool(p.get("water", True)))
+            # #2423：门面 fail-closed——坏 trees 等在门面转 error dict，
+            # 不把裸 ValueError 抛给模型驱动面（同 seven_layer #691 Z3 惯例）。
+            try:
+                r = self._stc.create_scene(trees=int(p.get("trees", 4)),
+                                           water=bool(p.get("water", True)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._stc.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2423：同上——pos/speed 闸的 ValueError 与裸 float/int 的
+            # TypeError 都在门面转 error dict（修前裸穿）。
+            try:
+                eid = self._stc.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._stc.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2423：同上（points 维度/有限性闸的 ValueError 裸穿修前实测）。
+            try:
+                self._stc.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "run":
-            r = self._stc.run(n=int(p.get("n", 10)))
+            # #2423：n 非数值的不可读 ValueError 同在门面收口。
+            try:
+                r = self._stc.run(n=int(p.get("n", 10)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "run": r}
         if action == "step":
             r = self._stc.step_verified()
             return {"status": "ok", "step": r}
         if action == "teleport":
-            ok = self._stc.teleport(str(p.get("entity_id", "")),
-                                    tuple(float(v) for v in p.get("pos", [0, 0, 0])))
+            # #2423：坏 pos 的裸 float ValueError 同在门面收口（未知实体的
+            # 二态返回保持不变）。
+            try:
+                ok = self._stc.teleport(str(p.get("entity_id", "")),
+                                        tuple(float(v) for v in p.get("pos", [0, 0, 0])))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok" if ok else "error",
                     "queued": ok}
         if action == "report":
@@ -9976,7 +10946,10 @@ class SpacetimeMemoryEngine:
         - path: 定义巡逻路径
         - perceive: 理解端口（外部 observations 或沙盒观测；可传 tick/timestamp）
         - perceive_visual: 把该 tick 的视觉重建对象送入同一理解端口
+        - identity: 只读检查 observations 的整帧身份候选（tick 可选）
+        - identity_policy: 查询/设置 legacy 或 conservative 关联策略
         - generate: 生成端口（世界图→候选未来，顺序语义外推+不确定边界）
+        - counterfactual: 隔离比较 seek/flee 关系条件（horizon/relations，不提交真实状态）
         - verify: 验证端口（外部观察者对比→命中率）
         - run: 持续运行 n tick（generate→物理演化→perceive→verify）
         - patterns: 观测-only 行为模式推断（关系/速度/方向一致性）
@@ -9991,6 +10964,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.world_model import UnifiedWorldModel
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "wm_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -9998,8 +10972,18 @@ class SpacetimeMemoryEngine:
             self._wmodel = UnifiedWorldModel(
                 size=int(p.get('size', 24)),
                 ground_level=int(p.get('ground_level', 1)),
-                seed=int(p.get('seed', 42)))
+                seed=int(p.get('seed', 42)),
+                identity_policy=p.get('identity_policy', 'legacy'))
             return {"status": "ok", "model": self._wmodel.state()}
+        if action in ("identity", "identity_policy"):
+            if not hasattr(self, '_wmodel'):
+                return {"status": "error", "error": "先 world_model init"}
+            if action == "identity":
+                return {"status": "ok", "identity": self._wmodel.inspect_identity(
+                    p.get("observations", []), tick=p.get("tick"))}
+            if "policy" in p:
+                self._wmodel.set_identity_policy(p["policy"])
+            return {"status": "ok", "identity_policy": self._wmodel.identity_policy}
         if not hasattr(self, '_wmodel'):
             self._wmodel = UnifiedWorldModel()
         if action == "create":
@@ -10007,15 +10991,23 @@ class SpacetimeMemoryEngine:
                                                 water=bool(p.get("water", False)))
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._wmodel.world.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2457：同上。
+            try:
+                eid = self._wmodel.world.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._wmodel.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2457：同上。
+            try:
+                self._wmodel.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "perceive":
             r = self._wmodel.perceive(observations=p.get("observations"),
@@ -10025,23 +11017,49 @@ class SpacetimeMemoryEngine:
         if action == "perceive_visual":
             if not hasattr(self, '_world3d'):
                 return {"status": "error", "error": "尚无视觉重建（先 world3d）"}
-            obs = self._world3d.observations(tick=p.get("tick"))
-            r = self._wmodel.perceive(obs, tool=str(p.get("tool", "world3d")),
-                                     tick=p.get("tick"), timestamp=p.get("timestamp"))
+            # #2424 续：perceive_visual 与 perceive 同契约——tick 闸的
+            # 可读 ValueError 在门面收口（修前裸穿实测）。
+            try:
+                obs = self._world3d.observations(tick=p.get("tick"))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
+            try:
+                r = self._wmodel.perceive(obs, tool=str(p.get("tool", "world3d")),
+                                         tick=p.get("tick"), timestamp=p.get("timestamp"))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             visible = [obj for obj in self._world3d.objects
                        if p.get("tick") is None or obj.observed_tick == p["tick"]]
-            for obj, observation in zip(visible, r["observations"]):
-                obj.eid = observation["eid"]
+            for index, observation in enumerate(r["observations"]):
+                source_index = (observation["observation_index"]
+                                if self._wmodel.identity_policy == "conservative" else index)
+                visible[source_index].eid = observation["eid"]
             return {"status": "ok", "perceive": r}
         if action == "generate":
-            r = self._wmodel.generate(horizon=int(p.get("horizon", 1)))
+            # #2446：horizon 判型后进底层（浮点/nan 不再裸崩或静默截断；
+            # 非整数转 error dict，同门面 fail-closed 惯例）。
+            _h = p.get("horizon", 1)
+            if isinstance(_h, bool) or not isinstance(_h, int):
+                return {"status": "error",
+                        "error": "generate 的 horizon 必须是 int，收到 %r" % (_h,)}
+            r = self._wmodel.generate(horizon=_h)
             return {"status": "ok", "generate": r}
+        if action == "counterfactual":
+            try:
+                r = self._wmodel.counterfactual(horizon=p.get("horizon", 1),
+                                               relations=p.get("relations"))
+                return {"status": "ok", "counterfactual": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "verify":
             r = self._wmodel.verify()
             return {"status": "ok", "verify": r}
         if action == "run":
-            r = self._wmodel.verify_run(n=int(p.get("n", 10)))
-            return {"status": "ok", "run": r}
+            try:
+                r = self._wmodel.verify_run(n=int(p.get("n", 10)))
+                return {"status": "ok", "run": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "patterns":
             return {"status": "ok", "patterns": self._wmodel.patterns()}
         if action == "anomalies":
@@ -10050,11 +11068,18 @@ class SpacetimeMemoryEngine:
         if action == "graph":
             return {"status": "ok", "graph": self._wmodel.graph()}
         if action == "history":
-            return {"status": "ok",
-                    "history": self._wmodel.history_view(limit=int(p.get("limit", 10)))}
+            # #2424 续：limit 非数值的不可读 ValueError 在门面收口
+            # （修前裸穿实测；本 handler 为可达分支——修前它被上一分支
+            # 的 return 短路，"history" 动作整体不可达，与 docstring 与
+            # 未知动作提示均不符）。
+            try:
+                return {"status": "ok",
+                        "history": self._wmodel.history_view(limit=int(p.get("limit", 10)))}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "state":
             return {"status": "ok", "model": self._wmodel.state()}
-        return {"status": "error", "error": f"未知动作 {action}（可用: init/create/entity/path/perceive/perceive_visual/generate/verify/run/patterns/anomalies/graph/history/state）"}
+        return {"status": "error", "error": f"未知动作 {action}（可用: init/create/entity/path/perceive/perceive_visual/identity/identity_policy/generate/verify/run/patterns/anomalies/graph/history/state）"}
 
     def world_learner(self, action: str, params: dict = None) -> dict:
         """自监督世界学习（里程碑3.2 · V-JEPA 式）：从观测序列无标注学转移函数——
@@ -10078,6 +11103,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.world_learner import WorldLearner
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "wl_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -10091,39 +11117,64 @@ class SpacetimeMemoryEngine:
         if not hasattr(self, '_wlearner'):
             self._wlearner = WorldLearner()
         if action == "create":
-            r = self._wlearner.world.create_scene(trees=int(p.get("trees", 2)),
-                                                  water=bool(p.get("water", False)))
+            # #2424：门面 fail-closed（同 voxel_world/scene_simulator）。
+            try:
+                r = self._wlearner.world.create_scene(trees=int(p.get("trees", 2)),
+                                                      water=bool(p.get("water", False)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._wlearner.world.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2424：pos/speed 闸的可读 ValueError 在门面收口（修前裸穿）。
+            try:
+                eid = self._wlearner.world.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._wlearner.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2424：points 闸的可读 ValueError 在门面收口。
+            try:
+                self._wlearner.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "run":
-            r = self._wlearner.run(n=int(p.get("n", 10)))
+            # #2424：n 非数值的不可读 ValueError 在门面收口（修前实测裸穿）。
+            try:
+                r = self._wlearner.run(n=int(p.get("n", 10)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "run": r}
         if action == "learn":
             m = self._wlearner.learn()
             return {"status": "ok", "learned": m}
         if action == "predict":
-            r = self._wlearner.predict(horizon=int(p.get("horizon", 1)))
-            return {"status": "ok", "predict": r}
+            try:
+                r = self._wlearner.predict(horizon=int(p.get("horizon", 1)))
+                return {"status": "ok", "predict": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "evaluate":
-            r = self._wlearner.evaluate(train_ticks=int(p.get("train_ticks", 30)),
-                                        eval_ticks=int(p.get("eval_ticks", 15)))
-            return {"status": "ok", "evaluate": r}
+            try:
+                r = self._wlearner.evaluate(train_ticks=int(p.get("train_ticks", 30)),
+                                            eval_ticks=int(p.get("eval_ticks", 15)))
+                return {"status": "ok", "evaluate": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "curve":
-            r = self._wlearner.learning_curve(
-                epochs=int(p.get("epochs", 4)),
-                per_epoch_ticks=int(p.get("per_epoch_ticks", 10)),
-                eval_ticks=int(p.get("eval_ticks", 8)))
-            return {"status": "ok", "curve": r}
+            try:
+                r = self._wlearner.learning_curve(
+                    epochs=int(p.get("epochs", 4)),
+                    per_epoch_ticks=int(p.get("per_epoch_ticks", 10)),
+                    eval_ticks=int(p.get("eval_ticks", 8)))
+                return {"status": "ok", "curve": r}
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
         if action == "masked":
             r = self._wlearner.masked_loss()
             return {"status": "ok", "masked": r}
@@ -10513,6 +11564,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.curiosity_explorer import CuriosityExplorer
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "cx_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -10526,27 +11578,50 @@ class SpacetimeMemoryEngine:
         if not hasattr(self, '_curious'):
             self._curious = CuriosityExplorer()
         if action == "create":
-            r = self._curious.world.create_scene(trees=int(p.get("trees", 2)),
-                                                 water=bool(p.get("water", False)))
+            # #2424：门面 fail-closed（explore/step 已由 #2420 闸，本票补齐
+            # 同门面剩余动作——第四处姊妹面之后的扫尾）。
+            try:
+                r = self._curious.world.create_scene(trees=int(p.get("trees", 2)),
+                                                     water=bool(p.get("water", False)))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._curious.world.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2424：pos/speed 闸的可读 ValueError 在门面收口（修前裸穿实测）。
+            try:
+                eid = self._curious.world.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._curious.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2424：points 闸的可读 ValueError 在门面收口。
+            try:
+                self._curious.world.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "explore":
-            r = self._curious.explore(ticks=int(p.get("n", 30)),
-                                      budget=int(p.get("budget", 2)),
+            # #2420：n/budget 判型后进底层（浮点不再静默截断；非 int 转 error
+            # dict，同门面 fail-closed 惯例），底层 explore 另有同形闸。
+            _n, _b = p.get("n", 30), p.get("budget", 2)
+            for _nm, _v in (("n", _n), ("budget", _b)):
+                if isinstance(_v, bool) or not isinstance(_v, int):
+                    return {"status": "error",
+                            "error": "explore 的 %s 必须是整数，收到 %r" % (_nm, _v)}
+            r = self._curious.explore(ticks=_n, budget=_b,
                                       policy=str(p.get("policy", "curiosity")))
             return {"status": "ok", "explore": r}
         if action == "step":
-            r = self._curious.explore_tick(budget=int(p.get("budget", 2)),
+            _b = p.get("budget", 2)
+            if isinstance(_b, bool) or not isinstance(_b, int):
+                return {"status": "error",
+                        "error": "step 的 budget 必须是整数，收到 %r" % (_b,)}
+            r = self._curious.explore_tick(budget=_b,
                                            policy=str(p.get("policy", "curiosity")))
             return {"status": "ok", "step": r}
         if action == "probe":
@@ -10589,7 +11664,7 @@ class SpacetimeMemoryEngine:
         - graph: 认知图（L3）
         - state: 闭环状态
         - configure_action: 配置一个实体的行动目标（params: entity_id, target（目标
-          实体 id 或三维坐标）, step_size, policy, fixed_action）——参数原样转发给
+          实体 id 或三维坐标）, step_size, policy, fixed_action, feedback_policy）——参数原样转发给
           SevenLayerLoop.configure_action；与 L7 **观察策略**（init 的 policy）互不影响
         - clear_action: 关闭行动配置（转发 SevenLayerLoop.clear_action）"""
         p = params or {}
@@ -10599,6 +11674,7 @@ class SpacetimeMemoryEngine:
             try:
                 from ..world.seven_layer_loop import SevenLayerLoop
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "sll_not_ready", "error": str(e)}
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
@@ -10618,15 +11694,23 @@ class SpacetimeMemoryEngine:
                                        water=bool(p.get("water", False)))
             return {"status": "ok", "scene": r}
         if action == "entity":
-            eid = self._sll.add_entity(
-                str(p.get("category", "entity")),
-                behavior=str(p.get("behavior", "wander")),
-                pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
-                speed=float(p.get("speed", 0.3)),
-                goal=str(p.get("goal", "")))
+            # #2457：门面 fail-closed（同 #2424 四门面收口）。
+            try:
+                eid = self._sll.add_entity(
+                    str(p.get("category", "entity")),
+                    behavior=str(p.get("behavior", "wander")),
+                    pos=tuple(float(v) for v in p.get("pos", [2, 1.5, 2])),
+                    speed=float(p.get("speed", 0.3)),
+                    goal=str(p.get("goal", "")))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "path":
-            self._sll.add_path(str(p.get("path_id", "")), p.get("points", []))
+            # #2457：同上。
+            try:
+                self._sll.add_path(str(p.get("path_id", "")), p.get("points", []))
+            except (ValueError, TypeError) as _e:
+                return {"status": "error", "error": str(_e)}
             return {"status": "ok", "path_id": str(p.get("path_id", ""))}
         if action == "run":
             r = self._sll.run(n=int(p.get("n", 30)))
@@ -10681,10 +11765,12 @@ class SpacetimeMemoryEngine:
                 return {"status": "error",
                         "error": "target 必填（目标实体 id 或三维坐标）"}
             try:
+                feedback_options = ({"feedback_policy": p["feedback_policy"]}
+                                    if "feedback_policy" in p else {})
                 cfg = fn(entity_id, p["target"],
                          step_size=p.get("step_size", 1.0),
                          policy=p.get("policy", "predictive"),
-                         fixed_action=p.get("fixed_action", "east"))
+                         fixed_action=p.get("fixed_action", "east"), **feedback_options)
             except (ValueError, TypeError) as e:
                 # C 侧把「未知 policy / 未知动作 / 受控实体不在场 / 不合法步长」定为
                 # fail-closed（ValueError，且配置一律不变）。门面**不改**这条判据，
@@ -10721,6 +11807,7 @@ class SpacetimeMemoryEngine:
             try:
                 from .game_web.generate import WorldGenerator
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "gen_not_ready", "error": str(e)}
         if not hasattr(self, '_wgen'):
             self._wgen = WorldGenerator(size=int(p.get('size', 24)),
@@ -10821,8 +11908,10 @@ class SpacetimeMemoryEngine:
                 from ..world.vprim import (  # 相对导入兜底（包内调用）
                     VPrim, spatial_relation, count_vprims, parse_anchor)
             except Exception as e:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return {"status": "vprim_not_ready", "error": str(e)}
         except Exception as e:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"status": "vprim_not_ready", "error": str(e)}
         if action == "spatial":
             a = p.get("a")
@@ -10855,6 +11944,7 @@ class SpacetimeMemoryEngine:
                     if vp is not None:
                         vprims.append(vp)
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return vprims
 
@@ -10867,6 +11957,7 @@ class SpacetimeMemoryEngine:
                 text += f" 变化={changed}"
             self.add_perception(text, importance=0.5, tags=["screen_state"])
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
     # =====================================================================
@@ -10885,6 +11976,7 @@ class SpacetimeMemoryEngine:
                                        tags=["voice_session", "conversation"])
             return node.id
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return ""
 
     def recursive_reflect(self, claim: str, expected: str = None,
@@ -10992,6 +12084,7 @@ class SpacetimeMemoryEngine:
                 from ..world.vprim import (ANCHOR_SCAN_PATTERN, parse_anchor,
                                            spatial_relation)
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 return None
         anchors = []
         import re as _re
@@ -11040,6 +12133,7 @@ class SpacetimeMemoryEngine:
                     k: rel.get(k) for k in ("status", "reliability", "note")
                     if k in rel}
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # 反思标准声明：反思者的观察位置/工具自述（结构性，与具体 claim 无关）
         result["standards"].append({
@@ -11081,6 +12175,7 @@ class SpacetimeMemoryEngine:
                     if len(hits) >= 3:
                         break
             except Exception:
+                _log.debug("core.py silent-except：旁路异常", exc_info=True)
                 pass
             deviation = len(hits) == 0
             detail = (f"记忆对照：{'无相关记忆（信息差信号）' if deviation else f'{len(hits)} 条相关记忆'}")
@@ -11111,6 +12206,7 @@ class SpacetimeMemoryEngine:
                         "similarity": round(score, 3),
                     })
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         if not premises:
             premises.append({"premise": "该判断缺少记忆支撑（可能基于未言明的默认假设）",
@@ -11136,6 +12232,7 @@ class SpacetimeMemoryEngine:
                            "confidence": round(r.get("confidence", 0), 3)}
                           for r in (result.get("routes") or [])[:3]]
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         # 影响分级（工程代理）：结构/协作/存在 三档
         level = "协作"
@@ -11181,6 +12278,16 @@ class SpacetimeMemoryEngine:
         ——只兜这一类可预期降级（**不**用宽 `except`，以免把真实缺陷一并吞掉），
         并如实降级为「未登记」文案（反思链是既有公开 API，登记是新增观测面，
         不得让它反噬主流程）。
+
+        #503：`verification` 形参此前**在函数体内零引用**（只出现在签名行）——
+        签名承诺了一个并不存在的接线，「一级验证是否发现偏差」对终裁结论毫无影响。
+        本件按**审计面**最小接线，**不**接判据：把一级验证的 `deviation` / `detail`
+        **如实记入**终裁返回值（`verification_deviation` / `verification_detail`），
+        使终裁产物与其行为日志（`_archive_reflection` 记的是整个 `verdict`）不再丢失
+        一级验证读数。★**判据逐字不变**：`reversibility` / `needs_designer` / `action`
+        的取值与分支**完全不受** `verification` 影响（判定仍由可逆性 + 影响级给出，
+        #154 词表边界不变；`high` 级仍只记录不阻断）——「终裁不读一级验证」是**已声明
+        的边界**，不是遗漏；接线只补观测面，不补判别力。
         """
         # 可逆性判定（工程代理：行为类型的可逆度）
         # #154：旧实现纯子串匹配 ⇒ 「不删除」「别覆盖」等**否定式**被误判为
@@ -11218,6 +12325,10 @@ class SpacetimeMemoryEngine:
             "reversibility": reversibility,
             "needs_designer": needs_designer,
             "action": ("本次反思范围内可处理（可逆/半可逆）"),
+            # #503：一级验证读数**审计面**如实记录（不改上方任何判据字段的取值）。
+            # 见 docstring 边界段：终裁判据不读 verification，此处只补观测面。
+            "verification_deviation": (verification or {}).get("deviation"),
+            "verification_detail": (verification or {}).get("detail"),
         }
         if needs_designer:
             # #130 路 B：按 code 直查 + 登记待办（只记录不阻断）。
@@ -11245,6 +12356,7 @@ class SpacetimeMemoryEngine:
                     "reflection", f"claim={report.get('claim', '')[:80]}",
                     None, {"depth": report.get("depth"), "verdict": report.get("verdict", {})})
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         try:
             verdict = report.get("verdict", {})
@@ -11256,6 +12368,7 @@ class SpacetimeMemoryEngine:
                                 source="self:reflection", self_generated=True)
             self._last_reflection_chain = text
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
 
     # ==================== v1.12 自我认知循环（SELF-COGNITION-REV2） ====================
@@ -11289,6 +12402,7 @@ class SpacetimeMemoryEngine:
                               "vision": body["vision"]["available"],
                               "memory": body["memory"]["engine"]}
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return report
 
@@ -11309,6 +12423,7 @@ class SpacetimeMemoryEngine:
             # ⇒ 显式落库，否则 `state_description` 仍活不过一次重启。
             self.self_model._persist()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return {"status": "ok", "state_description": desc, "body": body}
 
@@ -11352,6 +12467,7 @@ class SpacetimeMemoryEngine:
         try:
             self.consume_events()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         result = self._lifecycle.cycle()
         self._note_action("lifecycle", f"state={result.get('state')}",
@@ -11454,6 +12570,7 @@ class SpacetimeMemoryEngine:
                 importance=0.6, tags=["观测层", "验证回路", "prediction_feedback",
                                       "hit" if hit else "miss"])
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
         return result
 
@@ -11567,6 +12684,12 @@ class SpacetimeMemoryEngine:
         动词→与同实体上一帧的 TemporalEdge（状态变→causal / 不变→sequential）。
         盲区56：视觉 substrate 缺失时强制 entity_hint + state_hint 人工标注。
         盲区60/61：原始帧仅存引用至 local_visual_buffer（LRU），不进共享层"""
+        # 自主发现（参数类型 · 公开入口）：`frame_data` 零闸——None/int 下
+        # 首个 `frame_data.get(...)` 即抛裸 `AttributeError: 'NoneType' object
+        # has no attribute 'get'`，不指参数名。
+        if not isinstance(frame_data, dict):
+            raise TypeError("ingest_frame 的 frame_data 必须是 dict，收到 %r"
+                            % (type(frame_data).__name__,))
         cs = condition_space or ConditionSpace(
             "视觉感知", "帧摄入", (time.time(), time.time()+3600), "协议实例运行中")
         # v1.8：semantic_attention = 决策偏好注入（自上而下通道，REFLECT-ATTENTION-REV1）
@@ -11634,6 +12757,8 @@ class SpacetimeMemoryEngine:
     def query_by_semantics(self, text: str, limit: int = 10,
                            modality: str = None) -> List[Tuple[STNode, float]]:
         """语义→图像（反向映射）：文本 → semantic_coordinates → 图节点检索（D-003 明确检索语义坐标）"""
+        # dsh-bounty #1795: same None/-1 normalization (scored[:limit] x2).
+        limit = _normalize_limit(limit)
         if not self._semantic_provider:
             return []
         q_sc = self._semantic_provider.to_semantic_coordinates(text)
@@ -12411,6 +13536,13 @@ class SpacetimeMemoryEngine:
         即使位于配置的白名单根内也拒绝；普通备份覆盖语义不变。
         """
         # 旧备份仍可覆盖（#698）；源库及 WAL/SHM/journal 即使落在白名单根内也须拒绝。
+        # 自主发现（路径类型）：output_path 此前直接交给 path 归一——传 int 时抛
+        # 不可读 TypeError（`_path_normpath: path should be string, bytes or
+        # os.PathLike, not int`，泄漏实现细节）。现 fail-loud：非 str/PathLike
+        # → 可读 TypeError（零写入）。
+        if not isinstance(output_path, (str, os.PathLike)):
+            raise TypeError("export_all 的 output_path 必须是字符串或 PathLike，"
+                            "收到 %s" % type(output_path).__name__)
         output_path = self._confine_export_out_path(output_path)
         target_path = os.path.realpath(output_path)
         self._guard_export_source_path(target_path)
@@ -12572,6 +13704,13 @@ class SpacetimeMemoryEngine:
         边界（如实标注）：只归一**容器**值；数值越界仍走 #574/#690 的钳制，
         字符串编码口径不动（#378/#494 的面）。
 
+        Related #1009：追加 `unreadable_imported_nodes`（count / 前 20 个 id 样本）。
+        仅诊断本次实际写入的最终节点行是否可由既有严格读面反序列化；重复 id
+        覆盖以最终存量行为准，SQL NULL id 样本保留 None。不清洗、不拒绝、不改
+        imported / skipped_rows / integrity_ok 的既有口径，不扫描无关存量坏行。
+        此诊断不保证字段业务语义正确，也不涵盖边或其它表；SQL 行存在但不可读
+        不等于未落库。原始 NULL / 非法 JSON 保留，修复或拒收策略不在本增量。
+
         #93（悬挂引用不再静默落库）：本方法所在连接已开 `PRAGMA
         foreign_keys=ON`（见 `LayeredStore._connect`），备份里指向不存在节点的边
         若照旧 `INSERT OR REPLACE` 会抛 `FOREIGN KEY constraint failed` 并**中断
@@ -12690,6 +13829,12 @@ class SpacetimeMemoryEngine:
         （与 #586/#478/#771 的「整批拒」取舍逐字一致，不提供自动清洗）。
         """
         # #789：utf-8-sig 对无 BOM 备份逐字节等价、BOM 在场时剥掉（见 docstring）。
+        # 自主发现（路径类型）：input_path 此前直接进 open()——传 int 会被当成**文件
+        # 描述符**（CPython 语义），实测 import_all(456) 抛 OSError [WinError 6] 句柄无效；
+        # 传其它非路径类型也会泄漏实现错误。现 fail-loud：非 str/PathLike → 可读 TypeError。
+        if not isinstance(input_path, (str, os.PathLike)):
+            raise TypeError("import_all 的 input_path 必须是字符串或 PathLike，"
+                            "收到 %s" % type(input_path).__name__)
         with open(input_path, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         # ① 不可变层覆盖闸（先判后写，fail-closed）。
@@ -12858,6 +14003,9 @@ class SpacetimeMemoryEngine:
                 "（如 write_snapshot 已存在分支）静默失效，并随备份继续传播"
                 "（fail-closed，零落库）"
                 % (len(bad_tags), bad_tags[0]["id"], bad_tags[0]["reason"]))
+        # Track physical rows actually written, not declared IDs: NULL IDs and
+        # repeated INSERT OR REPLACE entries must describe final stored rows.
+        _imported_node_rowids = {}
         counts = {}
         skipped = []
         discarded = {}
@@ -13012,6 +14160,12 @@ class SpacetimeMemoryEngine:
                     if r.get("layer") not in {m.value for m in MemoryLayer}:
                         rejected_layer.append({"id": r.get("id"),
                                                "layer": repr(r.get("layer"))[:40]})
+                        # #2102：拒行同步扣除 imported 计数（与 #721 腿同口径）。
+                        # 修前被拒行仍留在 len(rows) 里 ⇒ imported["nodes"] 虚报
+                        # 实际写入数（灾备恢复按「备份 N 行、imported N 行」判完整
+                        # 的调用方会被假数字误导；#1009 已修 null 字段腿，本条是
+                        # layer 校验腿的姊妹缺口）。实测 imported=2 而库内实际 0。
+                        skipped_rows[table] = skipped_rows.get(table, 0) + 1
                         continue
                     # #778 F1/F2：**保护标记保真**（复用 `add_node` 的 #659 判据，
                     # 不另造第二套）。旧实现走通用逐表 `INSERT OR REPLACE` ⇒ 备份行
@@ -13107,6 +14261,8 @@ class SpacetimeMemoryEngine:
                          else "INSERT OR REPLACE")
                 c.execute(f"{_verb} INTO {table} ({col_sql}) VALUES ({placeholders})",
                           tuple(r.get(col) for col in cols))
+                if table == "nodes":
+                    _imported_node_rowids[c.lastrowid] = None
             counts[table] = len(rows) - skipped_rows.get(table, 0)
         # #778 F1/F2 硬配套：受保护节点被导入覆写 ⇒ 审计只追加（与 `add_node` 的
         # #659 同款 action_type / 字段面）。**不**拒绝覆盖（灾备恢复语义不动）。
@@ -13138,6 +14294,19 @@ class SpacetimeMemoryEngine:
                 node_ids=[i for i in immutable_rows if i],
                 outcome={"requires_review": True, "immutable_rows": len(immutable_rows),
                          "relayer_rows": len(relayer_rows)})
+        # Related #1009: physical writes can succeed while strict node decoding
+        # fails. Report only final rows touched here; leave stored bytes, imported
+        # counts and the FK-only integrity_ok contract unchanged. The pure helper
+        # uses the same decoder as reads without changing last_skipped_rows.
+        # Query failures propagate before commit; only decoder failures are reported.
+        _unreadable_count = 0
+        _unreadable_sample = []
+        for _rowid in _imported_node_rowids:
+            _stored = c.execute("SELECT * FROM nodes WHERE rowid=?", (_rowid,)).fetchall()
+            _, _unreadable = self.store._tolerant_nodes(_stored)
+            _unreadable_count += len(_unreadable)
+            if len(_unreadable_sample) < 20:
+                _unreadable_sample.extend(_unreadable[:20 - len(_unreadable_sample)])
         self._commit_locked()
         # #493：导入后把运行期容量状态随盘面刷新（与「启动时从库读」同口径）：
         # 上方逐表 INSERT OR REPLACE 已把备份的 engine_meta（含 context_max）落库，
@@ -13148,6 +14317,17 @@ class SpacetimeMemoryEngine:
         # 之后，读到的是已落定状态。不覆盖 set_context_cap 的显式设置语义，也不改
         # enforce_context_cap 的裁剪判据。判据来源：公开 issue #493。
         self._context_max = self._load_context_max()
+        # #1141（与上方 #493 同一条口径的漏网面）：`gap_history` 已进 `M13_TABLES`
+        # 且上方分支已把备份行落库（`imported["gap_history"]` 如实计数），但
+        # `self._gap_history` 仍是构造期 `_load_gap_history()` 读到的那份（`__init__`
+        # 一次性装载）⇒ **灾备恢复到同一进程**时表有 N 行、内存 0 行，
+        # `get_gap_trend()` 读内存窗口（`_gap_history`）返回 `trend="insufficient"`，
+        # 长期记忆门的 Δ²D 特征同步归零，**必须重启进程**才回到盘面读数（同一份库
+        # 两个读数，且导入返回值无任何提示）。修法与 #493 逐字同款：复用构造期读数
+        # 路径 `_load_gap_history()`（只读、尾 100 条窗口、不触发写入），读点置于
+        # 本次写事务提交之后，读到的是已落定状态；不覆盖 `record_info_gap` 的追加
+        # 语义，也不动 100 条窗口上限。判据来源：公开 issue #1141（`#270` 余项）。
+        self._gap_history = self._load_gap_history()
         # 恢复自检：导入后跑 `PRAGMA foreign_key_check` 体检。经上方 #93 预筛，正常
         # 路径下应恒为空；保留本步作为「白名单列裁剪后仍出现悬挂」的兜底观测
         # （不拦写入，随返回值交付）。
@@ -13157,6 +14337,8 @@ class SpacetimeMemoryEngine:
         # 口径不同（详见本方法 docstring），不要把这一个数当成那一个数。
         dangling = {(table, rid) for table, rid, *_ in c.fetchall()}
         return {"imported": counts, "skipped_tables": skipped,
+                "unreadable_imported_nodes": {"count": _unreadable_count,
+                                               "sample": _unreadable_sample},
                 "dangling_rows": len(dangling),
                 "orphan_edges": len(orphan_rows),
                 "orphan_edges_sample": [
@@ -13492,6 +14674,12 @@ class SpacetimeMemoryEngine:
                         record = (f"{result['param']}="
                                   f"{self._verifier_config.get(result['param'], result['value'])}"
                                   f" 终裁通过（{adjudicator}）")
+                        # #500：记录必须**如实**。该参数若无读取点（幻影旋钮），
+                        # 上面这串「X=值 终裁通过（人）」会被读成「此标准已生效」，
+                        # 而实际写入后行为完全不变 ⇒ 追加如实标注，避免记录撒谎。
+                        # 只改记录文本，不动终裁返回契约、不动配置、不动任何判据。
+                        if result["param"] not in _VERIFIER_PARAMS_WITH_READERS:
+                            record += f"[{_NO_READER_NOTE}]"
                         # #130（路 B · 裁定帖原文）：本调用点此前与升级点表**零接触**
                         # ——「验证标准变更四步制衡第④步」正是内置 `ESC-005` 的
                         # condition，却从无代码按 code 去查它（`check_escalation` 的
@@ -13690,6 +14878,13 @@ class SpacetimeMemoryEngine:
             if bound is not None:
                 if value is None:
                     continue          # 无值不可判：声明了数值界却未给值 ⇒ 不匹配
+                if (isinstance(value, float) and math.isnan(value)):
+                    continue          # #2162：NaN 无序 → 触发器语义不可判，按无值
+                                      # 处理（与 None 同口径）——修前 NaN 参与裸
+                                      # 比较恒 False，危机触发器静默跳过且与健康
+                                      # 值不可区分。±inf 的**有序**比较语义保留
+                                      # （-inf < 0.2 照常触发、inf < 0.2 不触发，
+                                      # IEEE 行为正确，票边界段明写不拦 ±inf）。
                 if not _eval_escalation_value_bound(bound[0], bound[1], value):
                     continue
             matches.append(point)
@@ -13709,6 +14904,11 @@ class SpacetimeMemoryEngine:
                       0.30 * connection_drift + 0.15 * prediction_error)
         if d_norm is None:
             return 0.0
+        # #459：非有限（NaN/±Inf）不可判 ⇒ 归钳制区间**下界** 0.0（#402 口径：
+        # 非有限一律回落下界，不得抬到上界伪装成「最大信息差」——旧实现
+        # `min(1.0, nan)` 返回 1.0，NaN 样本进 gap_history 后被 Δ²D/趋势当满值）。
+        if not math.isfinite(d_norm):
+            d_norm = 0.0
         dn = max(0.0, min(1.0, d_norm))
         self._gap_history.append({"ts": time.time(), "d_norm": dn})
         if len(self._gap_history) > 100:
@@ -13722,8 +14922,9 @@ class SpacetimeMemoryEngine:
                        " (SELECT id FROM gap_history ORDER BY id DESC LIMIT 2000)")
             self._commit_locked()
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
-        return d_norm
+        return dn
 
     def _load_gap_history(self) -> List[Dict]:
         """D 序列跨进程恢复（OBS-REV1 / 钉死批条款4）：读库尾 100 条填内存
@@ -13734,6 +14935,7 @@ class SpacetimeMemoryEngine:
             rows = c.fetchall()
             return [{"ts": ts, "d_norm": dn} for ts, dn in reversed(rows)]
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return []
 
     def get_gap_trend(self, window: int = 30) -> Dict:
@@ -13813,6 +15015,7 @@ class SpacetimeMemoryEngine:
                 try:
                     trajectory = json.loads(full[0].content)
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     trajectory = None
             if trajectory is None:
                 trajectory = {"cycle_id": cycle_id,
@@ -13833,6 +15036,7 @@ class SpacetimeMemoryEngine:
                 try:
                     trajectory["cycles"].append(json.loads(n.content))
                 except Exception:
+                    _log.debug("core.py silent-except：旁路异常", exc_info=True)
                     pass
         trajectory.setdefault("meta", {
             "exported_at": time.time(),
@@ -13851,6 +15055,20 @@ class SpacetimeMemoryEngine:
             # 同款；批量模式不落盘、返回体不动——见 `_strip_export_controls`
             # 处注释边界④）。`reported` 取剥除后的树，与文件内容同源。
             trajectory = self._sanitize_export_obj(trajectory)
+            # #2569（安全 P0）：`_confine_export_out_path` 用 `realpath` 归一，而
+            # **`realpath` 不解析硬链接**——攻击者在白名单根里放一个硬链接指向受
+            # 保护节点，别名看起来仍在根内 ⇒ 根闸放行 ⇒ `open(..., "w")` 就地
+            # 截断作用在**共享 inode** 上（实测：受保护 .md 从 53 被截断成 189
+            # 字节 JSON、frontmatter 彻底消失）。本方法 docstring 自述「无根闸、
+            # 无拒覆盖、无原子写」是 #330 的漏网；更彻底是改 `temp + os.replace`
+            # （抗硬链接、抗截断），此处先做最小闸。
+            if os.path.exists(output_path):
+                _nlink = os.stat(output_path).st_nlink
+                if _nlink > 1:
+                    raise ValueError(
+                        "#2569 export_trajectory 拒绝：输出路径是硬链接"
+                        "（nlink=%d）——就地写会截断共享 inode 上的真源，"
+                        "fail-closed" % _nlink)
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(trajectory, f, ensure_ascii=False, indent=2)
             reported = dict(trajectory)
@@ -14000,10 +15218,38 @@ class SpacetimeMemoryEngine:
         for n in nodes:
             groups.setdefault(find(n.id), []).append(n)
         clusters = [g for g in groups.values() if len(g) >= min_cluster_size]
+        # #263（残余项 A）：同主题**合并**，不再每凑够 min_cluster_size 条就新建一个概念。
+        # 旧实现：每轮把新到的 3 条同主题记忆聚成一簇 ⇒ 新建 1 个概念节点，且从不与
+        # 既有概念比对 ⇒ 300 轮实测 99 个概念 / 3 主题 = 每主题 33 个互不合并的副本，
+        # 知识层净膨胀（399 vs 300 条输入）。现改为：先算候选摘要，与**既有概念**比
+        # 字符二元组 Jaccard；达 similarity_threshold 即视为同主题 ⇒ 把本簇成员挂到
+        # 该既有概念上（加 SIMILAR 边 + 打 cluster_member 标签），**不新建节点**。
+        # 判据来源：lingshu #263（残余项 A）与复现判定 VERDICT.md 的「加压缩/去重」建议。
+        # 边界（削掉的判别力）：合并判据只看**摘要文本**的二元组相似度，不看簇内语义；
+        # 摘要由 `_summarize_cluster` 规则式生成（代表节点前 40 字），故同主题不同表述
+        # 可能被判为不同主题（保守：宁可多留一个概念，也不错并两个主题）。
+        # 合并时不改写既有概念的 content（不改其 sha/可追溯性），累计规模不进摘要 ——
+        # 如需规模读数，从 SIMILAR 边数统计。
+        existing_concepts = [n for n in self.store.query_nodes(
+            layer=MemoryLayer.KNOWLEDGE, limit=500) if "concept" in n.tags]
         concepts = []
+        merged = 0
         for cluster in clusters[:max_concepts]:
+            summary = self._summarize_cluster(cluster)
+            target = None
+            for ec in existing_concepts:
+                if LayeredStore.char_bigram_jaccard(summary, ec.content) >= t:
+                    target = ec
+                    break
+            if target is not None:
+                for m in cluster:
+                    self.add_edge(target.id, m.id, EdgeType.SIMILAR, confidence=0.6,
+                                  source_evidence="inferred")
+                    self.store.tag_node(m.id, "cluster_member")
+                merged += 1
+                continue
             concept = self.add_perception(
-                content=self._summarize_cluster(cluster),
+                content=summary,
                 importance=0.75,
                 tags=["concept", "induced", "pending_verification"],
                 condition_space=condition_space)
@@ -14011,6 +15257,7 @@ class SpacetimeMemoryEngine:
                 self.add_edge(concept.id, m.id, EdgeType.SIMILAR, confidence=0.6,
                               source_evidence="inferred")
                 self.store.tag_node(m.id, "cluster_member")
+            existing_concepts.append(concept)
             concepts.append(concept)
         return concepts
 
@@ -14033,6 +15280,15 @@ class SpacetimeMemoryEngine:
         时间过滤能查到）。削掉的判别力：无——返回语义（时间距离最近的前 `limit` 条）
         不变，仅把候选集从「重要性前 500」换成「时间窗内全部」。
         """
+        # 自主发现（参数类型 · 公开入口）：`timestamp`/`tolerance` 零闸——
+        # `timestamp - tolerance` 抛裸 `TypeError: unsupported operand type(s)
+        # for -: 'NoneType' and 'float'`（或 'str' and 'float'），不指参数名。
+        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+            raise TypeError("what_happened_at 的 timestamp 必须是数值，收到 %r"
+                            % (type(timestamp).__name__,))
+        if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)):
+            raise TypeError("what_happened_at 的 tolerance 必须是数值，收到 %r"
+                            % (type(tolerance).__name__,))
         nodes = self.store.query_nodes_by_time(timestamp - tolerance,
                                                timestamp + tolerance)
         results = [(n, abs(n.temporal_coordinate - timestamp)) for n in nodes
@@ -14042,7 +15298,17 @@ class SpacetimeMemoryEngine:
 
     def timeline(self, node_id: str, direction: str = "forward",
                  max_depth: int = 20) -> List[STNode]:
-        """P1-2：沿时间演化边展开时间线（forward=源→目标，backward=目标→源）"""
+        """P1-2：沿时间演化边展开时间线（forward=源→目标，backward=目标→源）
+
+        #2104：direction 白名单（只有 "forward"/"backward" 两个合法值）——
+        修前 `== "forward"` 的 else 兜底把任何拼写错（如 "fowrad"）静默当成
+        backward，方向反转无告警（拼错方向拿到的是方向相反的合法形状结果）。
+        同文件 traverse 的方向过滤用白名单式判据（typo ⇒ 不扩展）——口径对齐。
+        """
+        if direction not in ("forward", "backward"):
+            raise ValueError(
+                "timeline：direction 只接受 'forward'/'backward'，得到 %r"
+                % (direction,))
         chain = []
         current = node_id
         visited = set()
@@ -14082,7 +15348,22 @@ class SpacetimeMemoryEngine:
         ⇒ 库内超过 500 条时较早/低重要度的会话窗整批消失（实测最近窗口只含 500 条、
         遗漏关键事件）。现改按时间全量取数（`query_nodes_by_time`），分窗口径不变。
         判据来源：分诊表 `triage_lingshu_ALL.md` 行 179。
+
+        #2164：两个数值参数此前都无闸——①`limit=0` 时 `windows[-0:]` 等于
+        `windows[0:]` 把 limit 读成「无限」（同引擎 get_recent_context(0)/
+        get_action_log(0)/what_happened_at(0) 的 0 语义都是「返回 0 条」，本方法是
+        唯一反例）；②负/NaN `window_seconds` 造出 count=0 的幽灵窗口（空分组被
+        推入结果，实测 window_seconds=-1 产出 4 窗口含 1 空窗）。两处均 fail-closed。
         """
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise ValueError("session_summary：limit 必须是整数，收到 %r" % (limit,))
+        if limit < 1:
+            raise ValueError("session_summary：limit 必须不小于 1，收到 %r" % (limit,))
+        if (isinstance(window_seconds, bool)
+                or not isinstance(window_seconds, (int, float))
+                or not math.isfinite(window_seconds) or window_seconds <= 0):
+            raise ValueError("session_summary：window_seconds 必须为正有限数，收到 %r"
+                             % (window_seconds,))
         nodes = self.store.query_nodes_by_time()
         if not nodes:
             return []
@@ -14110,6 +15391,31 @@ class SpacetimeMemoryEngine:
         return result
 
     # ---- P1-3 技能获取闭环 ----
+
+    #: #200 ③：技能成功/失败计数的 `engine_meta` 键前缀。
+    #: 用 KV 表而非新增列 ⇒ 不动 `SCHEMA_VERSION`、不碰 skills 表结构。
+    _SKILL_OK_KEY = "skill_ok:"
+    _SKILL_FAIL_KEY = "skill_fail:"
+
+    def _bump_skill_counter(self, prefix: str, skill_hint: str) -> int:
+        """把 `prefix + hint` 的计数 +1，返回**加完之后**的值（#200 ③）。"""
+        key = prefix + skill_hint
+        old = self.store.merge_meta(key, lambda v: int(v or 0) + 1)
+        return int(old or 0) + 1
+
+    def _skill_counts(self, skill_hint: str) -> "tuple[int, int]":
+        """读 (成功数, 失败数)；缺键即 0（#200 ③）。"""
+        meta = self.store.get_meta()
+        return (int(meta.get(self._SKILL_OK_KEY + skill_hint) or 0),
+                int(meta.get(self._SKILL_FAIL_KEY + skill_hint) or 0))
+
+    @staticmethod
+    def _smoothed_confidence(ok: int, fail: int) -> float:
+        """Beta(1,1) 先验下的成功率后验均值：`(ok+1) / (ok+fail+2)`。
+
+        `ok=fail=0` ⇒ **0.5**（与建卡默认值一致，故既有「无历史失败」断言不变）。
+        """
+        return (ok + 1.0) / (ok + fail + 2.0)
 
     def record_action_sequence(self, actions: List[str], outcome: str, success: bool,
                                skill_hint: str = None) -> Optional[STNode]:
@@ -14149,6 +15455,18 @@ class SpacetimeMemoryEngine:
         可直接落地』的读侧接线」（`.tmp/prowatch/reply216_ruling.md`）＋ 先例
         `propose_promotion` 的读侧接线（`find_rejected_paths` + `path_type` 过滤）。
         """
+        # 自主发现（参数类型 · 公开入口）：`actions` 零闸——None/非序列下
+        # `actions[:5]` 抛裸 `TypeError: 'NoneType' object is not subscriptable`，
+        # `outcome[:40]` 同款；不指参数名。同一 #1396 类型闸族纪律。
+        if not isinstance(actions, (list, tuple)):
+            raise TypeError("record_action_sequence 的 actions 必须是 list/tuple，收到 %r"
+                            % (type(actions).__name__,))
+        if not all(isinstance(a, str) for a in actions):
+            raise TypeError("record_action_sequence 的 actions 每项必须是字符串，收到 %r"
+                            % ([type(a).__name__ for a in actions][:3],))
+        if not isinstance(outcome, str):
+            raise TypeError("record_action_sequence 的 outcome 必须是字符串，收到 %r"
+                            % (type(outcome).__name__,))
         node = self.add_perception(
             f"[action_seq] {'成功' if success else '失败'}：{' > '.join(actions[:5])}（{outcome[:40]}）",
             importance=0.5,
@@ -14167,12 +15485,23 @@ class SpacetimeMemoryEngine:
             # 的 LIKE 子串召回——hint「备份」会命中「删除备份」并把备份步骤拼进
             # 删除技能、为删除技能增信（分诊表行 200 第 1 条）。
             existing = self.store.get_skill_by_name(skill_hint)
+            ok_n = self._bump_skill_counter(self._SKILL_OK_KEY, skill_hint)
             if existing:
-                self.store.update_skill_confidence(existing["id"], 0.05)
+                # #200 ③：置信度改为**平滑成功率估计**，不再是无条件的 +0.05。
+                # 旧实现只按成功次数线性增信、且建卡前的失败一次都不计 ⇒
+                # 「50 败 10 胜」的技能反而升到 0.95（issue 判据要求 < 0.5）。
+                _ok_before, fail_n = self._skill_counts(skill_hint)
+                target = self._smoothed_confidence(ok_n, fail_n)
+                self.store.update_skill_confidence(
+                    existing["id"], target - float(existing["confidence"]))
                 self.store.append_skill_procedure(existing["id"], " > ".join(actions[:3]))
             else:
+                # 建卡：把**建卡之前**的失败历史折进初始置信度。
+                # 用建卡前计数（ok 计 0）⇒ 无历史失败时恰为 0.5（旧行为不变）。
+                _ok_before, fail_n = self._skill_counts(skill_hint)
+                init_conf = self._smoothed_confidence(0, max(0, fail_n))
                 self.store_skill(skill_hint, f"从操作序列提取（{outcome[:40]}）",
-                                 " > ".join(actions[:5]), confidence=0.5)
+                                 " > ".join(actions[:5]), confidence=init_conf)
         elif not success:
             # A-1：失败操作序列 → 被拒绝路径资产（防重复失败）
             self.register_rejected_path(
@@ -14182,6 +15511,8 @@ class SpacetimeMemoryEngine:
             # #200：失败且带 hint ⇒ 对**精确同名**技能降信（旧实现失败从不降信，
             # 频繁失败的技能照样升到高置信——分诊表行 200 第 3 条）。
             if skill_hint:
+                # #200 ③：失败计数落库（供建卡时折算初始置信度）。
+                self._bump_skill_counter(self._SKILL_FAIL_KEY, skill_hint)
                 failed_skill = self.store.get_skill_by_name(skill_hint)
                 if failed_skill:
                     self.store.update_skill_confidence(failed_skill["id"], -0.05)
@@ -14487,6 +15818,20 @@ class SpacetimeMemoryEngine:
         卡死的衰减周期下本方法仍会在上界后继续启动新线程，代价是那种情况下仍可能
         短暂并存（与 `close()` 的同一取舍：生命周期收尾不得被单个后台任务无限拖住）。
         """
+        # 自主发现（采样周期值域）：`interval` 是 `Event.wait` 的超时秒数，旧实现
+        # 不校验——`interval=0` 让 wait 立即返回 False，循环体**连续**跑
+        # `decay_cycle()`（忙循环：CPU 占满 + 反复抢写锁，实测两线程叠加后
+        # `export_all` 抛 `database table is locked`）；`interval<0` 同效
+        # （负超时被 wait 当 0）；`interval=NaN` 在**线程内**抛 ValueError，
+        # 异常落在 daemon 线程里无人回收，而 `start_auto_decay` 已返回成功。
+        # 现 fail-loud：非实数 TypeError、非有限或 ≤0 ValueError，零线程启动。
+        try:
+            _iv = float(interval)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("采样周期 interval 必须是实数，收到 %r" % (interval,)) from exc
+        if not math.isfinite(_iv) or _iv <= 0.0:
+            raise ValueError("采样周期 interval 必须是正的有限秒数，收到 %r" % (interval,))
+        interval = _iv
         # #265：先停旧（含 join）再起新 ⇒ 任意次 stop→start 后最多一条线程，
         # 且新 interval 立即生效（不再被旧线程的闭包 interval 拖住）。
         self.stop_auto_decay()
@@ -14511,6 +15856,7 @@ class SpacetimeMemoryEngine:
                     self.decay_cycle()
                     self._decay_last_error = None   # #184：本周期成功 ⇒ 清旧读数
                 except Exception as exc:            # noqa: BLE001 —— 见 docstring #184
+                    _log.debug("core.py silent-except：见 docstring #184", exc_info=True)
                     self._decay_last_error = "%s: %s" % (type(exc).__name__, exc)
 
         self._decay_thread = threading.Thread(target=loop, daemon=True)
@@ -14673,6 +16019,7 @@ class SpacetimeMemoryEngine:
             return gate.write_snapshot(content, source, tags, entities,
                                        importance_hint)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"status": "error", "error": str(exc)}
 
     def prefeed_input(self, content: str, source: str = "input",
@@ -14684,6 +16031,7 @@ class SpacetimeMemoryEngine:
             gate = self._ensure_gate()
             return gate.prefeed(content, source, tags, entities)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"novel": False, "action": "error", "error": str(exc)}
 
     def pattern_separation_scan(self, limit: int = 150) -> dict:
@@ -14712,6 +16060,7 @@ class SpacetimeMemoryEngine:
             ps = PatternSeparation(self)
             return ps.scan(limit=limit)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"created": 0, "error": str(exc)}
 
     def reconstruct_scene(self, clue: str, depth: int = 2,
@@ -14734,6 +16083,7 @@ class SpacetimeMemoryEngine:
             sr = SceneReconstruction(self)
             return sr.reconstruct(clue, depth=depth, max_nodes=max_nodes)
         except Exception as exc:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return {"scene": [], "error": str(exc)}
 
     def promote_context_memories(self, limit: int = 30) -> list:
@@ -14742,4 +16092,5 @@ class SpacetimeMemoryEngine:
             gate = self._ensure_gate()
             return gate.promote_from_context(limit)
         except Exception:
+            _log.debug("core.py silent-except：旁路异常", exc_info=True)
             return []

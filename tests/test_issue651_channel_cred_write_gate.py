@@ -166,21 +166,32 @@ def test_g2_update_unknown_channel_does_not_disturb_legal_accounting():
 # ---------------------------------------------------------------- G3 防过修
 
 def test_g3_default_channels_full_chain_zero_regression():
-    """G3：六条默认通道 record/credibility/state/reset 全链零回归（对齐 A7 基线）。"""
+    """G3：六条默认通道 record/credibility/state/reset 全链零回归（对齐 A7 基线）。
+
+    ★ 基线重登记（2026-10-24，随 #119 ② 折扣 Beta 落地）：
+      本件原断言 a=12.0 / b=7.0 / cred=12/19（A7 改前读数），那是**无遗忘**实现的
+      算术。issue #119 ② 要求「每次更新前先 a ← PRIOR_A + α(a − PRIOR_A)」，
+      于是同一条 hit→miss 链变成 a = 2 + 0.95×(12 − 2) = 11.5、b 仍 7.0
+      （miss 时 b 尚等于先验，折扣对它是恒等），cred = 11.5/18.5。
+      这不是「过修」——折扣正是 #119 要的行为；但**必须重登记**而不是放宽判据：
+      结构面断言（hits/misses 计数、known、reset 语义、键集、cred 与 a/b 的一致性）
+      全部原样保留，只把三个算术常量改到新语义，并在此写明来由。
+      判别力仍在：任何**进一步的**未申报算术漂移都会让本件变红。
+    """
     reg = ChannelCredibilityRegistry()
     for ch in DEFAULT_CHANNELS:
         reg.record_hit(ch, conf=1.0)
         reg.record_miss(ch, conf=0.5)
         st = reg.channel_state(ch)
-        assert st["a"] == pytest.approx(12.0), (ch, st)   # 2 + 10.0
-        assert st["b"] == pytest.approx(7.0), (ch, st)    # 2 + 5.0
+        assert st["a"] == pytest.approx(11.5), (ch, st)   # 2 + 0.95×(12−2)（#119 ② 折扣）
+        assert st["b"] == pytest.approx(7.0), (ch, st)    # 2 + 5.0（miss 时 b 等于先验，折扣为恒等）
         assert st["hits"] == 1 and st["misses"] == 1
         assert st["known"] is True
-        assert reg.credibility(ch) == pytest.approx(12.0 / 19.0)   # A7: 0.631579
+        assert reg.credibility(ch) == pytest.approx(11.5 / 18.5)   # A7 原为 12/19
     # 单通道 reset 只复位该通道
     reg.reset("audio")
     assert reg.channel_state("audio") == _prior_state("audio")
-    assert reg.channel_state("visual")["a"] == pytest.approx(12.0)
+    assert reg.channel_state("visual")["a"] == pytest.approx(11.5)
     # 无参全量复位不变
     reg.reset()
     for ch in DEFAULT_CHANNELS:

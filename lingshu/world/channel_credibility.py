@@ -38,6 +38,7 @@ v3.4 新增机制：置信度 ≠ 可信度。
 纯标准库 · 零外部依赖（D-005）
 """
 from __future__ import annotations
+import logging
 
 import json
 import math
@@ -45,6 +46,7 @@ import os
 import time
 import warnings
 from typing import Dict, List, Optional
+_log = logging.getLogger(__name__)
 
 # 默认通道（对应 v3.4 三端口架构）
 DEFAULT_CHANNELS = ["visual", "tactile", "audio", "action", "prediction", "search"]
@@ -92,6 +94,7 @@ class ChannelCredibilityRegistry:
                 data = json.load(f)
         except Exception:
             # 只兜「文件级」失败（不可读 / 非 JSON）——整体保持构造器先验。
+            _log.debug("channel_credibility: 持久化读取失败，保持构造器先验", exc_info=True)
             return
         if not isinstance(data, dict):
             return  # A parseable non-object is still an invalid calibration file.
@@ -139,7 +142,13 @@ class ChannelCredibilityRegistry:
         if not self.persist_path:
             return
         try:
-            os.makedirs(os.path.dirname(self.persist_path), exist_ok=True)
+            # #1065：persist_path 为**纯文件名**时 dirname="" ⇒ makedirs("") 抛
+            # FileNotFoundError 被下方 except 静默吞——持久化静默失效（重载回
+            # 先验）。修正：无目录成分时跳过 makedirs（文件直接落 cwd），有目
+            # 录成分才建目录。
+            _dir = os.path.dirname(self.persist_path)
+            if _dir:
+                os.makedirs(_dir, exist_ok=True)
             # #651：落盘前过滤非注册键——_load 重启后只认 DEFAULT_CHANNELS
             #（构造器先建的就是这六个键），写下去也只写这批，盘面与重载面
             # 严格一致。_state 里混入的其它键（直改内部字典 / 旧版本残留）
@@ -148,6 +157,7 @@ class ChannelCredibilityRegistry:
             with open(self.persist_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=1)
         except Exception:
+            _log.debug("channel_credibility: 持久化写盘失败，内存态不受影响", exc_info=True)
             pass
 
     # ---- 更新 ----
@@ -203,8 +213,13 @@ class ChannelCredibilityRegistry:
         # #402：NaN/±inf 不得被钳制表达式放行——实测 Python 的 min(1.0, nan)=1.0
         #   会把 NaN 置信度抬成 1.0，注入满额伪样本量（n_eff）。非有限值一律
         #   fail-closed 归零（零伪样本量，后验不动）。
-        conf = float(conf)
-        if not math.isfinite(conf):
+        # #2217：大整数（10**309/10**400/2**2000）在 float() 处抛 OverflowError，
+        #   且字符串/None 等非数值抛 TypeError/ValueError。包 try 归零与 #402 统一。
+        try:
+            conf = float(conf)
+            if not math.isfinite(conf):
+                conf = 0.0
+        except (TypeError, ValueError, OverflowError):
             conf = 0.0
         conf = max(0.0, min(1.0, conf))
         alpha = ALPHA_STRONG if strong else ALPHA_WEAK
@@ -216,6 +231,27 @@ class ChannelCredibilityRegistry:
         anchor_w = min(anchor_w, 6.0)
         n_eff = conf * N_BASE * anchor_w
         st = self._state.setdefault(channel, {"a": PRIOR_A, "b": PRIOR_B, "hits": 0.0, "misses": 0.0})
+        # #119 ②：折扣 Beta（遗忘）——α 至此才真正是「保持率」，而不只是算权重的参数。
+        #   旧实现只做 `st["a"] += n_eff` 累加、**从不折旧** ⇒ 历史越长越难被发现失灵：
+        #   issue 实测 50 次强命中后要连续 117 次强未命中才降权，且该数随命中次数 N
+        #   **线性增长**，文件头承诺的「降权 / 检修」于是只在最不需要的新通道上灵敏。
+        #   本件按 issue 修复建议 2 加入折扣：更新前先 `a ← PRIOR_A + α(a - PRIOR_A)`
+        #   （b 同理）⇒ 后验有上界 `a* = PRIOR_A + n_eff/(1-α)`，降权所需未命中次数
+        #   与 N 解耦（即 issue 守卫判据「不超过某个与 N 无关的上界 K」）。
+        #   边界（如实标注）：折扣**只施加于本次被更新的通道**（issue 原文「每次更新
+        #   前先执行」指该通道），不遍历全部通道；`hits`/`misses` 仍为**累计计数**
+        #   ——它们是观测面、不是后验伪样本量，不参与折扣（#119 往返判据要求这两个
+        #   字段 save/load 后逐字段相等）。
+        # #1064：`n_eff == 0`（非有限置信度按上面 #402 归零后，或调用方显式传 0.0）
+        # 意为「零信息事件」——#402 注释已承诺「后验不动」。旧实现无条件先执行
+        # #119 折扣 ⇒ 一次无信息事件扣掉 (1-α) 比例的历史证据：实测训练过的通道
+        # a 201.84→141.89（Δ-59.95），且对 miss-heavy 通道方向反转（b 202→142，
+        # 可信度 0.0098→0.0139 反而上升；conf=0 时 maintenance→downweighted）。
+        # 此处短路：零伪样本量 ⇒ 后验与计数都不动，只回读状态。
+        if n_eff <= 0.0:
+            return self.channel_state(channel)
+        st["a"] = PRIOR_A + alpha * (st["a"] - PRIOR_A)
+        st["b"] = PRIOR_B + alpha * (st["b"] - PRIOR_B)
         if hit:
             st["a"] += n_eff
             st["hits"] += 1.0

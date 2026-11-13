@@ -1,0 +1,5 @@
+{
+  "status": "not_run",
+  "scope": "local Linux replay, mutations and probes",
+  "note": "This round ran Windows only; no fresh WSL launch or host configuration changes. Remote Linux CI will be checked separately."
+}

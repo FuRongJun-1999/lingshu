@@ -1,0 +1,112 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "02caf8bfe6d53fb33981d2f51c0ebceef9a0957f",
+  "guard_sha256": "fcdd7d67b4849adf41700a894a264af7cb7fb71a53fb3c32d4534d908d28791a",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 10,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "10 passed, 9 warnings in 0.41s",
+      "source_sha256": {
+        "lingshu/world/anchor_verify.py": "e2cab7b98c8eee9bbabd61a3204681409007d16ed1248ac51732f0790ac2948c"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 3,
+      "failed_tests": [
+        "test_conflict_clears_prior_tier_basis",
+        "test_conflict_clears_stable_rounds",
+        "test_conflict_refreshes_confirmation[stable]",
+        "test_conflict_refreshes_confirmation[strong]",
+        "test_core_returns_downgraded_conflict",
+        "test_graph_returns_downgraded_conflict",
+        "test_state_and_summary_share_immediate_downgrade"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_conflict_refreshes_confirmation[strong]",
+        "test_conflict_refreshes_confirmation[stable]",
+        "test_conflict_clears_stable_rounds",
+        "test_conflict_clears_prior_tier_basis",
+        "test_state_and_summary_share_immediate_downgrade",
+        "test_core_returns_downgraded_conflict",
+        "test_graph_returns_downgraded_conflict"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "7 failed, 3 passed, 9 warnings in 0.53s",
+      "source_sha256": {
+        "lingshu/world/anchor_verify.py": "ff7688223a718c4a27142a55e96a4c75f4df4a9f5af362da8ed27bca828832e9"
+      }
+    },
+    {
+      "case": "skip_conflict_refresh",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_state_and_summary_share_immediate_downgrade"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_state_and_summary_share_immediate_downgrade"
+      ],
+      "expected_assertion": "WM_CONFLICT_STATE_NOT_REFRESHED",
+      "pytest_summary": "1 failed in 0.19s",
+      "source_sha256": {
+        "lingshu/world/anchor_verify.py": "45342ac68390d275b82d00e55141c914f418b29b14fa310010bd54c4288d507a"
+      }
+    },
+    {
+      "case": "retain_stable_count_after_refutation",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_conflict_clears_stable_rounds"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_conflict_clears_stable_rounds"
+      ],
+      "expected_assertion": "WM_CONFLICT_ROUNDS_SURVIVED",
+      "pytest_summary": "1 failed in 0.20s",
+      "source_sha256": {
+        "lingshu/world/anchor_verify.py": "506ca18ec8bac5a077125eb4ffd3ef72217d199a45ae0a6bf4de086aa25096ea"
+      }
+    },
+    {
+      "case": "return_stale_conflict_reply",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_core_returns_downgraded_conflict"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_core_returns_downgraded_conflict"
+      ],
+      "expected_assertion": "WM_CORE_CONFLICT_RETURNED_OLD_ACCEPT",
+      "pytest_summary": "1 failed, 9 warnings in 0.51s",
+      "source_sha256": {
+        "lingshu/world/anchor_verify.py": "ebb25b0c73505c5ad1464176e06c8c5538e5d2be8a9157a6c0446b617f089c09"
+      }
+    }
+  ]
+}

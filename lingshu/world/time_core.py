@@ -12,8 +12,23 @@
 import math
 
 
+def _as_floats(name, *values):
+    """把入口参数统一转为 float；非数值抛可读 TypeError（核形状不变）。"""
+    out = []
+    for v in values:
+        try:
+            out.append(float(v))
+        except (TypeError, ValueError) as exc:
+            raise TypeError("%s 的参数必须是实数，收到 %r" % (name, v)) from exc
+    return tuple(out)
+
+
 def cred(x0: float, x_inf: float, gamma: float, dt: float) -> float:
     """连续指数核：状态从 x0 向终值 x_inf 衰减，速率 γ，历时 dt。"""
+    # 自主发现（参数类型）：入口此前无类型转换——传非数值（如 dt="x"）时在
+    # math.exp 处抛不可读的 TypeError（"can't multiply sequence by non-int"）。
+    # 现统一转 float 并把失败转成可读 TypeError；数值语义不变。
+    x0, x_inf, gamma, dt = _as_floats("cred", x0, x_inf, gamma, dt)
     return x_inf + (x0 - x_inf) * math.exp(-gamma * dt)
 
 
@@ -29,6 +44,7 @@ def cred_factor(gamma: float, dt: float, floor: float = 0.0, ceil: float = 1.0) 
     `min(1.0, nan) == 1.0` 会把 NaN 抬成满额保持（完全不衰减），与 #196/#402
     「非有限不得给出对己有利结论」相反；此处与 #402 同向取最保守端。
     """
+    gamma, dt = _as_floats("cred_factor", gamma, dt)
     f = math.exp(-gamma * dt)
     if not math.isfinite(f):
         return floor
@@ -51,6 +67,13 @@ def cred_step(x: float, decay: float) -> float:
     decay_cycle 逐周期形态；n 步后 x·(1-decay)^n = x·e^(n·ln(1-decay))，
     与连续核同族——衰减率 γ = -ln(1-decay) 每周期。
     """
+    # #2161：非有限输入 fail-closed（对齐同模块 cred_factor 的 #457 口径）。
+    # 修前 gamma=inf 直达本函数返回 -inf（衰减量负无穷=置信度变负数无穷）、
+    # 同一输入 cred_factor 却返回保守端 0.0——同一份非有限输入给出方向相反
+    # 的结论。不可判 ⇒ 保守端 0.0（按已全衰减），不翻倍放大。
+    x, decay = _as_floats("cred_step", x, decay)
+    if not (math.isfinite(x) and math.isfinite(decay)):
+        return 0.0
     return x * (1.0 - decay)
 
 
@@ -59,4 +82,11 @@ def cred_blend(last: float, incoming: float, retain: float) -> float:
 
     gap/信息差等累积观测的离散指数核形态（保持率 retain = 1-λ）。
     """
+    # #2161：非有限输入 fail-closed（#457 口径）——修前 retain=inf 返回 inf
+    # （保持率无穷，结果正无穷），与 cred_factor 的保守端 0.0 方向相反。
+    last, incoming = _as_floats("cred_blend", last, incoming)
+    retain, = _as_floats("cred_blend", retain)
+    if not (math.isfinite(last) and math.isfinite(incoming)
+            and math.isfinite(retain)):
+        return 0.0
     return last * retain + incoming

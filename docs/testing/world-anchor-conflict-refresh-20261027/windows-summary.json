@@ -1,0 +1,42 @@
+{
+  "platform": "Windows",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "baseline": "02caf8bfe6d53fb33981d2f51c0ebceef9a0957f",
+  "validated_commit": "0fd1f33cf55bdd77923221fffa2b964cc3f734f1",
+  "commands": [
+    {
+      "name": "replay",
+      "returncode": 0
+    },
+    {
+      "name": "related",
+      "returncode": 0
+    },
+    {
+      "name": "manifest",
+      "returncode": 0
+    },
+    {
+      "name": "time-core",
+      "returncode": 0
+    }
+  ],
+  "related_files": [
+    "test_issue74_channel_allquant_gate.py",
+    "test_issue119_160_400_401_anchor_verify_guard.py",
+    "test_issue221_228_262_403_world3d_guard.py",
+    "test_issue490_world3d_build_preserves_verification.py",
+    "test_world_observation_contracts.py",
+    "test_channel_calibration_load_domain.py",
+    "test_channel_cred_query_surface.py"
+  ],
+  "related_total": 103,
+  "related_skips": [],
+  "sha256_lf": {
+    "lingshu/world/anchor_verify.py": "e2cab7b98c8eee9bbabd61a3204681409007d16ed1248ac51732f0790ac2948c",
+    "tests/test_world_anchor_conflict_refresh.py": "fcdd7d67b4849adf41700a894a264af7cb7fb71a53fb3c32d4534d908d28791a",
+    "tests/fixtures/world_anchor_conflict_refresh_mutations.json": "aecedb8558fe8a6f9947cf0fa4477b0334be9965268e68ac9ee819a6a11337c6"
+  },
+  "owned_test_temp_cleaned": true
+}

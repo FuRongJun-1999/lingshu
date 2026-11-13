@@ -294,8 +294,12 @@ def build_document(draw_objs, cam, style=None):
                 stats["faces_clipped"] += 1
                 continue
             depth /= len(clipped)
+            # #2118：rim 死条件修前恒传 0.0（`0.0 if not ob.emissive else 0.0` 两
+            # 分支同值）——「边缘补光按发光/材质选择」的 rim 描述成死表达。按意图
+            # 恢复：非发光件取默认边缘补光 0.22，发光件保持 0.0（发光件由下方
+            # emissive 提亮分支负责边缘效果）。
             col = shade_band(ob.color_linear, n, light, bands=bands,
-                             view_dir=view_dir, rim=0.0 if not ob.emissive else 0.0)
+                             view_dir=view_dir, rim=0.0 if ob.emissive else 0.22)
             if ob.emissive:
                 col = tuple(min(1.0, c * 1.35 + 0.12) for c in ob.color_linear)
             proj_faces.append(G.ProjectedFace(scr, depth, label=ob.name,
@@ -404,6 +408,13 @@ def export_anim_document(draw_objs, cam_factory, path, keyframes=5, dur=14.0,
     不合格直接抛（不静默给一份看着能跑其实乱跳的文件）。
     """
     import math as _m
+    # #2117：keyframes=1 修后在机位插值第一行裸除零（`2*az_span*k/(keyframes-1)`
+    # 分母 0）——同函数对 morph 拓扑不合格已做「降级+计数+逐条原因」，唯独 keyframes
+    # 元数无任何下限声明。fail-closed：K=1（单帧静态环视）不支持即显式拒绝。
+    if isinstance(keyframes, bool) or not isinstance(keyframes, int) or keyframes < 2:
+        raise ValueError(
+            "export_anim_document：keyframes 须为 >= 2 的整数（机位插值需要两端"
+            "取样），得到 %r" % (keyframes,))
     targets = set(target or [])
     docs = []
     for k in range(keyframes):
@@ -619,8 +630,11 @@ def collect_scene_objects(layer_of=None, role_of=None, only_visible=True,
 
 def _role_from(mat, name):
     n = (mat.name if mat else "").lower() + " " + name.lower()
-    for role in ("emissive", "glass", "rubber", "metal", "stone", "wood",
-                 "fabric", "plastic", "skin"):
+    # #2115：`painted_metal` 优先——修前裸子串匹配 "metal" 会先命中材质名里
+    # 的 `metal`（如 "painted_metal"），把「底漆金属」判成裸 metal 角色；
+    # 主包（lingshu 词元匹配）对同语义表有 painted_metal 优先序，本副本漏改。
+    for role in ("painted_metal", "emissive", "glass", "rubber", "metal", "stone",
+                 "wood", "fabric", "plastic", "skin"):
         if role in n:
             return role
     return "painted_metal"

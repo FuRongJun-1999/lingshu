@@ -310,6 +310,19 @@ class MeshData:
             self.add_tri(ids[a], ids[b], ids[c], color)
 
     def add_quad(self, a, b, c, d, color=None) -> None:
+        """四角面 → 两个三角（a,b,c）+（a,c,d）。
+
+        #2403：**先全量校验后写入**——修前直接串联两次 `add_tri`，第二个三角
+        越界抛错时第一个已 append 进 faces/colors ⇒ 调用方按「抛错=未写入」
+        重试会得到多一块面片的半成品 mesh（渲染可见的多余面片、无告警），
+        与同文件 add_tri（:274）/ add_poly（:286）的「校验通过才写」口径分裂。
+        前置段只做转换与越界检查，合法输入结果逐位不变。
+        """
+        a, b, c, d = int(a), int(b), int(c), int(d)
+        n = len(self.verts)
+        for i in (a, b, c, d):
+            if not (0 <= i < n):
+                raise ValueError("面索引越界：%r（顶点数 %d）" % ((a, b, c, d), n))
         self.add_tri(a, b, c, color)
         self.add_tri(a, c, d, color)
 
@@ -474,6 +487,13 @@ def _revolve_core(profile, seg: int, sx: float = 1.0, sy: float = 1.0,
                                                 r * sz * math.sin(a))) for a in ang]))
     for i in range(len(layers) - 1):
         (ka, va), (kb, vb) = layers[i], layers[i + 1]
+        if ka == "pole" and kb == "pole":
+            # 连续极点段：两层都是 r≈0 ⇒ 该段没有任何表面可连。旧实现静默跳过
+            # 却把极点顶点留在 verts 里（悬空顶点），geometry_report 的 bbox 按
+            # 含悬空顶点的 verts 计算，谎报几何范围——对齐「坏输入 raise」纪律。
+            raise ValueError(
+                "剖面出现连续极点层（相邻两层 r≈0）：该段无表面可连，"
+                "拒绝静默产出悬空顶点（prof[%d]→prof[%d]）" % (i, i + 1))
         for k in range(seg):
             k2 = (k + 1) % seg
             if ka == "ring" and kb == "ring":
@@ -788,7 +808,8 @@ def sweep_path(points, w: float, t: Optional[float] = None,
 
     每个路径点处的截面垂直于**局部切向**（中心差分，端点单侧差分）；
     截面内的 right/up 由参考 `up` 与该切向正交化得到（切向 ∥ up 时改用 X 轴
-    参照并计数 `stats["frame_degenerate"]`，不静默给歪标架）。
+    参照并计数 `stats["frame_degenerate"]`；X 参照仍退化则再试 Y 轴，全部
+    参照皆与切向平行 ⇒ ValueError——不静默给歪标架，也不裸崩 ZeroDivisionError）。
     `taper` 给了就按路径参数线性缩放截面（1.0 = 等截面）。
     """
     pts = [_finite3(p, "path") for p in points]
@@ -816,6 +837,14 @@ def sweep_path(points, w: float, t: Optional[float] = None,
         if rl < 1e-6:
             right = _cross((1.0, 0.0, 0.0), tan)
             rl = math.sqrt(right[0] ** 2 + right[1] ** 2 + right[2] ** 2)
+            if rl < 1e-6:
+                # X 参照也退化（up ∥ X 且切向 ∥ X）：再试 Y 轴，仍零即 fail-closed
+                # ——兜底自身可退化，裸除零不是本文件的处理纪律。
+                right = _cross((0.0, 1.0, 0.0), tan)
+                rl = math.sqrt(right[0] ** 2 + right[1] ** 2 + right[2] ** 2)
+            if rl < 1e-6:
+                raise ValueError(
+                    "路径切向与全部参照轴平行，无法构造截面标架：%r" % (tan,))
             degen += 1
         right = (right[0] / rl, right[1] / rl, right[2] / rl)
         upn = _cross(tan, right)
@@ -1078,6 +1107,11 @@ def project_mask(soup: Soup, axis: str = "y", res: int = 48, bounds=None) -> set
     """
     if axis not in AXES:
         raise ValueError("axis 须为 %r 之一：%r" % (AXES, axis))
+    # mask res 与 #688 的 voxel res 同族：过小（<2）产出空掩码静默喂进 IoU
+    # （自相似度会跌到 0.5），非整数在 range() 深处炸晦涩 TypeError——入口即收口。
+    res = int(res)
+    if res < 2:
+        raise ValueError("mask res 须 ≥ 2（收到 %r）——过小必产空掩码" % (res,))
     drop = AXES.index(axis)
     keep = [i for i in range(3) if i != drop]
     if bounds is None:
@@ -1607,12 +1641,17 @@ def build_mesh(category: str, target=None, config=None, seg: int = 16
 
 
 def config_grid_size(grid) -> int:
-    """参数网格的候选总数（供调用方在跑之前判成本，不跑才发现爆）。"""
+    """参数网格的候选总数（供调用方在跑之前判成本，不跑才发现爆）。
+
+    空取值维度按笛卡尔语义计 **0**（旧实现 `max(1, ·)` 把空列表当 1 个候选，
+    预检通过后枚举器实产 0 个——正是 docstring 承诺要拦住的「跑了才发现爆」；
+    空维的真值由 `fit_recipe` 的预检以 ValueError 显式拒绝）。
+    """
     n = 1
     for _k, vs in (grid or {}).items():
         # 不用 `*=`：`tools/time_core_lint` 按**形状级**判据把「任何 `*= …`」记为命中
         # （它的意图是抓时间衰减的逐元素乘），此处只是**计数累乘**，改写以免污染该判据。
-        n = n * max(1, len(list(vs)))
+        n = n * len(list(vs))
     return n
 
 
@@ -1633,6 +1672,10 @@ def fit_recipe(category: str, target_soup: Soup, grid=None, res: int = 32,
     if total > max_candidates:
         raise ValueError("参数网格 %d 个候选 > max_candidates=%d"
                          % (total, max_candidates))
+    if total <= 0:
+        # 空取值维度（config_grid_size 现按笛卡尔语义计 0）：预检即拒，
+        # 不再落到「跑了才发现爆」的枚举空转。
+        raise ValueError("参数网格存在空取值维度：%r" % (grid,))
     target = soup_recenter(target_soup)
     t_dims = bbox_dims(target)
     if not grid:
@@ -1783,7 +1826,7 @@ def install(categories=None, target=None, overwrite: bool = False,
         from .mesh3d import MESH_LIBRARY
     except ImportError:                                         # pragma: no cover
         from .mesh3d import MESH_LIBRARY
-    cats = list(categories) if categories else sorted(MESH_RECIPES)
+    cats = list(categories) if categories is not None else sorted(MESH_RECIPES)
     out: Dict[str, int] = {}
     for cat in cats:
         if cat in MESH_LIBRARY and not overwrite:
@@ -1940,7 +1983,11 @@ def _parts_of(soup, parts) -> List[Soup]:
         return [_as_part_soup(p, "parts[%d]" % i) for i, p in enumerate(parts)]
     if _looks_like_soup(soup):
         return [_as_part_soup(soup, "soup")]
-    return [_as_part_soup(p, "soup[%d]" % i) for i, p in enumerate(soup)]
+    entries = list(soup)
+    if not entries:
+        # 空 soup 与 parts=[] 同一语义：没检查不得伪装成干净（docstring 纪律）。
+        raise ValueError("soup 为空序列（fail-closed）")
+    return [_as_part_soup(p, "soup[%d]" % i) for i, p in enumerate(entries)]
 
 
 def self_interpenetration_report(soup, *, parts=None, obb: bool = False) -> Dict:

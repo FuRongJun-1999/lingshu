@@ -1,0 +1,112 @@
+FFFFFFF..FF.....FF                                                       [100%]
+================================== FAILURES ===================================
+_______ test_public_fractional_period_keeps_moving_beyond_one_cycle[41] _______
+tests\test_world_period_phase_wrap.py:38: in test_public_fractional_period_keeps_moving_beyond_one_cycle
+    assert math.dist(p["predicted"], circle(95+h)) < 0.004, "WM_PERIOD_PHASE_FROZE"
+E   AssertionError: WM_PERIOD_PHASE_FROZE
+E   assert 0.07755074251363535 < 0.004
+E    +  where 0.07755074251363535 = <built-in function dist>([9.434393124513461, 1.5, 10.824675004109107], [9.3721878753279, 1.5, 10.77836491192416])
+E    +    where <built-in function dist> = math.dist
+E    +    and   [9.3721878753279, 1.5, 10.77836491192416] = circle((95 + 41))
+_______ test_public_fractional_period_keeps_moving_beyond_one_cycle[50] _______
+tests\test_world_period_phase_wrap.py:38: in test_public_fractional_period_keeps_moving_beyond_one_cycle
+    assert math.dist(p["predicted"], circle(95+h)) < 0.004, "WM_PERIOD_PHASE_FROZE"
+E   AssertionError: WM_PERIOD_PHASE_FROZE
+E   assert 1.3440157211110424 < 0.004
+E    +  where 1.3440157211110424 = <built-in function dist>([9.434393124513461, 1.5, 10.824675004109107], [9.124441768697908, 1.5, 9.516887400703364])
+E    +    where <built-in function dist> = math.dist
+E    +    and   [9.124441768697908, 1.5, 9.516887400703364] = circle((95 + 50))
+_______ test_public_fractional_period_keeps_moving_beyond_one_cycle[64] _______
+tests\test_world_period_phase_wrap.py:38: in test_public_fractional_period_keeps_moving_beyond_one_cycle
+    assert math.dist(p["predicted"], circle(95+h)) < 0.004, "WM_PERIOD_PHASE_FROZE"
+E   AssertionError: WM_PERIOD_PHASE_FROZE
+E   assert 1.936779921055612 < 0.004
+E    +  where 1.936779921055612 = <built-in function dist>([9.434393124513461, 1.5, 10.824675004109107], [10.893632640323412, 1.5, 9.551200819799538])
+E    +    where <built-in function dist> = math.dist
+E    +    and   [10.893632640323412, 1.5, 9.551200819799538] = circle((95 + 64))
+______ test_public_fractional_period_keeps_moving_beyond_one_cycle[130] _______
+tests\test_world_period_phase_wrap.py:38: in test_public_fractional_period_keeps_moving_beyond_one_cycle
+    assert math.dist(p["predicted"], circle(95+h)) < 0.004, "WM_PERIOD_PHASE_FROZE"
+E   AssertionError: WM_PERIOD_PHASE_FROZE
+E   assert 1.225201090386402 < 0.004
+E    +  where 1.225201090386402 = <built-in function dist>([9.434393124513461, 1.5, 10.824675004109107], [9.06030737921409, 1.5, 9.657979856674336])
+E    +    where <built-in function dist> = math.dist
+E    +    and   [9.06030737921409, 1.5, 9.657979856674336] = circle((95 + 130))
+__________ test_fractional_cycles_preserve_the_interpolated_phase[9] __________
+tests\test_world_period_phase_wrap.py:48: in test_fractional_cycles_preserve_the_interpolated_phase
+    assert W._phase_at(seq, 8.5, h) == pytest.approx(expected, abs=1e-12), "WM_FRACTIONAL_CYCLES_LOST"
+E   AssertionError: WM_FRACTIONAL_CYCLES_LOST
+E   assert (2.5, 1.5, 3.0) == approx((3.0 ±....0 ± 1.0e-12))
+E
+E     comparison failed. Mismatched elements: 1 / 3:
+E     Max absolute difference: 0.5
+E     Max relative difference: 0.2
+E     Index | Obtained | Expected
+E     0     | 2.5      | 3.0 ± 1.0e-12
+_________ test_fractional_cycles_preserve_the_interpolated_phase[18] __________
+tests\test_world_period_phase_wrap.py:48: in test_fractional_cycles_preserve_the_interpolated_phase
+    assert W._phase_at(seq, 8.5, h) == pytest.approx(expected, abs=1e-12), "WM_FRACTIONAL_CYCLES_LOST"
+E   AssertionError: WM_FRACTIONAL_CYCLES_LOST
+E   assert (2.5, 1.5, 3.0) == approx((3.5 ±....0 ± 1.0e-12))
+E
+E     comparison failed. Mismatched elements: 1 / 3:
+E     Max absolute difference: 1.0
+E     Max relative difference: 0.4
+E     Index | Obtained | Expected
+E     0     | 2.5      | 3.5 ± 1.0e-12
+_________ test_fractional_cycles_preserve_the_interpolated_phase[50] __________
+tests\test_world_period_phase_wrap.py:48: in test_fractional_cycles_preserve_the_interpolated_phase
+    assert W._phase_at(seq, 8.5, h) == pytest.approx(expected, abs=1e-12), "WM_FRACTIONAL_CYCLES_LOST"
+E   AssertionError: WM_FRACTIONAL_CYCLES_LOST
+E   assert (2.5, 1.5, 3.0) == approx((1.5 ±....0 ± 1.0e-12))
+E
+E     comparison failed. Mismatched elements: 1 / 3:
+E     Max absolute difference: 1.0
+E     Max relative difference: 0.4
+E     Index | Obtained | Expected
+E     0     | 2.5      | 1.5 ± 1.0e-12
+__________ test_integer_valued_float_period_matches_integer_phase[9] __________
+tests\test_world_period_phase_wrap.py:56: in test_integer_valued_float_period_matches_integer_phase
+    assert W._phase_at(seq, 8.0, h) == expected, "WM_FLOAT_PERIOD_CHANGED_PHASE"
+E   AssertionError: WM_FLOAT_PERIOD_CHANGED_PHASE
+E   assert (7.0, 1.5, 3.0) == (0, 1.5, 3.0)
+E
+E     At index 0 diff: 7.0 != 0
+E     Use -v to get more diff
+_________ test_integer_valued_float_period_matches_integer_phase[25] __________
+tests\test_world_period_phase_wrap.py:56: in test_integer_valued_float_period_matches_integer_phase
+    assert W._phase_at(seq, 8.0, h) == expected, "WM_FLOAT_PERIOD_CHANGED_PHASE"
+E   AssertionError: WM_FLOAT_PERIOD_CHANGED_PHASE
+E   assert (7.0, 1.5, 3.0) == (0, 1.5, 3.0)
+E
+E     At index 0 diff: 7.0 != 0
+E     Use -v to get more diff
+_______ test_core_public_forecast_uses_the_wrapped_phase_without_writes _______
+tests\test_world_period_phase_wrap.py:94: in test_core_public_forecast_uses_the_wrapped_phase_without_writes
+    assert math.dist(p["predicted"], circle(145)) < 0.004, "WM_CORE_PERIOD_PHASE_FROZE"
+E   AssertionError: WM_CORE_PERIOD_PHASE_FROZE
+E   assert 1.3440157211110424 < 0.004
+E    +  where 1.3440157211110424 = <built-in function dist>([9.434393124513461, 1.5, 10.824675004109107], [9.124441768697908, 1.5, 9.516887400703364])
+E    +    where <built-in function dist> = math.dist
+E    +    and   [9.124441768697908, 1.5, 9.516887400703364] = circle(145)
+_________ test_counterfactual_wraps_without_committing_the_candidate __________
+tests\test_world_period_phase_wrap.py:109: in test_counterfactual_wraps_without_committing_the_candidate
+    assert math.dist(p["predicted"], circle(145)) < 0.004, "WM_COUNTERFACTUAL_PHASE_FROZE"
+E   AssertionError: WM_COUNTERFACTUAL_PHASE_FROZE
+E   assert 1.3440157211110424 < 0.004
+E    +  where 1.3440157211110424 = <built-in function dist>([9.434393124513461, 1.5, 10.824675004109107], [9.124441768697908, 1.5, 9.516887400703364])
+E    +    where <built-in function dist> = math.dist
+E    +    and   [9.124441768697908, 1.5, 9.516887400703364] = circle(145)
+=========================== short test summary info ===========================
+FAILED tests/test_world_period_phase_wrap.py::test_public_fractional_period_keeps_moving_beyond_one_cycle[41]
+FAILED tests/test_world_period_phase_wrap.py::test_public_fractional_period_keeps_moving_beyond_one_cycle[50]
+FAILED tests/test_world_period_phase_wrap.py::test_public_fractional_period_keeps_moving_beyond_one_cycle[64]
+FAILED tests/test_world_period_phase_wrap.py::test_public_fractional_period_keeps_moving_beyond_one_cycle[130]
+FAILED tests/test_world_period_phase_wrap.py::test_fractional_cycles_preserve_the_interpolated_phase[9]
+FAILED tests/test_world_period_phase_wrap.py::test_fractional_cycles_preserve_the_interpolated_phase[18]
+FAILED tests/test_world_period_phase_wrap.py::test_fractional_cycles_preserve_the_interpolated_phase[50]
+FAILED tests/test_world_period_phase_wrap.py::test_integer_valued_float_period_matches_integer_phase[9]
+FAILED tests/test_world_period_phase_wrap.py::test_integer_valued_float_period_matches_integer_phase[25]
+FAILED tests/test_world_period_phase_wrap.py::test_core_public_forecast_uses_the_wrapped_phase_without_writes
+FAILED tests/test_world_period_phase_wrap.py::test_counterfactual_wraps_without_committing_the_candidate
+11 failed, 7 passed, 9 warnings in 0.63s

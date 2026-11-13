@@ -1,0 +1,49 @@
+===== score_nonfinite_actual =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_nonfinite_actual_is_pending[nan] ____________________
+tests\test_world_verify_finite_evidence.py:29: in test_nonfinite_actual_is_pending
+    assert result["total"] == 0 and result["pending"] == 1, "WM_VERIFY_BAD_ACTUAL_WAS_SCORED"
+E   AssertionError: WM_VERIFY_BAD_ACTUAL_WAS_SCORED
+E   assert (1 == 0)
+=========================== short test summary info ===========================
+FAILED tests/test_world_verify_finite_evidence.py::test_nonfinite_actual_is_pending[nan]
+1 failed in 0.26s
+
+===== accept_nonfinite_bound =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_unusable_bound_is_pending[inf] _____________________
+tests\test_world_verify_finite_evidence.py:63: in test_unusable_bound_is_pending
+    assert result["total"] == 0 and result["pending"] == 1, "WM_VERIFY_BAD_BOUND_WAS_SCORED"
+E   AssertionError: WM_VERIFY_BAD_BOUND_WAS_SCORED
+E   assert (1 == 0)
+=========================== short test summary info ===========================
+FAILED tests/test_world_verify_finite_evidence.py::test_unusable_bound_is_pending[inf]
+1 failed in 0.26s
+
+===== score_overflowed_distance =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_unrepresentable_distance_is_pending ___________________
+tests\test_world_verify_finite_evidence.py:74: in test_unrepresentable_distance_is_pending
+    assert result["total"] == 0 and result["pending"] == 1, "WM_VERIFY_INFINITE_DISTANCE_WAS_SCORED"
+E   AssertionError: WM_VERIFY_INFINITE_DISTANCE_WAS_SCORED
+E   assert (1 == 0)
+=========================== short test summary info ===========================
+FAILED tests/test_world_verify_finite_evidence.py::test_unrepresentable_distance_is_pending
+1 failed in 0.25s
+
+===== sum_metric_values_before_scaling =====
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_finite_metric_means_avoid_sum_overflow _________________
+tests\test_world_verify_finite_evidence.py:86: in test_finite_metric_means_avoid_sum_overflow
+    assert math.isfinite(result["mean_distance"]) and math.isfinite(result["mean_bound"]), "WM_VERIFY_AGGREGATE_OVERFLOW"
+E   AssertionError: WM_VERIFY_AGGREGATE_OVERFLOW
+E   assert (False)
+E    +  where False = <built-in function isfinite>(inf)
+E    +    where <built-in function isfinite> = math.isfinite
+=========================== short test summary info ===========================
+FAILED tests/test_world_verify_finite_evidence.py::test_finite_metric_means_avoid_sum_overflow
+1 failed in 0.27s

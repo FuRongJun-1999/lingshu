@@ -58,8 +58,9 @@ def _finite_pos(pos) -> bool:
     非法/不可解包的输入 ⇒ False（**拒绝**，不是静默放过）。
     """
     try:
-        return all(math.isfinite(float(v)) for v in list(pos)[:3])
-    except (TypeError, ValueError, IndexError):
+        values = list(pos)
+        return len(values) == 3 and all(math.isfinite(float(v)) for v in values)
+    except (TypeError, ValueError, IndexError, OverflowError):
         return False
 
 
@@ -91,7 +92,13 @@ def observed_positions(history, eid, window=None, nested=False):
     受影响）。窗口内 0 个观测时保持原样（**不**回填）——那条路径由
     `ObservationWindow._context_points` 负责，且 `_traj` 等消费方依赖"窗口内观测"
     的原义，不在此处改变语义。
+    #1116：`window<=0` 曾直接 `IndexError`（`start = len(history) - window` 越界，
+    `history[start]` 崩）——与 `ObservationWindow.__init__` 同一套语义的两个入口，
+    一个有保护一个没有。现所有入口统一 `max(1, int(window))` 钳制（`window=None`
+    保留「全历史」语义不变）。
     """
+    if window is not None:
+        window = max(1, int(window))
     start = max(0, len(history) - window) if window is not None else 0
     points = []
     for rec in history[start:]:
@@ -115,12 +122,16 @@ def observed_positions(history, eid, window=None, nested=False):
 def estimate_motion(history, eid, window, nested=False):
     """Return (persistence, speed, samples, last moving direction), or None."""
     points = observed_positions(history, eid, window, nested)
+    if window is not None:
+        window = max(1, int(window))           # #1116：与 observed_positions 同钳制
     start = max(0, len(history) - window) if window is not None else 0
-    w_start = history[start]["tick"] if history else None
+    # #1116：start 越界（钳制前形态）或 history 空时 w_start=None——窗口起点未知，
+    # `_motion_rows` 不再把窗口外位移对计入 samples（见该函数 #1116 注）。
+    w_start = history[start]["tick"] if (history and start < len(history)) else None
     return _estimate_points(points, w_start, interval_limit(window))
 
 
-def _estimate_detail(points, window_start=None, limit=None) -> Optional[Dict]:
+def _motion_rows(points, window_start=None, limit=None):
     """真实 `(tick, pos)` 序列 → 运动读数 dict；无可用位移 ⇒ None。
 
     · `w = 1` 若 `dt <= limit`，否则 `limit/dt`（**长间隔降权**，不丢弃证据）；
@@ -136,6 +147,7 @@ def _estimate_detail(points, window_start=None, limit=None) -> Optional[Dict]:
     lim = float(limit) if limit else None
     rows = []
     nonfinite = 0
+    arithmetic = 0
     for (t0, p0), (t1, p1) in zip(points, points[1:]):
         dt = t1 - t0
         if dt <= 0:
@@ -143,16 +155,42 @@ def _estimate_detail(points, window_start=None, limit=None) -> Optional[Dict]:
         if not (_finite_pos(p0) and _finite_pos(p1)):
             nonfinite += 1
             continue
-        dx = (p1[0] - p0[0]) / dt
-        dz = (p1[2] - p0[2]) / dt
-        length = math.hypot(dx, dz)
-        weight = 1.0 if (lim is None or dt <= lim) else (lim / dt)
+        try:
+            dx = (p1[0] - p0[0]) / dt
+            dz = (p1[2] - p0[2]) / dt
+            # 差先溢出但速度仍可表示时，先除真实间隔再相减。
+            if not math.isfinite(dx):
+                dx = p1[0] / dt - p0[0] / dt
+            if not math.isfinite(dz):
+                dz = p1[2] / dt - p0[2] / dt
+            length = math.hypot(dx, dz)
+            weight = 1.0 if (lim is None or dt <= lim) else (lim / dt)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            arithmetic += 1
+            continue
+        if not all(math.isfinite(v) for v in (dx, dz, length, weight)) or weight <= 0.0:
+            arithmetic += 1
+            continue
         rows.append((dt, dx, dz, length, weight,
-                     window_start is None or t1 >= window_start))
+                     # #1116：window_start 未知（None）时窗口外/内无从判定 ⇒
+                     # 不计 samples（旧实现 `window_start is None or` 全放行，
+                     # 窗口外位移对混进 samples 计数）。
+                     window_start is not None and t1 >= window_start))
+    return rows, nonfinite, arithmetic
+
+
+def _estimate_detail(points, window_start=None, limit=None) -> Optional[Dict]:
+    """保持三参估计契约；行构造另返算术拒绝计数，不改变无估计时的 None。"""
+    rows, nonfinite, arithmetic = _motion_rows(points, window_start, limit)
+    lim = float(limit) if limit else None
     if not rows:
         return None
     den = sum(r[4] for r in rows)
     speed = sum(r[4] * r[3] for r in rows) / den
+    if not math.isfinite(speed):
+        peak = max(r[3] for r in rows)
+        ratio = math.fsum(r[4] * (r[3] / peak) for r in rows) / den
+        speed = peak * min(1.0, ratio)
     ux = uz = uw = 0.0
     direction = None
     for (_dt, dx, dz, length, weight, _in_window) in rows:
@@ -173,6 +211,7 @@ def _estimate_detail(points, window_start=None, limit=None) -> Optional[Dict]:
         "confidence": round(den / len(rows), 6),
         "interval_limit": lim,
         "nonfinite_pairs_dropped": nonfinite,
+        "arithmetic_pairs_dropped": arithmetic,
     }
 
 
@@ -196,11 +235,14 @@ class ObservationWindow:
 
     def __init__(self, history, window, nested=False):
         self.history = history
-        self.start = max(0, len(history) - window)
+        # #1116：与 estimate_motion 同钳制（window<=0 曾使 start 越界 IndexError）
+        window = max(1, int(window)) if window is not None else None
+        self.start = max(0, len(history) - window) if window is not None else 0
         self.nested = nested
         self.frames = []
         self.points = {}
         self.masks = {}
+        self._estimates = {}
         self._motions = {}
         self._details = {}
         self._pairs = {}
@@ -237,8 +279,12 @@ class ObservationWindow:
         """
         if not self.start:
             return points, 0
-        need = max(0, 2 - len(points))
-        if points and len(points) < len(self.frames):
+        # #1117：need 按窗口内**有限**点数算——非有限读数不是可用证据
+        # （docstring「不进估计、也不静默」）；旧实现 len(points) 把含 NaN
+        # 的观测也算数 ⇒ 该补的上下文不补、evidence/window_points 读数失真。
+        n_finite = sum(1 for _t, p in points if _finite_pos(p))
+        need = max(0, 2 - n_finite)
+        if n_finite and n_finite < len(self.frames):
             need = max(need, 1)
         if need <= 0:
             return points, 0
@@ -252,11 +298,20 @@ class ObservationWindow:
                              cur['pos'] if self.nested else cur))
         return kept[::-1] + list(points), len(kept)
 
+    def _motion_estimate(self, eid):
+        """Resolve real context and numeric estimates once within this view."""
+        if eid not in self._estimates:
+            points, n_context = self._context_points(eid, self.points.get(eid, []))
+            detail = _estimate_detail(points, self.window_start, self.interval_limit)
+            self._estimates[eid] = points, n_context, detail
+        return self._estimates[eid]
+
     def motion(self, eid):
         if eid not in self._motions:
-            points, _context = self._context_points(eid, self.points.get(eid, []))
-            self._motions[eid] = _estimate_points(points, self.window_start,
-                                                  self.interval_limit)
+            _points, _context, detail = self._motion_estimate(eid)
+            self._motions[eid] = (None if detail is None else
+                                 (detail["persistence"], detail["speed"],
+                                  detail["samples"], detail["direction"]))
         return self._motions[eid]
 
     def motion_detail(self, eid) -> Dict:
@@ -274,9 +329,11 @@ class ObservationWindow:
         """
         if eid not in self._details:
             window_points = self.points.get(eid, [])
-            points, n_context = self._context_points(eid, window_points)
-            detail = _estimate_detail(points, self.window_start,
-                                      self.interval_limit)
+            # #1117：`window_points` 读数与证据判定同改**有限口径**——非有限
+            # 读数不是可用证据（与 need 的有限口径一致；`nonfinite_points`
+            # 字段照旧把坏读数如实带出，不静默）。
+            window_finite = sum(1 for _t, p in window_points if _finite_pos(p))
+            points, n_context, detail = self._motion_estimate(eid)
             nonfinite = _nonfinite_points(points)
             last_obs = points[-1][0] if points else None
             stale = (self.last_tick - last_obs
@@ -284,7 +341,7 @@ class ObservationWindow:
                      else None)
             out = {
                 "schema": MOTION_SCHEMA, "eid": eid,
-                "window_points": len(window_points),
+                "window_points": window_finite,
                 "context_points": n_context,
                 "interval_limit": self.interval_limit,
                 "last_obs_tick": last_obs, "stale_ticks": stale,
@@ -294,9 +351,14 @@ class ObservationWindow:
                 "nonfinite_points": nonfinite,
                 "nonfinite_pairs_dropped": _nonfinite_pairs(points),
             }
+            arithmetic = (detail.get("arithmetic_pairs_dropped", 0) if detail is not None
+                          else _motion_rows(points, self.window_start, self.interval_limit)[2])
+            if arithmetic:
+                out["arithmetic_pairs_dropped"] = arithmetic
             if detail is None:
                 # 全无可采纳位移：区分"读数坏了"与"真实样本不足"（不静默、可判读）
-                out["reason"] = ("nonfinite_observation" if nonfinite
+                out["reason"] = ("invalid_motion_arithmetic" if arithmetic else
+                                 "nonfinite_observation" if nonfinite
                                  else "insufficient_real_observations")
             else:
                 out.update({
@@ -307,12 +369,16 @@ class ObservationWindow:
                     "confidence": detail["confidence"],
                     "adopted": True,
                 })
-                if len(window_points) >= 2:
+                if window_finite >= 2:
                     out["evidence"] = "window"
-                elif window_points:
+                elif window_finite:
                     out["evidence"] = "window+context"
                 else:
                     out["evidence"] = "context_only"
+            # Both accessors use one estimate and context lookup per view.
+            # Keep the tuple separate from the public mutable diagnostic dict:
+            # callers changing that dict must not change motion()'s result.
+            self._motions[eid] = out["estimate"]
             self._details[eid] = out
         return self._details[eid]
 
@@ -340,6 +406,14 @@ class ObservationWindow:
                     continue
                 pa, pb = frame[a], frame[b]
                 if previous is not None:
+                    # #1115：每一对坐标先过 `_finite_pos`（与 `_motion_rows`
+                    # 同口径——非有限/不可解包/**超出 float 的超大 int** 一律
+                    # 拒绝；裸 `math.isfinite(v)` 对 10**400 会自己抛
+                    # OverflowError）——不计 intervals、不进 scores，且**不
+                    # 更新链**（与「缺观测不计」一致：后续有限对的位移仍以
+                    # 上一有限帧为参照，NaN 不污染整条链）。
+                    if not (_finite_pos(pa) and _finite_pos(pb)):
+                        continue
                     intervals += 1
                     tx, tz = pb[0] - pa[0], pb[2] - pa[2]
                     length = math.hypot(tx, tz)
@@ -350,7 +424,23 @@ class ObservationWindow:
                             dx, dz = pos[0] - old[0], pos[2] - old[2]
                             movement = math.hypot(dx, dz)
                             if movement > 1e-6:
-                                scores.append((dx * dx_target + dz * dz_target) / (movement * length))
+                                # #1128（#1115 残留面）：坐标全有限但量级大
+                                # （≥1e154）时 `dx*dx_target + dz*dz_target`
+                                # 溢出成 inf、再除得 **nan** —— nan 参与
+                                # `abs(nan) > abs(best)` 恒 False ⇒ best=None
+                                # ⇒ 已学关系被**静默移除**（违反 world_model
+                                # 「Only measured zero motion is stop
+                                # evidence」）。非有限时改用单位向量点乘
+                                # （参照同文件 `_motion_rows` 的「先除真实
+                                # 间隔再相减」同款手法）。
+                                dot = dx * dx_target + dz * dz_target
+                                denom = movement * length
+                                if math.isfinite(dot) and math.isfinite(denom):
+                                    scores.append(dot / denom)
+                                else:
+                                    scores.append(
+                                        (dx / movement) * (dx_target / length)
+                                        + (dz / movement) * (dz_target / length))
                 previous = pa, pb
             for key, scores in (((a, b), scores_a), ((b, a), scores_b)):
                 mean = round(sum(scores) / len(scores), 3) if scores else 0.0
@@ -359,17 +449,30 @@ class ObservationWindow:
 
 
 def recent_direction(history, eid, nested=False) -> Optional[Tuple[float, float, float]]:
-    """Latest nonzero displacement, without fabricating missing observations."""
+    """Latest nonzero displacement, without fabricating missing observations.
+
+    #1117：坏读数（非有限坐标）按「**跳过该帧**」处理（与 missing 帧同路径，
+    不重置 `newer`）——docstring 的「不补造缺失帧」是说缺失帧不补造，不是「坏
+    读数清空历史」：改前形态一次坏读数丢掉两侧有限观测构成的真实方向（NaN 夹
+    心场景 `None`，而同构的缺失帧场景正常返回方向）。`_motion_rows` 对坏读数
+    同为「只丢这一对，其余对照常」——两处口径就此一致。
+    """
     newer = None
     for rec in reversed(history):
         cur = rec["entities"].get(eid)
         if cur is None:
             continue
         pos = cur["pos"] if nested else cur
+        if not _finite_pos(pos):
+            continue                     # #1117：跳过，不重置 newer
         if newer is not None:
-            dx, dz = newer[0] - pos[0], newer[2] - pos[2]
-            length = math.hypot(dx, dz)
-            if length > 1e-6:
+            try:
+                dx, dz = newer[0] - pos[0], newer[2] - pos[2]
+                length = math.hypot(dx, dz)
+            except (TypeError, ValueError, IndexError, OverflowError):
+                newer = pos
+                continue
+            if math.isfinite(length) and length > 1e-6:
                 return dx / length, 0.0, dz / length
         newer = pos
     return None

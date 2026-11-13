@@ -1,0 +1,90 @@
+{
+  "guard": "tests/test_world_counterfactual_isolation.py",
+  "sources": [
+    "lingshu/world/world_model.py",
+    "lingshu/core/core.py"
+  ],
+  "total": 23,
+  "baseline_failures": [
+    "test_relation_changes_prediction_without_committing_any_model_state",
+    "test_no_conditions_matches_normal_generate_on_an_independent_model",
+    "test_existing_live_forecast_still_verifies_at_its_original_target_tick",
+    "test_outputs_inputs_and_repeated_trials_do_not_alias_the_source",
+    "test_failed_prediction_only_mutates_discarded_branch",
+    "test_simulator_and_its_alias_are_neither_copied_nor_read",
+    "test_core_uses_same_model_without_database_writes",
+    "test_invalid_horizon_rejected_before_generation[bool]",
+    "test_invalid_horizon_rejected_before_generation[zero]",
+    "test_invalid_horizon_rejected_before_generation[negative]",
+    "test_invalid_horizon_rejected_before_generation[float]",
+    "test_invalid_horizon_rejected_before_generation[string]",
+    "test_invalid_horizon_rejected_before_generation[budget]",
+    "test_invalid_relations_are_atomic[not-list]",
+    "test_invalid_relations_are_atomic[not-object]",
+    "test_invalid_relations_are_atomic[missing-field]",
+    "test_invalid_relations_are_atomic[unknown-id]",
+    "test_invalid_relations_are_atomic[self-edge]",
+    "test_invalid_relations_are_atomic[unsupported-relation]",
+    "test_invalid_relations_are_atomic[extra-field]",
+    "test_invalid_relations_are_atomic[duplicate-source]",
+    "test_explicit_physics_configuration_uses_same_prediction_wrapper"
+  ],
+  "mutations": [
+    {
+      "name": "reuse_live_baseline",
+      "test": "test_relation_changes_prediction_without_committing_any_model_state",
+      "assertion": "W3_LIVE_STATE_CHANGED",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "counterfactual",
+          "old": "baseline_model = deepcopy(self, {id(self.world): None})",
+          "new": "baseline_model = self"
+        }
+      ]
+    },
+    {
+      "name": "copy_hidden_simulator",
+      "test": "test_simulator_and_its_alias_are_neither_copied_nor_read",
+      "assertion": "W3_HIDDEN_WORLD_COPIED",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "counterfactual",
+          "old": "baseline_model = deepcopy(self, {id(self.world): None})",
+          "new": "baseline_model = deepcopy(self)"
+        }
+      ]
+    },
+    {
+      "name": "drop_core_relations",
+      "test": "test_core_uses_same_model_without_database_writes",
+      "assertion": "W3_CORE_CONDITIONS_DROPPED",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "SpacetimeMemoryEngine",
+          "method": "world_model",
+          "old": "relations=p.get(\"relations\"))",
+          "new": "relations=None)"
+        }
+      ]
+    },
+    {
+      "name": "mark_candidate_committed",
+      "test": "test_relation_changes_prediction_without_committing_any_model_state",
+      "assertion": "W3_CANDIDATE_MARKED_COMMITTED",
+      "changes": [
+        {
+          "file": "lingshu/world/world_model.py",
+          "class": "UnifiedWorldModel",
+          "method": "counterfactual",
+          "old": "\"committed\": False",
+          "new": "\"committed\": True"
+        }
+      ]
+    }
+  ]
+}

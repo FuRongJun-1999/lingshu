@@ -1,0 +1,11 @@
+{
+  "guard": "tests/test_motion_group_anchor_consistency.py",
+  "total": 9,
+  "sources": ["lingshu/world/motion_groups.py"],
+  "baseline_failures": ["test_conflicting_visible_members_withhold_missing[base_visible]", "test_conflicting_visible_members_withhold_missing[base_hidden]", "test_all_visible_pairs_are_checked", "test_core_predict_groups_obeys_current_visible_evidence"],
+  "mutations": [
+    {"name": "ignore_visible_conflict", "test": "test_conflicting_visible_members_withhold_missing[base_visible]", "assertion": "conflicting anchors must withhold coordinates", "changes": [{"file": "lingshu/world/motion_groups.py", "method": "predict_group_members", "old": "if drift > limit:", "new": "if False:"}]},
+    {"name": "check_canonical_anchor_only", "test": "test_all_visible_pairs_are_checked", "assertion": "noncanonical visible pair must also veto prediction", "changes": [{"file": "lingshu/world/motion_groups.py", "method": "predict_group_members", "old": "for second in visible[index + 1:]:", "new": "for second in (visible[index + 1:] if first == base else []):"}]},
+    {"name": "forget_serialization_precision", "test": "test_serialized_offset_rounding_is_not_a_conflict", "assertion": "six-decimal serialization must not invent conflict", "changes": [{"file": "lingshu/world/motion_groups.py", "method": "predict_group_members", "old": "limit = tol_pos + math.sqrt(2.0) * 1e-6", "new": "limit = tol_pos"}]}
+  ]
+}

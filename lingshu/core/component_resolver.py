@@ -75,6 +75,7 @@ cwd / 脚本目录解析。取舍依据见 issue #750 线程（TRIAGE-750 §四 
 """
 
 from __future__ import annotations
+import logging
 
 import importlib.machinery
 import os
@@ -86,7 +87,7 @@ from .._pathguard import (
     pathguard_report as _pathguard_report,
     startup_controlled_entries as _startup_controlled_entries,
 )
-
+_log = logging.getLogger(__name__)
 # 白名单：仓内以裸名解析的全部组件（含 AEIS `aeis/__init__.py` 注册别名集）。
 # 新增裸名导入时须同步登记，守卫 tests/test_issue156_component_discovery.py
 # 的 D 组以 AST 扫描**全仓裸名**并按「标准库 / 组件 / 已知第三方 / 未知」分类，
@@ -132,6 +133,7 @@ def _norm(path: str) -> str:
     try:
         return os.path.normcase(os.path.realpath(path))
     except Exception:  # 防御：非法路径按原样比较
+        _log.debug("component_resolver: 非法路径 realpath 失败，按原样比较", exc_info=True)
         return path
 
 
@@ -149,6 +151,7 @@ def _is_cwd_entry(entry) -> bool:
     try:
         cwd = os.getcwd()
     except Exception:  # cwd 不可用（目录被删）时无法判定
+        _log.debug("component_resolver: cwd 不可用（目录被删），无法判定同目录", exc_info=True)
         return False
     return _norm(entry) == _norm(cwd)
 
@@ -201,7 +204,9 @@ def safe_search_path() -> list:
     （其目标由 cwd 决定，属 #273/#275 的核心面）。
 
     另注意：显式配置根（`LINGSHU_COMPONENT_ROOT`）**先加且永不受** cwd/脚本目录
-    判定影响 ⇒ 部署方声明的组件位置始终可达（正对照，防过度收紧）。
+    判定影响 ⇒ 部署方声明的组件位置始终可达（正对照，防过度收紧）；但**相对根**
+    例外（#1094）——相对条目按 `_is_relative_entry` 与快照同口径剔除，其解析目标
+    由判定时的 cwd 决定，属本模块要关闭的「按当前目录解析」隐式面。
     """
     roots: list = []
     seen: set = set()
@@ -213,6 +218,11 @@ def safe_search_path() -> list:
             roots.append(p)
 
     for p in configured_roots():
+        if _is_relative_entry(p):
+            # #1094：相对配置根与快照条目同口径剔除——import 之后的合法 chdir
+            # 即可翻转加载源（构造进程内任意代码执行），docstring 的「受控面
+            # 不由 cwd 现算」承诺对配置根同样成立。
+            continue
         _add(p)
     for entry in _startup_controlled_entries():
         if not isinstance(entry, str) or entry == "":
@@ -256,6 +266,7 @@ def _importer_is_lingshu() -> bool:
     try:
         frame = sys._getframe(1)
     except Exception:  # pragma: no cover - 非 CPython / 帧不可用
+        _log.debug("component_resolver: 帧不可用，按可导入处理", exc_info=True)
         return True
     while frame is not None:
         name = frame.f_globals.get("__name__")
@@ -269,6 +280,7 @@ def _importer_is_lingshu() -> bool:
                     if os.path.abspath(f).startswith(_PKG_ROOT + os.sep):
                         return True
                 except Exception:  # pragma: no cover - 非法路径
+                    _log.debug("component_resolver: 帧内路径非法，跳过该条目", exc_info=True)
                     pass
             return False
         frame = frame.f_back
@@ -322,6 +334,7 @@ class _ComponentFinder:
                     COMPONENT_ROOT_ENV),
                 ComponentDiscoveryWarning, stacklevel=2)
         except Exception:  # 告警通道不得改变导入语义（如 -W error 场景）
+            _log.debug("component_resolver: 告警通道失败（-W error 场景），不改导入语义", exc_info=True)
             pass
         err = ModuleNotFoundError("No module named '%s'" % fullname)
         err.name = fullname
@@ -336,8 +349,16 @@ _FINDER = None
 
 
 def install() -> "_ComponentFinder":
-    """安装组件解析守卫（幂等，可重复调用；仅首次调用注册告警过滤规则）。"""
+    """安装组件解析守卫（幂等，可重复调用；仅首次调用注册告警过滤规则）。
+
+    #1097：幂等性按 `sys.meta_path` 里的**实际实例**判定——`importlib.reload`
+    会把模块级 `_FINDER` 归 `None`，但旧实例仍留在 `sys.meta_path` 且继续拦截；
+    若只看模块级变量，reload 后每次 install 都净增一个 finder（无界堆积）。
+    """
     global _FINDER
+    if _FINDER is None or _FINDER not in sys.meta_path:
+        _FINDER = next((f for f in sys.meta_path
+                        if f.__class__.__name__ == "_ComponentFinder"), None)
     if _FINDER is None:
         _FINDER = _ComponentFinder()
     if _FINDER not in sys.meta_path:
@@ -345,13 +366,19 @@ def install() -> "_ComponentFinder":
         try:  # 确保本类告警默认可观测（即便外部 -W error 也不改变导入语义）
             warnings.filterwarnings("default", category=ComponentDiscoveryWarning)
         except Exception:
+            _log.debug("component_resolver: filterwarnings 失败，告警可观测性降级", exc_info=True)
             pass
     return _FINDER
 
 
 def is_installed() -> bool:
-    """守卫是否已安装。"""
-    return _FINDER is not None and _FINDER in sys.meta_path
+    """守卫是否已安装。
+
+    #1097：按 `sys.meta_path` 的实际实例判定（reload 后模块级 `_FINDER` 为
+    `None` 而旧实例仍在拦截——查模块级变量会让状态查询与实际行为矛盾，
+    `discovery_report()["guard_installed"]` 同源失真）。
+    """
+    return any(f.__class__.__name__ == "_ComponentFinder" for f in sys.meta_path)
 
 
 def discovery_report() -> dict:
@@ -361,6 +388,7 @@ def discovery_report() -> dict:
         cwd_ok = True
     except Exception:
         cwd_ok = False
+        _log.debug("component_resolver: cwd 不可用，cwd_ok=False", exc_info=True)
     entries = [p for p in sys.path if isinstance(p, str)]
     _pg = _pathguard_report()
     _cwd_live = sum(1 for p in entries if _is_cwd_entry(p))

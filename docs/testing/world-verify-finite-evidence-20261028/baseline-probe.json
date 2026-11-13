@@ -1,0 +1,94 @@
+{
+  "baseline": "02caf8bfe6d53fb33981d2f51c0ebceef9a0957f",
+  "record": {
+    "forecast": {
+      "tick": 1,
+      "horizon": 1,
+      "predictions": {
+        "a": {
+          "category": "marker",
+          "behavior": "follow",
+          "mode": "bounded_noisy",
+          "predicted": [
+            6.0,
+            1.5,
+            4.0
+          ],
+          "bound": 0.9,
+          "confidence": 0.5,
+          "observation_age": 0,
+          "target_tick": 2,
+          "mode_source": "bounded_noisy"
+        }
+      },
+      "fix": {
+        "periodic_overridden": 0,
+        "guard_fallback": 0,
+        "thresholds": {
+          "window": 96,
+          "min_period": 4,
+          "max_period": 48,
+          "min_cycles": 1.5,
+          "osc_net_ratio": 0.35,
+          "resid_ratio": 0.25,
+          "guard_len": 8,
+          "guard_margin": 1.15,
+          "period_tie_eps": 1e-06
+        },
+        "static_hit": 0,
+        "smooth_applied": 0,
+        "smooth_blocked": {
+          "not_enough_samples": 1
+        },
+        "periodic_kept": 0,
+        "guard_kept": 0,
+        "thresholds2": {
+          "static_tol": 0.0001,
+          "static_min_samples": 8,
+          "static_recent": 4,
+          "static_speed_tol": 1e-06,
+          "static_bound": 0.02,
+          "smooth_min_samples": 3,
+          "smooth_speed_min": 0.0001,
+          "smooth_reversal_cos": 0.0,
+          "smooth_accel_sign": 1,
+          "smooth_accel_min": 1e-06
+        }
+      }
+    },
+    "result": {
+      "tick": 2,
+      "hits": 0,
+      "total": 1,
+      "hit_rate": 0.0,
+      "pending": 0,
+      "bound_coverage": 0.0,
+      "point_hit_rate": 0.0,
+      "mean_distance": "NaN",
+      "mean_bound": 0.9,
+      "details": [
+        {
+          "entity": "a",
+          "mode": "bounded_noisy",
+          "predicted": [
+            6.0,
+            1.5,
+            4.0
+          ],
+          "actual": [
+            "NaN",
+            1.5,
+            4.0
+          ],
+          "bound": 0.9,
+          "distance": "NaN",
+          "hit": false,
+          "status": "verified"
+        }
+      ]
+    },
+    "strict_json": false
+  },
+  "scope": "deterministic synthetic inputs; real Python/core paths, no devices or online brain",
+  "encoding": "Nonfinite floating values are displayed as strings; strict_json records the original encoding result."
+}

@@ -3,8 +3,8 @@
 # 语义：**允许存在**的零引用模块白名单（路径＋行数双 keyed，#614）：
 #   基线之外出现零引用模块 ⇒ 退出 1；条目已不再是零引用（stale）⇒ 退出 1；
 #   条目登记行数与实测不符（漂移）⇒ 退出 1。路径与行数一致 ⇒ 豁免。
-# 基线来源：HEAD 64139ed 实测（python -X utf8 tools/coverage_map_lint.py --update-baseline）。
-#   本快照实测：零引用 1 模块 / 146 行（口径 = 文本词边界匹配 basename，宽松下界，见工具头部 L1）。
+# 基线来源：HEAD 50ee03b 实测（python -X utf8 tools/coverage_map_lint.py --update-baseline）。
+#   本快照实测：零引用 0 模块 / 0 行（口径 = 文本词边界匹配 basename，宽松下界，见工具头部 L1）。
 #   本头部由工具按当次实测自动生成（#614：不再是模板常量）；重生成即自动更新上行读数。
 # ★白名单规模单调不增（#23 §3.1「冻结的债务清单，不是通行证」的落地产物，#614）：
 #   --update-baseline 在条目数增长时拒绝（退出 3），需显式 --force；缩水（含清 stale）不受限。
@@ -20,4 +20,3 @@
 # 2026-10-15 #614 tools/coverage_map_lint_baseline.txt  出厂基线清理：旧头部读数是硬编码模板（b846086/零引用 2 模块 289 行/hex_recon+hex_unit），与实测（tms+hex_recon/307 行）矛盾——改由工具按当次实测自动生成；stale/行数漂移入判定、--update-baseline 规模单调不增（#23 §3.1 落地）。白名单条目不变（hex_recon 146 / tms 161，与实测一致）；上方两条历史登记自文件尾移入本段，避免被 --update-baseline 丢弃
 # ── 登记面 · 结束 ──
 
-lingshu/nn/hex_recon.py	146

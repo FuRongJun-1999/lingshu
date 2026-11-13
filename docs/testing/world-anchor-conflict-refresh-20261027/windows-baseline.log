@@ -1,0 +1,64 @@
+FFFFFFF...                                                               [100%]
+================================== FAILURES ===================================
+________________ test_conflict_refreshes_confirmation[strong] _________________
+tests\test_world_anchor_conflict_refresh.py:31: in test_conflict_refreshes_confirmation
+    assert out["confirmation"] == "NOT_ACCEPTED", "WM_CONFLICT_RETURNED_OLD_ACCEPT"
+E   AssertionError: WM_CONFLICT_RETURNED_OLD_ACCEPT
+E   assert 'ACCEPT_strong' == 'NOT_ACCEPTED'
+E
+E     - NOT_ACCEPTED
+E     + ACCEPT_strong
+________________ test_conflict_refreshes_confirmation[stable] _________________
+tests\test_world_anchor_conflict_refresh.py:31: in test_conflict_refreshes_confirmation
+    assert out["confirmation"] == "NOT_ACCEPTED", "WM_CONFLICT_RETURNED_OLD_ACCEPT"
+E   AssertionError: WM_CONFLICT_RETURNED_OLD_ACCEPT
+E   assert 'ACCEPT_stable' == 'NOT_ACCEPTED'
+E
+E     - NOT_ACCEPTED
+E     + ACCEPT_stable
+_____________________ test_conflict_clears_stable_rounds ______________________
+tests\test_world_anchor_conflict_refresh.py:39: in test_conflict_clears_stable_rounds
+    assert v.anchor_state("a")["verified_rounds"] == 0, "WM_CONFLICT_ROUNDS_SURVIVED"
+E   AssertionError: WM_CONFLICT_ROUNDS_SURVIVED
+E   assert 3 == 0
+____________________ test_conflict_clears_prior_tier_basis ____________________
+tests\test_world_anchor_conflict_refresh.py:47: in test_conflict_clears_prior_tier_basis
+    assert v.anchor_state("a")["tier_basis"] == [], "WM_CONFLICT_OLD_BASIS_SURVIVED"
+E   AssertionError: WM_CONFLICT_OLD_BASIS_SURVIVED
+E   assert [{'channel': ...weight': 0.5}] == []
+E
+E     Left contains 2 more items, first extra item: {'channel': 'tactile', 'evidence': 0.9, 'weight': 0.5}
+E     Use -v to get more diff
+______________ test_state_and_summary_share_immediate_downgrade _______________
+tests\test_world_anchor_conflict_refresh.py:53: in test_state_and_summary_share_immediate_downgrade
+    assert v.anchor_state("a")["confirmation"] == "NOT_ACCEPTED", "WM_CONFLICT_STATE_NOT_REFRESHED"
+E   AssertionError: WM_CONFLICT_STATE_NOT_REFRESHED
+E   assert 'ACCEPT_strong' == 'NOT_ACCEPTED'
+E
+E     - NOT_ACCEPTED
+E     + ACCEPT_strong
+____________________ test_core_returns_downgraded_conflict ____________________
+tests\test_world_anchor_conflict_refresh.py:69: in test_core_returns_downgraded_conflict
+    assert out["verification"]["confirmation"] == "NOT_ACCEPTED", "WM_CORE_CONFLICT_RETURNED_OLD_ACCEPT"
+E   AssertionError: WM_CORE_CONFLICT_RETURNED_OLD_ACCEPT
+E   assert 'ACCEPT_strong' == 'NOT_ACCEPTED'
+E
+E     - NOT_ACCEPTED
+E     + ACCEPT_strong
+___________________ test_graph_returns_downgraded_conflict ____________________
+tests\test_world_anchor_conflict_refresh.py:83: in test_graph_returns_downgraded_conflict
+    assert out["confirmation"] == "NOT_ACCEPTED", "WM_GRAPH_CONFLICT_RETURNED_OLD_ACCEPT"
+E   AssertionError: WM_GRAPH_CONFLICT_RETURNED_OLD_ACCEPT
+E   assert 'ACCEPT_strong' == 'NOT_ACCEPTED'
+E
+E     - NOT_ACCEPTED
+E     + ACCEPT_strong
+=========================== short test summary info ===========================
+FAILED tests/test_world_anchor_conflict_refresh.py::test_conflict_refreshes_confirmation[strong]
+FAILED tests/test_world_anchor_conflict_refresh.py::test_conflict_refreshes_confirmation[stable]
+FAILED tests/test_world_anchor_conflict_refresh.py::test_conflict_clears_stable_rounds
+FAILED tests/test_world_anchor_conflict_refresh.py::test_conflict_clears_prior_tier_basis
+FAILED tests/test_world_anchor_conflict_refresh.py::test_state_and_summary_share_immediate_downgrade
+FAILED tests/test_world_anchor_conflict_refresh.py::test_core_returns_downgraded_conflict
+FAILED tests/test_world_anchor_conflict_refresh.py::test_graph_returns_downgraded_conflict
+7 failed, 3 passed, 9 warnings in 0.53s

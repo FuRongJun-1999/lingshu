@@ -37,24 +37,52 @@ HEX_DIRS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
 
 class HexGrid:
     """蜂窝晶格：axial 坐标 (q, r) 存储为「错行矩形」数组（row=r, col=q+offset）。
-    pointy-top：六边形尖朝上下；行间水平错位半格，垂直间距 3/4·size。"""
+    pointy-top：六边形尖朝上下；行间水平错位半格，垂直间距 3/4·size。
 
-    def __init__(self, width_cells: int, height_cells: int, cell_size: float = 1.0):
+    两种坐标模式（issue #6：返回的 HexGrid 必须与 image_to_grid 的实际采样
+    同一套公式，否则 center_px/pixel_to_cell 的往返与采样脱节）：
+
+    · mode="axial"（默认，历史行为不变）：x = √3·s·(q + r/2)，y = 1.5·s·r，
+      原点 (0,0)。
+    · mode="odd_r_offset"（image_to_grid 同款）：奇偶错行
+      x = √3·s·(q + 0.5·(r%2)) + ox，y = 1.5·s·r + oy，origin=(ox, oy)。
+    """
+
+    def __init__(self, width_cells: int, height_cells: int, cell_size: float = 1.0,
+                 mode: str = "axial", origin: Tuple[float, float] = (0.0, 0.0)):
         self.W = width_cells      # 列数（q 方向）
         self.H = height_cells     # 行数（r 方向）
         self.size = float(cell_size)
+        if mode not in ("axial", "odd_r_offset"):
+            raise ValueError("未知坐标模式: %r（应为 'axial' 或 'odd_r_offset'）" % (mode,))
+        self.mode = mode
+        self.origin = (float(origin[0]), float(origin[1]))
 
     # ---- 像素坐标（cell 中心，图像坐标系 y 向下） ----
     def center_px(self, q: int, r: int) -> Tuple[float, float]:
+        if self.mode == "odd_r_offset":
+            ox, oy = self.origin
+            x = self.size * math.sqrt(3) * (q + 0.5 * (r % 2)) + ox
+            y = self.size * 1.5 * r + oy
+            return (x, y)
         x = self.size * math.sqrt(3) * (q + r / 2.0)
         y = self.size * 1.5 * r
         return (x, y)
 
     def pixel_to_cell(self, x: float, y: float) -> Tuple[int, int]:
         """像素 → 最近 cell（axial round：立方坐标四舍五入）。"""
+        ox, oy = self.origin
+        x_ = x - ox
+        y_ = y - oy
+        if self.mode == "odd_r_offset":
+            # 奇偶错行逆变换：先定行 r（y 与 q 无关），再按该行错位回解 q
+            rf = (2.0 / 3.0 * y_) / self.size
+            r = int(round(rf))
+            qf = (x_ / (self.size * math.sqrt(3))) - 0.5 * (r % 2)
+            return self._axial_round(qf, float(r))
         # 逆变换到轴向浮点
-        qf = (math.sqrt(3) / 3 * x - y / 3.0) / self.size
-        rf = (2.0 / 3.0 * y) / self.size
+        qf = (math.sqrt(3) / 3 * x_ - y_ / 3.0) / self.size
+        rf = (2.0 / 3.0 * y_) / self.size
         return self._axial_round(qf, rf)
 
     def _axial_round(self, qf: float, rf: float) -> Tuple[int, int]:
@@ -84,13 +112,15 @@ def image_to_grid(img_arr: np.ndarray, cells_across: int = 48) -> Tuple[np.ndarr
     s3 = W / (cells_across + 0.5)       # 横向节距 √3·s（此前误作 s 用：晶格横向越出画幅 √3 倍）
     cell = s3 / math.sqrt(3)
     rows = max(1, int(round(H / (cell * 1.5)) - 1)) or 1
-    grid = HexGrid(cells_across, rows, cell)
+    # issue #6：返回的 HexGrid 与本函数的采样必须是同一套公式（odd_r_offset +
+    # 原点 (s3/2, cell)），采样中心直接取 grid.center_px（单一真源——两处独立
+    # 写公式正是本次脱节缺陷的根；表达式漂移由守卫 test_issue6_grid_roundtrip_guard 钉）。
+    grid = HexGrid(cells_across, rows, cell, mode="odd_r_offset",
+                   origin=(s3 * 0.5, cell))
     out = np.zeros((rows, cells_across, img_arr.shape[2]), dtype=np.float32)
     for r in range(rows):
-        xoff = s3 * (0.5 * (r % 2) + 0.5)
         for q in range(cells_across):
-            cx = s3 * q + xoff
-            cy = 1.5 * cell * r + cell
+            cx, cy = grid.center_px(q, r)
             # cell 采样窗（六边形内切圆近似：方形窗均值；内切圆半径 √3·s/2 = s3/2）
             rad = max(1, int(s3 * 0.5))
             x0, x1 = int(cx - rad), int(cx + rad + 1)
@@ -213,9 +243,22 @@ def kernel_center_surround() -> np.ndarray:
 
 
 def extended_prior_family(n: int) -> List[np.ndarray]:
-    """n 个互异白箱先验核(每核唯一,无对称重复)——扩容的单元先验族。
-    构成:六方向 edge(六边形天然各向同性完备)+smooth+粗平滑+laplacian
-    +center-surround;超出时按序加微噪变体(仍互异)。"""
+    """扩容的单元先验族。构成:六方向 edge(六边形天然各向同性完备)
+    +smooth+粗平滑+laplacian+center-surround;超出时按序加微噪变体。
+
+    #940：微噪变体的**互异性是断言并保证的**，不是声明——旧实现对常幅基核
+    （如均匀 smooth）加均匀微噪再 L1 归一，扰动被归一化**恒坍缩**回原核：
+    实测 idx 16/26/36 与 idx 6 逐位相同（「互异」声明不实；#339 修 grow_kernel
+    回绕时探针已见 fam dup: 16/6, 26/6, 36/6）。修法：变体扰动**逐档加强**
+    （×10 递进）并在落位前 `array_equal` 复核，仍重合才落位——互异由构造保证。
+
+    F23-02（#942 清单）如实标注：①「互异」指**逐位不同**——基族前 6 个 edge
+    核是**三对反向对**（fam[3]=-fam[0]、fam[4]=-fam[1]、fam[5]=-fam[2]），
+    旧 docstring「无对称重复」对基族本身不成立；微噪变体段（#940）的互异
+    才是断言保证的。②HexNet 的默认初始化集自 #339 起为 family[0..3]
+    （四方向 edge，非 DEFAULT_KERNELS 的具名核）——由
+    tests/test_issue942_f23_02_default_family_guard.py 钉住。
+    """
     fam: List[np.ndarray] = []
     for d in range(6):                                   # 六方向 edge
         k = np.zeros(7, dtype=np.float32)
@@ -230,10 +273,30 @@ def extended_prior_family(n: int) -> List[np.ndarray]:
     fam.append(kernel_center_surround())
     i = 0
     while len(fam) < n:                                  # 微噪变体(互异)
-        base = fam[i % 10].copy() + (i + 1) * 1e-3
-        fam.append(base / (np.abs(base).sum() + 1e-9))
+        base = fam[i % 10].copy()
+        # #940：扰动逐档加强（1e-3 → 1e-2 → 1e-1 …）；均匀底核的均匀扰动会被
+        # L1 归一坍缩 ⇒ 只扰动**非均匀分量**（对均匀核改为单点脉冲式偏移）。
+        amp = 1e-3 * (10 ** (i // 10))
+        cand = base.copy()
+        cand[1 + (i % 6)] += amp
+        cand = cand / (np.abs(cand).sum() + 1e-9)
         i += 1
-    return fam[:n]
+        if any(np.array_equal(cand, ex) for ex in fam):
+            continue                                     # 仍重合 ⇒ 换下一档
+        fam.append(cand)
+    # #940 fail-closed（#958 的**唯一增量**，不碰上面任何算法）：
+    #   main 的做法是「重合就换下一档」，但没有**最终**校验 ——
+    #   若 amp 用尽（极端 n）仍重合，会静默返回重复族，
+    #   「声明互异」与「实际互异」再次脱钩（这正是 #940 的缺陷本体）。
+    #   这里在返回前复核一遍：真出现同形核就 raise，不静默。
+    out = fam[:n]
+    for a in range(len(out)):
+        for b in range(a + 1, len(out)):
+            if np.array_equal(out[a], out[b]):
+                raise ValueError(
+                    f"extended_prior_family({n})：idx {a} 与 idx {b} 逐位相同，"
+                    f"核族互异性被破坏（不应发生，请检查变体构造）")
+    return out
 
 
 DEFAULT_KERNELS: Dict[str, np.ndarray] = {
@@ -276,6 +339,21 @@ def selfsup_finetune(img_arr: np.ndarray, kernel_name: str = "center_surround",
     `epochs <= 0` 表示「不训练」：`loss_curve` 为空，`final_loss` 回落为
     `init_loss`（没有训练就不存在「训练后」的读数），核保持为输入核。
     """
+    # F23-10（#942 清单）：NaN/Inf 入参 fail-closed——块级 NaN 会让有限差分
+    # 梯度全 NaN、核整体 NaN 化后**静默返回**（无任何告警），训练面产出不可用
+    # 核。与 #788 stcnn NaN 输入闸同款口径：与其静默出伪读数不如拒收。
+    if not np.isfinite(img_arr).all():
+        raise ValueError(
+            "selfsup_finetune：img_arr 含 NaN/Inf（有限差分梯度会整体 NaN 化，"
+            "静默返回不可用核）——请先清洗输入（F23-10 fail-closed）")
+    # #2522：同函数只查了 img_arr，`lr` 是同一训练入口的另一个数值参数——
+    # `lr=nan/inf` 让 `w -= lr*grad` 首步就把核整体 NaN 化，随后 L1 归一化
+    # 仍是 NaN，函数**正常返回**（kernel 全 NaN、final_loss 为 nan）。
+    # `lr=0` 是合法值（test_issue351 ④ 钉住），只拒 NaN/inf/负数。
+    if not (isinstance(lr, (int, float)) and not isinstance(lr, bool)
+            and math.isfinite(float(lr)) and float(lr) >= 0.0):
+        raise ValueError("selfsup_finetune：lr 须为有限非负数，实得 %r"
+                         "（NaN/inf 会把核整体 NaN 化后静默返回）" % (lr,))
     gray = (0.299 * img_arr[..., 0] + 0.587 * img_arr[..., 1]
             + 0.114 * img_arr[..., 2]).astype(np.float32) if img_arr.ndim == 3 else img_arr.astype(np.float32)
     feat, grid = image_to_grid(gray[..., None].repeat(3, axis=2), cells_across)
@@ -284,6 +362,10 @@ def selfsup_finetune(img_arr: np.ndarray, kernel_name: str = "center_surround",
     # `w -= lr*grad` 后 `lr*grad ≫ |w|`，紧接着的 L1 归一化把旧核整段抹掉 ⇒ 每步核
     # 只由上一步的 `-grad/‖grad‖₁` 决定、与 lr 无关（lr 跨 5000 倍核几乎不动）。
     # 归一化后梯度 ~O(1)，lr 恢复为真实的步长量纲。
+    # F23-09（#942 清单）如实标注（审计面，行为不变）：此处**无条件 /255**，即
+    # 输入域契约=uint8 图像（0..255）。0..1 浮点图会被**二次归一**（信号缩至
+    # 1/255，训练近乎空转——#351 的镜像失效面）。仓内调用方全 uint8（无实害）；
+    # 0..1 域是否自适应属行为面裁定，不在本标注内。
     lum = feat[..., :1] / 255.0                          # 亮度通道 (rows,cols,1)，0..1
     rng = np.random.default_rng(seed)
     # #593：评估掩码——训练前抽一次、全程固定，`init_loss` / `final_loss` 都在它下面
@@ -346,6 +428,26 @@ def _consolidated_kernel(name: str, values) -> np.ndarray:
     return k
 
 
+def _json_safe(v):
+    """把 numpy 标量/数组（含嵌套容器）透明转换为 JSON 可序列化类型（#393 残余）。
+
+    np.generic → `.item()`（int64 → int、float32 → float）；ndarray → tolist()；
+    dict/list/tuple 递归。其余类型原样返回——json.dump 对它们的既有语义不变。
+    旧实现把 meta 值原样放进 payload ⇒ `{"epochs": np.int64(8)}` 这类常见形态
+    在 json.dump 处抛 TypeError：临时档虽有清理、旧档无损（#393 主修复的原子
+    性），但 fail-fast 把「可透明转换」的输入也拒了——本助手把该类输入收下。
+    """
+    if isinstance(v, np.generic):
+        return v.item()
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    if isinstance(v, dict):
+        return {k: _json_safe(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_safe(x) for x in v]
+    return v
+
+
 def save_consolidated(kernels: Dict[str, np.ndarray], meta: Dict, path: str) -> str:
     """白箱固化：学完的核参数 + 训练元数据落盘（JSON——可直读可审计）。
 
@@ -376,8 +478,16 @@ def save_consolidated(kernels: Dict[str, np.ndarray], meta: Dict, path: str) -> 
         if mk in ("kernels", "consolidated", "algo"):
             # #895：algo 亦属结构字段（固化档的算法标识），meta 同名键不覆盖
             payload.setdefault("_meta_%s" % mk, mv)
+        elif mk.startswith("_meta_"):
+            # F23-06（#942 清单）：`_meta_*` 是审计改道命名空间（meta 带结构字段
+            # 同名键时的回显位）。meta 自带 `_meta_*` 键若走普通写入，会把该回显
+            # 覆盖成调用方/攻击者值——读档审计者看到的「meta 曾带 kernels」证据
+            # 即被污染。改道二级命名空间：原值保留（审计不删数据）、真回显不被
+            # 覆盖；load 侧不消费 `_meta_*`（纯审计面），行为无其它变化。
+            payload["_" + mk] = _json_safe(mv)
         else:
-            payload[mk] = mv
+            # #393 残余：meta 值过 _json_safe（numpy 标量/数组透明转换）
+            payload[mk] = _json_safe(mv)
     target = os.path.realpath(path)
     os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
     tmp = os.path.join(os.path.dirname(target), f".lingshu-save.tmp-{os.getpid()}-{uuid.uuid4().hex}")

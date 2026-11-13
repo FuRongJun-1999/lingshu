@@ -1,0 +1,119 @@
+{
+  "baseline": "02caf8bfe6d53fb33981d2f51c0ebceef9a0957f",
+  "record": {
+    "mean_overflow": {
+      "detail": {
+        "schema": "wm.motion-confidence/1",
+        "eid": "a",
+        "window_points": 3,
+        "context_points": 0,
+        "interval_limit": 24,
+        "last_obs_tick": 2,
+        "stale_ticks": 0,
+        "estimate": [
+          1.0,
+          "+Infinity",
+          2,
+          [
+            1.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "dts": [
+          1,
+          1
+        ],
+        "max_obs_dt": 1,
+        "long_interval_pairs": 0,
+        "confidence": 1.0,
+        "adopted": true,
+        "evidence": "window",
+        "nonfinite_points": 0,
+        "nonfinite_pairs_dropped": 0
+      },
+      "strict_json": false
+    },
+    "unrepresentable_pair": {
+      "detail": {
+        "schema": "wm.motion-confidence/1",
+        "eid": "a",
+        "window_points": 2,
+        "context_points": 0,
+        "interval_limit": 24,
+        "last_obs_tick": 1,
+        "stale_ticks": 0,
+        "estimate": [
+          "NaN",
+          "+Infinity",
+          1,
+          [
+            "NaN",
+            0.0,
+            0.0
+          ]
+        ],
+        "dts": [
+          1
+        ],
+        "max_obs_dt": 1,
+        "long_interval_pairs": 0,
+        "confidence": 1.0,
+        "adopted": true,
+        "evidence": "window",
+        "nonfinite_points": 0,
+        "nonfinite_pairs_dropped": 0
+      },
+      "strict_json": false
+    },
+    "recoverable_interval": {
+      "detail": {
+        "schema": "wm.motion-confidence/1",
+        "eid": "a",
+        "window_points": 2,
+        "context_points": 0,
+        "interval_limit": 24,
+        "last_obs_tick": 10,
+        "stale_ticks": 0,
+        "estimate": [
+          "NaN",
+          "+Infinity",
+          1,
+          [
+            "NaN",
+            0.0,
+            0.0
+          ]
+        ],
+        "dts": [
+          10
+        ],
+        "max_obs_dt": 10,
+        "long_interval_pairs": 0,
+        "confidence": 1.0,
+        "adopted": true,
+        "evidence": "window",
+        "nonfinite_points": 0,
+        "nonfinite_pairs_dropped": 0
+      },
+      "strict_json": false
+    },
+    "public_inference": {
+      "patterns": {
+        "relations": [],
+        "speed_estimates": {
+          "a": "+Infinity"
+        },
+        "entropy": {
+          "a": 1.0
+        },
+        "behavior_inference": {
+          "a": "follow"
+        }
+      },
+      "strict_json": false
+    }
+  },
+  "scope": "deterministic synthetic inputs; real Python/core paths, no devices or online brain",
+  "encoding": "Nonfinite floating values are displayed as strings; strict_json records the original encoding result."
+}

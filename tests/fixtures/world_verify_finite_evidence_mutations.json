@@ -1,0 +1,27 @@
+{
+  "guard": "tests/test_world_verify_finite_evidence.py", "total": 18,
+  "sources": ["lingshu/world/world_model.py"],
+  "baseline_failures": [
+    "test_nonfinite_actual_is_pending[nan]", "test_nonfinite_actual_is_pending[inf]", "test_nonfinite_actual_is_pending[negative_inf]",
+    "test_bad_actual_does_not_lower_valid_entity_score",
+    "test_nonfinite_prediction_is_pending[nan]", "test_nonfinite_prediction_is_pending[inf]", "test_nonfinite_prediction_is_pending[negative_inf]",
+    "test_unusable_bound_is_pending[nan]", "test_unusable_bound_is_pending[inf]", "test_unusable_bound_is_pending[negative]",
+    "test_unrepresentable_distance_is_pending", "test_finite_metric_means_avoid_sum_overflow", "test_core_marks_invalid_actual_as_pending"
+  ],
+  "mutations": [
+    {"name": "score_nonfinite_actual", "test": "test_nonfinite_actual_is_pending[nan]", "assertion": "WM_VERIFY_BAD_ACTUAL_WAS_SCORED",
+     "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "verify",
+                  "old": "            elif eligible and not finite_point(actual):", "new": "            elif False:"},
+                 {"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "verify",
+                  "old": "                if not math.isfinite(dist):", "new": "                if False:"}]},
+    {"name": "accept_nonfinite_bound", "test": "test_unusable_bound_is_pending[inf]", "assertion": "WM_VERIFY_BAD_BOUND_WAS_SCORED",
+     "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "verify",
+                  "old": "            elif not bound_ok:", "new": "            elif False:"}]},
+    {"name": "score_overflowed_distance", "test": "test_unrepresentable_distance_is_pending", "assertion": "WM_VERIFY_INFINITE_DISTANCE_WAS_SCORED",
+     "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "verify",
+                  "old": "                if not math.isfinite(dist):", "new": "                if False:"}]},
+    {"name": "sum_metric_values_before_scaling", "test": "test_finite_metric_means_avoid_sum_overflow", "assertion": "WM_VERIFY_AGGREGATE_OVERFLOW",
+     "changes": [{"file": "lingshu/world/world_model.py", "class": "UnifiedWorldModel", "method": "verify",
+                  "old": "round(finite_mean(distances), 4)", "new": "round(sum(distances) / total, 4)"}]}
+  ]
+}

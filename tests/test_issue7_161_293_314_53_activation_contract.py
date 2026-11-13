@@ -23,7 +23,7 @@
     `decay = base(边类型) × cond_match(两端条件空间)` 未实现。修后在 `_load_graph`
     装载边时按节点对算一次，稀疏与 edge-list 两后端同口径。
 
-★ 跨批覆盖重叠处置（纪律第 12 条）：本仓 main 上已有 `#229/#280` 守卫
+★ 跨批覆盖重叠处置（纪律）：本仓 main 上已有 `#229/#280` 守卫
   （`tests/test_issue229_280_activation_suppression_bounded.py`）。#53 的
   「cond_match 接线」与 #280 的「max-plus」都改变扩散读数，若只用
   `carry_vector` 断言，两条守卫可能互相代偿。故本件 #53 的夹具**只让 cond_match

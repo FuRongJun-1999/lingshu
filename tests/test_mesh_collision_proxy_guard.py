@@ -332,5 +332,8 @@ def test_E4_clear_collision_box_restores_default():
     assert sim.collision_report()["n_boxes"] == 0, sim.collision_report()
 
 
-#: 冻结的缺省场景摘要（**改前**实测值；若缺省行为被改动 ⇒ D1/D2 转红）
-_FROZEN_DIGEST = "6f487b43e48adcd9fd7ead3937dd84244bdf6176131ac3a0b0cb38578cf913f7"
+#: 冻结的缺省场景摘要（若缺省行为被改动 ⇒ D1/D2 转红）。
+#: 2026-10-30 基线滚动：wander 方向归一化（issue 补丁 #27/#289 存档件）有意改变
+#: 含 wander 实体的缺省场景轨迹——修前单 tick 位移可达 sqrt(2)*speed、突破
+#: speed 声明上限；碰撞层生效性质断言（D2：有箱 ≠ 无箱）未动，实测仍成立。
+_FROZEN_DIGEST = "a54edf239fadbdb62df01efd5c2f4de6708492c2fd2115768116ebc3b1d02476"

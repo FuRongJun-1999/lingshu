@@ -63,7 +63,13 @@ SCAN_DIRS = ("tests", "tools", "scripts")
 #:   提到它。影视层守卫（`test_film_contract_guard.py` / `test_film_criteria_guard.py`）
 #:   是首个真 import 它的用例（自行把 `bridges/blender` 插进 sys.path），
 #:   于是这个自 #286 起就存在的登记缺口第一次暴露。反向守卫见影视判据守卫 [H] 组。
-LOCAL_TOP = {"lingshu", "tools", "scripts", "tests", "experiments", "wm_bridge"}
+# ★ `bridges` 于 2026-11-05 补入（#2097-#2120 批守卫 test_issue2097_2120_bridge_
+#   family_guard 是首个以 `from bridges.blender...` 静态 import 它的用例——仓根
+#   顶层名，与 `wm_bridge`（bridges/blender 下插 sys.path 后的顶层名）同源不同形）。
+LOCAL_TOP = {"lingshu", "tools", "scripts", "tests", "experiments", "wm_bridge",
+             "bridges",
+             "bench"}  # #2281 交付（批一百零九）：bench_world 首次被测试导入
+                      # （test_batch109_bench_horizon_guard）——仓库本地顶层包，非第三方
 DIST_ALIAS = {"pil": "pillow", "yaml": "pyyaml", "pytest": "pytest",
                "markdown_it": "markdown-it-py"}
 

@@ -1,0 +1,25 @@
+{
+  "guard": "tests/test_camera_tolerated_loss.py",
+  "total": 7,
+  "sources": ["lingshu/world/camera_bridge.py"],
+  "baseline_failures": [
+    "test_tolerated_anisotropy_is_reported[smaller]",
+    "test_tolerated_anisotropy_is_reported[larger]",
+    "test_tolerated_anisotropy_is_reported[boundary]",
+    "test_projection_error_cannot_be_reported_as_exact"
+  ],
+  "mutations": [
+    {
+      "name": "omit_tolerated_focal_loss",
+      "test": "test_tolerated_anisotropy_is_reported[larger]",
+      "assertion": "tolerated fy loss must be explicit",
+      "changes": [{"file": "lingshu/world/camera_bridge.py", "method": "camera3d_from_intrinsics", "old": "if aspect > 0.0:", "new": "if aspect > tol_frac:"}]
+    },
+    {
+      "name": "force_exact_report",
+      "test": "test_projection_error_cannot_be_reported_as_exact",
+      "assertion": "pixel residual forbids an exact report",
+      "changes": [{"file": "lingshu/world/camera_bridge.py", "method": "camera3d_from_intrinsics", "old": "\"representable_exactly\": not lossy,", "new": "\"representable_exactly\": True,"}]
+    }
+  ]
+}

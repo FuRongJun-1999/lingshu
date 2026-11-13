@@ -154,6 +154,22 @@ def unified_case(kind, seed):
     return {"seed": seed, **score.result(), "trace_sha256": trajectory_signature(trace)}
 
 
+def _horizon_verdict(one, five):
+    """#2281：horizon 绊线的**内容**对比——剔除 target_tick 等随 h 合法变化的
+    元数据，只比预测点/bound/mode。候选集为空显式读 no_predictions（裸实例
+    空洞真也是绊线失效形态）；实体集不同按 different。#159 回归
+    （horizon 对预测零作用）才会读 same_predictions。"""
+    if not one or not five:
+        return "no_predictions"
+    if set(one) != set(five):
+        return "different_predictions"
+
+    def _content(preds):
+        return {eid: (tuple(pw["predicted"]), pw.get("bound"), pw.get("mode"))
+                for eid, pw in preds.items()}
+    return "same_predictions" if _content(one) == _content(five)         else "different_predictions"
+
+
 def contracts():
     model = UnifiedWorldModel()
     model.perceive([{"category": "person", "pos": (2, 1.5, 2)},
@@ -166,13 +182,26 @@ def contracts():
     verifier.add_channel_evidence("a", "tactile", 0.9)
     for _ in range(4):
         state = verifier.verify_anchor("a")
+    # #2281：learner 腿先灌观测——裸实例 predictions 恒空 dict ⇒ 绊线恒
+    # same_predictions（空洞真）。匀速直线 mover 的 h=1/h=5 预测点随 h 前推，
+    # same/different 才真正由预测内容决定（#159 回归 ⇒ 冻结 ⇒ same 可读）。
+    learner = WorldLearner()
+    for tick, x in enumerate((0.0, 1.0, 2.0, 3.0, 4.0), start=1):
+        learner.tick = tick
+        learner.history.append({"tick": tick, "entities": {
+            "bench": {"category": "cart", "pos": (x, 1.5, 2.0)}}})
+        from lingshu.world.world_learner import LNNode
+        learner.nodes["bench"] = LNNode(eid="bench", category="cart",
+                                        pos=(x, 1.5, 2.0), first_seen=1)
+        learner.nodes["bench"].last_seen = tick
+    learner.learn()
     horizon = {}
     for name, predict in (("unified", model.generate),
-                          ("learner", WorldLearner().predict)):
+                          ("learner", learner.predict)):
         try:
             one = predict(horizon=1)["predictions"]
             five = predict(horizon=5)["predictions"]
-            horizon[name] = "same_predictions" if one == five else "different_predictions"
+            horizon[name] = _horizon_verdict(one, five)
         except ValueError:
             horizon[name] = "explicitly_unsupported"
     return {"anonymous_objects_expected": 2, "anonymous_nodes": identity_nodes,

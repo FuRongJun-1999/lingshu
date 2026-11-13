@@ -16,6 +16,10 @@ world3d · 3D 语义时空图（WORLD3D-REV1）
        └──── 渲染（任意视角透视投影）←──────────┘
 """
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
 import json
 import math
 import time
@@ -243,16 +247,27 @@ class Camera3D:
         if fl < 1e-12:
             raise ValueError("from_look_at：eye 与 target 重合，朝向未定义")
         fx, fy, fz = fx / fl, fy / fl, fz / fl
-        rx = fy * up[2] - fz * up[1]
-        ry = fz * up[0] - fx * up[2]
-        rz = fx * up[1] - fy * up[0]
+        # #2559：此处原为 `right = forward × up`（左手系）——实测 `det(basis) = -1`，
+        # 是**镜像**而非旋转：同一世界点 `(1,1.2,0)` 在 `look_at` 下投影 x=538.12、
+        # 在 `from_look_at` 下 x=261.88（左右相反）；跨构造器反投影把 +x 物体发布
+        # 到 -x（偏 3.44 m）。右手系须 `right = up × forward`。
+        rx = up[1] * fz - up[2] * fy
+        ry = up[2] * fx - up[0] * fz
+        rz = up[0] * fy - up[1] * fx
         rl = math.sqrt(rx * rx + ry * ry + rz * rz)
         if rl < 1e-9:
             raise ValueError("from_look_at：up 与前向共线，右向量退化")
         rx, ry, rz = rx / rl, ry / rl, rz / rl
-        ux = ry * fz - rz * fy
-        uy = rz * fx - rx * fz
-        uz = rx * fy - ry * fx
+        # #2559：`up` 也必须跟着换向——原式 `forward × right` 在左手系下给出
+        # 「上」，改成右手系 `right = up × forward` 后须用 `right × forward`，
+        # 否则基仍是镜像（det=-1）而投影恰好一致、掩盖问题。
+        # #2559：`up = forward × right`（原式）在 `right = up × forward` 下给出
+        # **反向上**；右手系要求 `right × up = forward` ⇒ 取 `up = right × forward`
+        # 再整体取反，或等价地 `up = forward × right` 后取负。此处直接写
+        # `up = -(forward × right)`，使 `det(basis) = +1` 且投影与 `look_at` 一致。
+        ux = -(ry * fz - rz * fy)
+        uy = -(rz * fx - rx * fz)
+        uz = -(rx * fy - ry * fx)
         return cls(fov_deg=fov_deg, cx=eye[0], cy=eye[1], cz=eye[2],
                    basis=((rx, ry, rz), (ux, uy, uz), (fx, fy, fz)))
 
@@ -322,9 +337,18 @@ class Camera3D:
         丢 cz 偏 0.25 m、丢 fov 偏 0.37 m）。故 meta 形状取「落盘即实际使用」，
         六个参数一个不少（缺一个就是另一个相机）。
         """
-        return {"cx": float(self.cx), "cy": float(self.cy), "cz": float(self.cz),
-                "yaw": float(self.yaw), "pitch": float(self.pitch),
-                "fov_deg": float(self.fov_deg)}
+        # #2561：docstring 逐字写「六个参数一个不少（缺一个就是另一个相机）」，
+        # 但 `roll` 与 `basis` 此前**不在六参里**——`roll=0.35` 落库读回 roll=0.0
+        # （投影漂 113.83 px）；`basis` 相机读回 `basis=None`（三角化偏 17.93 m）。
+        # 现按「落盘即实际使用」补齐：仅在非默认时才写（普通相机输出逐位不变）。
+        _m = {"cx": float(self.cx), "cy": float(self.cy), "cz": float(self.cz),
+              "yaw": float(self.yaw), "pitch": float(self.pitch),
+              "fov_deg": float(self.fov_deg)}
+        if self.roll:
+            _m["roll"] = float(self.roll)
+        if self.basis is not None:
+            _m["basis"] = [[float(x) for x in row] for row in self.basis]
+        return _m
 
     @classmethod
     def from_meta(cls, meta, strict: bool = True) -> "Camera3D":
@@ -371,7 +395,23 @@ class Camera3D:
             elif strict:
                 raise CameraMetaError(
                     "相机位姿缺字段 %r——残缺位姿不得当作真实位姿" % key)
-        return cls(fov_deg=fov, **vals)
+        # #2561：`roll` 与 `basis` 此前只写不读——`to_meta` 补了键但 `from_meta`
+        # 仍丢弃，往返仍不等价（实测 roll=0.35 读回 0.0、basis 读回 None）。
+        # 二者都是可选键：缺省时保持原默认（roll=0 / basis=None），普通六参
+        # 相机的行为逐位不变。
+        _roll = 0.0
+        if "roll" in meta:
+            _roll = _meta_number(meta["roll"], "roll")
+        _basis = None
+        if meta.get("basis") is not None:
+            _b = meta["basis"]
+            if (not isinstance(_b, (list, tuple)) or len(_b) != 3
+                    or any(not isinstance(r, (list, tuple)) or len(r) != 3
+                           for r in _b)):
+                raise CameraMetaError("相机 basis 必须是 3x3 数组：%r" % (_b,))
+            _basis = tuple(tuple(_meta_number(v, "camera.basis") for v in r)
+                           for r in _b)
+        return cls(fov_deg=fov, roll=_roll, basis=_basis, **vals)
 
     def focal(self, screen_w: int) -> float:
         return (screen_w / 2) / math.tan(math.radians(self.fov_deg) / 2)
@@ -1193,21 +1233,27 @@ class World3D:
         eye = (cam.cx, cam.cy, cam.cz)
         _nrm = obj.rot_normals([(0.0, 0.0, -1.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0),
                                 (0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (-1.0, 0.0, 0.0)])
+        # dsh-bounty #1798（#311 剔除在 rot 漏网）：旧 faces 只有第 0 面用
+        # `_nrm[0]`，面 1–5 仍用**未旋转**常量法线——带 rot 的 box/pillar 唯一
+        # 可见面被错误剔除、背面目面被画出（实测 yaw=90° 后着色像素 6294→288）。
+        # 修法：6 面全部用 `rot_normals` 的旋转法线；face_center 改取四顶点均值
+        # （精确落在面平面内；轴对齐时与旧的 `center + normal*half` 逐位一致，
+        # #311/#312 既有守卫读数不变）。
         faces = [
             ((c[0], c[1], c[2], c[3]), _nrm[0]),   # 前面
-            ((c[4], c[5], c[6], c[7]), (0.0, 0.0, 1.0)),    # 后面
-            ((c[0], c[1], c[5], c[4]), (0.0, -1.0, 0.0)),   # 底面
-            ((c[3], c[2], c[6], c[7]), (0.0, 1.0, 0.0)),    # 顶面
-            ((c[1], c[2], c[6], c[5]), (1.0, 0.0, 0.0)),    # 右面
-            ((c[0], c[3], c[7], c[4]), (-1.0, 0.0, 0.0)),   # 左面
+            ((c[4], c[5], c[6], c[7]), _nrm[1]),   # 后面
+            ((c[0], c[1], c[5], c[4]), _nrm[2]),   # 底面
+            ((c[3], c[2], c[6], c[7]), _nrm[3]),   # 顶面
+            ((c[1], c[2], c[6], c[5]), _nrm[4]),   # 右面
+            ((c[0], c[3], c[7], c[4]), _nrm[5]),   # 左面
         ]
         hw, hh, hd = obj.size[0] / 2, obj.size[1] / 2, obj.size[2] / 2
         r, g, b = obj.color
         # 简单着色：面法线 → 明暗（顶面亮，侧面暗）
         for i, (face, normal) in enumerate(faces):
-            face_center = (obj.center[0] + normal[0] * hw,
-                           obj.center[1] + normal[1] * hh,
-                           obj.center[2] + normal[2] * hd)
+            face_center = (sum(p[0] for p in face) / len(face),
+                           sum(p[1] for p in face) / len(face),
+                           sum(p[2] for p in face) / len(face))
             if sum(normal[k] * (eye[k] - face_center[k]) for k in range(3)) <= 0:
                 continue        # 背对相机 ⇒ 不可见，剔除
             shade = 1.0
@@ -1227,8 +1273,8 @@ class World3D:
             try:
                 draw.polygon([(p[0], p[1]) for p in poly], fill=color,
                              outline=tuple(min(255, int(v * 0.7)) for v in color))
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("#170 面绘制跳过（投影退化/越界，best-effort 渲染）：%s", _e)
 
     def _draw_sphere(self, draw, obj, cam, sw, sh):
         c = cam.project(obj.center, sw, sh)
@@ -1259,7 +1305,14 @@ class World3D:
         # 渲染完全一样。判据来源：docs/theory/世界模型与语义时空图_完整理论整理
         # 与实现路线.md §3.2 透视投影——图元顶点须经同一投影映射（投影-关联）。
         x, y, z = obj.center
-        apex3 = (x, y + obj.size[1] / 2, z)
+        # dsh-bounty #1798：底面四角取自 `corners()`（已随 rot 旋转），塔尖却用
+        # 未旋转的 +Y 偏移——rot 含 X/Z 分量时塔尖与底面共面、四个侧面三角形
+        # 全部退化（实测 rot=(pi,0,0) 着色像素 8295→1038）。修法：塔尖偏移取
+        # `rot_normals([(0,1,0)])[0]`（局部 +Y 按同一旋转矩阵变换；无 rot 时
+        # 该向量为 (0,1,0)，与旧值逐位一致，#313 守卫读数不变）。
+        _up = obj.rot_normals([(0.0, 1.0, 0.0)])[0]
+        _hh = obj.size[1] / 2
+        apex3 = (x + _up[0] * _hh, y + _up[1] * _hh, z + _up[2] * _hh)
         apex = cam.project(apex3, sw, sh)
         if apex is None:          # 塔尖落在相机后方 ⇒ 不画
             return
@@ -1277,8 +1330,8 @@ class World3D:
             try:
                 draw.polygon([(p[0], p[1]) for p in poly], fill=obj.color,
                              outline=tuple(min(255, int(v * 0.7)) for v in obj.color))
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("#170 面绘制跳过（投影退化/越界，best-effort 渲染）：%s", _e)
 
     # ---- 显式几何通道（网格一等公民 · v2） ----
 

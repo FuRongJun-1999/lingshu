@@ -1,0 +1,143 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "02caf8bfe6d53fb33981d2f51c0ebceef9a0957f",
+  "guard_sha256": "d1f21492654b7622514475485a91ebc0c14d1695752c2ae3ddc0d446f17937ec",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 18,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "18 passed, 9 warnings in 0.50s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "422f564d6872fbb3406284dc1430c2ecb5668dabba6998b02d107b9b9c4e94d6"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 5,
+      "failed_tests": [
+        "test_coordinate_gate_requires_three_convertible_finite_axes[empty]",
+        "test_coordinate_gate_requires_three_convertible_finite_axes[extra]",
+        "test_coordinate_gate_requires_three_convertible_finite_axes[overflow]",
+        "test_coordinate_gate_requires_three_convertible_finite_axes[short]",
+        "test_core_patterns_keep_finite_speed_without_writes",
+        "test_finite_speed_mean_does_not_overflow",
+        "test_mixed_pairs_keep_usable_measurements",
+        "test_recent_direction_never_returns_nonfinite_components",
+        "test_recoverable_interval_uses_divided_endpoints",
+        "test_unrepresentable_pair_is_not_an_estimate",
+        "test_unrepresentable_speed_norm_is_rejected",
+        "test_world_learner_keeps_finite_speed",
+        "test_world_model_patterns_keep_finite_speed"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_finite_speed_mean_does_not_overflow",
+        "test_recoverable_interval_uses_divided_endpoints",
+        "test_unrepresentable_pair_is_not_an_estimate",
+        "test_unrepresentable_speed_norm_is_rejected",
+        "test_mixed_pairs_keep_usable_measurements",
+        "test_recent_direction_never_returns_nonfinite_components",
+        "test_coordinate_gate_requires_three_convertible_finite_axes[empty]",
+        "test_coordinate_gate_requires_three_convertible_finite_axes[short]",
+        "test_coordinate_gate_requires_three_convertible_finite_axes[extra]",
+        "test_coordinate_gate_requires_three_convertible_finite_axes[overflow]",
+        "test_world_model_patterns_keep_finite_speed",
+        "test_world_learner_keeps_finite_speed",
+        "test_core_patterns_keep_finite_speed_without_writes"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "13 failed, 5 passed, 9 warnings in 0.63s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "5442d47f05a67c2fccede407f91314d9a3d895b965eaccf5a96d95d1b19e383e"
+      }
+    },
+    {
+      "case": "keep_unrepresentable_velocity_pair",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_unrepresentable_pair_is_not_an_estimate"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_unrepresentable_pair_is_not_an_estimate"
+      ],
+      "expected_assertion": "WM_MOTION_UNREPRESENTABLE_PAIR_ACCEPTED",
+      "pytest_summary": "1 failed in 0.24s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "d89223785d077781c4bcd530ccc840f08ea585b2e57d7aeef3ed23b8ef2b4449"
+      }
+    },
+    {
+      "case": "sum_speeds_before_stable_mean",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_finite_speed_mean_does_not_overflow"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_finite_speed_mean_does_not_overflow"
+      ],
+      "expected_assertion": "WM_MOTION_MEAN_OVERFLOW",
+      "pytest_summary": "1 failed in 0.24s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "45449e8a196d20deff1203fdc3d5c52e4ee0c02fecdb4237de47bae1ad792e34"
+      }
+    },
+    {
+      "case": "drop_recoverable_divided_endpoint",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_recoverable_interval_uses_divided_endpoints"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_recoverable_interval_uses_divided_endpoints"
+      ],
+      "expected_assertion": "WM_MOTION_RECOVERABLE_INTERVAL_DROPPED",
+      "pytest_summary": "1 failed in 0.24s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "b10c2dd6e9cf641b60f40be0d8f35762dc8f89c6f04f1e9cd098a8494d32cdb7"
+      }
+    },
+    {
+      "case": "return_overflowed_recent_direction",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_recent_direction_never_returns_nonfinite_components"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_recent_direction_never_returns_nonfinite_components"
+      ],
+      "expected_assertion": "WM_MOTION_RECENT_DIRECTION_POISONED",
+      "pytest_summary": "1 failed in 0.26s",
+      "source_sha256": {
+        "lingshu/world/motion.py": "cf1d202e6deb1f3ab78ce761fe8b11acb0cf673edd1bb2836c65ba6a2da3070a"
+      }
+    }
+  ]
+}

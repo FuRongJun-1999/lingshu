@@ -181,15 +181,31 @@ def test_g4_whole_repo_zero_over_baseline():
     #: （把计数调回高值或新增静默宽 except 都会立刻判红）。
     #: 该地板值**跟随每一次真实下降同步**：改基线文件而不动本行 ⇒ 本断言当场判红
     #: （`286b428` 就漏了这一步 ⇒ 三条 job 同时红，已补）。
-    assert data["actual_total"] >= 140, ("基线合计低于当前登记值 140"
-                                         "（#609 重测后 144 − #292 真实修复 4），"
+    #: ★2026-11-06（#170 清偿第一批）140 → 139：`lingshu/world/prediction.py`
+    #: 14 → 0（全 14 处补 logger 审计，控制流零变化；基线文件同步删行）。
+    #: ★2026-11-06（#170 清偿第二批）129 → 128：小额四文件 11 处
+    #: （模块级回落 6 处补 logger.debug ＋ provenance 4 处收窄
+    #: (ValueError, TypeError)——基线文件同步删四行）。
+    #: ★2026-11-06（#170 清偿第三批）128 → 126：`lingshu/world/world3d.py`
+    #: 2 → 0（两处面绘制循环补 logger.debug，控制流零变化；基线文件同步删行）。
+    #: ★2026-11-08（#170 清偿第四批）126 → 118：`lingshu/core/longterm_gate.py`
+    #: 8 → 0（8 处补 _log.debug/_log.warning 审计，控制流零变化；基线文件同步改行）。
+    #: ★2026-11-08（#170 清偿第五批）118 → 113：world 四文件 5 → 0
+    #: （brain_store/channel_credibility×2/seven_layer_loop/stable_lease 补 _log.debug；基线文件同步改行）。
+    #: ★2026-11-08（#170 清偿第六批）113 → 106：`lingshu/core/component_resolver.py`
+    #: 7 → 0（7 处防御性宽 except 补 _log.debug；基线文件同步改行）。
+    #: ★2026-11-12（#170 清偿第七批）106 → 29：`lingshu/core/core.py`
+    #: 77 → 0（77 处防御性宽 except 补 _log.debug 审计；基线文件同步删行；pathguard 29 刻意静默有台账保留）。
+    assert data["actual_total"] >= 29, ("基线合计低于当前登记值 29"
+                                         "（#170 清偿七批累计：pathguard 29 刻意静默有台账）,"
                                          "判据可能被偷偷放宽")
     assert data["unparsable"] == [], data
     # #609 重测的落点：core.py 计数已同步进基线（46→76；#653 再 76→78，
     # `_tolerant_edges` 边侧逐行容错新增 2 条，见基线文件 #653 登记行）
     core = next(r for r in data["per_file"] if r["file"] == "lingshu/core/core.py")
     #: 78 → 77：同上（本笔给 FTS 挂载腿补 `warnings.warn` ⇒ 该处不再静默）。
-    assert core["silent"] == core["baseline"] == 77, core
+    assert core["silent"] == core["baseline"] == 0, core
+    #: 77 → 0：#170 清偿第七批（77 处补 _log.debug 审计；追溯链 = #609「46→76」＋ #653「76→78」＋ 78→77 ＋ 本笔 77→0）。
 
 
 def test_g4_baseline_file_documents_609_retest():
@@ -201,4 +217,4 @@ def test_g4_baseline_file_documents_609_retest():
     # 本断言跟随当前基线值，追溯链 = #609 历史区「46→76」＋ #653 登记行「76→78」。
     #: 78 → 77：本笔真实修复（FTS 挂载腿补 `warnings.warn`）；追溯链 = #609「46→76」
     #: ＋ #653「76→78」＋ 本笔「78→77（真实修复）」。
-    assert "lingshu/core/core.py\t77" in text, text
+    assert "lingshu/core/core.py 77 → 0" in text, text

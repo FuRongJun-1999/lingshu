@@ -8,7 +8,14 @@
   连接库:预建的结构化连接记录(每条=已知物体的完整关系网络);
   关系提取:新图 → 部件检出 + 部件间关系对(递归搜索输出增强);
   查询:新图关系描述 → 在库中匹配相似连接(比对操作,零梯度);
-  条件判断:四态筛选(匹配度≥阈值 ACCEPT / 部分 DEFER / 冲突 REJECT);
+  条件判断:四态筛选(ACCEPT / DEFER / REJECT / BLINDSPOT)——判据见 query_match #121:
+    ACCEPT    最优 score ≥ th_accept(默认 0.6)
+    DEFER     th_defer ≤ 最优 score < th_accept(默认 0.3)
+    REJECT    最优与次优 score **相等**(margin==0)⇒ 两条配方不可区分,冲突,拒绝作答
+    BLINDSPOT 最优 score < th_defer ⇒ 库中无相关配方(知识盲区,非冲突)
+    score = (conn 命中 + 关系命中) / (conn 需求 + 关系需求 + **未被匹配消费的检测数**)
+            末项为 #121 补上的 precision 侧:旧口径只有前两项(纯 recall),
+            故「配方全命中 + 多余部件」与「恰好全命中」同分(实测均 1.0)。
   输出:物体判定 + 置信 + 缺失关系预测(补全)。
 
 F06 关系判定(recipe role → detection 一对一绑定):
@@ -160,13 +167,19 @@ def extract_relations(detections: List[Dict]) -> List[Dict]:
     for i in range(len(detections)):
         for j in range(i + 1, len(detections)):
             a, b = detections[i], detections[j]
-            qa, qax = divmod(int(a["pos"][1:]), 3)
-            qb, qbx = divmod(int(b["pos"][1:]), 3)
-            rel = {"from": a["pos"], "to": b["pos"],
-                   "type_a": a["obj"].split("|")[0],
-                   "type_b": b["obj"].split("|")[0],
-                   "color_a": a["obj"].split("|")[1],
-                   "color_b": b["obj"].split("|")[1]}
+            axes_a = _det_axes(a)
+            axes_b = _det_axes(b)
+            if axes_a is None or axes_b is None:
+                continue
+            qa, qax = axes_a
+            qb, qbx = axes_b
+            a_obj = str(a.get("obj", "")).split("|")
+            b_obj = str(b.get("obj", "")).split("|")
+            rel = {"from": a.get("pos"), "to": b.get("pos"),
+                   "type_a": a_obj[0],
+                   "type_b": b_obj[0],
+                   "color_a": a_obj[1] if len(a_obj) > 1 else "",
+                   "color_b": b_obj[1] if len(b_obj) > 1 else ""}
             # 空间关系
             if qa < qb:
                 rel["spatial"] = "above"
@@ -202,6 +215,12 @@ def query_match(detections: List[Dict], lib: ConnectionLibrary,
     零梯度,纯比对——毫秒级。"""
     if not detections:
         return [{"verdict": "BLINDSPOT", "note": "无检出"}]
+    # dsh-bounty #1800①：知识侧的对称退化——空连接库（`ConnectionLibrary()`
+    # 或 save→load 往返后的 0 记录库）是合法状态，恰是本模块对 BLINDSPOT 的
+    # 定义（「库中无相关配方」）。旧实现在 results[0] 处 IndexError，四态契约
+    # 被崩溃打破；与数据侧兜底同形状返回。
+    if not lib.records:
+        return [{"verdict": "BLINDSPOT", "note": "连接库为空（无已登记配方）"}]
     results = []
     for rec in lib.records:
         score, report = _score_record(rec, detections)
@@ -214,12 +233,17 @@ def query_match(detections: List[Dict], lib: ConnectionLibrary,
     results.sort(key=lambda x: -x["score"])
     best = results[0]
     second = results[1] if len(results) > 1 else {"score": 0}
-    if best["score"] >= th_accept:
+    # #121：四态齐备。旧实现只按 best 分数三档，docstring 承诺的「冲突 REJECT」
+    # 在函数体里连字面量都没有、不可达；而 margin（最优−次优）算了却从不参与判定。
+    # 现按 margin==0（最优与次优**不可区分**）判冲突 —— 不引入新阈值。
+    if best["score"] < th_defer:
+        v = "BLINDSPOT"                  # 无配方达下界：知识盲区（非冲突）
+    elif len(results) > 1 and best["score"] == second["score"]:
+        v = "REJECT"                     # 冲突：两条配方不可区分，拒绝作答
+    elif best["score"] >= th_accept:
         v = "ACCEPT"
-    elif best["score"] >= th_defer:
-        v = "DEFER"
     else:
-        v = "BLINDSPOT"
+        v = "DEFER"
     # Copy the ranking entries before annotating ``best``.  Otherwise the
     # first entry in ``all_scores`` would reference ``best`` itself and make
     # the returned report impossible to serialize as JSON.
@@ -244,12 +268,14 @@ def query_match(detections: List[Dict], lib: ConnectionLibrary,
 
 def _conn_matches(conn: Dict, det: Dict) -> bool:
     """单条 conn 与单个检测是否匹配（类型/方位/颜色判据）。"""
-    det_obj = det["obj"].split("|")
-    det_shape, det_color, det_pos = det_obj[0], det_obj[1], det["pos"]
+    det_obj = str(det.get("obj", "")).split("|")
+    det_shape = det_obj[0]
+    det_color = det_obj[1] if len(det_obj) > 1 else ""
+    det_pos = det.get("pos")
     if det_shape != conn["type"]:
         return False
     zone = conn.get("zone", "*")
-    if zone != "*" and det_pos not in _ZONES.get(zone, set()):
+    if zone != "*" and (det_pos is None or det_pos not in _ZONES.get(zone, set())):
         return False
     color = conn.get("color", "*")
     if color != "*" and det_color != color:
@@ -568,23 +594,32 @@ def _eval_relations(rels: List, roles: Dict[str, List[int]],
 
 
 def _score_record(rec: Dict, detections: List[Dict]) -> Tuple[float, Optional[Dict]]:
-    """(评分, 关系报告)。报告 None ⇒ 该配方没有 relations（评分 = 旧口径）。"""
+    """(评分, 关系报告)。报告 None ⇒ 该配方没有 relations（评分 = 旧口径）。
+
+    #121：分母含**未被本次匹配消费的检测**（`unmatched`）——旧口径只算 recall
+    （命中/配方需求），多余部件对分数**零影响**，于是「2 命中 + 1 多余」与
+    「恰好 2 命中」同分（实测均 1.0，逐位相同）。补上 precision 侧后，
+    score=1.0 当且仅当「配方需求全命中**且无多余检测**」。
+    """
     conns = rec["connections"]
     rels = _relations_declared(rec)
     if not detections:
         hits, assign = 0, [-1] * len(conns)
     else:
         hits, assign = _match_binding(rec, detections)
+    # 匹配是单射：被消费的检测数 == 命中的 conn 数；其余为多余检测（precision 侧）
+    unmatched = max(0, len(detections) - hits) if detections else 0
     if not rels:
         if not conns:
             return 0.0, None
-        return ((hits / len(conns)) if detections else 0.0), None
+        total = len(conns) + unmatched
+        return ((hits / total) if detections and total else 0.0), None
     recipe_roles = _recipe_roles(rec)
     # 规范序（只取检测内容）→ 角色排列/关系证据的枚举与去重顺序，与输入排列无关
     rank = {di: k for k, di in enumerate(_canonical_det_order(detections))}
     roles = _bind_roles(rec, assign, rank)
     rel_report, rel_hits = _eval_relations(rels, roles, detections, recipe_roles, rank)
-    total = len(conns) + len(rels)
+    total = len(conns) + len(rels) + unmatched
     score = (hits + rel_hits) / total if total else 0.0
     report = {
         "roles": {role: [detections[i]["pos"] for i in roles.get(role, [])]

@@ -66,6 +66,29 @@ class ProcessOpsThresholds:
     min_tail_samples: int = 1     # 过程补全：未被前缀覆盖的最少后续采样数
     joint_tol: float = 0.5        # 过程重组：连接点 actor 衔接距离上限
 
+    def __post_init__(self):
+        """#2425：五个阈值此前全裸——`min_hit_ratio=nan` 使 `hits / compared < nan`
+        恒假，0 分记录被判「命中」并补全出 6 帧；`match_tol=inf` 让 26 m 误差全算
+        几何命中。此处按「阈值即判据」收口：容差类须有限非负、比例类须有限且落在
+        [0,1]、样本数须 >=1 的真整数（bool 一并拒绝）。
+        """
+        for _nm in ("match_tol", "joint_tol"):
+            _v = getattr(self, _nm)
+            if isinstance(_v, bool) or not isinstance(_v, (int, float)) \
+                    or not math.isfinite(float(_v)) or float(_v) < 0.0:
+                raise ValueError("ProcessOpsThresholds：%s 须为有限非负数，收到 %r"
+                                 % (_nm, _v))
+        _v = self.min_hit_ratio
+        if isinstance(_v, bool) or not isinstance(_v, (int, float)) \
+                or not math.isfinite(float(_v)) or not (0.0 <= float(_v) <= 1.0):
+            raise ValueError("ProcessOpsThresholds：min_hit_ratio 须落在 [0,1]，收到 %r"
+                             % (_v,))
+        for _nm in ("min_match_samples", "min_tail_samples"):
+            _v = getattr(self, _nm)
+            if isinstance(_v, bool) or not isinstance(_v, int) or _v < 1:
+                raise ValueError("ProcessOpsThresholds：%s 须为 >=1 的整数，收到 %r"
+                                 % (_nm, _v))
+
 
 # ================= 采样读数（只读，不返回原对象） =================
 
@@ -166,7 +189,15 @@ def _candidate(record: Dict, index: int, prefix: Sequence[Dict],
         cand["reason"] = "前缀与记录没有可比采样"
         return cand
     errors = [_offset_gap(prefix[i]["offset"], rec[i]["offset"]) for i in range(compared)]
-    geometry_hits = sum(1 for e in errors if e <= th.match_tol)
+    # #2159：非有限误差先过滤并显式上报丢弃数——修前同一条误差列表被两个聚合器
+    # 给出矛盾读数：`max(errors)` 从左折叠、NaN 只在首位才传播（在其它位置被
+    # `>` 比较比下去 ⇒ NaN 被静默丢弃返回 0.0），`sum(errors)` 必被任一 NaN
+    # 传染成 NaN ⇒ max=0.0 宣称「全部在容差内」、mean=nan 宣称「算不出来」，
+    # 两读数指相反方向（实测 max=0.0 / mean=nan / hit_frames=4 / matched=5）。
+    # 口径与 `motion.py` 的读噪声处理同款：显式丢弃 + 上报。
+    finite_errors = [e for e in errors if math.isfinite(e)]
+    dropped = len(errors) - len(finite_errors)
+    geometry_hits = sum(1 for e in finite_errors if e <= th.match_tol)
     timing = _timing_readings(prefix, rec, compared)
     timing_hits = [d == 0 for d in timing["deltas"]]
     hits = sum(1 for i in range(compared) if errors[i] <= th.match_tol and timing_hits[i])
@@ -175,8 +206,13 @@ def _candidate(record: Dict, index: int, prefix: Sequence[Dict],
     cand["timing"] = timing
     cand["hit_frames"] = hits
     cand["match_score"] = round(hits / compared, 6)
-    cand["max_frame_error"] = round(max(errors), 6)
-    cand["mean_frame_error"] = round(sum(errors) / compared, 6)
+    cand["dropped_nonfinite"] = dropped
+    if finite_errors:
+        cand["max_frame_error"] = round(max(finite_errors), 6)
+        cand["mean_frame_error"] = round(sum(finite_errors) / len(finite_errors), 6)
+    else:
+        cand["max_frame_error"] = None
+        cand["mean_frame_error"] = None
     if compared < max(1, int(th.min_match_samples)):
         cand["reason"] = "对比帧数 %d 少于下限 %d" % (compared, th.min_match_samples)
     elif hits / compared < th.min_hit_ratio:
@@ -391,7 +427,16 @@ def compose_processes(first: Dict, second: Dict, *,
                                   translation=second_shift, yaw=yaw, scale=scale,
                                   tick_offset=second_offset)
     tail_frames = tail["frames"]
-    frames = head_frames + tail_frames
+    # #2158：**顶层合并帧**的跨段首帧 `dt` 修前继承源记录首帧的 dt（源首帧恒 0
+    # ——它是自己那段的时间轴起点）⇒ 「跨段 tick 差 = gap（≥1）而该帧 dt = 0」
+    # 直接矛盾（tick 与 dt 是同一份时间轴的两套记法，tick 被 tick_offset 平移、
+    # dt 没跟着对齐）。连接点两侧的真实间隔正是 tick_gap ⇒ 顶层帧改写为 gap。
+    # 段级 `segments[*].frames` 保留源 dt 不动——那是各段自身时间轴的证据面
+    # （test_process_ops 的段级 `frame["dt"] == sample["dt"]` 契约不变），
+    # 故合并时浅拷贝 tail 帧、只改顶层副本。
+    frames = head_frames + [dict(f) for f in tail_frames]
+    if tail_frames:
+        frames[len(head_frames)]["dt"] = gap
 
     # 连接点读数：ref 锚定残差与 actor 衔接距离（含两侧相对偏移）。
     first_end_ref = head_frames[-1]["entities"][new_ref]

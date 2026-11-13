@@ -1,0 +1,143 @@
+{
+  "python": "3.12.10",
+  "platform": "Windows",
+  "sqlite": "3.49.1",
+  "baseline": "02caf8bfe6d53fb33981d2f51c0ebceef9a0957f",
+  "guard_sha256": "fcd1107e7c4d3fd440739c746ba2832ed9ff7f9d386cd8a19d1aa55aaf55c92e",
+  "records": [
+    {
+      "case": "fixed",
+      "ok": true,
+      "returncode": 0,
+      "passed": 18,
+      "failed_tests": [],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [],
+      "expected_assertion": "",
+      "pytest_summary": "18 passed, 9 warnings in 0.43s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "079b3ec3775e43ae471afd6e6ab21fdaa7855beb995f9baeed029b8eb3bf579c"
+      }
+    },
+    {
+      "case": "baseline",
+      "ok": true,
+      "returncode": 1,
+      "passed": 5,
+      "failed_tests": [
+        "test_bad_actual_does_not_lower_valid_entity_score",
+        "test_core_marks_invalid_actual_as_pending",
+        "test_finite_metric_means_avoid_sum_overflow",
+        "test_nonfinite_actual_is_pending[inf]",
+        "test_nonfinite_actual_is_pending[nan]",
+        "test_nonfinite_actual_is_pending[negative_inf]",
+        "test_nonfinite_prediction_is_pending[inf]",
+        "test_nonfinite_prediction_is_pending[nan]",
+        "test_nonfinite_prediction_is_pending[negative_inf]",
+        "test_unrepresentable_distance_is_pending",
+        "test_unusable_bound_is_pending[inf]",
+        "test_unusable_bound_is_pending[nan]",
+        "test_unusable_bound_is_pending[negative]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_nonfinite_actual_is_pending[nan]",
+        "test_nonfinite_actual_is_pending[inf]",
+        "test_nonfinite_actual_is_pending[negative_inf]",
+        "test_bad_actual_does_not_lower_valid_entity_score",
+        "test_nonfinite_prediction_is_pending[nan]",
+        "test_nonfinite_prediction_is_pending[inf]",
+        "test_nonfinite_prediction_is_pending[negative_inf]",
+        "test_unusable_bound_is_pending[nan]",
+        "test_unusable_bound_is_pending[inf]",
+        "test_unusable_bound_is_pending[negative]",
+        "test_unrepresentable_distance_is_pending",
+        "test_finite_metric_means_avoid_sum_overflow",
+        "test_core_marks_invalid_actual_as_pending"
+      ],
+      "expected_assertion": "",
+      "pytest_summary": "13 failed, 5 passed, 9 warnings in 0.60s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "b3d583c31c222176273ee5e8ffbc6708313ac2ff94dbbbda119e7007c883d1c4"
+      }
+    },
+    {
+      "case": "score_nonfinite_actual",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_nonfinite_actual_is_pending[nan]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_nonfinite_actual_is_pending[nan]"
+      ],
+      "expected_assertion": "WM_VERIFY_BAD_ACTUAL_WAS_SCORED",
+      "pytest_summary": "1 failed in 0.26s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "23c7f9c22ec70b775b2d9647c13af473460eec539e5dfc40480007f9ef3f02fd"
+      }
+    },
+    {
+      "case": "accept_nonfinite_bound",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_unusable_bound_is_pending[inf]"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_unusable_bound_is_pending[inf]"
+      ],
+      "expected_assertion": "WM_VERIFY_BAD_BOUND_WAS_SCORED",
+      "pytest_summary": "1 failed in 0.26s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "f1b9426bd782282211423ddec3036d34aef439e57361c96dbcc627518c31ade8"
+      }
+    },
+    {
+      "case": "score_overflowed_distance",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_unrepresentable_distance_is_pending"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_unrepresentable_distance_is_pending"
+      ],
+      "expected_assertion": "WM_VERIFY_INFINITE_DISTANCE_WAS_SCORED",
+      "pytest_summary": "1 failed in 0.25s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "e82eccf73788fadace49a84ccb9aa7da8d0a6202867c15b16a78f7cf8f85932c"
+      }
+    },
+    {
+      "case": "sum_metric_values_before_scaling",
+      "ok": true,
+      "returncode": 1,
+      "passed": 0,
+      "failed_tests": [
+        "test_finite_metric_means_avoid_sum_overflow"
+      ],
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": [
+        "test_finite_metric_means_avoid_sum_overflow"
+      ],
+      "expected_assertion": "WM_VERIFY_AGGREGATE_OVERFLOW",
+      "pytest_summary": "1 failed in 0.27s",
+      "source_sha256": {
+        "lingshu/world/world_model.py": "8681d33972d98be50deb91f658913e6931d56553fd84a725de2e9c6ab602d403"
+      }
+    }
+  ]
+}

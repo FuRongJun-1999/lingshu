@@ -295,7 +295,12 @@ def normalize_spec(spec, _copy=False):
             if any(s <= 0 for s in size):
                 raise SpecError("%s.size 三分量须 > 0，实为 %r" % (pw, size))
 
-            mat_in = p.get("material") or {}
+            # #2109：`or {}` 把 material=0/''/[] 等显式 falsy 值吞成默认空对象
+            # ——模块自己的修复注释（_common.opt_str 一带）已把同款 `x or default`
+            # 判为历史缺陷族。显式 None 才回落默认；其余非 dict 值走既有校验。
+            mat_in = p.get("material")
+            if mat_in is None:
+                mat_in = {}
             if not isinstance(mat_in, dict):
                 raise SpecError("%s.material 须为对象" % pw)
             _reject_unknown(mat_in, _KEYS_MATERIAL, "%s.material" % pw)

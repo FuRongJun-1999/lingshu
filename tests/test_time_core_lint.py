@@ -131,8 +131,12 @@ _PHYSICS_DEEPENING_R1_SPECS = (
 _PHYSICS_DEEPENING_R3_SPECS = (
     ("lingshu/world/physics.py", "u = u0 + g * tau / vt", 1),                        # drag2 tanh 参数
     ("lingshu/world/physics.py", "float(drift[i]) * tau", 1),                        # drag2 横向匀速漂移
-    ("lingshu/world/physics.py", "s = v_s0 * tau + 0.5 * a * tau * tau", 1),         # slope_friction 沿坡位移
-    ("lingshu/world/physics.py", "v_s = v_s0 + a * tau", 1),                         # slope_friction 沿坡速度
+    # #2054/#2088 修法：slope 分支重构为 held/stopping/sliding 三支，钳位折进
+    # tau_eff/a_eff——旧「沿坡位移/速度」两条 R3 形状随重写不再命中（tau_eff 非
+    # \btau\b 边界），相应 spec 撤销；世界坐标分解行（596）仍是命中，锚保留。
+    # stopping 分支 stop 前的二次式（a_raw 版本）仍是命中 ⇒ 两条 spec 以新文本保留。
+    ("lingshu/world/physics.py", "s = v_s0 * tau + 0.5 * a_raw * tau * tau", 1),      # slope_friction 沿坡位移（stop 前）
+    ("lingshu/world/physics.py", "v_s = v_s0 + a_raw * tau", 1),                      # slope_friction 沿坡速度（stop 前）
     ("lingshu/world/physics.py", "u_dir[i] * s + float(drift[i]) * tau", 1),         # slope_friction 世界坐标分解
 )
 

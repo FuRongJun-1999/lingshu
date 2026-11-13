@@ -71,8 +71,12 @@ def pick_prompts(n, lib_path=LIB):
     #355 残余：`n <= 0` 必须在**进入循环前**返回空集——旧实现先 append 再判
     `len(out) >= n`，于是 `pick_prompts(0)` / `pick_prompts(-3)` 都静默返回 1 条
     （CLI 层的 `_positive_int` 已挡越界，但库函数被直接调用时无此闸）。"""
-    if n <= 0:
-        return []
+    # F23-21（#942 清单）：非 int 的 n（2.5 等）走 `len(out) >= n` 浮点比较，
+    # 静默多给样本（2.5→3 条）——库面与 CLI 的 `_positive_int` 契约对齐：非正
+    # 整数 fail-closed（bool 是 int 子类也挡）。
+    if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+        raise ValueError(
+            "pick_prompts：n 须为正整数（CLI 层 _positive_int 的库面对应闸），实得 %r" % (n,))
     with io.open(lib_path, encoding="utf-8") as f:
         lib = json.load(f)
     seen, out = set(), []
@@ -300,7 +304,10 @@ def summarize(reads, items):
     return {
         "n_prompt": len(by_sid), "n_img": len(reads),
         "n_img_empty": n_empty,
-        "empty_rate": round(n_empty / max(1, len(reads)), 4),
+        # F23-25（#942 清单）：零样本（len(reads)==0）时 empty_rate 记 None——
+        # 与同 return 的 stability/honored「无定义 ⇒ null，不伪造读数」的 #356
+        # 口径一致（旧 max(1,·) 记 0.0＝伪造「无空读」满分）。打印面同步适配。
+        "empty_rate": (round(n_empty / len(reads), 4) if reads else None),
         "stability": {k: round(float(np.mean(v)), 4) if v else None
                       for k, v in stab.items()},
         "honored": {k: round(float(np.mean(v)), 4) if v else None
@@ -394,7 +401,8 @@ def main():
         w = s["within_vs_between"]
         print(f"    ③ 件内方差/类间差 中位比 **{w['median_ratio']}**"
               f"（最差 5 维 {w['worst_dims']}）")
-        print(f"    ④ 空读件 {s['n_img_empty']}/{s['n_img']}（{s['empty_rate']:.1%}）")
+        er = s["empty_rate"]
+        print(f"    ④ 空读件 {s['n_img_empty']}/{s['n_img']}（" + (f"{er:.1%}" if er is not None else "无样本") + "）")
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with io.open(a.out, "w", encoding="utf-8") as f:
         json.dump(rep, f, ensure_ascii=False, indent=1,
