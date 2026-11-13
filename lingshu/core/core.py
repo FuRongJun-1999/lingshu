@@ -6493,6 +6493,14 @@ class LayeredStore:
     @_transactional
     def append_skill_procedure(self, skill_id: str, step: str):
         """技能程序追加（P1-3 技能获取：版本+1）"""
+        # 自主发现（参数类型）：skill_id/step 此前都不做类型闸——传 int 的 skill_id
+        # 静默返回 None（实测 append_skill_procedure(123, "s") -> None），步骤其实没
+        # 追加，调用方以为写入成功。现 fail-loud：可读 TypeError（零写入）。
+        if not isinstance(skill_id, str) or not skill_id.strip():
+            raise TypeError("append_skill_procedure 的 skill_id 必须是非空字符串，收到 %r"
+                            % (skill_id,))
+        if not isinstance(step, str) or not step.strip():
+            raise TypeError("append_skill_procedure 的 step 必须是非空字符串，收到 %r" % (step,))
         c = self.conn.cursor()
         c.execute("SELECT procedure FROM skills WHERE id=?", (skill_id,))
         row = c.fetchone()
