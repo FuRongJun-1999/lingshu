@@ -5923,6 +5923,11 @@ class LayeredStore:
         # TypeError（不查库）。
         if not isinstance(tag, str) or not tag.strip():
             raise TypeError("get_nodes_by_tag 的 tag 必须是非空字符串，收到 %r" % (tag,))
+        # 类型闸（#1415）：只拦非整数——None/负数**放行**（#658 G2 已定谳：
+        # `limit=None`/`limit=-1` ⇒ 全量；bool 是 int 子类须显式排除）。
+        # 旧实现 str/float limit 落进 SQL 参数抛不可读 IntegrityError:datatype mismatch。
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
+            raise TypeError("get_nodes_by_tag 的 limit 必须是整数，收到 %r" % (limit,))
         c = self.conn.cursor()
         sql = ("SELECT * FROM nodes WHERE EXISTS ("
                "SELECT 1 FROM json_each("

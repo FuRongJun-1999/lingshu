@@ -83,6 +83,8 @@ env:
     tests/test_issue_escalation_code_type_guard.py
     tests/test_issue_prune_self_keep_type_guard.py
     tests/test_issue_get_nodes_by_tag_type_guard.py
+    tests/test_issue_get_nodes_by_tag_limit_type_guard.py
+    tests/test_issue_increment_many_type_guard.py
     tests/test_issue_update_importance_type_guard.py
     tests/test_issue_update_confidence_type_guard.py
     tests/test_issue_get_skill_by_name_type_guard.py
