@@ -4272,6 +4272,13 @@ class LayeredStore:
     @staticmethod
     def char_bigram_jaccard(a: str, b: str) -> float:
         """中文二元组 Jaccard 相似度（对中文友好，解决按词分割失效问题）"""
+        # 自主发现（参数类型/静默）：a/b 此前不做类型闸——传 int 抛不可读
+        # `AttributeError: 'int' object has no attribute 'split'`；传 None 则被当空串
+        # **静默返回 0.0**（实测 char_bigram_jaccard("abc", None) -> 0.0），把调用错误
+        # 伪装成「完全不相似」。现 fail-loud：非 str → 可读 TypeError。
+        for _n, _v in (("a", a), ("b", b)):
+            if not isinstance(_v, str):
+                raise TypeError("char_bigram_jaccard 的 %s 必须是字符串，收到 %r" % (_n, _v))
         if not a or not b:
             return 0.0
         def bigrams(s):
