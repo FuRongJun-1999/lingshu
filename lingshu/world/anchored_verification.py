@@ -76,6 +76,11 @@ class AnchoredVerification:
         hit: 验证是否命中
         registry: 通道可信度注册表（缺省用 self.registry）
         """
+        # 非 fail-closed 检查：conf 非有限或越 [0,1] → ValueError（#196 census）
+        if not isinstance(conf, (int, float)) or isinstance(conf, bool):
+            raise ValueError("anchored_verification 的 conf 必须是数值，收到 %r" % (conf,))
+        if not math.isfinite(conf) or not (0.0 <= conf <= 1.0):
+            raise ValueError("anchored_verification 的 conf 必须落在 [0,1]，收到 %r" % (conf,))
         reg = registry or self.registry
         level = classify(source)
         strong = level == VerificationLevel.STRONG

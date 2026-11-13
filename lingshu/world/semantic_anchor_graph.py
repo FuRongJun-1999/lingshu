@@ -322,6 +322,11 @@ class SemanticAnchorGraph:
             from .anchor_verify import AnchorVerification
         if not hasattr(self, '_verifier'):
             self._verifier = AnchorVerification(graph=self)
+        # 非 fail-closed 检查：evidence 非有限或越 [0,1] → ValueError（#196 census）
+        if not isinstance(evidence, (int, float)) or isinstance(evidence, bool):
+            raise ValueError("semantic_anchor_graph 的 evidence 必须是数值，收到 %r" % (evidence,))
+        if not math.isfinite(evidence) or not (0.0 <= evidence <= 1.0):
+            raise ValueError("semantic_anchor_graph 的 evidence 必须落在 [0,1]，收到 %r" % (evidence,))
         self._verifier.add_channel_evidence(anchor_id, channel, evidence, strong)
         return self._verifier.verify_anchor(anchor_id)
 
