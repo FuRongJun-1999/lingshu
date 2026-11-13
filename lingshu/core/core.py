@@ -4338,6 +4338,11 @@ class LayeredStore:
         """查询同义词展开：原查询整句 + 命中组词（含命中词本身，词级预筛）+ 组内同义词。
         命中词本身必须加入——整句 LIKE 无法命中只含词级的节点。
         触发判据见 `_synonym_trigger_hit`（#132：ASCII 词边界，杜绝 EMAIL→AI）。"""
+        # 自主发现（参数类型）：query 此前不做类型闸——传 int/None 直接走到 "x in query"，
+        # 抛不可读 `TypeError: argument of type 'int' is not iterable`
+        # （实测 expand_query_terms(123)）。现 fail-loud：非 str → 可读 TypeError。
+        if not isinstance(query, str):
+            raise TypeError("expand_query_terms 的 query 必须是字符串，收到 %r" % (query,))
         terms = [query]
         for group in LayeredStore.SYNONYM_GROUPS:
             for w in group:
