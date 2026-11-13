@@ -5181,6 +5181,15 @@ class LayeredStore:
     @_transactional
     def update_skill_confidence(self, skill_id: str, delta: float):
         """技能置信度增量更新（clamp 到 [0,1]，正=成功经验/负=失败经验）。"""
+        # 自主发现（参数类型）：skill_id/delta 此前都不做类型闸——两者都传错时静默返回 None
+        # （实测 update_skill_confidence("x", "y") -> None），技能置信度其实没变，调用方
+        # 以为更新成功。现 fail-loud：可读 TypeError（零写入）。
+        if not isinstance(skill_id, str) or not skill_id.strip():
+            raise TypeError("update_skill_confidence 的 skill_id 必须是非空字符串，收到 %r"
+                            % (skill_id,))
+        if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                or not math.isfinite(float(delta))):
+            raise TypeError("update_skill_confidence 的 delta 必须是有限实数，收到 %r" % (delta,))
         c = self.conn.cursor()
         c.execute("UPDATE skills SET confidence = MIN(1.0, MAX(0.0, confidence + ?)), updated_at=? WHERE id=?",
                   (delta, time.time(), skill_id))
