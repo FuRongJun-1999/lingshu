@@ -2924,6 +2924,17 @@ class LayeredStore:
         把「被吞掉的失败」改为「被上报的失败」，**不**改锁等待取向（改锁等待属
         语义变更，见报告「取向题：要不要为访问计数等锁」）。
         """
+        # 自主发现（参数类型）：node_ids 此前不做容器/元素闸——传 int 抛不可读
+        # `TypeError: 'int' object is not iterable`；传 [None] 则**静默成功**
+        # （实测 increment_access_many([None]) -> None），近因计数静默漏写。
+        # 现 fail-loud：非序列/元素非 str → 可读 TypeError（零写入）。
+        if isinstance(node_ids, str) or not isinstance(node_ids, (list, tuple)):
+            raise TypeError("increment_access_many 的 node_ids 必须是字符串序列，收到 %r"
+                            % (node_ids,))
+        for _nid in node_ids:
+            if not isinstance(_nid, str) or not _nid.strip():
+                raise TypeError("increment_access_many 的 node_ids 元素必须是非空字符串，收到 %r"
+                                % (_nid,))
         ids = [i for i in (node_ids or []) if i]
         if not ids:
             return
