@@ -6,6 +6,7 @@
   python -m wm_bridge.cli manifest ROOT OUT [REL ...]    # 建 SHA-256 清单
   python -m wm_bridge.cli verify ROOT MANIFEST [--no-strict]
   python -m wm_bridge.cli validate DOC.json              # 校验一份 oracle 导出
+  python -m wm_bridge.cli validate-atta SCENE_DIR        # 校验 Atta deliver/v3 清单与文件
 
 几何 / 部件 / 真值导出（**不需要 Blender**：吃 `bpy_dump` 抽出的 spec，或重出既有产物）：
   python -m wm_bridge.cli export-obj    --spec SPEC.json --out mesh.obj [--mtl mesh.mtl]
@@ -34,6 +35,7 @@ from . import probe as P
 from . import contract as C
 from . import geom as G
 from . import oracle as O
+from . import atta_receipt as AR
 
 
 def _emit(obj) -> None:
@@ -60,6 +62,11 @@ def main(argv=None) -> int:
 
     d = sub.add_parser("validate", help="校验 oracle 导出")
     d.add_argument("doc")
+
+    va = sub.add_parser("validate-atta", help="校验 Atta deliver/v3 清单与文件")
+    va.add_argument("scene_dir")
+    va.add_argument("--manifest", default=None)
+    va.add_argument("--allow-degraded", action="store_true")
 
     eo = sub.add_parser("export-obj", help="导出 OBJ+MTL（1 单位=1 m / Z-up 原样 / 不归一化）")
     eo.add_argument("--spec", default=None, help="bpy_dump 抽出的 spec.json")
@@ -120,6 +127,17 @@ def main(argv=None) -> int:
         _emit({"ok": ok, "reason": why,
                "tracks": len(doc.get("tracks") or []) if isinstance(doc, dict) else 0})
         return 0 if ok else 2
+
+    if args.cmd == "validate-atta":
+        try:
+            report = AR.verify_atta_receipt(
+                args.scene_dir, manifest_path=args.manifest,
+                allow_degraded=args.allow_degraded)
+        except (AR.AttaEvidenceError, OSError, ValueError) as exc:
+            _emit({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)})
+            return 2
+        _emit({"ok": True, "report": report})
+        return 0
 
     # ---------------- 几何 / 部件 / 真值导出 ----------------
     if args.cmd in ("export-obj", "export-shapes", "export-oracle"):
