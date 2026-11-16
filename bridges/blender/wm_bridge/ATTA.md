@@ -13,6 +13,8 @@ python -m wm_bridge.cli validate-atta /path/to/delivery-directory \
   --manifest model_manifest.json
 python -m wm_bridge.cli validate-atta /path/to/delivery-directory \
   --allow-degraded  # explicit opt-in; degraded is not pass
+python -m wm_bridge.cli validate-atta /path/to/delivery-directory \
+  --allow-partial   # explicit opt-in; partial delivery is not complete evidence
 ```
 
 Exit status is `0` only when the manifest is structurally valid, its verdict is
@@ -22,6 +24,29 @@ a path-containment boundary. Relative paths are preferred. Atta may write
 absolute paths; these are accepted only when they resolve inside the explicitly
 provided root. For portable handoffs, place the manifest and all referenced
 files below one directory and use relative paths.
+
+## `files[]` is one row per file, not per format
+
+Atta exports a separate mesh file for every assembly part
+(`atta/assembly.py:1534-1544` writes `<stem>_<part>.obj` / `.stl`), so an
+eight-part assembly produces eight rows with `format: "obj"`. The verifier
+therefore keys uniqueness on `(format, part)`, not on `format` alone, and
+propagates `part` into the normalized summary so provenance survives. A row
+with `ok: false` is a **declared export failure**: it may omit `path`, `bytes`
+and `sha256`, is never hash-verified, and is reported as such instead of being
+misdiagnosed as a missing or corrupt file.
+
+## `status` is derived from `errors`, not from `verdict`
+
+Atta computes `status = "ok" if files and not errors else ("partial" if files
+else "failed")` (`atta/engine.py:2024`, `:2169`). A manifest can therefore carry
+`verify.verdict: "pass"` while `errors` still lists omitted exports — for
+example a STEP part skipped because its B-rep backend was unavailable. Such a
+delivery is **partial**, and the adapter rejects it by default rather than
+silently promoting it to complete evidence. Pass `allow_partial=True` (or
+`--allow-partial`) to accept it deliberately; the returned summary then carries
+`status`, `errors`, `file_count`, `verified_file_count` and
+`failed_file_count` so a caller cannot mistake a partial asset for a whole one.
 
 The summary preserves `model_id`, `spec_hash`, `mesh_hash`, verification verdict,
 file hashes, and an explicit synthetic-ground-truth marker. This adapter does

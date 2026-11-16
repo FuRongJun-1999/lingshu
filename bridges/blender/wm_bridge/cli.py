@@ -67,6 +67,8 @@ def main(argv=None) -> int:
     va.add_argument("scene_dir")
     va.add_argument("--manifest", default=None)
     va.add_argument("--allow-degraded", action="store_true")
+    va.add_argument("--allow-partial", action="store_true",
+                    help="接受 Atta status=partial 的交付（存在导出错误）——默认拒绝")
 
     eo = sub.add_parser("export-obj", help="导出 OBJ+MTL（1 单位=1 m / Z-up 原样 / 不归一化）")
     eo.add_argument("--spec", default=None, help="bpy_dump 抽出的 spec.json")
@@ -132,7 +134,8 @@ def main(argv=None) -> int:
         try:
             report = AR.verify_atta_receipt(
                 args.scene_dir, manifest_path=args.manifest,
-                allow_degraded=args.allow_degraded)
+                allow_degraded=args.allow_degraded,
+                allow_partial=args.allow_partial)
         except (AR.AttaEvidenceError, OSError, ValueError) as exc:
             _emit({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)})
             return 2

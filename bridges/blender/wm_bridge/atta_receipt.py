@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 SCHEMA = "atta.deliver/v3"
 METHOD = "atta.deliver/v3"
@@ -118,12 +117,34 @@ def _hex_sha(value: Any, where: str) -> str:
 
 
 def verify_file_record(root: os.PathLike[str] | str, record: Dict[str, Any], *, where: str = "files[]") -> Dict[str, Any]:
-    """Verify one Atta delivery file record and return a normalized copy."""
+    """Verify one Atta delivery file record and return a normalized copy.
+
+    Atta writes one row per *file*, and a failed export is still a row: it
+    carries ``ok: false`` plus an ``error`` object and (depending on the
+    failure) may omit ``path``, ``bytes`` and ``sha256`` entirely.  Such a row
+    is a declared failure, not a corrupt receipt — it is returned with
+    ``ok: False`` and no hash verification, and the caller decides whether an
+    incomplete delivery is acceptable.  Trying to hash it would report a
+    misleading "file missing"/"bad sha256" for a manifest that is perfectly
+    well formed.
+    """
     if not isinstance(record, dict):
         raise AttaEvidenceError("%s 必须是对象" % where)
     fmt = record.get("format")
     if not isinstance(fmt, str) or not fmt.strip():
         raise AttaEvidenceError("%s.format 必须是非空字符串" % where)
+    fmt = fmt.strip().lower()
+    ok_flag = record.get("ok", True)
+    if not isinstance(ok_flag, bool):
+        raise AttaEvidenceError("%s.ok 必须是布尔值（收到 %r）" % (where, ok_flag))
+    part = record.get("part")
+    if part is not None and not isinstance(part, str):
+        raise AttaEvidenceError("%s.part 必须是字符串（收到 %r）" % (where, part))
+    if not ok_flag:
+        error = record.get("error")
+        return {"format": fmt, "part": part, "ok": False, "error": error,
+                "path": None, "sha256": None, "bytes": None}
+    # ``ok`` is absent on older/simpler receipts; treat that as a success row.
     rel = record.get("path")
     path = resolve_relative(root, rel)
     digest = _hex_sha(record.get("sha256"), where)
@@ -136,7 +157,8 @@ def verify_file_record(root: os.PathLike[str] | str, record: Dict[str, Any], *, 
     actual_hash = sha256_file(path)
     if actual_hash != digest:
         raise AttaEvidenceError("%s.sha256 不符：receipt=%s disk=%s" % (where, digest[:12], actual_hash[:12]))
-    return {"format": fmt.strip().lower(), "path": str(path), "sha256": digest, "bytes": size}
+    return {"format": fmt, "part": part, "ok": True, "error": None,
+            "path": str(path), "sha256": digest, "bytes": size}
 
 
 def _nonempty_text(doc: Dict[str, Any], key: str) -> str:
@@ -147,8 +169,22 @@ def _nonempty_text(doc: Dict[str, Any], key: str) -> str:
 
 
 def validate_manifest(doc: Dict[str, Any], *, allow_degraded: bool = False,
+                      allow_partial: bool = False,
                       require_method: str = METHOD) -> Dict[str, Any]:
-    """Validate receipt structure without touching any referenced files."""
+    """Validate receipt structure without touching any referenced files.
+
+    ``files[]`` is one row per *file*, not per format: an assembly delivery
+    exports each part separately (``<stem>_<part>.obj``), so the same ``format``
+    legitimately repeats.  The uniqueness key is therefore ``(format, part,
+    path)``.  Duplicate ``path`` values are still rejected — one file must not
+    be registered twice.
+
+    ``allow_partial`` exists because Atta's own ``status`` is ``partial``
+    whenever ``errors`` is non-empty (``engine.py``: ``status = "ok" if files
+    and not errors else ("partial" if files else "failed")``).  A partial
+    delivery is not the same evidence as a complete one, so it is rejected by
+    default; callers must opt in explicitly.
+    """
     if not isinstance(doc, dict):
         raise AttaEvidenceError("manifest 顶层必须是对象")
     if doc.get("schema") != SCHEMA:
@@ -175,7 +211,13 @@ def validate_manifest(doc: Dict[str, Any], *, allow_degraded: bool = False,
     files = doc.get("files")
     if not isinstance(files, list) or not files:
         raise AttaEvidenceError("files 必须是非空列表")
-    seen_formats = set()
+    errors = doc.get("errors")
+    if errors is None:
+        errors = []
+    if not isinstance(errors, list):
+        raise AttaEvidenceError("errors 必须是列表")
+    failed_rows = 0
+    seen_keys = set()
     seen_paths = set()
     for i, record in enumerate(files):
         if not isinstance(record, dict):
@@ -184,18 +226,39 @@ def validate_manifest(doc: Dict[str, Any], *, allow_degraded: bool = False,
         if not isinstance(fmt, str) or not fmt.strip():
             raise AttaEvidenceError("files[%d].format 非法" % i)
         fmt = fmt.strip().lower()
-        if fmt in seen_formats:
-            raise AttaEvidenceError("files 重复 format：%s" % fmt)
-        seen_formats.add(fmt)
+        part = record.get("part")
+        if part is not None and not isinstance(part, str):
+            raise AttaEvidenceError("files[%d].part 必须是字符串" % i)
         path = record.get("path")
-        if not isinstance(path, str) or not path.strip():
+        # A failed export row may legitimately omit ``path``; only success rows
+        # are required to name a file.
+        ok_flag = record.get("ok", True)
+        if not isinstance(ok_flag, bool):
+            raise AttaEvidenceError("files[%d].ok 必须是布尔值" % i)
+        if not ok_flag:
+            failed_rows += 1
+        elif not isinstance(path, str) or not path.strip():
             raise AttaEvidenceError("files[%d].path 非法" % i)
-        if path in seen_paths:
-            raise AttaEvidenceError("files 重复 path：%s" % path)
-        seen_paths.add(path)
-    errors = doc.get("errors")
-    if errors not in (None, []) and not isinstance(errors, list):
-        raise AttaEvidenceError("errors 必须是列表")
+        key = (fmt, part)
+        if isinstance(path, str) and path.strip():
+            if path in seen_paths:
+                raise AttaEvidenceError("files 重复 path：%s" % path)
+            seen_paths.add(path)
+        if ok_flag and key in seen_keys:
+            raise AttaEvidenceError(
+                "files 重复 (format, part)：%r——同一格式的多个文件必须带 part 区分"
+                % (key,))
+        seen_keys.add(key)
+    # Atta derives its own status from `errors`; a non-empty list means the
+    # delivery is partial even when verify.verdict says `pass`.
+    status = "ok" if files and not errors else ("partial" if files else "failed")
+    if status != "ok" and not allow_partial:
+        codes = [e.get("format") or e.get("code") or "?" for e in errors
+                 if isinstance(e, dict)]
+        raise AttaEvidenceError(
+            "交付不完整（Atta status=%s，errors=%d 条：%s）——partial 交付不是完整证据，"
+            "确需接受请显式传 allow_partial=True"
+            % (status, len(errors), ", ".join(codes[:6]) or "见 errors"))
     return {
         "schema": SCHEMA,
         "method": method,
@@ -204,16 +267,25 @@ def validate_manifest(doc: Dict[str, Any], *, allow_degraded: bool = False,
         "mesh_hash": mesh_hash,
         "verdict": verdict,
         "units": doc.get("units"),
+        "status": status,
         "file_count": len(files),
+        "verified_file_count": len(files) - failed_rows,
+        "failed_file_count": failed_rows,
+        "errors": errors,
     }
 
 
 def verify_atta_receipt(scene_dir: os.PathLike[str] | str, *, manifest_path: Optional[os.PathLike[str] | str] = None,
-                        allow_degraded: bool = False, require_method: str = METHOD) -> Dict[str, Any]:
+                        allow_degraded: bool = False, allow_partial: bool = False,
+                        require_method: str = METHOD) -> Dict[str, Any]:
     """Validate an Atta delivery manifest and every referenced file.
 
     The returned value is a provenance summary.  No file is copied and no
     world-model state is mutated.  ``scene_dir`` is always the containment root.
+
+    Only rows that Atta marked as successful are hash-verified: a row with
+    ``ok: false`` is a declared failure and carries no ``bytes``/``sha256``.
+    Accepting such a delivery requires ``allow_partial=True``.
     """
     root = Path(scene_dir).expanduser().resolve()
     path = Path(manifest_path).expanduser() if manifest_path is not None else None
@@ -228,7 +300,9 @@ def verify_atta_receipt(scene_dir: os.PathLike[str] | str, *, manifest_path: Opt
     if not _inside(root, path):
         raise AttaEvidenceError("manifest path 越出 scene root：%s" % path)
     doc = load_strict_json(path)
-    summary = validate_manifest(doc, allow_degraded=allow_degraded, require_method=require_method)
+    summary = validate_manifest(doc, allow_degraded=allow_degraded,
+                                allow_partial=allow_partial,
+                                require_method=require_method)
     normalized_files = []
     for i, record in enumerate(doc["files"]):
         normalized_files.append(verify_file_record(root, record, where="files[%d]" % i))

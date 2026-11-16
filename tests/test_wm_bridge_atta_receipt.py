@@ -37,7 +37,14 @@ def _file_record(root, name="model.obj", content=b"mesh"):
     }
 
 
-def _manifest(files, *, verdict="pass", method="atta.deliver/v3"):
+def _manifest(files, *, verdict="pass", method="atta.deliver/v3", errors=None):
+    """Build a receipt shaped like Atta's real output.
+
+    ``verify.verdict`` is the geometry gate and ``errors`` is the *export*
+    outcome (``engine.py`` derives ``status`` from ``errors``).  They are
+    independent: a manifest can have ``verdict=pass`` with export errors, and
+    that combination is exactly what Atta reports as ``status=partial``.
+    """
     return {
         "schema": "atta.deliver/v3",
         "method": method,
@@ -51,7 +58,7 @@ def _manifest(files, *, verdict="pass", method="atta.deliver/v3"):
             "receipt": "verify.json",
         },
         "files": files,
-        "errors": [] if verdict == "pass" else [{"code": "wall_warning"}],
+        "errors": [] if errors is None else errors,
     }
 
 
@@ -105,17 +112,93 @@ def test_wrong_schema_method_and_required_hashes_fail_closed(tmp_path):
             validate_manifest(doc)
 
 
-def test_duplicate_format_and_duplicate_path_are_rejected(tmp_path):
+def test_repeated_format_across_parts_is_accepted(tmp_path):
+    """Atta exports one file per part, so ``format`` legitimately repeats.
+
+    ``atta/assembly.py:1534-1544`` writes ``<stem>_<part>.obj`` for every part,
+    producing many rows with ``format="obj"``.  Rejecting that shape made the
+    adapter unusable on real assembly deliveries.
+    """
+    parts = []
+    for name in ("envelope", "fins", "gondola"):
+        rec = _file_record(tmp_path, "%s.obj" % name, ("mesh-" + name).encode())
+        rec["part"] = name
+        parts.append(rec)
+    doc = _manifest(parts)
+    summary = validate_manifest(doc)
+    assert summary["file_count"] == 3
+    assert summary["status"] == "ok"
+    result = verify_atta_receipt(
+        tmp_path, manifest_path=_write_manifest(tmp_path, doc))
+    assert {row["part"] for row in result["files"]} == {"envelope", "fins", "gondola"}
+
+
+def test_same_format_and_part_twice_is_rejected(tmp_path):
+    """Two rows for the same (format, part) make provenance ambiguous."""
     a = _file_record(tmp_path, "a.obj", b"a")
     b = _file_record(tmp_path, "b.obj", b"b")
-    doc = _manifest([a, b])
-    doc["files"][1]["format"] = "obj"
-    with pytest.raises(AttaEvidenceError, match="format"):
-        validate_manifest(doc)
-    doc = _manifest([a, b])
-    doc["files"][1]["format"] = "stl"
-    doc["files"][1]["path"] = "a.obj"
+    a["part"] = b["part"] = "envelope"
+    with pytest.raises(AttaEvidenceError, match="format, part"):
+        validate_manifest(_manifest([a, b]))
+
+
+def test_duplicate_path_is_rejected(tmp_path):
+    a = _file_record(tmp_path, "a.obj", b"a")
+    b = _file_record(tmp_path, "b.obj", b"b")
+    b["path"] = "a.obj"
     with pytest.raises(AttaEvidenceError, match="path"):
+        validate_manifest(_manifest([a, b]))
+
+
+def test_failed_export_row_is_not_hashed_and_needs_partial_opt_in(tmp_path):
+    """A row with ``ok: false`` is a declared failure, not a corrupt receipt.
+
+    Atta writes such rows without ``path``/``bytes``/``sha256``
+    (``engine.py:2125-2130`` for a failed STEP, and the ``blender_unavailable``
+    shape at ``engine.py:2090-2100`` which has no ``path`` at all).
+    """
+    good = _file_record(tmp_path, "model.glb", b"mesh")
+    failed = {
+        "format": "step",
+        "ok": False,
+        "error": {"code": "brep_unsupported", "message": "no B-rep backend"},
+    }
+    doc = _manifest([good, failed], errors=[failed["error"]])
+    # Rejected by default: a partial delivery is not complete evidence.
+    with pytest.raises(AttaEvidenceError, match="partial|不完整"):
+        verify_atta_receipt(tmp_path, manifest_path=_write_manifest(tmp_path, doc))
+    # ...but the failure is reported as "incomplete", never as "file missing".
+    result = verify_atta_receipt(
+        tmp_path, manifest_path=_write_manifest(tmp_path, doc, "m2_manifest.json"),
+        allow_partial=True)
+    assert result["status"] == "partial"
+    assert result["file_count"] == 2
+    assert result["verified_file_count"] == 1
+    assert result["failed_file_count"] == 1
+    assert [row["ok"] for row in result["files"]] == [True, False]
+    assert result["files"][1]["path"] is None
+
+
+def test_non_empty_errors_without_failed_rows_is_still_partial(tmp_path):
+    """Atta's ``status`` is ``partial`` whenever ``errors`` is non-empty.
+
+    Real case: ``kernel_showcase`` omits two STEP parts and reports
+    ``brep_unsupported`` in ``errors`` while every file row stays ``ok``.
+    """
+    record = _file_record(tmp_path, "model.glb", b"mesh")
+    doc = _manifest([record], errors=[{"code": "brep_unsupported"}])
+    with pytest.raises(AttaEvidenceError, match="partial|不完整"):
+        validate_manifest(doc)
+    summary = validate_manifest(doc, allow_partial=True)
+    assert summary["status"] == "partial"
+    assert summary["errors"] == [{"code": "brep_unsupported"}]
+
+
+def test_errors_must_be_a_list(tmp_path):
+    record = _file_record(tmp_path)
+    doc = _manifest([record])
+    doc["errors"] = "not-a-list"
+    with pytest.raises(AttaEvidenceError, match="errors"):
         validate_manifest(doc)
 
 
@@ -153,6 +236,20 @@ def test_absolute_path_inside_explicit_root_is_allowed_but_outside_is_not(tmp_pa
     record["path"] = str(tmp_path.parent / "outside.obj")
     with pytest.raises(AttaEvidenceError):
         verify_atta_receipt(tmp_path, manifest_path=_write_manifest(tmp_path, _manifest([record]), "bad_manifest.json"))
+
+
+def test_cli_exit_codes_follow_the_gate(tmp_path, capsys):
+    """The CLI must exit 2 unless the delivery is accepted as complete evidence."""
+    from wm_bridge import cli
+
+    good = _file_record(tmp_path, "model.glb", b"mesh")
+    _write_manifest(tmp_path, _manifest([good]))
+    assert cli.main(["validate-atta", str(tmp_path)]) == 0
+
+    partial = _manifest([good], errors=[{"code": "brep_unsupported"}])
+    _write_manifest(tmp_path, partial)
+    assert cli.main(["validate-atta", str(tmp_path)]) == 2
+    assert cli.main(["validate-atta", str(tmp_path), "--allow-partial"]) == 0
 
 
 def test_bad_hash_shape_and_file_record_types_are_rejected(tmp_path):
