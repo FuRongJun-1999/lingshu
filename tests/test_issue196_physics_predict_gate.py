@@ -264,6 +264,8 @@ def _run_probe(py_path: str) -> tuple[int, str]:
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     return proc.returncode, (proc.stdout or proc.stderr).strip()
 
