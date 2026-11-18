@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 
-from ..core.provenance import SOURCES, VERIFY_STATUS
+# 来源与验证状态值域契约（与 lingshu.core.provenance 同口径；待 lingshu-api 落库后下沉共享）。
+# world 层不反向导入 core（issue #434）。
+SOURCES = frozenset({"user", "assistant", "system", "tool", "external", "fixture", "unknown"})
+VERIFY_STATUS = ("unverified", "partial", "verified", "anchored")
 
 MODES = ("roleplay", "world", "story", "history", "causal")
 STATES = frozenset({"ACCEPT", "REJECT", "DEFER", "BLINDSPOT"})
@@ -91,6 +94,18 @@ def _node(node, qualification="BLINDSPOT"):
                 "truncated", "content_lines", "content_bytes", "offset", "next_offset")}}
 
 
+def _enum_value(val):
+    return val.value if hasattr(val, "value") else val
+
+
+def _condition_dict(cs):
+    if isinstance(cs, dict):
+        return dict(cs)
+    if is_dataclass(cs):
+        return asdict(cs)
+    return dict(cs)
+
+
 class ScenarioContext:
     """显式选取/召回的只读快照。每次 view 返回独立 JSON，不形成第二个记忆库。
 
@@ -139,14 +154,14 @@ class ScenarioContext:
                 gaps.append("missing_node:" + nid)
                 continue
             nodes.append(_node({"id": n.id, "content": n.content, "frontmatter": {
-                "tags": n.tags, "layer": n.layer.value,
-                "condition_space": asdict(n.condition_space),
+                "tags": n.tags, "layer": _enum_value(n.layer),
+                "condition_space": _condition_dict(n.condition_space),
                 "spatial": {"coords3d": n.spatial_coordinates},
                 "state_attributes": n.state_attributes}}))
             for e in store.get_outgoing_edges(nid):
                 edges.append({"id": e.id, "source_id": e.source_id,
-                              "target_id": e.target_id, "relation_type": e.relation_type.value,
-                              "conditions": asdict(e.condition_space), "verified": e.verified,
+                              "target_id": e.target_id, "relation_type": _enum_value(e.relation_type),
+                              "conditions": _condition_dict(e.condition_space), "verified": e.verified,
                               "source_evidence": e.source_evidence})
         return cls(nodes, edges, gaps=gaps, origin="selected", **kwargs)
 
