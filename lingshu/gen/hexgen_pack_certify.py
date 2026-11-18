@@ -118,8 +118,8 @@ def _validate_cells(cells):
 
 
 def _validate_zone_calib(zone_calib):
-    """校验方位标定切点（None/空映射回落精确三等分；否则要求有限非 bool 且 0<=c0<=c1<=1）。"""
-    if not zone_calib:
+    """校验方位标定切点（仅 None 或空 Mapping 回落精确三等分；否则要求有限非 bool 且 0<=c0<=c1<=1）。"""
+    if zone_calib is None or (isinstance(zone_calib, Mapping) and not zone_calib):
         return [1 / 3.0, 2 / 3.0], [1 / 3.0, 2 / 3.0]
     if not isinstance(zone_calib, Mapping):
         raise ValueError(f"zone_calib must be a mapping or None, got {type(zone_calib).__name__}")

@@ -101,10 +101,18 @@ def test_g1_legal_mask_and_rank_ok_gates():
         {"row": {"cuts": None}, "col": {"cuts": [0.3, 0.6]}},
         {"row": {"cuts": [0.3, 0.6]}},
         "bad-calib",
+        False,
+        0,
+        "",
+        [],
     )
     for bad_zc in bad_calibs:
         _assert_raises(ValueError, P.legal_mask, ("r4",), "circle", 40, bad_zc)
         _assert_raises(ValueError, P._rank_ok_vec, bad_zc, ("r4",))
+        _assert_raises(ValueError, P.certify_radius, ("r4",), 2, "circle", 40, bad_zc, max_p1=1)
+        _assert_raises(ValueError, P.certify_p1, 250, 250, ("r4",), 2, "circle", 40, bad_zc)
+        _assert_raises(ValueError, P.witness_at, ("r4",), 2, "circle", 40, bad_zc)
+        _assert_raises(ValueError, P.check_witness, [(220, 220), (320, 220)], ("r4",), 2, "circle", 20, bad_zc)
 
     for bad_cells in ((), "r4", ("r9",), ("r-1",), ("x4",), (True,), None):
         _assert_raises(ValueError, P.legal_mask, bad_cells, "circle", 40, None)
@@ -199,6 +207,8 @@ def test_g5_valid_inputs_preserve_exact_semantics():
     """合法输入（含大半径空掩膜 #353、stripe #2131、标定 cuts、check_witness）行为逐位保持。"""
     m4 = P.legal_mask(("r4",), "circle", 40, None, 512)
     assert int(m4.sum()) == 171 * 171
+    m4_empty = P.legal_mask(("r4",), "circle", 40, {}, 512)
+    assert np.array_equal(m4, m4_empty)
 
     zc = {"row": {"cuts": [0.25, 0.75]}, "col": {"cuts": [0.3, 0.7]}}
     m_zc = P.legal_mask(("r4",), "circle", 40, zc, 512)
@@ -277,7 +287,7 @@ def _mut_strip_pos_finite(src: str) -> str:
 
 
 def _mut_strip_zone_calib(src: str) -> str:
-    target = 'def _validate_zone_calib(zone_calib):\n    """校验方位标定切点（None/空映射回落精确三等分；否则要求有限非 bool 且 0<=c0<=c1<=1）。"""\n    if not zone_calib:\n        return [1 / 3.0, 2 / 3.0], [1 / 3.0, 2 / 3.0]'
+    target = 'def _validate_zone_calib(zone_calib):\n    """校验方位标定切点（仅 None 或空 Mapping 回落精确三等分；否则要求有限非 bool 且 0<=c0<=c1<=1）。"""\n    if zone_calib is None or (isinstance(zone_calib, Mapping) and not zone_calib):\n        return [1 / 3.0, 2 / 3.0], [1 / 3.0, 2 / 3.0]'
     rep = 'def _validate_zone_calib(zone_calib):\n    if not zone_calib:\n        return [1 / 3.0, 2 / 3.0], [1 / 3.0, 2 / 3.0]\n    return list(zone_calib["row"]["cuts"]), list(zone_calib["col"]["cuts"])'
     assert target in src
     return src.replace(target, rep, 1)
