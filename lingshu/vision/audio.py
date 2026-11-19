@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-"""标准库 WAV 声学摘要与身体感知接入。
+"""标准库 WAV/可选 FFmpeg 音频声学与事件画像身体感知。
 
-仅读取未压缩 PCM WAV，按有限时长流式计算声学包络、响度与静音区间；不做语音
-识别，不保存或上传原始样本。perceive_wav 可把确定性摘要写入引擎的 audio 模态记忆，
-原文件路径不会写入记忆节点或返回值。
+WAV 以标准库流式读取；压缩格式按需调用可选 FFmpeg，结果仅在内存解码为有界 PCM；
+segment_audio_events 从包络生成粗粒度 activity/silence 片段，明确报告时间分辨率；
+不做语音识别或语义事件分类，不保存或上传原始样本。
 """
 from __future__ import annotations
 
+import io
 import math
 import os
+import shutil
 import struct
+import subprocess
 import wave
 from typing import Any, Dict, Iterator, List, Union
 
-__all__ = ["AudioPerceptionError", "analyze_wav", "format_audio_summary", "perceive_wav"]
+__all__ = ["AudioPerceptionError", "AudioCodecUnavailable", "analyze_wav", "analyze_audio", "decode_compressed_audio", "ffmpeg_available", "segment_audio_events", "format_audio_summary", "perceive_wav", "perceive_audio_file"]
 
 _MAX_DURATION_SECONDS = 3600.0
 _MAX_PCM_BYTES = 64 * 1024 * 1024
@@ -22,7 +25,11 @@ _MAX_SILENCE_INTERVALS = 64
 
 
 class AudioPerceptionError(ValueError):
-    """WAV 内容、格式或资源预算不满足身体感知契约。"""
+    """WAV/音频内容、格式或资源预算不满足身体感知契约。"""
+
+
+class AudioCodecUnavailable(AudioPerceptionError):
+    """可选压缩音频解码器不可用。"""
 
 
 def _finite_number(name: str, value: Any, *, low: float, high: float) -> float:
@@ -62,7 +69,7 @@ def _dbfs(amplitude: float) -> float:
 
 
 def analyze_wav(
-    path: Union[str, os.PathLike],
+    path: Union[str, os.PathLike, bytes, bytearray, memoryview],
     *,
     window_ms: int = 100,
     silence_dbfs: float = -45.0,
@@ -70,14 +77,24 @@ def analyze_wav(
 ) -> Dict[str, Any]:
     """流式分析未压缩 PCM WAV，返回有界、可 JSON 序列化的声学特征。
 
-    支持 8/16/24/32-bit PCM，最多 64 MiB，默认最多分析 5 分钟。静音按每个
-    分析窗的 RMS 与 silence_dbfs 比较。输出不含路径、文件名或原始音频，不做转写。
+    path 支持文件路径或 WAV bytes/bytearray/memoryview（适合内存采集流，无需临时文件）。
+    支持 8/16/24/32-bit PCM，最多 64 MiB，默认最多分析 5 分钟。输出不含原始音频，
+    不做转写。
     """
-    if not isinstance(path, (str, os.PathLike)):
-        raise TypeError("path 必须是 WAV 文件路径，收到 %r" % (path,))
-    path_text = os.fsdecode(os.fspath(path))
-    if not path_text.strip():
-        raise ValueError("path 不能为空")
+    if isinstance(path, (bytes, bytearray, memoryview)):
+        byte_count = path.nbytes if isinstance(path, memoryview) else len(path)
+        if byte_count == 0:
+            raise ValueError("WAV bytes 不能为空")
+        if byte_count > _MAX_PCM_BYTES:
+            raise AudioPerceptionError("WAV bytes 超过 64 MiB 读取上限")
+        wav_source = io.BytesIO(bytes(path))
+    else:
+        if not isinstance(path, (str, os.PathLike)):
+            raise TypeError("path 必须是 WAV 路径或二进制 WAV 数据，收到 %r" % (path,))
+        path_text = os.fsdecode(os.fspath(path))
+        if not path_text.strip():
+            raise ValueError("path 不能为空")
+        wav_source = path_text
     if isinstance(window_ms, bool) or not isinstance(window_ms, int):
         raise TypeError("window_ms 必须是整数，收到 %r" % (window_ms,))
     if not 10 <= window_ms <= 1000:
@@ -87,7 +104,7 @@ def analyze_wav(
                                   high=_MAX_DURATION_SECONDS)
 
     try:
-        with wave.open(path_text, "rb") as reader:
+        with wave.open(wav_source, "rb") as reader:
             channels = reader.getnchannels()
             sample_rate = reader.getframerate()
             width = reader.getsampwidth()
@@ -194,35 +211,320 @@ def analyze_wav(
     }
 
 
+_MAX_COMPRESSED_INPUT_BYTES = 64 * 1024 * 1024
+_MAX_DECODED_PCM_BYTES = 64 * 1024 * 1024
+# Force a known demuxer. Besides producing predictable decoding, this avoids letting
+# arbitrary playlist/container inputs make FFmpeg open secondary local/network resources.
+_COMPRESSED_DEMUXERS = {
+    ".mp3": "mp3", ".m4a": "ipod", ".mp4": "ipod", ".aac": "aac",
+    ".ogg": "ogg", ".opus": "ogg", ".flac": "flac",
+    ".aif": "aiff", ".aiff": "aiff", ".wma": "asf", ".webm": "matroska",
+}
+
+
+def _is_wav_bytes(data: bytes) -> bool:
+    return len(data) >= 12 and data[:4] in (b"RIFF", b"RIFX", b"RF64") and data[8:12] == b"WAVE"
+
+
+def _compressed_demuxer_from_path(path: str) -> str:
+    extension = os.path.splitext(path)[1].lower()
+    demuxer = _COMPRESSED_DEMUXERS.get(extension)
+    if demuxer is None:
+        raise AudioPerceptionError("不支持的压缩音频扩展名：%s" % (extension or "(无扩展名)"))
+    return demuxer
+
+
+def _compressed_demuxer_from_bytes(data: bytes) -> str:
+    if data.startswith(b"ID3") or (len(data) >= 2 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0):
+        return "mp3"
+    if data.startswith(b"fLaC"):
+        return "flac"
+    if data.startswith(b"OggS"):
+        return "ogg"
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        return "ipod"
+    if data.startswith(b"FORM") and data[8:12] in (b"AIFF", b"AIFC"):
+        return "aiff"
+    if data.startswith(b"\x1a\x45\xdf\xa3"):
+        return "matroska"
+    if data.startswith(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11"):
+        return "asf"
+    if data.startswith(b"ADIF") or (len(data) >= 2 and data[0] == 0xFF and data[1] & 0xF6 == 0xF0):
+        return "aac"
+    raise AudioPerceptionError("无法从音频 bytes 识别受支持的压缩格式")
+
+
+def decode_compressed_audio(
+    source: Union[str, os.PathLike, bytes, bytearray, memoryview],
+    *,
+    ffmpeg: str = "ffmpeg",
+    max_duration_s: float = 300.0,
+    timeout_s: float = 90.0,
+) -> bytes:
+    """Decode a local compressed audio file/bytes to bounded mono 8 kHz PCM WAV.
+
+    FFmpeg is an optional executable dependency, never imported by the WAV-only path.
+    No shell is used; network-style path inputs are rejected and ffmpeg protocols are
+    restricted to file/pipe. Decoder stderr is discarded so user paths/metadata are not
+    echoed into logs or raised exceptions. Returned audio is in memory only.
+    """
+    if not isinstance(ffmpeg, str) or not ffmpeg.strip():
+        raise TypeError("ffmpeg 必须是非空可执行文件名或路径")
+    duration_cap = _finite_number("max_duration_s", max_duration_s, low=0.01,
+                                  high=_MAX_DURATION_SECONDS)
+    timeout_value = _finite_number("timeout_s", timeout_s, low=0.1, high=600.0)
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        source_size = source.nbytes if isinstance(source, memoryview) else len(source)
+        if source_size > _MAX_COMPRESSED_INPUT_BYTES:
+            raise AudioPerceptionError("压缩音频输入超过 64 MiB 上限")
+        data = bytes(source)
+        if not data:
+            raise ValueError("压缩音频 bytes 不能为空")
+        if len(data) > _MAX_COMPRESSED_INPUT_BYTES:
+            raise AudioPerceptionError("压缩音频输入超过 64 MiB 上限")
+        demuxer = _compressed_demuxer_from_bytes(data)
+    else:
+        if not isinstance(source, (str, os.PathLike)):
+            raise TypeError("source 必须是本地音频路径或 bytes-like 数据")
+        source_path = os.fsdecode(os.fspath(source))
+        if not source_path.strip():
+            raise ValueError("source 路径不能为空")
+        if "://" in source_path or not os.path.isfile(source_path):
+            raise AudioPerceptionError("压缩音频 source 必须是存在的本地文件")
+        try:
+            with open(source_path, "rb") as fh:
+                data = fh.read(_MAX_COMPRESSED_INPUT_BYTES + 1)
+        except OSError as exc:
+            raise AudioPerceptionError("无法读取压缩音频输入") from exc
+        if len(data) > _MAX_COMPRESSED_INPUT_BYTES:
+            raise AudioPerceptionError("压缩音频输入超过 64 MiB 上限")
+        demuxer = _compressed_demuxer_from_bytes(data)
+    resolved = shutil.which(ffmpeg)
+    if resolved is None:
+        raise AudioCodecUnavailable("压缩音频需可选 FFmpeg 可执行文件；WAV PCM 不需要 FFmpeg")
+    # Read the local file into the already bounded buffer and feed stdin. FFmpeg then
+    # has no file/network protocol available to follow secondary playlist references.
+    command = [resolved, "-nostdin", "-hide_banner", "-loglevel", "error",
+               "-protocol_whitelist", "pipe", "-f", demuxer, "-i", "pipe:0",
+               "-map", "0:a:0", "-vn", "-sn", "-dn", "-t", "%.6f" % duration_cap,
+               "-ac", "1", "-ar", "8000", "-c:a", "pcm_s16le",
+               "-fs", str(_MAX_DECODED_PCM_BYTES - 65536), "-f", "s16le", "pipe:1"]
+    try:
+        completed = subprocess.run(command, input=data, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL, timeout=timeout_value,
+                                   check=False, shell=False)
+    except subprocess.TimeoutExpired as exc:
+        raise AudioPerceptionError("FFmpeg 音频解码超过时间限制") from exc
+    except OSError as exc:
+        raise AudioCodecUnavailable("FFmpeg 可执行文件无法启动") from exc
+    if completed.returncode != 0:
+        raise AudioPerceptionError("FFmpeg 无法解码该压缩音频")
+    pcm = completed.stdout
+    if not pcm or len(pcm) > _MAX_DECODED_PCM_BYTES or len(pcm) % 2:
+        raise AudioPerceptionError("解码后的 PCM 为空、长度无效或超过 64 MiB 上限")
+    # FFmpeg WAV-to-pipe output may carry an unknown-size sentinel header. Wrap the
+    # bounded raw PCM ourselves so the standard-library reader sees an exact frame count.
+    output = io.BytesIO()
+    try:
+        with wave.open(output, "wb") as writer:
+            writer.setnchannels(1)
+            writer.setsampwidth(2)
+            writer.setframerate(8000)
+            writer.writeframes(pcm)
+    except (wave.Error, OSError) as exc:
+        raise AudioPerceptionError("无法构造解码后的 PCM WAV") from exc
+    return output.getvalue()
+
+
+def analyze_audio(
+    source: Union[str, os.PathLike, bytes, bytearray, memoryview],
+    *,
+    ffmpeg: str = "ffmpeg",
+    window_ms: int = 100,
+    silence_dbfs: float = -45.0,
+    max_duration_s: float = 300.0,
+    timeout_s: float = 90.0,
+) -> Dict[str, Any]:
+    """Analyze WAV directly, or optionally decode compressed local audio via FFmpeg.
+
+    WAV paths and RIFF/RIFX/RF64 bytes remain on the standard-library path. Other
+    local audio files/bytes are decoded to mono 8 kHz PCM in memory before analysis.
+    """
+    is_wav = False
+    demuxer = "wav"
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        source_size = source.nbytes if isinstance(source, memoryview) else len(source)
+        if source_size > _MAX_COMPRESSED_INPUT_BYTES:
+            raise AudioPerceptionError("音频输入超过 64 MiB 上限")
+        is_wav = _is_wav_bytes(bytes(source))
+        if not is_wav:
+            demuxer = _compressed_demuxer_from_bytes(bytes(source))
+    elif isinstance(source, (str, os.PathLike)):
+        source_path = os.fsdecode(os.fspath(source))
+        extension = os.path.splitext(source_path)[1].lower()
+        is_wav = extension in (".wav", ".wave")
+        if not is_wav:
+            demuxer = _compressed_demuxer_from_path(source_path)
+    else:
+        raise TypeError("source 必须是本地音频路径或 bytes-like 数据")
+    if is_wav:
+        result = analyze_wav(source, window_ms=window_ms, silence_dbfs=silence_dbfs,
+                              max_duration_s=max_duration_s)
+        result["decoded_from_compressed"] = False
+        result["source_audio_format"] = "wav"
+        return result
+    decoded = decode_compressed_audio(source, ffmpeg=ffmpeg,
+                                      max_duration_s=max_duration_s, timeout_s=timeout_s)
+    result = analyze_wav(decoded, window_ms=window_ms, silence_dbfs=silence_dbfs,
+                         max_duration_s=max_duration_s)
+    result["decoded_from_compressed"] = True
+    result["source_audio_format"] = demuxer
+    result["decode_output_sample_rate_hz"] = 8000
+    result["decode_output_channels"] = 1
+    return result
+
+
+def perceive_audio_file(
+    engine: Any,
+    source: Union[str, os.PathLike, bytes, bytearray, memoryview],
+    *,
+    importance: float = 0.4,
+    ffmpeg: str = "ffmpeg",
+    window_ms: int = 100,
+    silence_dbfs: float = -45.0,
+    max_duration_s: float = 300.0,
+    timeout_s: float = 90.0,
+) -> Dict[str, Any]:
+    """Analyze WAV or optional FFmpeg-supported audio and persist only its summary."""
+    if not callable(getattr(engine, "add_perception", None)):
+        raise TypeError("engine 必须提供 add_perception(content, modality=...) 方法")
+    importance_value = _finite_number("importance", importance, low=0.0, high=1.0)
+    features = analyze_audio(source, ffmpeg=ffmpeg, window_ms=window_ms,
+                             silence_dbfs=silence_dbfs, max_duration_s=max_duration_s,
+                             timeout_s=timeout_s)
+    features["event_profile"] = segment_audio_events(features, silence_dbfs=silence_dbfs)
+    summary = format_audio_summary(features)
+    node = engine.add_perception(summary, modality="audio", importance=importance_value,
+                                  tags=["audio_summary"], source="body:audio-summary")
+    return {"status": "ok", "node_id": getattr(node, "id", None),
+            "summary": summary, "features": features, "raw_audio_stored": False}
+
+
+def ffmpeg_available(ffmpeg: str = "ffmpeg") -> bool:
+    """Whether the optional FFmpeg executable can be resolved on this host."""
+    return isinstance(ffmpeg, str) and bool(ffmpeg.strip()) and shutil.which(ffmpeg) is not None
+
+
+def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.0) -> Dict[str, Any]:
+    """Convert the bounded RMS envelope into ordered acoustic activity segments.
+
+    When analyze_wav has downsampled the envelope, boundaries describe the
+    retained window grid rather than sample-exact transitions. The returned
+    resolution and approximate flag make that limitation explicit. This is
+    an amplitude-profile segmenter, not speech or semantic event recognition.
+    """
+    if not isinstance(features, dict):
+        raise TypeError("features 必须是 analyze_wav 返回的映射")
+    required = ("duration_s", "window_ms", "energy_envelope_stride_windows", "energy_envelope_dbfs")
+    missing = [key for key in required if key not in features]
+    if missing:
+        raise ValueError("features 缺少字段：%s" % ", ".join(missing))
+    duration = _finite_number("features.duration_s", features["duration_s"],
+                              low=0.001, high=_MAX_DURATION_SECONDS)
+    window_ms = features["window_ms"]
+    if isinstance(window_ms, bool) or not isinstance(window_ms, int) or not 10 <= window_ms <= 1000:
+        raise ValueError("features.window_ms 超出有效范围")
+    stride = features["energy_envelope_stride_windows"]
+    if isinstance(stride, bool) or not isinstance(stride, int) or stride < 1:
+        raise ValueError("features.energy_envelope_stride_windows 必须是正整数")
+    threshold_dbfs = _finite_number("silence_dbfs", silence_dbfs, low=-120.0, high=0.0)
+    envelope = features["energy_envelope_dbfs"]
+    if not isinstance(envelope, (list, tuple)) or len(envelope) > _MAX_ENVELOPE_POINTS:
+        raise ValueError("features.energy_envelope_dbfs 必须是有界数值序列")
+    envelope = [_finite_number("energy_envelope_dbfs item", item, low=-120.0, high=0.0)
+                for item in envelope]
+    if not envelope:
+        return {"segments": [], "resolution_s": 0.0, "approximate": False,
+                "segment_count": 0, "segments_truncated": False}
+    window_s = window_ms / 1000.0
+    resolution_s = window_s * stride
+    segments = []
+    start = 0
+    total_segments = 0
+    current_active = envelope[0] > threshold_dbfs
+    for index, level in enumerate(envelope[1:], 1):
+        active = level > threshold_dbfs
+        if active != current_active:
+            total_segments += 1
+            if len(segments) < _MAX_SILENCE_INTERVALS * 2:
+                segments.append({"kind": "activity" if current_active else "silence",
+                                 "start_s": round(start * resolution_s, 4),
+                                 "end_s": round(index * resolution_s, 4),
+                                 "mean_dbfs": round(sum(envelope[start:index]) / (index - start), 2)})
+            start = index
+            current_active = active
+    total_segments += 1
+    if len(segments) < _MAX_SILENCE_INTERVALS * 2:
+        segments.append({"kind": "activity" if current_active else "silence",
+                         "start_s": round(start * resolution_s, 4),
+                         "end_s": round(min(features["duration_s"], len(envelope) * resolution_s), 4),
+                         "mean_dbfs": round(sum(envelope[start:]) / (len(envelope) - start), 2)})
+    return {"segments": segments, "resolution_s": round(resolution_s, 4),
+            "approximate": stride > 1, "segment_count": total_segments,
+            "segments_truncated": total_segments > len(segments)}
+
+
 def format_audio_summary(features: Dict[str, Any]) -> str:
-    """把确定性特征转成短摘要，不含文件名或路径。"""
+    """把确定性特征与粗粒度声学片段转成短摘要，不含文件名或路径。"""
+    segments = features.get("event_profile", {}).get("segments", [])
+    activity_segments = sum(1 for item in segments if item["kind"] == "activity")
+    silence_segments = sum(1 for item in segments if item["kind"] == "silence")
+    profile = features.get("event_profile", {})
+    detail = "活动片段 %d 段、静音片段 %d 段" % (activity_segments, silence_segments)
+    shown = segments[:8]
+    if shown:
+        detail += "；片段序列：" + "；".join(
+            "%s %.2f–%.2f秒（%s dBFS）" %
+            ("活动" if item["kind"] == "activity" else "静音", item["start_s"],
+             item["end_s"], item["mean_dbfs"])
+            for item in shown)
+    omitted = max(0, int(profile.get("segment_count", len(segments))) - len(shown))
+    if omitted:
+        detail += "；其余 %d 段省略" % omitted
+    if profile.get("approximate"):
+        detail += "（分段为降采样包络近似）"
+    source_format = features.get("source_audio_format", "wav")
+    media_label = "WAV" if source_format == "wav" else "压缩音频(%s)" % source_format
     return (
-        "WAV 声学摘要：时长 %.2f 秒，采样率 %d Hz，%d 声道，%d-bit PCM；"
-        "RMS %s dBFS，峰值 %s dBFS，活动比例 %.1f%%，静音区间 %d 段。"
-        % (features["duration_s"], features["sample_rate_hz"], features["channels"],
-           features["sample_width_bits"], features["rms_dbfs"], features["peak_dbfs"],
-           100.0 * features["activity_ratio"], features["silence_interval_count"])
+        "%s 声学摘要：时长 %.2f 秒，采样率 %d Hz，%d 声道，%d-bit PCM；"
+        "RMS %s dBFS，峰值 %s dBFS，活动比例 %.1f%%，静音区间 %d 段；%s。"
+        % (media_label, features["duration_s"], features["sample_rate_hz"],
+           features["channels"], features["sample_width_bits"], features["rms_dbfs"],
+           features["peak_dbfs"], 100.0 * features["activity_ratio"],
+           features["silence_interval_count"], detail)
     )
 
 
 def perceive_wav(
     engine: Any,
-    path: Union[str, os.PathLike],
+    path: Union[str, os.PathLike, bytes, bytearray, memoryview],
     *,
     importance: float = 0.4,
     window_ms: int = 100,
     silence_dbfs: float = -45.0,
     max_duration_s: float = 300.0,
 ) -> Dict[str, Any]:
-    """分析 WAV 并把声学摘要写入引擎的 audio 模态记忆。
+    """分析 WAV 文件路径或内存 bytes-like 数据，并写入 audio 模态摘要。
 
-    只存摘要，不存原文件、文件名或路径。engine 需实现 add_perception 接口。
+    内存数据无需临时文件；只存声学摘要，不存原音频、文件名或路径。
+    engine 需实现 add_perception 接口。
     """
     if not callable(getattr(engine, "add_perception", None)):
         raise TypeError("engine 必须提供 add_perception(content, modality=...) 方法")
     importance_value = _finite_number("importance", importance, low=0.0, high=1.0)
     features = analyze_wav(path, window_ms=window_ms, silence_dbfs=silence_dbfs,
                            max_duration_s=max_duration_s)
+    features["event_profile"] = segment_audio_events(features, silence_dbfs=silence_dbfs)
     summary = format_audio_summary(features)
     node = engine.add_perception(summary, modality="audio", importance=importance_value,
                                   tags=["audio_summary"], source="body:wav-acoustic-summary")
