@@ -9519,6 +9519,20 @@ class SpacetimeMemoryEngine:
             # 视觉实现已迁 AEIS 身体库：缺失按能力不可用降级（契约 status）
             return {"status": "vision_unavailable", "error": str(e)}
 
+    def perceive_audio(self, audio_path, importance: float = 0.4,
+                       window_ms: int = 100, silence_dbfs: float = -45.0,
+                       max_duration_s: float = 300.0) -> dict:
+        """身体音频感知：分析 PCM WAV 的响度/活动包络/静音区间并写入 audio 模态记忆。
+
+        仅支持未压缩 PCM WAV；只保存确定性摘要，不保留路径、原始音频或转写文本。
+        完整函数为标准库实现，导入不加载 numpy/Pillow。文件/参数不合法时抛出
+        明确的 TypeError/ValueError；校验与分析先于记忆写入，失败不产生半截副作用。
+        """
+        from ..vision.audio import perceive_wav
+        return perceive_wav(self, audio_path, importance=importance,
+                            window_ms=window_ms, silence_dbfs=silence_dbfs,
+                            max_duration_s=max_duration_s)
+
     def get_body_capabilities(self) -> dict:
         """v1.13 身体能力声明（第 4 项：工具/模态作为自我的一部分）"""
         # 惰性视觉：未装配时显示 "lazy"（首次调用加载），不阻塞能力查询
@@ -9544,9 +9558,11 @@ class SpacetimeMemoryEngine:
             "modalities": {
                 "text": True,
                 "image": vision_ok,
-                "audio": False,
+                "audio": True,  # 标准库 WAV 声学摘要见 lingshu.vision.audio
                 "video": False,
             },
+            "audio": {"provider": "wav-pcm", "available": True,
+                      "transcription": False, "raw_audio_persisted": False},
             "vision": {"provider": provider_name,
                        "available": vision_ok,
                        "error": vision_note},
@@ -9554,9 +9570,9 @@ class SpacetimeMemoryEngine:
             "devices": devices,           # BODY-REV1：外部设备清单
             "devices_available": devices_available,
             "tools": ["search", "recall", "distill", "calibrate", "cognition",
-                      "lifecycle", "mcp", "device_call", "body_devices"],
-            "note": "身体 = 感知（视觉/文本/屏幕）+ 运动（工具/设备/进程）+ 记忆（灵枢）；"
-                    "设备输出带 provenance 隔离（BODY-REV1）",
+                      "lifecycle", "mcp", "device_call", "body_devices", "perceive_audio"],
+            "note": "身体 = 感知（视觉/WAV音频/文本/屏幕）+ 运动（工具/设备/进程）+ 记忆（灵枢）；"
+                    "WAV 只保存声学摘要，不保存原音频（BODY-AUDIO-REV1）；设备输出带 provenance 隔离（BODY-REV1）",
         }
 
     def body_devices(self) -> dict:

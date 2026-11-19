@@ -89,7 +89,7 @@ _README_RE = {
     "world": r"world 世界模型 (\d+) 件",
     "nn": r"nn 自研神经网络 (\d+) 件",
     "gen": r"gen 图像生成 (\d+) 件",
-    "vision": r"vision 视觉线稿 (\d+) 件",
+    "vision": r"vision 视觉/音频感知 (\d+) 件",
 }
 _ARCH_TOTAL_RE = r"\*\*(\d+)\*\* 个 `\.py`"
 _ARCH_NONINIT_RE = r"\*\*(\d+)\*\* 个非 `__init__` 模块"

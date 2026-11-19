@@ -8,7 +8,7 @@
 `<AEIS>` 是**未定义的占位符**，且该工具**不随本仓导出**，读者在本仓内无法执行。
 这与同文档 §一「结论均以能被独立复跑为准」直接冲突（issue #80 的 #8 条）。
 
-本脚本只做「等价的最小面」：**在本仓内**发现并 import 全部 `lingshu.*` 模块，
+本脚本只做「等价的最小面」：**在本仓内**发现并 import `lingshu` 包根及全部子模块，
 外加一次构造性运行（圆掩膜 → `image_to_grid`），打印 ok/fail 计数。
 它**不**等价于上游 smoke.py 的全部检查（见下方「不做项」），只保证「模块可 import
 + 核心路径可跑通」这两件在本仓内可独立复跑。
@@ -40,9 +40,10 @@ import sys
 
 
 def discover() -> list:
-    """发现本仓 `lingshu` 包下全部模块（不含测试件）。"""
+    """发现包根与全部子模块（不含测试件），使冒烟数与 .py 文件计数同口径。"""
     import lingshu
-    return sorted(m.name for m in pkgutil.walk_packages(lingshu.__path__, prefix="lingshu."))
+    return ["lingshu"] + sorted(
+        m.name for m in pkgutil.walk_packages(lingshu.__path__, prefix="lingshu."))
 
 
 def smoke() -> dict:
