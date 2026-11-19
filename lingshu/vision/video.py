@@ -8,9 +8,14 @@ are never returned or written to disk.
 from __future__ import annotations
 
 import math
+import ntpath
 import os
 import shutil
+import stat
+import struct
 import subprocess
+import threading
+import time
 from typing import Any, Dict, Union
 
 __all__ = ["VideoAnalysisError", "ffmpeg_video_available", "analyze_video_frames"]
@@ -53,6 +58,90 @@ def _demuxer_from_signature(data: bytes) -> str:
     raise VideoAnalysisError("无法识别受支持的本地视频容器")
 
 
+_MAX_MOV_TOP_LEVEL_BOXES = 1_000_000
+
+
+def _require_seekless_mov(data: bytes) -> None:
+    """Require faststart MOV layout using O(1) parser memory and bounded box count."""
+    offset = 0
+    box_count = 0
+    first_moov = None
+    first_mdat = None
+    while offset + 8 <= len(data):
+        box_count += 1
+        if box_count > _MAX_MOV_TOP_LEVEL_BOXES:
+            raise VideoAnalysisError("MP4/MOV contains too many top-level boxes")
+        size = int.from_bytes(data[offset:offset + 4], "big")
+        kind = data[offset + 4:offset + 8]
+        header = 8
+        if size == 1:
+            if offset + 16 > len(data):
+                raise VideoAnalysisError("MP4/MOV box header is truncated")
+            size = int.from_bytes(data[offset + 8:offset + 16], "big")
+            header = 16
+        elif size == 0:
+            size = len(data) - offset
+        if size < header or offset + size > len(data):
+            raise VideoAnalysisError("MP4/MOV box size is invalid or truncated")
+        if kind == b"moov" and first_moov is None:
+            first_moov = offset
+        elif kind == b"mdat" and first_mdat is None:
+            first_mdat = offset
+        offset += size
+    if offset != len(data):
+        raise VideoAnalysisError("MP4/MOV top-level box tail is truncated")
+    if first_moov is None or first_mdat is None:
+        raise VideoAnalysisError("MP4/MOV requires both moov and mdat boxes")
+    if first_moov > first_mdat:
+        raise VideoAnalysisError("MP4/MOV with trailing moov is unsupported on pipe input; remux with faststart")
+
+
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _windows_drive_type(drive: str) -> int:
+    import ctypes
+    return int(ctypes.windll.kernel32.GetDriveTypeW(drive + "\\"))
+
+
+def _is_network_path(path: str) -> bool:
+    normalized = path.replace("/", "\\")
+    if normalized.startswith("\\\\"):
+        return True
+    if _is_windows():
+        drive, _ = ntpath.splitdrive(normalized)
+        if drive:
+            try:
+                # Only local fixed/removable drives are allowed. DRIVE_REMOTE, unknown,
+                # and unrecognized types fail closed before any file stat/open call.
+                return _windows_drive_type(drive) not in (2, 3)
+            except Exception:
+                return True
+    return False
+
+
+def _has_reparse_component(path: str) -> bool:
+    """Reject symlink/reparse components before open to prevent remote redirection."""
+    path_module = ntpath if _is_windows() else os.path
+    absolute = path_module.abspath(path)
+    drive, tail = path_module.splitdrive(absolute)
+    current = drive + path_module.sep if drive else path_module.sep
+    for component in (part for part in tail.split(path_module.sep) if part):
+        current = path_module.join(current, component)
+        try:
+            info = os.lstat(current)
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            raise VideoAnalysisError("无法验证本地视频路径组件") from exc
+        if stat.S_ISLNK(info.st_mode) or (getattr(info, "st_file_attributes", 0) & 0x400):
+            return True
+    return False
+
+
 def _read_bounded_source(source: Union[str, os.PathLike, bytes, bytearray, memoryview]) -> tuple[bytes, str]:
     if isinstance(source, (bytes, bytearray, memoryview)):
         size = source.nbytes if isinstance(source, memoryview) else len(source)
@@ -61,13 +150,24 @@ def _read_bounded_source(source: Union[str, os.PathLike, bytes, bytearray, memor
         if size > _MAX_INPUT_BYTES:
             raise VideoAnalysisError("视频输入超过 64 MiB 上限")
         data = bytes(source)
-        return data, _demuxer_from_signature(data)
+        demuxer = _demuxer_from_signature(data)
+        if demuxer == "mov":
+            _require_seekless_mov(data)
+        return data, demuxer
     if not isinstance(source, (str, os.PathLike)):
         raise TypeError("source 必须是本地视频路径或 bytes-like 数据")
     path = os.fsdecode(os.fspath(source))
     if not path.strip():
         raise VideoAnalysisError("视频路径不能为空")
-    if "://" in path or not os.path.isfile(path):
+    if "://" in path:
+        raise VideoAnalysisError("视频 source 必须是存在的本地文件")
+    if _is_windows():
+        path = os.path.abspath(path)
+    if _is_network_path(path):
+        raise VideoAnalysisError("不允许访问 UNC 或映射网络视频路径")
+    if _has_reparse_component(path):
+        raise VideoAnalysisError("不允许通过符号链接或重解析点读取视频")
+    if not os.path.isfile(path):
         raise VideoAnalysisError("视频 source 必须是存在的本地文件")
     extension = os.path.splitext(path)[1].lower()
     demuxer = _VIDEO_DEMUXERS.get(extension)
@@ -81,9 +181,120 @@ def _read_bounded_source(source: Union[str, os.PathLike, bytes, bytearray, memor
     if len(data) > _MAX_INPUT_BYTES:
         raise VideoAnalysisError("视频输入超过 64 MiB 上限")
     signature_demuxer = _demuxer_from_signature(data)
-    if signature_demuxer != demuxer and not (demuxer == "mov" and signature_demuxer == "mov"):
+    if signature_demuxer != demuxer:
         raise VideoAnalysisError("视频容器签名与文件扩展名不匹配")
+    if demuxer == "mov":
+        _require_seekless_mov(data)
     return data, demuxer
+
+
+
+
+
+
+def _run_ffmpeg_bounded(command, input_data: bytes, timeout: float, output_limit: int):
+    """Run FFmpeg with a single wall-clock deadline covering stdin, stdout and process wait.
+
+    Dedicated pipe threads are required on Windows: subprocess.run(input=..., timeout=...)
+    may block while writing stdin before its timeout wait begins. Both output collection and
+    the input payload are bounded; process termination also unblocks a stalled writer.
+    """
+    deadline = time.monotonic() + timeout
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, shell=False, bufsize=0)
+    output = bytearray()
+    output_too_large = threading.Event()
+    reader_errors = []
+
+    def write_input():
+        view = memoryview(input_data)
+        try:
+            while view:
+                written = process.stdin.write(view[:65536])
+                if not written:
+                    break
+                view = view[written:]
+        except (OSError, ValueError):
+            # A decoder may reject its header before consuming stdin; the process status
+            # below remains the authoritative error and must not expose the source data.
+            pass
+        finally:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+
+    def read_output():
+        try:
+            while True:
+                remaining = output_limit + 1 - len(output)
+                if remaining <= 0:
+                    output_too_large.set()
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                    return
+                chunk = process.stdout.read(min(65536, remaining))
+                if not chunk:
+                    return
+                output.extend(chunk)
+                if len(output) > output_limit:
+                    output_too_large.set()
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                    return
+        except (OSError, ValueError) as exc:
+            reader_errors.append(exc)
+
+    writer = threading.Thread(target=write_input, name="video-ffmpeg-stdin", daemon=True)
+    reader = threading.Thread(target=read_output, name="video-ffmpeg-stdout", daemon=True)
+    writer.start()
+    reader.start()
+    timed_out = False
+    while process.poll() is None:
+        if output_too_large.is_set():
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            try:
+                process.kill()
+            except OSError:
+                pass
+            break
+        try:
+            process.wait(timeout=min(0.01, remaining))
+        except subprocess.TimeoutExpired:
+            pass
+    try:
+        process.wait(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.wait()
+    writer.join(timeout=0.1)
+    reader.join(timeout=0.1)
+    try:
+        process.stdin.close()
+    except OSError:
+        pass
+    try:
+        process.stdout.close()
+    except OSError:
+        pass
+    if output_too_large.is_set():
+        raise VideoAnalysisError("抽取帧字节超过预算")
+    if timed_out:
+        # Worker result exposes no partial bytes; translate to a path/pixel-free public error.
+        raise subprocess.TimeoutExpired(command, timeout)
+    if reader_errors:
+        raise VideoAnalysisError("无法读取 FFmpeg 帧输出") from reader_errors[0]
+    return subprocess.CompletedProcess(command, process.returncode, bytes(output), None)
 
 
 def analyze_video_frames(
@@ -121,8 +332,9 @@ def analyze_video_frames(
     executable = shutil.which(ffmpeg)
     if executable is None:
         raise VideoAnalysisError("视频帧分析需要可选 FFmpeg 可执行文件")
+    # round=up/eof_action=pass keeps the t=0 sample for legal sub-second clips.
     filter_chain = (
-        "fps=fps=%.6f:start_time=0,"
+        "fps=fps=%.6f:start_time=0:round=up:eof_action=pass,"
         "scale=%d:%d:force_original_aspect_ratio=decrease,"
         "pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=gray"
     ) % (fps, _FRAME_WIDTH, _FRAME_HEIGHT, _FRAME_WIDTH, _FRAME_HEIGHT)
@@ -136,14 +348,23 @@ def analyze_video_frames(
         "-fps_mode", "passthrough", "-pix_fmt", "gray", "-f", "rawvideo",
         "-fs", str(output_limit), "pipe:1",
     ]
+    safe_timeout = None
     try:
-        completed = subprocess.run(command, input=data, stdout=subprocess.PIPE,
-                                   stderr=subprocess.DEVNULL, timeout=timeout,
-                                   check=False, shell=False)
-    except subprocess.TimeoutExpired as exc:
-        raise VideoAnalysisError("视频帧采样超过时间限制") from exc
+        completed = _run_ffmpeg_bounded(command, data, timeout, output_limit)
+    except subprocess.TimeoutExpired:
+        # Never retain the backend exception: its output/stderr may contain gray frames.
+        safe_timeout = subprocess.TimeoutExpired(command, timeout)
+        safe_timeout.output = None
+        safe_timeout.stderr = None
+    except TimeoutError:
+        safe_timeout = subprocess.TimeoutExpired(command, timeout)
+        safe_timeout.output = None
+        safe_timeout.stderr = None
     except OSError as exc:
         raise VideoAnalysisError("FFmpeg 可执行文件无法启动") from exc
+    if safe_timeout is not None:
+        # Raise outside the handler so neither cause nor implicit context retains source bytes.
+        raise VideoAnalysisError("视频帧采样超过时间限制") from safe_timeout
     if completed.returncode != 0:
         raise VideoAnalysisError("FFmpeg 无法从该视频提取帧")
     raw = completed.stdout
