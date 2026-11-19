@@ -84,10 +84,29 @@ class WorldModel:
     def __init__(self):
         self.entities: Dict[str, SceneEntity] = {}
         self.scene = World3D()
+        self.reconstruction = None  # 静态实测几何；不混入类别先验实体或时序观测。
         self._silhouettes: Dict[str, Silhouette3D] = {}
         # 骨架呈现的实体（present=skeleton）：摆好姿态的 Skeleton3D 本体
         # （#308——旧码只把占位盒塞进 World3D，骨架被丢弃、姿态成死代码）
         self._skeletons: Dict[str, Skeleton3D] = {}
+
+    def load_reconstruction(self, run_directory) -> "WorldModel":
+        """Attach validated static geometry without changing entities or time.
+
+        The complete metadata/source check runs before publishing the attachment,
+        so an invalid bundle leaves any previous reconstruction and scene intact.
+        """
+        from .reconstruction import Reconstruction
+
+        reconstruction = Reconstruction.load(run_directory)
+        self.reconstruction = reconstruction
+        return self
+
+    def render_reconstruction(self, view_id, **options):
+        """Render the attached measured mesh without semantic/timeline effects."""
+        if self.reconstruction is None:
+            raise ValueError("no reconstruction is attached")
+        return self.reconstruction.render(view_id, **options)
 
     # ---- 语义层操作 ----
 

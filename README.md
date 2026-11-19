@@ -47,7 +47,7 @@
 ## 代码主体
 
 身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 15 件 ·
-world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿 1 件）：
+world 世界模型 60 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿 1 件）：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
@@ -69,6 +69,14 @@ Pillow 12.3.0——`pyproject.toml` 中 extras 的版本区间由此收敛，**�
 
 依赖分层、环境自适应降级点与精修记录见
 [docs/intake/body-export-v0.1/](docs/intake/body-export-v0.1/)（导出说明 / 双清单审计 / 逐文件指纹清单）。
+
+### 可选 CPU 多视角重建
+
+`lingshu.world.reconstruct` 提供 GLOMAP + DA3 GGUF + CPU TSDF 的照片到几何管线，
+用 `.[world-reconstruct]` 单独安装 Python 重依赖，并显式提供原生工具与模型。
+`WorldModel.load_reconstruction()` 把相机、稀疏轨迹、网格引用和来源记录读为静态几何附件。
+默认保留相对尺度，不自动生成语义实体或时间观测。
+架构、运行约定、原生构建和验收边界见 [CPU 重建接入](docs/cpu_reconstruction.md)。
 
 ### 桥接（进程外适配器 · 不进 wheel）
 

@@ -62,11 +62,16 @@ LAYERS = ("core", "nn", "gen", "world", "vision")
 
 def _actual_counts():
     """本仓实读：{层: 非 __init__ 的 .py 数} + 包根 + 总 .py + 非 __init__ 总数。"""
-    def noninit(path):
+    def noninit(path, recursive=False):
         if not os.path.isdir(path):
             return 0
-        return sum(1 for f in os.listdir(path)
-                   if f.endswith(".py") and f != "__init__.py")
+        count = 0
+        for _, dirs, files in os.walk(path):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            count += sum(f.endswith(".py") and f != "__init__.py" for f in files)
+            if not recursive:
+                break
+        return count
 
     def total_py(path):
         n = 0
@@ -75,7 +80,7 @@ def _actual_counts():
             n += sum(1 for f in fn if f.endswith(".py"))
         return n
 
-    per = {layer: noninit(os.path.join(PKG, layer)) for layer in LAYERS}
+    per = {layer: noninit(os.path.join(PKG, layer), recursive=True) for layer in LAYERS}
     root = noninit(PKG)
     all_py = total_py(PKG)
     return {"per": per, "root": root, "all_py": all_py,
@@ -185,6 +190,23 @@ def test_docs_module_counts_match_reality():
         + "\n".join("  · " + b for b in bad)
         + "\n\n实读 = %r" % actual
         + "\n修法：同步 README「代码主体」节与 docs/architecture.md 的「当前计数」行。")
+
+
+def test_layer_counts_include_nested_packages(tmp_path, monkeypatch):
+    """A layer's optional subpackage counts once; package-root stays root-only."""
+    package = tmp_path / "lingshu"
+    nested = package / "world" / "reconstruct"
+    nested.mkdir(parents=True)
+    for path in (package / "__init__.py", package / "cli.py",
+                 nested.parent / "__init__.py", nested.parent / "camera.py",
+                 nested / "__init__.py", nested / "pipeline.py"):
+        path.write_text("", encoding="utf-8")
+    monkeypatch.setitem(globals(), "PKG", str(package))
+    actual = _actual_counts()
+    assert actual["per"]["world"] == 2
+    assert actual["root"] == 1
+    assert actual["noninit_total"] == 3
+    assert actual["all_py"] == 6
 
 
 # ---------------------------------------------------------------- C 定点夹具

@@ -40,6 +40,7 @@ r"""#608 import_direction_lint 四形态守卫：core→world 闸不再被「改
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -50,10 +51,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL = REPO_ROOT / "tools" / "import_direction_lint.py"
 BASELINE = REPO_ROOT / "tools" / "import_direction_lint_baseline.txt"
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from tools import import_direction_lint as I  # noqa: E402
+# 按已知仓内文件加载，不依赖 CWD 裸包解析或测试收集顺序。
+_spec = importlib.util.spec_from_file_location("import_direction_lint_abs_under_test", TOOL)
+I = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(I)
 
 
 def run_lint(*args, cwd=None, timeout=300):

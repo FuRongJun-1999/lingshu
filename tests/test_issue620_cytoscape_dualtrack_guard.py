@@ -27,6 +27,7 @@ pytest 式（含 test_*），由 pytest tests/ 自动收集；无需登记 gate.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -40,8 +41,10 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COG = os.path.join(HERE, "tools", "coggraph")
 BUILD_VIEWER = os.path.join(COG, "build_viewer.py")
 
-# 与仓内既有守卫同式：经包路径导入（tools 在 gate 依赖闭包守卫白名单内）
-from tools.coggraph import build_viewer as V  # noqa: E402
+# 按已知仓内文件加载，不依赖 CWD 裸包解析或测试收集顺序。
+_spec = importlib.util.spec_from_file_location("build_viewer_dualtrack_under_test", BUILD_VIEWER)
+V = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(V)
 
 CYTO_SHA256 = "83e8c54a6bec655bfd81df07df605649c268af69aeca67a5ea2da54ea42dac81"
 # 篡改件（报告同款构造）：>100000 字节、非官方内容

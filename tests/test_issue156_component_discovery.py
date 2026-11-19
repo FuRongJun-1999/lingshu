@@ -123,7 +123,7 @@ STDLIB_ALLOWED = frozenset({
     #   此处**补分类而非放宽判据**。
     "tempfile", "array", "xml",
     # 命令行 / 子进程
-    "argparse", "subprocess",
+    "argparse", "subprocess", "shutil",  # reconstruction image staging (stdlib)
 })
 # (b) 已知第三方依赖（pyproject extras 声明；显式列出 + 理由）
 THIRD_PARTY_ALLOWED = frozenset({
@@ -133,6 +133,7 @@ THIRD_PARTY_ALLOWED = frozenset({
     "torch",    # gen 可选
     "diffusers",  # gen 可选
     "pyarrow",  # nn/hex_train 可选
+    "cv2", "open3d", "pycolmap", "psutil",  # world-reconstruct extra
 })
 # (c) 本包自名（绝对自导入）
 SELF_ALLOWED = frozenset({"lingshu"})

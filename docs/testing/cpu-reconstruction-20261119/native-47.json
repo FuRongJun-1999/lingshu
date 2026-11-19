@@ -1,0 +1,834 @@
+{
+  "schema_version": 1,
+  "pipeline": "GLOMAP CPU SfM + Depth Anything 3 Base relative depth + global affine alignment + Open3D CPU TSDF",
+  "input": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\mview\\templeRing",
+  "output": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full",
+  "units": "COLMAP relative units",
+  "absolute_metric_scale": false,
+  "timings_seconds": {
+    "normalize": 0.708,
+    "sfm": 81.512,
+    "sparse_parse": 1.875,
+    "depth": 177.134,
+    "alignment": 0.989,
+    "fusion": 4.924,
+    "verification": 0.327,
+    "total": 267.476
+  },
+  "stages": {
+    "input": {
+      "images": 47,
+      "manifest": "00_input/input_manifest.json",
+      "input_domain_masked_images": 0,
+      "input_domain_semantics": "optional input alpha>0; RGB/JPEG pixels are never classified by color"
+    },
+    "sfm": {
+      "model": "01_sfm\\sparse\\0",
+      "log_dir": "logs",
+      "components_manifest": "01_sfm/sparse/components.json",
+      "component_count": 1,
+      "all_component_registered_images": 47,
+      "coordinate_relationship": "independent_per_component",
+      "mapper": "global",
+      "mapper_threads": 2,
+      "feature_profile": "full",
+      "matching_mode": "exhaustive",
+      "feature_seconds": 10.551,
+      "matching_seconds": 51.263,
+      "mapping_seconds": 19.698
+    },
+    "sparse": {
+      "model_path": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\02_undistorted\\sparse",
+      "registered_images": 47,
+      "sparse_points": 7422,
+      "observations": 46416,
+      "unregistered_images": []
+    },
+    "depth": {
+      "checkpoint": "D:\\AsiaInfo\\workspace\\lingshu\\models\\depth-anything-base-q8_0.gguf",
+      "engine": "depth-anything.cpp C API / ggml CPU",
+      "quantization": "q8_0",
+      "registered_views": 47,
+      "inferred_views": 47,
+      "inferred_images": [
+        "000000.jpg",
+        "000001.jpg",
+        "000002.jpg",
+        "000003.jpg",
+        "000004.jpg",
+        "000005.jpg",
+        "000006.jpg",
+        "000007.jpg",
+        "000008.jpg",
+        "000009.jpg",
+        "000010.jpg",
+        "000011.jpg",
+        "000012.jpg",
+        "000013.jpg",
+        "000014.jpg",
+        "000015.jpg",
+        "000016.jpg",
+        "000017.jpg",
+        "000018.jpg",
+        "000019.jpg",
+        "000020.jpg",
+        "000021.jpg",
+        "000022.jpg",
+        "000023.jpg",
+        "000024.jpg",
+        "000025.jpg",
+        "000026.jpg",
+        "000027.jpg",
+        "000028.jpg",
+        "000029.jpg",
+        "000030.jpg",
+        "000031.jpg",
+        "000032.jpg",
+        "000033.jpg",
+        "000034.jpg",
+        "000035.jpg",
+        "000036.jpg",
+        "000037.jpg",
+        "000038.jpg",
+        "000039.jpg",
+        "000040.jpg",
+        "000041.jpg",
+        "000042.jpg",
+        "000043.jpg",
+        "000044.jpg",
+        "000045.jpg",
+        "000046.jpg"
+      ],
+      "skipped_images": [],
+      "selection": {
+        "mode": "all",
+        "thresholds": {
+          "min_views": 4,
+          "min_unique_track_ratio": 0.98,
+          "min_repeated_track_ratio": 0.85,
+          "min_local_track_ratio": 0.85,
+          "min_local_tile_ratio": 0.75,
+          "max_baseline_to_depth": 0.25,
+          "max_view_angle_deg": 20.0
+        },
+        "planned_views": [
+          "000000.jpg",
+          "000001.jpg",
+          "000002.jpg",
+          "000003.jpg",
+          "000004.jpg",
+          "000005.jpg",
+          "000006.jpg",
+          "000007.jpg",
+          "000008.jpg",
+          "000009.jpg",
+          "000010.jpg",
+          "000011.jpg",
+          "000012.jpg",
+          "000013.jpg",
+          "000014.jpg",
+          "000015.jpg",
+          "000016.jpg",
+          "000017.jpg",
+          "000018.jpg",
+          "000019.jpg",
+          "000020.jpg",
+          "000021.jpg",
+          "000022.jpg",
+          "000023.jpg",
+          "000024.jpg",
+          "000025.jpg",
+          "000026.jpg",
+          "000027.jpg",
+          "000028.jpg",
+          "000029.jpg",
+          "000030.jpg",
+          "000031.jpg",
+          "000032.jpg",
+          "000033.jpg",
+          "000034.jpg",
+          "000035.jpg",
+          "000036.jpg",
+          "000037.jpg",
+          "000038.jpg",
+          "000039.jpg",
+          "000040.jpg",
+          "000041.jpg",
+          "000042.jpg",
+          "000043.jpg",
+          "000044.jpg",
+          "000045.jpg",
+          "000046.jpg"
+        ]
+      },
+      "metric": false,
+      "model_pose_exported": false,
+      "threads": 4,
+      "convolution_mode": "direct",
+      "input_domain_masked_images": [],
+      "depth_semantics": "relative; calibrated to COLMAP coordinates below"
+    },
+    "alignment": {
+      "method": "global RANSAC affine fit: COLMAP camera Z = scale * DA3 depth + shift",
+      "da3_depth_units": "relative",
+      "aligned_units": "COLMAP relative units",
+      "scale_sfm_units_per_da3_unit": 0.5250240572421881,
+      "shift_sfm_units": 3.178184356223039,
+      "input_observations": 46416,
+      "da3_depth_p10_p90_spread": 0.17290067672729492,
+      "colmap_camera_z_p10_p90_spread": 0.3055009661430268,
+      "raw_anchor_pearson_correlation": 0.34063869607610847,
+      "inlier_observations": 46310,
+      "inlier_ratio": 0.9977163047225095,
+      "median_abs_residual_sfm_units": 0.07681809030715092,
+      "p95_abs_residual_sfm_units": 0.20974839278986396,
+      "median_relative_anchor_error": 0.02096364911645458,
+      "p95_relative_anchor_error": 0.05724031529039038,
+      "confidence_percentile_cutoff": 0.0,
+      "frames": {
+        "000000.jpg": {
+          "inlier_observations": 1221,
+          "median_abs_residual_sfm_units": 0.10713926763795589,
+          "confidence_median": 1.623490810394287
+        },
+        "000001.jpg": {
+          "inlier_observations": 1208,
+          "median_abs_residual_sfm_units": 0.10027111441934822,
+          "confidence_median": 2.0381789207458496
+        },
+        "000002.jpg": {
+          "inlier_observations": 1195,
+          "median_abs_residual_sfm_units": 0.08820451783806149,
+          "confidence_median": 1.7933539152145386
+        },
+        "000003.jpg": {
+          "inlier_observations": 993,
+          "median_abs_residual_sfm_units": 0.061245679688841204,
+          "confidence_median": 1.8797588348388672
+        },
+        "000005.jpg": {
+          "inlier_observations": 961,
+          "median_abs_residual_sfm_units": 0.10309904847025253,
+          "confidence_median": 2.3149232864379883
+        },
+        "000004.jpg": {
+          "inlier_observations": 837,
+          "median_abs_residual_sfm_units": 0.05188548122500025,
+          "confidence_median": 1.924037218093872
+        },
+        "000006.jpg": {
+          "inlier_observations": 776,
+          "median_abs_residual_sfm_units": 0.10659354637169272,
+          "confidence_median": 2.3780677318573
+        },
+        "000007.jpg": {
+          "inlier_observations": 638,
+          "median_abs_residual_sfm_units": 0.15652961929544018,
+          "confidence_median": 1.6214752197265625
+        },
+        "000008.jpg": {
+          "inlier_observations": 536,
+          "median_abs_residual_sfm_units": 0.11467753040235573,
+          "confidence_median": 1.4510375261306763
+        },
+        "000009.jpg": {
+          "inlier_observations": 584,
+          "median_abs_residual_sfm_units": 0.17016729221152183,
+          "confidence_median": 1.3851393461227417
+        },
+        "000010.jpg": {
+          "inlier_observations": 593,
+          "median_abs_residual_sfm_units": 0.16464418269139403,
+          "confidence_median": 1.414215087890625
+        },
+        "000011.jpg": {
+          "inlier_observations": 641,
+          "median_abs_residual_sfm_units": 0.12492223720893803,
+          "confidence_median": 1.5780909061431885
+        },
+        "000012.jpg": {
+          "inlier_observations": 1132,
+          "median_abs_residual_sfm_units": 0.06931416224519826,
+          "confidence_median": 1.7624975442886353
+        },
+        "000013.jpg": {
+          "inlier_observations": 1056,
+          "median_abs_residual_sfm_units": 0.06731143960131702,
+          "confidence_median": 2.28434157371521
+        },
+        "000014.jpg": {
+          "inlier_observations": 969,
+          "median_abs_residual_sfm_units": 0.05757445667938921,
+          "confidence_median": 2.2913360595703125
+        },
+        "000015.jpg": {
+          "inlier_observations": 910,
+          "median_abs_residual_sfm_units": 0.072391794363174,
+          "confidence_median": 2.6597111225128174
+        },
+        "000016.jpg": {
+          "inlier_observations": 812,
+          "median_abs_residual_sfm_units": 0.07624773791866524,
+          "confidence_median": 2.8975636959075928
+        },
+        "000017.jpg": {
+          "inlier_observations": 783,
+          "median_abs_residual_sfm_units": 0.08647452478419204,
+          "confidence_median": 1.8686470985412598
+        },
+        "000018.jpg": {
+          "inlier_observations": 800,
+          "median_abs_residual_sfm_units": 0.15873714929436367,
+          "confidence_median": 1.0337077379226685
+        },
+        "000019.jpg": {
+          "inlier_observations": 829,
+          "median_abs_residual_sfm_units": 0.13596883864320564,
+          "confidence_median": 1.4002318382263184
+        },
+        "000020.jpg": {
+          "inlier_observations": 840,
+          "median_abs_residual_sfm_units": 0.10377723236191749,
+          "confidence_median": 2.1046035289764404
+        },
+        "000021.jpg": {
+          "inlier_observations": 806,
+          "median_abs_residual_sfm_units": 0.08048539853919179,
+          "confidence_median": 1.7870655059814453
+        },
+        "000022.jpg": {
+          "inlier_observations": 835,
+          "median_abs_residual_sfm_units": 0.10523957955021901,
+          "confidence_median": 2.4061825275421143
+        },
+        "000023.jpg": {
+          "inlier_observations": 913,
+          "median_abs_residual_sfm_units": 0.07352590963306938,
+          "confidence_median": 1.503308892250061
+        },
+        "000024.jpg": {
+          "inlier_observations": 935,
+          "median_abs_residual_sfm_units": 0.12474235500053643,
+          "confidence_median": 1.3822453022003174
+        },
+        "000025.jpg": {
+          "inlier_observations": 1038,
+          "median_abs_residual_sfm_units": 0.12038369460103526,
+          "confidence_median": 1.473088264465332
+        },
+        "000026.jpg": {
+          "inlier_observations": 1041,
+          "median_abs_residual_sfm_units": 0.12541676906350485,
+          "confidence_median": 1.9754220247268677
+        },
+        "000027.jpg": {
+          "inlier_observations": 1081,
+          "median_abs_residual_sfm_units": 0.11108854583327332,
+          "confidence_median": 1.6775450706481934
+        },
+        "000028.jpg": {
+          "inlier_observations": 1069,
+          "median_abs_residual_sfm_units": 0.10986360270613238,
+          "confidence_median": 1.7878499031066895
+        },
+        "000029.jpg": {
+          "inlier_observations": 1210,
+          "median_abs_residual_sfm_units": 0.1176980070504745,
+          "confidence_median": 1.5781755447387695
+        },
+        "000030.jpg": {
+          "inlier_observations": 1257,
+          "median_abs_residual_sfm_units": 0.10407098575065543,
+          "confidence_median": 2.196298837661743
+        },
+        "000031.jpg": {
+          "inlier_observations": 1259,
+          "median_abs_residual_sfm_units": 0.03082371234900272,
+          "confidence_median": 1.9013221263885498
+        },
+        "000032.jpg": {
+          "inlier_observations": 1241,
+          "median_abs_residual_sfm_units": 0.03264137584189841,
+          "confidence_median": 2.0477447509765625
+        },
+        "000033.jpg": {
+          "inlier_observations": 1193,
+          "median_abs_residual_sfm_units": 0.05176207374073627,
+          "confidence_median": 2.1152780055999756
+        },
+        "000034.jpg": {
+          "inlier_observations": 1141,
+          "median_abs_residual_sfm_units": 0.02824396860422418,
+          "confidence_median": 1.7872886657714844
+        },
+        "000035.jpg": {
+          "inlier_observations": 1127,
+          "median_abs_residual_sfm_units": 0.038202428569150904,
+          "confidence_median": 1.7764321565628052
+        },
+        "000036.jpg": {
+          "inlier_observations": 1103,
+          "median_abs_residual_sfm_units": 0.058625738414832984,
+          "confidence_median": 1.9329109191894531
+        },
+        "000037.jpg": {
+          "inlier_observations": 1032,
+          "median_abs_residual_sfm_units": 0.07534349352664083,
+          "confidence_median": 1.7713558673858643
+        },
+        "000038.jpg": {
+          "inlier_observations": 893,
+          "median_abs_residual_sfm_units": 0.09931632674393498,
+          "confidence_median": 1.6578490734100342
+        },
+        "000039.jpg": {
+          "inlier_observations": 921,
+          "median_abs_residual_sfm_units": 0.15575492386402878,
+          "confidence_median": 1.7733314037322998
+        },
+        "000040.jpg": {
+          "inlier_observations": 826,
+          "median_abs_residual_sfm_units": 0.13778635351494684,
+          "confidence_median": 1.992774248123169
+        },
+        "000041.jpg": {
+          "inlier_observations": 1189,
+          "median_abs_residual_sfm_units": 0.08271110859087072,
+          "confidence_median": 1.6532676219940186
+        },
+        "000042.jpg": {
+          "inlier_observations": 1151,
+          "median_abs_residual_sfm_units": 0.0785049413713752,
+          "confidence_median": 2.1245012283325195
+        },
+        "000043.jpg": {
+          "inlier_observations": 1175,
+          "median_abs_residual_sfm_units": 0.07407417830282137,
+          "confidence_median": 1.8558604717254639
+        },
+        "000044.jpg": {
+          "inlier_observations": 1184,
+          "median_abs_residual_sfm_units": 0.059046651287329555,
+          "confidence_median": 1.9753093719482422
+        },
+        "000045.jpg": {
+          "inlier_observations": 1151,
+          "median_abs_residual_sfm_units": 0.04723997529186441,
+          "confidence_median": 2.2753262519836426
+        },
+        "000046.jpg": {
+          "inlier_observations": 1225,
+          "median_abs_residual_sfm_units": 0.02533473828383004,
+          "confidence_median": 1.7490391731262207
+        }
+      },
+      "external_metric_conversion": {
+        "input_units": "COLMAP relative units",
+        "output_units": "COLMAP relative units",
+        "meters_per_sfm_unit": null,
+        "aligned_frames": 47
+      }
+    },
+    "fusion": {
+      "integrated_frames": 47,
+      "backend": "Open3D CPU VoxelBlockGrid",
+      "active_voxel_blocks": 17,
+      "mesh_weight_threshold": 1.0,
+      "valid_voxels": 7803,
+      "source_voxel_samples": 40676,
+      "mesh_vertices": 1541,
+      "mesh_triangles": 2675,
+      "mesh_provenance": {
+        "mesh_vertices": 1541,
+        "mapped_vertices": 1541,
+        "unmapped_vertices": 0,
+        "mapping_ratio": 1.0,
+        "max_mapping_radius": 0.25715304464325917,
+        "max_mapped_distance": 0.1483470803966495,
+        "p95_mapped_distance": 0.06286868544249295,
+        "method": "nearest observed depth voxel within four TSDF voxels"
+      },
+      "voxel_size": 0.06428826116081479,
+      "units": "COLMAP relative units",
+      "confidence_percentile": 0.0,
+      "files": {
+        "mesh": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\05_fused\\mesh.ply",
+        "cloud": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\05_fused\\cloud.ply",
+        "provenance_jsonl": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\05_fused\\provenance.jsonl",
+        "provenance_sqlite": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\05_fused\\voxel_provenance.sqlite",
+        "mesh_provenance_jsonl": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\05_fused\\mesh_provenance.jsonl"
+      }
+    }
+  },
+  "coverage": {
+    "input_images": 47,
+    "selected_model_registered_images": 47,
+    "all_independent_components_registered_images": 47,
+    "single_coordinate_frame_complete": true,
+    "unregistered_in_selected_model": [],
+    "inferred_images": 47,
+    "all_inputs_have_dense_depth": true
+  },
+  "verification": {
+    "reprojection": {
+      "observations": 46416,
+      "mean_px": 0.3354637261522183,
+      "median_px": 0.1896397972593482,
+      "p95_px": 1.06468413787063,
+      "rmse_px": 0.5982853821910001
+    },
+    "dense_cross_view_depth_abs_rel": {
+      "status": "measured",
+      "sampling_stride_px": 8,
+      "confidence_percentile": 0.0,
+      "tested_correspondences": 110807,
+      "median_abs_rel": 0.010382449254393578,
+      "p95_abs_rel": 0.0507893405854702,
+      "within_10_percent_ratio": 0.9909211511908093,
+      "pairs": [
+        {
+          "source": "000000.jpg",
+          "target": "000001.jpg",
+          "tested_correspondences": 2141,
+          "median_abs_rel": 0.009729224175183633,
+          "p95_abs_rel": 0.03033445968056885
+        },
+        {
+          "source": "000001.jpg",
+          "target": "000002.jpg",
+          "tested_correspondences": 2083,
+          "median_abs_rel": 0.008397223920110762,
+          "p95_abs_rel": 0.026557714667462862
+        },
+        {
+          "source": "000002.jpg",
+          "target": "000003.jpg",
+          "tested_correspondences": 2262,
+          "median_abs_rel": 0.009910529457059999,
+          "p95_abs_rel": 0.03836053309803599
+        },
+        {
+          "source": "000003.jpg",
+          "target": "000004.jpg",
+          "tested_correspondences": 2916,
+          "median_abs_rel": 0.005513334443667785,
+          "p95_abs_rel": 0.01430757648055584
+        },
+        {
+          "source": "000004.jpg",
+          "target": "000005.jpg",
+          "tested_correspondences": 1647,
+          "median_abs_rel": 0.0359554517484064,
+          "p95_abs_rel": 0.10018634162621183
+        },
+        {
+          "source": "000005.jpg",
+          "target": "000006.jpg",
+          "tested_correspondences": 2890,
+          "median_abs_rel": 0.007492186560977393,
+          "p95_abs_rel": 0.01985963679059508
+        },
+        {
+          "source": "000006.jpg",
+          "target": "000007.jpg",
+          "tested_correspondences": 2682,
+          "median_abs_rel": 0.009979332694613383,
+          "p95_abs_rel": 0.019015378636922826
+        },
+        {
+          "source": "000007.jpg",
+          "target": "000008.jpg",
+          "tested_correspondences": 2771,
+          "median_abs_rel": 0.009890474362208683,
+          "p95_abs_rel": 0.023567576293577627
+        },
+        {
+          "source": "000008.jpg",
+          "target": "000009.jpg",
+          "tested_correspondences": 2782,
+          "median_abs_rel": 0.011765411556410893,
+          "p95_abs_rel": 0.023645937578893318
+        },
+        {
+          "source": "000009.jpg",
+          "target": "000010.jpg",
+          "tested_correspondences": 2845,
+          "median_abs_rel": 0.011963186749996729,
+          "p95_abs_rel": 0.05351541366647644
+        },
+        {
+          "source": "000010.jpg",
+          "target": "000011.jpg",
+          "tested_correspondences": 2543,
+          "median_abs_rel": 0.008668024774395435,
+          "p95_abs_rel": 0.018814810293192284
+        },
+        {
+          "source": "000011.jpg",
+          "target": "000012.jpg",
+          "tested_correspondences": 1367,
+          "median_abs_rel": 0.05371999851643183,
+          "p95_abs_rel": 0.16198402988362434
+        },
+        {
+          "source": "000012.jpg",
+          "target": "000013.jpg",
+          "tested_correspondences": 2835,
+          "median_abs_rel": 0.008574444128953342,
+          "p95_abs_rel": 0.056866272638416863
+        },
+        {
+          "source": "000013.jpg",
+          "target": "000014.jpg",
+          "tested_correspondences": 2840,
+          "median_abs_rel": 0.014018712364172403,
+          "p95_abs_rel": 0.02806779012286789
+        },
+        {
+          "source": "000014.jpg",
+          "target": "000015.jpg",
+          "tested_correspondences": 1999,
+          "median_abs_rel": 0.009294888932906165,
+          "p95_abs_rel": 0.022944142113952005
+        },
+        {
+          "source": "000015.jpg",
+          "target": "000016.jpg",
+          "tested_correspondences": 2182,
+          "median_abs_rel": 0.007899592686169818,
+          "p95_abs_rel": 0.019694651941002818
+        },
+        {
+          "source": "000016.jpg",
+          "target": "000017.jpg",
+          "tested_correspondences": 2763,
+          "median_abs_rel": 0.023403663032528773,
+          "p95_abs_rel": 0.06196398058814114
+        },
+        {
+          "source": "000017.jpg",
+          "target": "000018.jpg",
+          "tested_correspondences": 1209,
+          "median_abs_rel": 0.014572283099000853,
+          "p95_abs_rel": 0.030598567473642105
+        },
+        {
+          "source": "000018.jpg",
+          "target": "000019.jpg",
+          "tested_correspondences": 2754,
+          "median_abs_rel": 0.010308759011689227,
+          "p95_abs_rel": 0.059599125000529996
+        },
+        {
+          "source": "000019.jpg",
+          "target": "000020.jpg",
+          "tested_correspondences": 1804,
+          "median_abs_rel": 0.0130099811799195,
+          "p95_abs_rel": 0.036073565921929084
+        },
+        {
+          "source": "000020.jpg",
+          "target": "000021.jpg",
+          "tested_correspondences": 2339,
+          "median_abs_rel": 0.007901272483886787,
+          "p95_abs_rel": 0.018532823855581925
+        },
+        {
+          "source": "000021.jpg",
+          "target": "000022.jpg",
+          "tested_correspondences": 2927,
+          "median_abs_rel": 0.009035386251993625,
+          "p95_abs_rel": 0.021062540308557403
+        },
+        {
+          "source": "000022.jpg",
+          "target": "000023.jpg",
+          "tested_correspondences": 2435,
+          "median_abs_rel": 0.016039350980333975,
+          "p95_abs_rel": 0.02893024487705868
+        },
+        {
+          "source": "000023.jpg",
+          "target": "000024.jpg",
+          "tested_correspondences": 2908,
+          "median_abs_rel": 0.01333452654010454,
+          "p95_abs_rel": 0.03446179190758876
+        },
+        {
+          "source": "000024.jpg",
+          "target": "000025.jpg",
+          "tested_correspondences": 2539,
+          "median_abs_rel": 0.01016932911824394,
+          "p95_abs_rel": 0.018129795880897238
+        },
+        {
+          "source": "000025.jpg",
+          "target": "000026.jpg",
+          "tested_correspondences": 2577,
+          "median_abs_rel": 0.01592165588284697,
+          "p95_abs_rel": 0.04682015038687682
+        },
+        {
+          "source": "000026.jpg",
+          "target": "000027.jpg",
+          "tested_correspondences": 2837,
+          "median_abs_rel": 0.01452373179890505,
+          "p95_abs_rel": 0.05671033888005863
+        },
+        {
+          "source": "000027.jpg",
+          "target": "000028.jpg",
+          "tested_correspondences": 2248,
+          "median_abs_rel": 0.009067127240670811,
+          "p95_abs_rel": 0.03315562427987161
+        },
+        {
+          "source": "000028.jpg",
+          "target": "000029.jpg",
+          "tested_correspondences": 2613,
+          "median_abs_rel": 0.008601772754910836,
+          "p95_abs_rel": 0.01853638319181553
+        },
+        {
+          "source": "000029.jpg",
+          "target": "000030.jpg",
+          "tested_correspondences": 2517,
+          "median_abs_rel": 0.006563465305737775,
+          "p95_abs_rel": 0.019713873447252075
+        },
+        {
+          "source": "000030.jpg",
+          "target": "000031.jpg",
+          "tested_correspondences": 1302,
+          "median_abs_rel": 0.03501045888330568,
+          "p95_abs_rel": 0.06221295671359107
+        },
+        {
+          "source": "000031.jpg",
+          "target": "000032.jpg",
+          "tested_correspondences": 2176,
+          "median_abs_rel": 0.005337462126011844,
+          "p95_abs_rel": 0.017386874195740976
+        },
+        {
+          "source": "000032.jpg",
+          "target": "000033.jpg",
+          "tested_correspondences": 2930,
+          "median_abs_rel": 0.010670158768204098,
+          "p95_abs_rel": 0.03718208896209584
+        },
+        {
+          "source": "000033.jpg",
+          "target": "000034.jpg",
+          "tested_correspondences": 2022,
+          "median_abs_rel": 0.007455239904051128,
+          "p95_abs_rel": 0.017922607843852002
+        },
+        {
+          "source": "000034.jpg",
+          "target": "000035.jpg",
+          "tested_correspondences": 2734,
+          "median_abs_rel": 0.011155300331745676,
+          "p95_abs_rel": 0.029740167577671586
+        },
+        {
+          "source": "000035.jpg",
+          "target": "000036.jpg",
+          "tested_correspondences": 2853,
+          "median_abs_rel": 0.008191440937569816,
+          "p95_abs_rel": 0.02658144571029828
+        },
+        {
+          "source": "000036.jpg",
+          "target": "000037.jpg",
+          "tested_correspondences": 2877,
+          "median_abs_rel": 0.009240461123035518,
+          "p95_abs_rel": 0.017832680175531405
+        },
+        {
+          "source": "000037.jpg",
+          "target": "000038.jpg",
+          "tested_correspondences": 2709,
+          "median_abs_rel": 0.011874781799963024,
+          "p95_abs_rel": 0.022144861870722583
+        },
+        {
+          "source": "000038.jpg",
+          "target": "000039.jpg",
+          "tested_correspondences": 1611,
+          "median_abs_rel": 0.037930804671262516,
+          "p95_abs_rel": 0.12043839525211449
+        },
+        {
+          "source": "000039.jpg",
+          "target": "000040.jpg",
+          "tested_correspondences": 2808,
+          "median_abs_rel": 0.02298846622652164,
+          "p95_abs_rel": 0.07909874799681749
+        },
+        {
+          "source": "000040.jpg",
+          "target": "000041.jpg",
+          "tested_correspondences": 1357,
+          "median_abs_rel": 0.03323158802196988,
+          "p95_abs_rel": 0.14544333790081845
+        },
+        {
+          "source": "000041.jpg",
+          "target": "000042.jpg",
+          "tested_correspondences": 2886,
+          "median_abs_rel": 0.008661987400807657,
+          "p95_abs_rel": 0.03505317427767102
+        },
+        {
+          "source": "000042.jpg",
+          "target": "000043.jpg",
+          "tested_correspondences": 2130,
+          "median_abs_rel": 0.005955509920036612,
+          "p95_abs_rel": 0.021773045899690747
+        },
+        {
+          "source": "000043.jpg",
+          "target": "000044.jpg",
+          "tested_correspondences": 2166,
+          "median_abs_rel": 0.007544602606972503,
+          "p95_abs_rel": 0.022831924044914964
+        },
+        {
+          "source": "000044.jpg",
+          "target": "000045.jpg",
+          "tested_correspondences": 2825,
+          "median_abs_rel": 0.010084113594322926,
+          "p95_abs_rel": 0.04799737160115189
+        },
+        {
+          "source": "000045.jpg",
+          "target": "000046.jpg",
+          "tested_correspondences": 2166,
+          "median_abs_rel": 0.008791988378355962,
+          "p95_abs_rel": 0.017945543088144385
+        }
+      ]
+    },
+    "sparse_depth_anchor_abs_rel_median": 0.02096364911645458,
+    "sparse_depth_anchor_abs_rel_p95": 0.05724031529039038,
+    "contour_iou": {
+      "status": "not_available",
+      "reason": "no reference object masks were supplied"
+    },
+    "scale_source": "GLOMAP sparse reconstruction",
+    "absolute_scale_status": "relative scene scale; no measured baseline was provided"
+  },
+  "resource_usage": {
+    "peak_process_tree_rss_mb": 529.4,
+    "stage_peak_process_tree_rss_mb": {
+      "startup": 152.5,
+      "normalize": 158.1,
+      "sfm": 385.6,
+      "sparse_parse": 214.7,
+      "depth_and_alignment": 529.4,
+      "fusion": 298.2,
+      "verification": 258.6
+    }
+  }
+}

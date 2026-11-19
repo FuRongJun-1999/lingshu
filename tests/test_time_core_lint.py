@@ -27,6 +27,7 @@
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -39,10 +40,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL = REPO_ROOT / "tools" / "time_core_lint.py"
 BASELINE = REPO_ROOT / "tools" / "time_core_lint_baseline.txt"
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from tools import time_core_lint as T  # noqa: E402
+# 按已知仓内文件加载，不依赖 CWD 裸包解析或测试收集顺序。
+_spec = importlib.util.spec_from_file_location("time_core_lint_under_test", TOOL)
+T = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(T)
 
 
 # --------------------------------------------------------------------- 工具函数

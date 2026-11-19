@@ -1,0 +1,141 @@
+{
+  "hardware": "Intel Core i5-8250U",
+  "physical_cores": 4,
+  "logical_threads": 8,
+  "target_20_hardware": false,
+  "software_20_threads": "oversubscribed; does not verify a 20-thread target CPU",
+  "native_avx512": false,
+  "native_avx2": true,
+  "winograd_mode": "f2b scalar fallback",
+  "dll_sha256": "bc567647cc64ef00e9559ae3e2451b4648c49d71efe8d72bb11be333cb8291ab",
+  "model_sha256": "71b1c953113657f9a4fbef43ab6a16fe7a6f87b36da113a184f13c4a564968a0",
+  "image_sha256": "b34e9571e6e9010edeb4e86bbb5582f89c5aaddb0faec074222136ee0e8582a3",
+  "source_dispatch": "src/dpt_blocks.cpp: DA_CONV winograd enables CPU F32 3x3 custom op; direct disables it",
+  "cache": "DA_HAS_AVX512F=OFF; GGML_AVX512=OFF; GGML_AVX2=ON; GGML_NATIVE=OFF",
+  "trials": [
+    {
+      "threads": 4,
+      "mode": "direct",
+      "load_seconds": 0.09709379996638745,
+      "cold_seconds": 3.8389451000257395,
+      "warm_seconds": [
+        3.0267837999854237,
+        3.4818540000123903,
+        3.5557153999689035
+      ],
+      "median_warm_seconds": 3.4818540000123903,
+      "peak_process_rss_mb": 359.76953125,
+      "output_shape": [
+        336,
+        504
+      ],
+      "include_pose": false
+    },
+    {
+      "threads": 4,
+      "mode": "winograd",
+      "load_seconds": 0.12074599997140467,
+      "cold_seconds": 4.4613097999827005,
+      "warm_seconds": [
+        3.8974334999802522,
+        4.145460700034164,
+        4.097461900033522
+      ],
+      "median_warm_seconds": 4.097461900033522,
+      "peak_process_rss_mb": 386.1328125,
+      "output_shape": [
+        336,
+        504
+      ],
+      "include_pose": false
+    },
+    {
+      "threads": 8,
+      "mode": "winograd",
+      "load_seconds": 0.10736580000957474,
+      "cold_seconds": 4.270963900024071,
+      "warm_seconds": [
+        3.099567900004331,
+        2.7555604999652132,
+        3.079848499968648
+      ],
+      "median_warm_seconds": 3.079848499968648,
+      "peak_process_rss_mb": 387.73828125,
+      "output_shape": [
+        336,
+        504
+      ],
+      "include_pose": false
+    },
+    {
+      "threads": 8,
+      "mode": "direct",
+      "load_seconds": 0.061706600012257695,
+      "cold_seconds": 2.8583950000465848,
+      "warm_seconds": [
+        3.5802129000076093,
+        2.7142342000151984,
+        2.6957346000126563
+      ],
+      "median_warm_seconds": 2.7142342000151984,
+      "peak_process_rss_mb": 359.77734375,
+      "output_shape": [
+        336,
+        504
+      ],
+      "include_pose": false
+    }
+  ],
+  "parity": [
+    {
+      "threads": 4,
+      "array": "depth",
+      "max_abs": 3.337860107421875e-06,
+      "mean_relative": 1.0736372502151426e-07,
+      "max_relative": 1.0973340067721438e-06,
+      "allclose_rtol_1e_3": true
+    },
+    {
+      "threads": 4,
+      "array": "confidence",
+      "max_abs": 2.0265579223632812e-06,
+      "mean_relative": 4.762284078196899e-08,
+      "max_relative": 1.7010313513310393e-06,
+      "allclose_rtol_1e_3": true
+    },
+    {
+      "threads": 8,
+      "array": "depth",
+      "max_abs": 3.337860107421875e-06,
+      "mean_relative": 1.0736372502151426e-07,
+      "max_relative": 1.0973340067721438e-06,
+      "allclose_rtol_1e_3": true
+    },
+    {
+      "threads": 8,
+      "array": "confidence",
+      "max_abs": 2.0265579223632812e-06,
+      "mean_relative": 4.762284078196899e-08,
+      "max_relative": 1.7010313513310393e-06,
+      "allclose_rtol_1e_3": true
+    }
+  ],
+  "status": "local_4_and_8_complete_20_oversubscription_stopped",
+  "oversubscribed_20": {
+    "status": "stopped_after_severe_slowdown",
+    "reason": "4 physical cores / 8 logical threads; measured 20-thread calls take about 70-80s vs 3s; no target20 hardware present",
+    "samples": [
+      {
+        "tag": "20-direct",
+        "iteration": 0,
+        "seconds": 78.76295770000434
+      },
+      {
+        "tag": "20-direct",
+        "iteration": 1,
+        "seconds": 71.22174379997887
+      }
+    ],
+    "winograd20_status": "not_run_after_oversubscription_stop"
+  }
+}
