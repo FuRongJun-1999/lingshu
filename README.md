@@ -60,8 +60,8 @@ pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规�
 **已测版本矩阵**（2026-10-08 实测，供选版参考）：Python 3.12.x · numpy 2.3.5 / 2.4.2 / 2.5.3 ·
 Pillow 12.3.0——`pyproject.toml` 中 extras 的版本区间由此收敛，**区间外未测不承诺**。
 
-身体音频感知（WAV 标准库 + 可选 FFmpeg 压缩格式：MP3/M4A/AAC/OGG/Opus/FLAC/AIFF/WMA/WebM；支持内存 bytes 与声学事件画像）用法和边界见
-[身体音频感知](docs/world_audio_perception.md)：压缩解码需本机可选 FFmpeg；只做声学幅度画像，不转写语音、不推断语义、不保存原始音频或路径。
+身体音频感知（WAV 标准库 + 可选 FFmpeg 压缩格式、RMS 活动周期估计与事件分段；支持内存 bytes）用法和边界见
+[身体音频感知](docs/world_audio_perception.md)：压缩解码需本机可选 FFmpeg；周期仅基于稳定 RMS 活动前沿与充分时间分辨率，只做声学测量，不转写语音、不推断语义、不保存原始音频或路径。
 
 > 曾登记为「已知红」的 `tests/test_hex_text.py` 两处断言（`test_spatial_detect_finds_single_object`
 > 6/16、`test_multimodal_check_clean_vs_corrupt` 7/12）**已随根因修复转绿**：`9bc4985`

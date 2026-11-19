@@ -11,7 +11,8 @@ from importlib import import_module
 __all__ = [
     "darkline", "linework", "AudioPerceptionError", "AudioCodecUnavailable",
     "analyze_wav", "analyze_audio", "decode_compressed_audio", "ffmpeg_available",
-    "segment_audio_events", "format_audio_summary", "perceive_wav", "perceive_audio_file",
+    "segment_audio_events", "infer_audio_activity_period", "format_audio_summary",
+    "perceive_wav", "perceive_audio_file",
 ]
 
 
@@ -20,7 +21,8 @@ def __getattr__(name):
         return getattr(import_module(".lineart", __name__), name)
     if name in {"AudioPerceptionError", "AudioCodecUnavailable", "analyze_wav", "analyze_audio",
                 "decode_compressed_audio", "ffmpeg_available", "segment_audio_events",
-                "format_audio_summary", "perceive_wav", "perceive_audio_file"}:
+                "infer_audio_activity_period", "format_audio_summary",
+                "perceive_wav", "perceive_audio_file"}:
         return getattr(import_module(".audio", __name__), name)
     raise AttributeError("module %r has no attribute %r" % (__name__, name))
 

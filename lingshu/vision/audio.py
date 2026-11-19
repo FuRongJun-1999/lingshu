@@ -16,7 +16,7 @@ import subprocess
 import wave
 from typing import Any, Dict, Iterator, List, Union
 
-__all__ = ["AudioPerceptionError", "AudioCodecUnavailable", "analyze_wav", "analyze_audio", "decode_compressed_audio", "ffmpeg_available", "segment_audio_events", "format_audio_summary", "perceive_wav", "perceive_audio_file"]
+__all__ = ["AudioPerceptionError", "AudioCodecUnavailable", "analyze_wav", "analyze_audio", "decode_compressed_audio", "ffmpeg_available", "segment_audio_events", "infer_audio_activity_period", "format_audio_summary", "perceive_wav", "perceive_audio_file"]
 
 _MAX_DURATION_SECONDS = 3600.0
 _MAX_PCM_BYTES = 64 * 1024 * 1024
@@ -197,6 +197,8 @@ def analyze_wav(
         "sample_width_bits": width * 8,
         "frames": frame_count,
         "window_ms": window_ms,
+        "analysis_window_frames": window_frames,
+        "analysis_window_s": round(window_frames / sample_rate, 9),
         "rms_dbfs": _dbfs(rms),
         "peak_dbfs": _dbfs(peak),
         "silence_threshold_dbfs": threshold_db,
@@ -403,6 +405,7 @@ def perceive_audio_file(
                              silence_dbfs=silence_dbfs, max_duration_s=max_duration_s,
                              timeout_s=timeout_s)
     features["event_profile"] = segment_audio_events(features, silence_dbfs=silence_dbfs)
+    features["activity_period"] = infer_audio_activity_period(features, silence_dbfs=silence_dbfs)
     summary = format_audio_summary(features)
     node = engine.add_perception(summary, modality="audio", importance=importance_value,
                                   tags=["audio_summary"], source="body:audio-summary")
@@ -474,6 +477,95 @@ def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.
             "segments_truncated": total_segments > len(segments)}
 
 
+def infer_audio_activity_period(
+    features: Dict[str, Any],
+    *,
+    silence_dbfs: float = -45.0,
+    tolerance: float = 0.2,
+    min_fronts: int = 4,
+) -> Dict[str, Any]:
+    """Conservatively estimate a repeated period from RMS silence-to-activity fronts.
+
+    This estimates only periodic acoustic activity, not a musical beat, speech cadence,
+    source identity, or semantic/world event. Downsampled envelopes are rejected because
+    sparse sampling can miss short bursts. A period is returned only with enough fronts,
+    at least three supported intervals, and adequate time resolution.
+    """
+    if not isinstance(features, dict):
+        raise TypeError("features 必须是 analyze_wav/analyze_audio 返回的映射")
+    required = ("duration_s", "analysis_window_s", "energy_envelope_stride_windows",
+                "energy_envelope_dbfs")
+    missing = [key for key in required if key not in features]
+    if missing:
+        raise ValueError("features 缺少字段：%s" % ", ".join(missing))
+    duration = _finite_number("features.duration_s", features["duration_s"],
+                              low=0.001, high=_MAX_DURATION_SECONDS)
+    window_s = _finite_number("features.analysis_window_s", features["analysis_window_s"],
+                              low=0.00001, high=1.0)
+    stride = features["energy_envelope_stride_windows"]
+    if isinstance(stride, bool) or not isinstance(stride, int) or stride < 1:
+        raise ValueError("features.energy_envelope_stride_windows 必须是正整数")
+    if isinstance(min_fronts, bool) or not isinstance(min_fronts, int) or not 4 <= min_fronts <= 64:
+        raise ValueError("min_fronts 必须是 [4, 64] 内的整数")
+    tolerance_value = _finite_number("tolerance", tolerance, low=0.01, high=1.0)
+    threshold = _finite_number("silence_dbfs", silence_dbfs, low=-120.0, high=0.0)
+    envelope = features["energy_envelope_dbfs"]
+    if not isinstance(envelope, (list, tuple)) or len(envelope) > _MAX_ENVELOPE_POINTS:
+        raise ValueError("features.energy_envelope_dbfs 必须是有界数值序列")
+    envelope = [_finite_number("energy_envelope_dbfs item", v, low=-120.0, high=0.0)
+                for v in envelope]
+    resolution = window_s * stride
+
+    def result(status: str, reason: str, **values: Any) -> Dict[str, Any]:
+        return {"status": status, "reason": reason, "period_s": None,
+                "candidate_period_s": None, "front_count": 0,
+                "support_interval_count": 0, "support_ratio": 0.0,
+                "jitter_ratio": None, "resolution_s": round(resolution, 9),
+                "approximate": stride > 1, **values}
+
+    if stride > 1:
+        return result("insufficient_resolution", "downsampled_envelope")
+    if not envelope:
+        return result("insufficient_evidence", "empty_envelope")
+
+    # A high first window is not a measured silence-to-activity transition; require
+    # an observed low-to-high crossing rather than inventing an onset at t=0.
+    fronts = []
+    for i in range(1, len(envelope)):
+        if envelope[i - 1] <= threshold and envelope[i] > threshold:
+            fronts.append(i)
+    if len(fronts) < min_fronts:
+        has_activity = any(level > threshold for level in envelope)
+        reason = ("no_activity" if not has_activity else
+                  "no_observed_fronts" if not fronts else "too_few_activity_fronts")
+        return result("insufficient_evidence", reason, front_count=len(fronts))
+
+    intervals = [(fronts[i] - fronts[i - 1]) * resolution
+                 for i in range(1, len(fronts))]
+    ordered = sorted(intervals)
+    mid = len(ordered) // 2
+    candidate = (ordered[mid] if len(ordered) % 2
+                 else (ordered[mid - 1] + ordered[mid]) / 2.0)
+    deviations = [abs(interval - candidate) / candidate for interval in intervals]
+    supported = [d <= tolerance_value for d in deviations]
+    support_count = sum(supported)
+    support_ratio = support_count / len(intervals)
+    jitter = max(deviations)
+    common = {"front_count": len(fronts),
+              "front_times_s": [round(i * resolution, 6) for i in fronts],
+              "intervals_s": [round(v, 6) for v in intervals],
+              "candidate_period_s": round(candidate, 6),
+              "support_interval_count": support_count,
+              "support_ratio": round(support_ratio, 4),
+              "jitter_ratio": round(jitter, 4)}
+    if candidate < 4.0 * resolution:
+        return result("insufficient_resolution", "period_below_four_windows", **common)
+    if support_count < 3 or support_ratio < 0.75:
+        return result("not_periodic", "intervals_not_stable", **common)
+    return result("periodic", "stable_activity_front_intervals",
+                  period_s=round(candidate, 6), **common)
+
+
 def format_audio_summary(features: Dict[str, Any]) -> str:
     """把确定性特征与粗粒度声学片段转成短摘要，不含文件名或路径。"""
     segments = features.get("event_profile", {}).get("segments", [])
@@ -493,6 +585,10 @@ def format_audio_summary(features: Dict[str, Any]) -> str:
         detail += "；其余 %d 段省略" % omitted
     if profile.get("approximate"):
         detail += "（分段为降采样包络近似）"
+    periodic = features.get("activity_period", {})
+    if periodic.get("status") == "periodic":
+        detail += "；声学活动重复间隔约 %.3f 秒（支持 %d 个间隔）" % (
+            periodic["period_s"], periodic["support_interval_count"])
     source_format = features.get("source_audio_format", "wav")
     media_label = "WAV" if source_format == "wav" else "压缩音频(%s)" % source_format
     return (
@@ -525,6 +621,7 @@ def perceive_wav(
     features = analyze_wav(path, window_ms=window_ms, silence_dbfs=silence_dbfs,
                            max_duration_s=max_duration_s)
     features["event_profile"] = segment_audio_events(features, silence_dbfs=silence_dbfs)
+    features["activity_period"] = infer_audio_activity_period(features, silence_dbfs=silence_dbfs)
     summary = format_audio_summary(features)
     node = engine.add_perception(summary, modality="audio", importance=importance_value,
                                   tags=["audio_summary"], source="body:wav-acoustic-summary")

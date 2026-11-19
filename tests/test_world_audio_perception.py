@@ -2,8 +2,10 @@
 """身体 WAV 感知：PCM 解析、静音分段、资源界限与 audio 模态闭环。"""
 from __future__ import annotations
 
+import math
 import os
 import subprocess
+import struct
 import sys
 import wave
 
@@ -12,7 +14,7 @@ import pytest
 from lingshu.core.core import SpacetimeMemoryEngine
 from lingshu.vision import (
     AudioCodecUnavailable, AudioPerceptionError, analyze_audio, analyze_wav,
-    ffmpeg_available, perceive_wav, segment_audio_events,
+    ffmpeg_available, infer_audio_activity_period, perceive_wav, segment_audio_events,
 )
 from lingshu.vision import audio as audio_module
 
@@ -77,6 +79,135 @@ def test_event_profile_turns_envelope_into_explainable_segments(tmp_path):
     assert profile["resolution_s"] == pytest.approx(0.1)
     assert profile["approximate"] is False
     assert profile["segments_truncated"] is False
+
+
+
+
+def _period_features(fronts, *, window_s=0.01, stride=1, duration_s=2.0, pulse_windows=2):
+    size = int(math.ceil(duration_s / (window_s * stride)))
+    envelope = [-120.0] * size
+    for front in fronts:
+        for pulse_index in range(front, min(front + pulse_windows, size)):
+            envelope[pulse_index] = -10.0
+    return {
+        "duration_s": duration_s,
+        "analysis_window_s": window_s,
+        "energy_envelope_stride_windows": stride,
+        "energy_envelope_dbfs": envelope,
+    }
+
+
+def test_activity_period_detects_stable_silence_to_activity_fronts():
+    result = infer_audio_activity_period(_period_features([10, 60, 110, 160]))
+    assert result["status"] == "periodic"
+    assert result["period_s"] == pytest.approx(0.5)
+    assert result["front_count"] == 4
+    assert result["support_interval_count"] == 3
+    assert result["support_ratio"] == 1.0
+    assert result["resolution_s"] == pytest.approx(0.01)
+    assert result["approximate"] is False
+
+
+def test_activity_period_returns_reasons_for_insufficient_or_unstable_evidence():
+    quiet = infer_audio_activity_period(_period_features([]))
+    assert quiet["period_s"] is None and quiet["reason"] == "no_activity"
+    sustained = _period_features([])
+    sustained["energy_envelope_dbfs"] = [-10.0] * len(sustained["energy_envelope_dbfs"])
+    no_front = infer_audio_activity_period(sustained)
+    assert no_front["period_s"] is None and no_front["reason"] == "no_observed_fronts"
+    leading_activity = _period_features([0, 50, 100, 150])
+    leading_activity["energy_envelope_dbfs"][0] = -10.0
+    sustained_start = infer_audio_activity_period(leading_activity)
+    assert sustained_start["period_s"] is None
+    assert sustained_start["front_count"] == 3, "录音首窗已活动时不得伪造 t=0 上升沿"
+    two_fronts = infer_audio_activity_period(_period_features([10, 60]))
+    assert two_fronts["period_s"] is None
+    assert two_fronts["reason"] == "too_few_activity_fronts"
+    irregular = infer_audio_activity_period(_period_features([10, 60, 110, 180]))
+    assert irregular["status"] == "not_periodic"
+    assert irregular["period_s"] is None
+    assert irregular["reason"] == "intervals_not_stable"
+
+
+def test_activity_period_rejects_downsampled_and_unresolvable_envelopes():
+    coarse = infer_audio_activity_period(_period_features([10, 60, 110, 160], stride=2, duration_s=4.0))
+    assert coarse["status"] == "insufficient_resolution"
+    assert coarse["period_s"] is None
+    short_period = infer_audio_activity_period(
+        _period_features([1, 3, 5, 7], window_s=0.05, duration_s=0.6,
+                         pulse_windows=1))
+    assert short_period["reason"] == "period_below_four_windows"
+    assert short_period["period_s"] is None
+
+
+def test_activity_period_uses_actual_frame_aligned_window_seconds(tmp_path):
+    rate = 11025
+    pulse = 220
+    samples = [0] * (rate * 2)
+    for start in (rate // 10, rate // 10 + 5512, rate // 10 + 11024, rate // 10 + 16536):
+        for index in range(start, min(start + pulse, len(samples))):
+            samples[index] = 12000
+    path = _write_wav(tmp_path / "period-11025.wav", [(v,) for v in samples], rate=rate)
+    features = analyze_wav(path, window_ms=10, silence_dbfs=-45)
+    assert features["analysis_window_frames"] == 110
+    expected_window = 110 / rate
+    assert features["analysis_window_s"] == pytest.approx(expected_window)
+    result = infer_audio_activity_period(features)
+    assert result["status"] == "periodic"
+    assert result["period_s"] == pytest.approx(50 * expected_window, abs=expected_window)
+    features["event_profile"] = segment_audio_events(features)
+    features["activity_period"] = result
+    assert "声学活动重复间隔约" in audio_module.format_audio_summary(features)
+
+
+def test_perceive_audio_includes_only_stable_acoustic_period_in_summary(tmp_path):
+    rate = 8000
+    samples = [0] * (rate * 2)
+    pulse_width = rate // 25
+    for start_s in (0.1, 0.6, 1.1, 1.6):
+        start = int(start_s * rate)
+        for index in range(start, start + pulse_width):
+            samples[index] = 12000
+    path = _write_wav(tmp_path / "periodic-activity.wav", [(value,) for value in samples], rate=rate)
+    engine = SpacetimeMemoryEngine(":memory:")
+    result = engine.perceive_audio(path, window_ms=10, max_duration_s=3.0)
+    period = result["features"]["activity_period"]
+    assert period["status"] == "periodic"
+    assert period["period_s"] == pytest.approx(0.5, abs=0.01)
+    assert period["front_count"] == 4
+    assert "声学活动重复间隔约 0.500 秒" in result["summary"]
+    node = engine.store.get_node(result["node_id"])
+    assert node.content == result["summary"]
+
+
+def test_activity_period_rejects_real_downsampled_long_recording(tmp_path):
+    rate = 8000
+    zero_frames = b"\x00\x00" * (rate * 38 // 100)
+    active_frames = struct.pack("<h", 12000) * (rate * 12 // 100)
+    path = tmp_path / "long-periodic.wav"
+    with wave.open(str(path), "wb") as writer:
+        writer.setnchannels(1)
+        writer.setsampwidth(2)
+        writer.setframerate(rate)
+        for _ in range(242):
+            writer.writeframesraw(zero_frames)
+            writer.writeframesraw(active_frames)
+    features = analyze_wav(path, window_ms=100)
+    assert len(features["energy_envelope_dbfs"]) <= 1200
+    assert features["energy_envelope_stride_windows"] > 1
+    period = infer_audio_activity_period(features)
+    assert period["status"] == "insufficient_resolution"
+    assert period["period_s"] is None
+    assert period["approximate"] is True
+
+
+def test_activity_period_rejects_malformed_feature_mappings():
+    with pytest.raises(ValueError, match="缺少字段"):
+        infer_audio_activity_period({})
+    bad = _period_features([10, 60, 110, 160])
+    bad["energy_envelope_dbfs"][0] = float("nan")
+    with pytest.raises(ValueError, match="有限实数"):
+        infer_audio_activity_period(bad)
 
 
 def test_event_profile_marks_downsampled_resolution_as_approximate(tmp_path):
@@ -350,9 +481,9 @@ class DenyOptional:
             raise RuntimeError("optional image dependency was imported: " + fullname)
 sys.meta_path.insert(0, DenyOptional())
 from lingshu.vision import (analyze_wav, analyze_audio, decode_compressed_audio,
-    ffmpeg_available, perceive_audio_file, perceive_wav, segment_audio_events)
-assert all(callable(item) for item in (analyze_wav, analyze_audio, decode_compressed_audio,
-    ffmpeg_available, perceive_audio_file, perceive_wav, segment_audio_events))
+    ffmpeg_available, infer_audio_activity_period, perceive_audio_file, perceive_wav, segment_audio_events)
+assert all(callable(item) for item in (analyze_wav, analyze_audio, decode_compressed_audio, infer_audio_activity_period, ffmpeg_available,
+    perceive_audio_file, perceive_wav, segment_audio_events))
 assert "numpy" not in sys.modules and "PIL" not in sys.modules
 """
     result = subprocess.run(

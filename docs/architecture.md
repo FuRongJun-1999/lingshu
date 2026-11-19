@@ -208,6 +208,6 @@ lingshu
 
 | 2026-10-09 | 场景消费整合 v0.1：共享场景 API + demo/local/brain CLI + 五任务/只读库/真实 MCP 验收；intake 见 `docs/intake/scenario-v0.1/` | **本仓新件**，身体侧消费入口，复用现有 core/WorldModel/MCP | 内容/隐私双清单 CLEAN；隔离合成数据，资格不升格；接口与可见性取舍交理论核 | [PR #375（提交见 PR）](https://github.com/FuRongJun-1999/lingshu/pull/375) |
 
-| 2026-11-19 | **身体音频感知 v0.4（事件画像、内存 bytes 与可选压缩音频增量）**：`lingshu/vision/audio.py` + `SpacetimeMemoryEngine.perceive_audio` + 合成 WAV 守卫；登记见 `docs/intake/body-audio-v0.1/README.md` | **本仓新件**，身体侧视觉/音频感知；复用 `add_perception` 的 audio 模态 | CLEAN：WAV 纯标准库，FFmpeg 可选且 pipe-only；事件精度/截断/内存流/压缩输入边界显式，无原始音频持久化；PR #1460 / intake #2760 | `6a55b66` + `c20622b` |
+| 2026-11-19 | **身体音频感知 v0.5（事件画像、内存输入、压缩音频与周期估计）**：`lingshu/vision/audio.py` + `SpacetimeMemoryEngine.perceive_audio` + 合成 WAV 守卫；登记见 `docs/intake/body-audio-v0.1/README.md` | **本仓新件**，身体侧视觉/音频感知；复用 `add_perception` 的 audio 模态 | CLEAN：WAV 纯标准库，FFmpeg 可选且 pipe-only；事件精度/截断/内存流/压缩输入/周期证据边界显式，无原始音频持久化；PR #1460 / intake #2760 | PR #1460（事件画像、压缩解码与周期估计增量） |
 
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*

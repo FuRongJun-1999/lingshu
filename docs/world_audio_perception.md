@@ -1,6 +1,6 @@
-# 身体音频感知 v0.4 · 可选压缩音频
+# 身体音频感知 v0.5 · 活动周期估计
 
-lingshu.vision.audio 提供 PCM WAV 声学分析和可选 FFmpeg 压缩音频适配，属于身体侧感知模块。它不转写内容、不推断说话人，也不把原始音频或输入路径写入灵枢记忆。
+lingshu.vision.audio 提供 PCM WAV 声学分析、可选 FFmpeg 压缩音频适配和保守的声学活动周期估计，属于身体侧感知模块。它不转写内容、不推断说话人，也不把原始音频或输入路径写入灵枢记忆。
 
 ## Python 接入
 
@@ -12,9 +12,11 @@ SpacetimeMemoryEngine.perceive_audio 支持 WAV 文件路径或 WAV bytes-like �
     # Optional local FFmpeg for compressed formats: engine.perceive_audio("sample.mp3")
     assert result["raw_audio_stored"] is False
 
-结果包含时长、采样率、声道、位深、RMS/峰值 dBFS、活动比例、削波比例、有界能量包络、静音区间、事件画像以及摘要节点 id。摘要以 audio 模态、audio_summary 标签写入既有感知入口。
+结果包含时长、采样率、声道、位深、RMS/峰值 dBFS、活动比例、削波比例、有界能量包络、静音区间、事件画像、activity_period 估计及摘要节点 id。摘要以 audio 模态、audio_summary 标签写入既有感知入口。
 
 segment_audio_events(features, silence_dbfs=-45) 可独立把能量包络压成按时间排序的 activity / silence 片段，每段附起止秒数和平均 dBFS。若原始包络超过 1200 窗，结果会返回 approximate=true 与 resolution_s，明确时间边界受降采样影响；片段数超过 128 时，列表有界并由 segments_truncated=true 标记。写入 audio 模态的短摘要会列出前 8 段时间线，并明确其余段数。该画像只表达声学活动，不代表语音、说话人或语义事件识别。
+
+infer_audio_activity_period(features, silence_dbfs=-45, tolerance=0.2, min_fronts=4) 是纯特征映射函数，不访问设备或记忆。它从 RMS 包络中的可观测静音→活动前沿估计重复间隔；默认为至少 4 个前沿、3 个稳定间隔，周期至少是 4 个真实分析窗。条件不满足时返回 period_s=null 和具体 reason（包括 no_activity、no_observed_fronts、too_few_activity_fronts、intervals_not_stable、insufficient_resolution）；降采样包络保守拒绝估计。周期只表示声学活动重复间隔，不代表音乐节拍、语音韵律、事件身份或世界模型证据。
 
 ## 支持和边界
 
@@ -34,4 +36,4 @@ segment_audio_events(features, silence_dbfs=-45) 可独立把能量包络压成�
 
     python -X utf8 -m pytest tests/test_world_audio_perception.py -q --no-header  # 含真实 FFmpeg MP3 往返；FFmpeg 缺失时跳过
 
-测试使用合成 WAV 覆盖声学边界与记忆闭环；另有真实 FFmpeg MP3 编解码往返测试（无可用 FFmpeg 时跳过）及 mock 解码器资源/失败路径测试。
+测试使用合成 WAV 覆盖声学边界与记忆闭环、稳定/不规则/不足活动周期及 11,025 Hz 实际窗时长换算；另有真实 FFmpeg MP3 往返与 mock 解码失败路径。
