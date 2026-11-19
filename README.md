@@ -47,12 +47,15 @@
 ## 代码主体
 
 身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 15 件 ·
-world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿 1 件）：
+world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿与视频帧统计 2 件）：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
 pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规路径）
 ```
+
+本地视频灰度帧变化统计（可选 FFmpeg、有限帧数和时长）见
+[身体视频帧变化分析](docs/world_video_frame_analysis.md)；不提供对象识别或视频记忆。
 
 结构事件与版本历史的写入接口、授权及同步边界见
 [结构历史与受保护写服务](docs/structure-events.md)。
@@ -69,6 +72,8 @@ Pillow 12.3.0——`pyproject.toml` 中 extras 的版本区间由此收敛，**�
 
 依赖分层、环境自适应降级点与精修记录见
 [docs/intake/body-export-v0.1/](docs/intake/body-export-v0.1/)（导出说明 / 双清单审计 / 逐文件指纹清单）。
+
+标准库线稿处理以外的视频基础帧差统计说明见 [身体视频帧变化分析](docs/world_video_frame_analysis.md)：需要可选 FFmpeg，只报告固定采样网格的灰度像素变化，不做目标/动作语义识别，也不写视频记忆。
 
 ### 桥接（进程外适配器 · 不进 wheel）
 

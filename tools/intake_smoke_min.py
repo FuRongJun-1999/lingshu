@@ -42,7 +42,10 @@ import sys
 def discover() -> list:
     """发现本仓 `lingshu` 包下全部模块（不含测试件）。"""
     import lingshu
-    return sorted(m.name for m in pkgutil.walk_packages(lingshu.__path__, prefix="lingshu."))
+    # pkgutil walks children but omits the package root; include it so the import
+    # report matches every .py file and the architecture module ledger.
+    return ["lingshu"] + sorted(
+        m.name for m in pkgutil.walk_packages(lingshu.__path__, prefix="lingshu."))
 
 
 def smoke() -> dict:
