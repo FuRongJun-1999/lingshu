@@ -1,0 +1,104 @@
+{
+  "scope": "three fixed designs, saved depth replay, corrected pixel centers, no end-to-end timing claim",
+  "rows": [
+    {
+      "scene": "scene-00",
+      "confidence_percentile": 0.0,
+      "dense_mean_abs_rel": 0.010296686119398631,
+      "dense_p95_abs_rel": 0.027850226095721967,
+      "gt_coverage": 0.9904827902524628,
+      "iou": 0.8895140024747359,
+      "mesh_observed_chamfer_m": 0.0772557786858952,
+      "mesh_precision": 0.9885833333333334,
+      "mesh_coverage": 0.9766666666666667
+    },
+    {
+      "scene": "scene-00",
+      "confidence_percentile": 5.0,
+      "dense_mean_abs_rel": 0.009310609441850061,
+      "dense_p95_abs_rel": 0.025774771416695316,
+      "gt_coverage": 0.9444073305946635,
+      "iou": 0.8901483116535592,
+      "mesh_observed_chamfer_m": 0.07673647472286857,
+      "mesh_precision": 0.9996666666666667,
+      "mesh_coverage": 0.9613333333333334
+    },
+    {
+      "scene": "scene-00",
+      "confidence_percentile": 25.0,
+      "dense_mean_abs_rel": 0.008605177104579871,
+      "dense_p95_abs_rel": 0.0250792828650486,
+      "gt_coverage": 0.7465002193594703,
+      "iou": 0.7305063002060161,
+      "mesh_observed_chamfer_m": 0.12344010161557105,
+      "mesh_precision": 1.0,
+      "mesh_coverage": 0.8319166666666666
+    },
+    {
+      "scene": "scene-07",
+      "confidence_percentile": 0.0,
+      "dense_mean_abs_rel": 0.02018932278536762,
+      "dense_p95_abs_rel": 0.04969912852581198,
+      "gt_coverage": 0.9908464503348334,
+      "iou": 0.8456180519505866,
+      "mesh_observed_chamfer_m": 0.0628706525336691,
+      "mesh_precision": 0.9910833333333333,
+      "mesh_coverage": 0.9375
+    },
+    {
+      "scene": "scene-07",
+      "confidence_percentile": 5.0,
+      "dense_mean_abs_rel": 0.018662078291062457,
+      "dense_p95_abs_rel": 0.04748374424846146,
+      "gt_coverage": 0.9465407721625289,
+      "iou": 0.8203495019970315,
+      "mesh_observed_chamfer_m": 0.07672533095480738,
+      "mesh_precision": 0.99525,
+      "mesh_coverage": 0.9272916666666666
+    },
+    {
+      "scene": "scene-07",
+      "confidence_percentile": 25.0,
+      "dense_mean_abs_rel": 0.017622329187145704,
+      "dense_p95_abs_rel": 0.04615905644850436,
+      "gt_coverage": 0.7489804267780625,
+      "iou": 0.6506822795112434,
+      "mesh_observed_chamfer_m": 0.10549317862878087,
+      "mesh_precision": 0.994,
+      "mesh_coverage": 0.7902916666666666
+    },
+    {
+      "scene": "scene-15",
+      "confidence_percentile": 0.0,
+      "dense_mean_abs_rel": 0.03498330377310461,
+      "dense_p95_abs_rel": 0.06164886515289629,
+      "gt_coverage": 0.96005717829327,
+      "iou": 0.6467487549464364,
+      "mesh_observed_chamfer_m": 0.22556049260645283,
+      "mesh_precision": 0.5285,
+      "mesh_coverage": 0.471375
+    },
+    {
+      "scene": "scene-15",
+      "confidence_percentile": 5.0,
+      "dense_mean_abs_rel": 0.03323914934008212,
+      "dense_p95_abs_rel": 0.0583360938059641,
+      "gt_coverage": 0.9176107041128431,
+      "iou": 0.650289921567555,
+      "mesh_observed_chamfer_m": 0.22617697743606724,
+      "mesh_precision": 0.52525,
+      "mesh_coverage": 0.46475
+    },
+    {
+      "scene": "scene-15",
+      "confidence_percentile": 25.0,
+      "dense_mean_abs_rel": 0.030254181517327457,
+      "dense_p95_abs_rel": 0.05468704416826538,
+      "gt_coverage": 0.725287730841593,
+      "iou": 0.6319509166842955,
+      "mesh_observed_chamfer_m": 0.23275977094080857,
+      "mesh_precision": 0.5569166666666666,
+      "mesh_coverage": 0.42191666666666666
+    }
+  ]
+}

@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "pipeline": "GLOMAP CPU SfM + Depth Anything 3 Base relative depth + global affine alignment + Open3D CPU TSDF",
+  "input": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\mapper-scenes\\eth-door\\door\\images\\dslr_images",
+  "output": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-windows-wheel-windows-clean-final",
+  "units": "COLMAP relative units",
+  "absolute_metric_scale": false,
+  "timings_seconds": {
+    "normalize": 1.981,
+    "sfm": 31.793,
+    "sparse_parse": 1.214,
+    "depth": 19.657,
+    "alignment": 0.215,
+    "fusion": 0.86,
+    "verification": 0.04,
+    "total": 55.768
+  },
+  "stages": {
+    "input": {
+      "images": 7,
+      "manifest": "00_input/input_manifest.json",
+      "input_domain_masked_images": 0,
+      "input_domain_semantics": "optional input alpha>0; RGB/JPEG pixels are never classified by color"
+    },
+    "sfm": {
+      "model": "01_sfm\\sparse\\0",
+      "log_dir": "logs",
+      "components_manifest": "01_sfm/sparse/components.json",
+      "component_count": 1,
+      "all_component_registered_images": 7,
+      "coordinate_relationship": "independent_per_component",
+      "mapper": "global",
+      "mapper_threads": 2,
+      "feature_profile": "full",
+      "matching_mode": "sequential",
+      "feature_seconds": 11.383,
+      "matching_seconds": 16.99,
+      "mapping_seconds": 3.42
+    },
+    "sparse": {
+      "model_path": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-windows-wheel-windows-clean-final\\02_undistorted\\sparse",
+      "registered_images": 7,
+      "sparse_points": 2326,
+      "observations": 10017,
+      "unregistered_images": []
+    },
+    "depth": {
+      "checkpoint": "D:\\AsiaInfo\\workspace\\lingshu\\models\\depth-anything-base-q8_0.gguf",
+      "engine": "depth-anything.cpp C API / ggml CPU",
+      "quantization": "q8_0",
+      "registered_views": 7,
+      "inferred_views": 7,
+      "inferred_images": [
+        "000000.jpg",
+        "000001.jpg",
+        "000002.jpg",
+        "000003.jpg",
+        "000004.jpg",
+        "000005.jpg",
+        "000006.jpg"
+      ],
+      "skipped_images": [],
+      "selection": {
+        "mode": "all",
+        "thresholds": {
+          "min_views": 4,
+          "min_unique_track_ratio": 0.98,
+          "min_repeated_track_ratio": 0.85,
+          "min_local_track_ratio": 0.85,
+          "min_local_tile_ratio": 0.75,
+          "max_baseline_to_depth": 0.25,
+          "max_view_angle_deg": 20.0
+        },
+        "planned_views": [
+          "000000.jpg",
+          "000001.jpg",
+          "000002.jpg",
+          "000003.jpg",
+          "000004.jpg",
+          "000005.jpg",
+          "000006.jpg"
+        ]
+      },
+      "metric": false,
+      "model_pose_exported": false,
+      "threads": 4,
+      "convolution_mode": "direct",
+      "input_domain_masked_images": [],
+      "depth_semantics": "relative; calibrated to COLMAP coordinates below"
+    },
+    "alignment": {
+      "method": "global RANSAC affine fit: COLMAP camera Z = scale * DA3 depth + shift",
+      "da3_depth_units": "relative",
+      "aligned_units": "COLMAP relative units",
+      "scale_sfm_units_per_da3_unit": 8.023710352927061,
+      "shift_sfm_units": 18.65028141588919,
+      "input_observations": 10017,
+      "da3_depth_p10_p90_spread": 0.9251392126083374,
+      "colmap_camera_z_p10_p90_spread": 13.171171579389757,
+      "raw_anchor_pearson_correlation": 0.7020254376171338,
+      "inlier_observations": 8847,
+      "inlier_ratio": 0.8831985624438454,
+      "median_abs_residual_sfm_units": 1.2075450127515275,
+      "p95_abs_residual_sfm_units": 3.3730562707829557,
+      "median_relative_anchor_error": 0.04119412997701743,
+      "p95_relative_anchor_error": 0.11506827238001939,
+      "confidence_percentile_cutoff": 0.0,
+      "frames": {
+        "000000.jpg": {
+          "inlier_observations": 1270,
+          "median_abs_residual_sfm_units": 1.5861029703136804,
+          "confidence_median": 1.070908784866333
+        },
+        "000001.jpg": {
+          "inlier_observations": 1338,
+          "median_abs_residual_sfm_units": 1.2892600208186344,
+          "confidence_median": 1.2431970834732056
+        },
+        "000003.jpg": {
+          "inlier_observations": 1390,
+          "median_abs_residual_sfm_units": 0.969408279005517,
+          "confidence_median": 2.1996960639953613
+        },
+        "000002.jpg": {
+          "inlier_observations": 1482,
+          "median_abs_residual_sfm_units": 0.8805351795128651,
+          "confidence_median": 1.475558876991272
+        },
+        "000005.jpg": {
+          "inlier_observations": 1089,
+          "median_abs_residual_sfm_units": 1.5564929556923346,
+          "confidence_median": 3.278796434402466
+        },
+        "000004.jpg": {
+          "inlier_observations": 1356,
+          "median_abs_residual_sfm_units": 1.1399566893136868,
+          "confidence_median": 2.3820486068725586
+        },
+        "000006.jpg": {
+          "inlier_observations": 922,
+          "median_abs_residual_sfm_units": 1.506468840685569,
+          "confidence_median": 3.0254311561584473
+        }
+      },
+      "external_metric_conversion": {
+        "input_units": "COLMAP relative units",
+        "output_units": "COLMAP relative units",
+        "meters_per_sfm_unit": null,
+        "aligned_frames": 7
+      }
+    },
+    "fusion": {
+      "integrated_frames": 7,
+      "backend": "Open3D CPU VoxelBlockGrid",
+      "active_voxel_blocks": 14,
+      "mesh_weight_threshold": 1.0,
+      "valid_voxels": 2825,
+      "source_voxel_samples": 7894,
+      "mesh_vertices": 1085,
+      "mesh_triangles": 2027,
+      "mesh_provenance": {
+        "mesh_vertices": 1085,
+        "mapped_vertices": 1085,
+        "unmapped_vertices": 0,
+        "mapping_ratio": 1.0,
+        "max_mapping_radius": 5.324643960127519,
+        "max_mapped_distance": 1.1470177094480716,
+        "p95_mapped_distance": 0.9836830484948408,
+        "method": "nearest observed depth voxel within four TSDF voxels"
+      },
+      "voxel_size": 1.3311609900318797,
+      "units": "COLMAP relative units",
+      "confidence_percentile": 0.0,
+      "files": {
+        "mesh": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-windows-wheel-windows-clean-final\\05_fused\\mesh.ply",
+        "cloud": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-windows-wheel-windows-clean-final\\05_fused\\cloud.ply",
+        "provenance_jsonl": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-windows-wheel-windows-clean-final\\05_fused\\provenance.jsonl",
+        "provenance_sqlite": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-windows-wheel-windows-clean-final\\05_fused\\voxel_provenance.sqlite",
+        "mesh_provenance_jsonl": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-windows-wheel-windows-clean-final\\05_fused\\mesh_provenance.jsonl"
+      }
+    }
+  },
+  "coverage": {
+    "input_images": 7,
+    "selected_model_registered_images": 7,
+    "all_independent_components_registered_images": 7,
+    "single_coordinate_frame_complete": true,
+    "unregistered_in_selected_model": [],
+    "inferred_images": 7,
+    "all_inputs_have_dense_depth": true
+  },
+  "verification": {
+    "reprojection": {
+      "observations": 10017,
+      "mean_px": 0.4596524146660098,
+      "median_px": 0.268678125287379,
+      "p95_px": 1.5122113576379221,
+      "rmse_px": 0.8144760151728985
+    },
+    "dense_cross_view_depth_abs_rel": {
+      "status": "measured",
+      "sampling_stride_px": 8,
+      "confidence_percentile": 0.0,
+      "tested_correspondences": 10596,
+      "median_abs_rel": 0.011827922891825438,
+      "p95_abs_rel": 0.05255274102091789,
+      "within_10_percent_ratio": 0.9975462438656096,
+      "pairs": [
+        {
+          "source": "000000.jpg",
+          "target": "000001.jpg",
+          "tested_correspondences": 1906,
+          "median_abs_rel": 0.012929827521387615,
+          "p95_abs_rel": 0.04869099940856826
+        },
+        {
+          "source": "000001.jpg",
+          "target": "000002.jpg",
+          "tested_correspondences": 1872,
+          "median_abs_rel": 0.009318135960952975,
+          "p95_abs_rel": 0.0349545418437327
+        },
+        {
+          "source": "000002.jpg",
+          "target": "000003.jpg",
+          "tested_correspondences": 1923,
+          "median_abs_rel": 0.012191466285481158,
+          "p95_abs_rel": 0.038408878067516514
+        },
+        {
+          "source": "000003.jpg",
+          "target": "000004.jpg",
+          "tested_correspondences": 1790,
+          "median_abs_rel": 0.01112488304181937,
+          "p95_abs_rel": 0.03735861604880012
+        },
+        {
+          "source": "000004.jpg",
+          "target": "000005.jpg",
+          "tested_correspondences": 1826,
+          "median_abs_rel": 0.010003914044150557,
+          "p95_abs_rel": 0.01940815693176149
+        },
+        {
+          "source": "000005.jpg",
+          "target": "000006.jpg",
+          "tested_correspondences": 1279,
+          "median_abs_rel": 0.026075502947918865,
+          "p95_abs_rel": 0.0883852835988804
+        }
+      ]
+    },
+    "sparse_depth_anchor_abs_rel_median": 0.04119412997701743,
+    "sparse_depth_anchor_abs_rel_p95": 0.11506827238001939,
+    "contour_iou": {
+      "status": "not_available",
+      "reason": "no reference object masks were supplied"
+    },
+    "scale_source": "GLOMAP sparse reconstruction",
+    "absolute_scale_status": "relative scene scale; no measured baseline was provided"
+  },
+  "resource_usage": {
+    "peak_process_tree_rss_mb": 1169.0,
+    "stage_peak_process_tree_rss_mb": {
+      "startup": 152.7,
+      "normalize": 237.9,
+      "sfm": 1169.0,
+      "sparse_parse": 227.7,
+      "depth_and_alignment": 499.4,
+      "fusion": 266.6
+    }
+  }
+}

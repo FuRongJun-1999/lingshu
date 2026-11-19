@@ -1,0 +1,188 @@
+{
+  "status": "NOT_READY_FOR_W3_ACCEPTED_RECONSTRUCTION_PR",
+  "source": "final frozen producer; no commits, pushes or online PR created",
+  "evidence_scope": "20 independent Blender RGBA scenes; supplied alpha is input validity, not unsegmented RGB silhouette recovery",
+  "truth": {
+    "fixed_denominator": 20,
+    "measured": 20,
+    "execution_failures": [],
+    "registered_views": 100,
+    "dense_views": 100,
+    "w3_sim3_aligned_pass": 11,
+    "r4_silhouette_pass": 17,
+    "failed_predicates": {
+      "rotation_max_le_0_5_deg": 8,
+      "sparse_mean_relative_error_le_2_percent": 4,
+      "aligned_translation_max_le_5_cm": 1
+    },
+    "pipeline_seconds": {
+      "count": 20,
+      "min": 20.096,
+      "median": 23.064999999999998,
+      "mean": 23.8814,
+      "max": 28.449
+    },
+    "pipeline_within_30_seconds": 20,
+    "benchmark_wall_including_truth_evaluation_seconds": {
+      "count": 20,
+      "min": 23.061,
+      "median": 26.4815,
+      "mean": 27.2691,
+      "max": 32.753
+    },
+    "peak_process_tree_rss_mib": {
+      "count": 20,
+      "min": 503.1,
+      "median": 504.85,
+      "mean": 504.795,
+      "max": 506.1
+    },
+    "dense_mean_abs_rel": {
+      "count": 20,
+      "min": 0.010296686119897466,
+      "median": 0.01895823393074737,
+      "mean": 0.019753170171845007,
+      "max": 0.03641693159047357
+    },
+    "dense_mean_abs_rel_within_5_percent": 20,
+    "gt_foreground_coverage": {
+      "count": 20,
+      "min": 0.9670573149325737,
+      "median": 0.9905799516738172,
+      "mean": 0.9897648971722048,
+      "max": 0.9996865256675195
+    },
+    "silhouette_iou": {
+      "count": 20,
+      "min": 0.7445770018163795,
+      "median": 0.8917049639279901,
+      "mean": 0.880095924135521,
+      "max": 0.9406662514997632
+    },
+    "producer_source_hashes": [
+      "886272ea85611c5c95f9814f5a4e38520304568e3227343e285152546a8937ab"
+    ],
+    "scope": "20 independent Blender CPU scenes, 5 input RGBA views each, SFM2 / DA3 4 threads, 448 max input size, all registered views dense, confidence0; one evaluation-only Sim3; no recovered absolute metric scale claim",
+    "runtime_scope": "pipeline timings exclude Python startup imports; benchmark wall also includes independent truth evaluation"
+  },
+  "mesh_coverage_diagnostic": {
+    "mesh_observed_surface": {
+      "median": 0.9596041666666666,
+      "min": 0.5648740289282802,
+      "max": 0.9842241132039392
+    },
+    "mesh_full_surface": {
+      "median": 0.5877083333333333,
+      "min": 0.2569166666666667,
+      "max": 0.7755
+    }
+  },
+  "impact_gate": {
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3,
+    "junit_testcase_count": 323,
+    "passed": 299,
+    "subtests_passed": 21,
+    "pytest_summary": "299 passed, 3 skipped, 14 warnings, 21 subtests passed in 97.93s (0:01:37)",
+    "whole_suite_collected": 5728,
+    "seconds": 97.901
+  },
+  "impact_gate_source_unchanged": true,
+  "historical_gate": "Previous full-source gate and102 script processes retained in validation.json; unchanged unrelated tests were not rerun after user requested acceleration",
+  "current_defaults": {
+    "depth_views": "all",
+    "confidence_percentile": 0,
+    "sfm_features": "full"
+  },
+  "native_1600": {
+    "coverage": {
+      "input_images": 7,
+      "selected_model_registered_images": 7,
+      "all_independent_components_registered_images": 7,
+      "single_coordinate_frame_complete": true,
+      "unregistered_in_selected_model": [],
+      "inferred_images": 7,
+      "all_inputs_have_dense_depth": true
+    },
+    "timings": {
+      "normalize": 1.981,
+      "sfm": 31.793,
+      "sparse_parse": 1.214,
+      "depth": 19.657,
+      "alignment": 0.215,
+      "fusion": 0.86,
+      "verification": 0.04,
+      "total": 55.768
+    },
+    "resources": {
+      "peak_process_tree_rss_mb": 1169.0,
+      "stage_peak_process_tree_rss_mb": {
+        "startup": 152.7,
+        "normalize": 237.9,
+        "sfm": 1169.0,
+        "sparse_parse": 227.7,
+        "depth_and_alignment": 499.4,
+        "fusion": 266.6
+      }
+    }
+  },
+  "native_47": {
+    "coverage": {
+      "input_images": 47,
+      "selected_model_registered_images": 47,
+      "all_independent_components_registered_images": 47,
+      "single_coordinate_frame_complete": true,
+      "unregistered_in_selected_model": [],
+      "inferred_images": 47,
+      "all_inputs_have_dense_depth": true
+    },
+    "timings": {
+      "normalize": 0.708,
+      "sfm": 81.512,
+      "sparse_parse": 1.875,
+      "depth": 177.134,
+      "alignment": 0.989,
+      "fusion": 4.924,
+      "verification": 0.327,
+      "total": 267.476
+    },
+    "resources": {
+      "peak_process_tree_rss_mb": 529.4,
+      "stage_peak_process_tree_rss_mb": {
+        "startup": 152.5,
+        "normalize": 158.1,
+        "sfm": 385.6,
+        "sparse_parse": 214.7,
+        "depth_and_alignment": 529.4,
+        "fusion": 298.2,
+        "verification": 258.6
+      }
+    }
+  },
+  "wheel": {
+    "sha256": "042701a7342ca6c0395aad0f1b1ec6641a3ea906fa36e61a3bf9cfa81e82e68f",
+    "dependency_closure": {
+      "root": "lingshu[world-reconstruct]",
+      "package_count": 64,
+      "unexplained": [],
+      "full_or_dev_requested": false,
+      "forbidden_packages_absent": true
+    }
+  },
+  "fixed": [
+    "offline viewer assertions and combined collection without disabling path protection",
+    "optional alpha observation domains and independent half-pixel ray conventions",
+    "full dense coverage by default; confidence removal only opt-in",
+    "all independent components inventoried; explicit exhaustive matching for unordered inputs",
+    "full PLY/SQLite/NPZ/image decoding and actual CPU reconstruction rendering"
+  ],
+  "remaining": [
+    "W3 geometry9/20 failed, including actual relative-pose and sparse errors; R4 silhouette3/20 failed",
+    "Absolute metric scale without an independent anchor and real-photo independent surface truth are not accepted; mesh error/coverage are diagnostics with no changed acceptance thresholds",
+    "Actual20-thread AVX-512 target unavailable; local20 software threads were oversubscribed",
+    "Linux native execution and fresh-OS native-asset installation not executed",
+    "Semantic entities/memory and dynamic temporal fusion not provided by static geometric input",
+    "47frames is a measured bound, not a hundreds/thousands-frame scalability claim"
+  ]
+}

@@ -21,6 +21,7 @@ D 基线外新零引用模块 ⇒ 退出 1 并点名。
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -31,10 +32,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL = REPO_ROOT / "tools" / "coverage_map_lint.py"
 BASELINE = REPO_ROOT / "tools" / "coverage_map_lint_baseline.txt"
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from tools import coverage_map_lint as C  # noqa: E402
+# 与 test_issue607_time_core_shapes_guard 同式：显式加载已知仓内文件，
+# 不让本测试的收集顺序依赖 lingshu 的 CWD 裸包导入保护是否已安装。
+_spec = importlib.util.spec_from_file_location("coverage_map_lint_under_test", TOOL)
+C = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(C)
 
 
 def run_lint(*args, cwd=None, timeout=300):
@@ -64,6 +66,35 @@ def make_repo(root: Path, modules, tests_text):
         write_module(root / "lingshu" / "pkg", name)
     write_module(root / "tests", "test_sample.py", tests_text)
     return root
+
+
+def test_tool_load_after_lingshu_import():
+    """先安装 CWD 导入保护，仍能加载已知工具；不打开保护逃生口。"""
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1")
+    env.pop("LINGSHU_ALLOW_CWD_IMPORTS", None)
+    code = """
+import importlib.util
+import sys
+from pathlib import Path
+root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(root))
+import lingshu
+assert Path(lingshu.__file__).resolve() == root / "lingshu" / "__init__.py"
+spec = importlib.util.spec_from_file_location(
+    "_coverage_map_collection_order", root / "tests" / "test_coverage_map_lint.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert Path(module.C.__file__).resolve() == root / "tools" / "coverage_map_lint.py"
+assert module.C.parse_baseline("") == ({}, [])
+from lingshu import _pathguard
+assert not _pathguard.pathguard_report()["escape_hatch_open"]
+assert _pathguard.pathguard_report()["route_finder_installed"]
+"""
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8", "-c", code, str(REPO_ROOT)],
+        cwd=REPO_ROOT, env=env, capture_output=True, text=True,
+        encoding="utf-8", timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 # --------------------------------------------------- A 量具自证

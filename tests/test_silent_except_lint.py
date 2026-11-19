@@ -26,6 +26,7 @@ E unparsable fail-closed（v2 · #408 同构收口）：语法错文件 ⇒ 退�
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -36,10 +37,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL = REPO_ROOT / "tools" / "silent_except_lint.py"
 BASELINE = REPO_ROOT / "tools" / "silent_except_lint_baseline.txt"
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from tools import silent_except_lint as S  # noqa: E402
+# 按已知仓内文件加载，不依赖 CWD 裸包解析或测试收集顺序。
+_spec = importlib.util.spec_from_file_location("silent_except_lint_under_test", TOOL)
+S = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(S)
 
 
 def run_lint(*args, cwd=None, timeout=300):

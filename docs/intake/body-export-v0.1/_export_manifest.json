@@ -15,6 +15,16 @@
 
 
  "package": "lingshu",
+ "cpu_reconstruction_bridge": {
+   "date": "2026-11-19",
+   "kind": "local_fork_modification",
+   "base_commit": "d78185c3796e5782df05b6304a4b20fe8a1cb048",
+   "report": "docs/cpu_reconstruction.md",
+   "previous_sha256": {
+     "lingshu/world/scene_model.py": "2852357120ff7054"
+   },
+   "note": "scene_model.py current LF-normalized fingerprint is updated in blocks.world.files; original source provenance and historical fingerprints remain unchanged. Reconstruction modules are a local optional producer/adapter, not a new AEIS export."
+ },
 
 
 
@@ -1758,7 +1768,7 @@
 
 
 
-     "sha256": "2852357120ff7054",
+     "sha256": "ad571489d12d0d4e",
 
 
 

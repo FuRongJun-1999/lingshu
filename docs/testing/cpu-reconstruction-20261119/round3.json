@@ -1,0 +1,5295 @@
+{
+  "schema": "lingshu.cpu-reconstruction-round3/1",
+  "date": "2026-11-19",
+  "status": "LOCAL_VALIDATION_COMPLETE_QUALITY_NOT_ACCEPTED",
+  "acceptance_complete": false,
+  "source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+  "scope": "E1 independent Blender CPU truth, original20 scenes/100 original448x336 RGBA views; SFM2/DA3 4 threads; one evaluation-only center Sim3; no absolute metric scale recovery",
+  "changes": [
+    "propagate declared alpha domain into native SIFT masks",
+    "one weak-only SIFT retry below512 features; metadata-only scratch and atomic identity-preserving import",
+    "retain TSDF voxels with at least one true observation; unknown weight0 excluded"
+  ],
+  "truth": {
+    "fixed_denominator": 20,
+    "measured": 20,
+    "execution_failures": [],
+    "registered_views": 100,
+    "dense_views": 100,
+    "w3_sim3_aligned_pass": 13,
+    "r4_silhouette_pass": 20,
+    "failed_predicates": {
+      "at_least_three_registered_views": 0,
+      "at_least_three_dense_views": 0,
+      "rotation_max_le_0_5_deg": 7,
+      "aligned_translation_max_le_5_cm": 0,
+      "reprojection_rmse_le_2_px": 0,
+      "sparse_mean_relative_error_le_2_percent": 1,
+      "dense_mean_abs_rel_le_5_percent": 0
+    },
+    "pipeline_seconds": {
+      "count": 20,
+      "min": 21.53,
+      "median": 24.016,
+      "mean": 24.2158,
+      "max": 29.138
+    },
+    "pipeline_within_30_seconds": 20,
+    "benchmark_wall_including_truth_evaluation_seconds": {
+      "count": 20,
+      "min": 25.397,
+      "median": 27.147,
+      "mean": 27.5687,
+      "max": 32.881
+    },
+    "peak_process_tree_rss_mib": {
+      "count": 20,
+      "min": 504.8,
+      "median": 505.6,
+      "mean": 505.63500000000005,
+      "max": 507.0
+    },
+    "dense_mean_abs_rel": {
+      "count": 20,
+      "min": 0.009704958792158559,
+      "median": 0.019505142849731705,
+      "mean": 0.019112532565939273,
+      "max": 0.0341192987463984
+    },
+    "dense_mean_abs_rel_within_5_percent": 20,
+    "gt_foreground_coverage": {
+      "count": 20,
+      "min": 0.9844294257996027,
+      "median": 0.9905720626403696,
+      "mean": 0.990905838859937,
+      "max": 0.9991529662315871
+    },
+    "silhouette_iou": {
+      "count": 20,
+      "min": 0.8832074297217968,
+      "median": 0.9542194681562363,
+      "mean": 0.946835901058299,
+      "max": 0.9714606692803566
+    },
+    "mesh_observed_surface_coverage": {
+      "count": 20,
+      "min": 0.4967595175758616,
+      "median": 0.9828961113750558,
+      "mean": 0.9555725946364028,
+      "max": 0.9989583333333333
+    },
+    "mesh_observed_surface_precision": {
+      "count": 20,
+      "min": 0.35741666666666666,
+      "median": 0.9625833333333333,
+      "mean": 0.9328708333333333,
+      "max": 0.9925
+    },
+    "mesh_full_surface_coverage": {
+      "count": 20,
+      "min": 0.24183333333333334,
+      "median": 0.7069583333333334,
+      "mean": 0.6712458333333333,
+      "max": 0.8290833333333333
+    },
+    "rotation_max_deg": {
+      "count": 20,
+      "min": 0.12284743424393862,
+      "median": 0.3781687837472492,
+      "mean": 0.494938578486238,
+      "max": 1.507815622188543
+    },
+    "translation_max_m": {
+      "count": 20,
+      "min": 0.0020359213925242522,
+      "median": 0.003987733320905053,
+      "mean": 0.004834406585076343,
+      "max": 0.011774001243898827
+    },
+    "sparse_mean_relative_error": {
+      "count": 20,
+      "min": 0.004248100021310622,
+      "median": 0.008528871457432086,
+      "mean": 0.01144673997124147,
+      "max": 0.038192565102549425
+    },
+    "producer_source_hashes": [
+      "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a"
+    ]
+  },
+  "round2_baseline": {
+    "fixed_denominator": 20,
+    "measured": 20,
+    "execution_failures": [],
+    "registered_views": 100,
+    "dense_views": 100,
+    "w3_sim3_aligned_pass": 11,
+    "r4_silhouette_pass": 17,
+    "failed_predicates": {
+      "at_least_three_registered_views": 0,
+      "at_least_three_dense_views": 0,
+      "rotation_max_le_0_5_deg": 8,
+      "aligned_translation_max_le_5_cm": 1,
+      "reprojection_rmse_le_2_px": 0,
+      "sparse_mean_relative_error_le_2_percent": 4,
+      "dense_mean_abs_rel_le_5_percent": 0
+    },
+    "pipeline_seconds": {
+      "count": 20,
+      "min": 20.096,
+      "median": 23.064999999999998,
+      "mean": 23.8814,
+      "max": 28.449
+    },
+    "pipeline_within_30_seconds": 20,
+    "benchmark_wall_including_truth_evaluation_seconds": {
+      "count": 20,
+      "min": 23.061,
+      "median": 26.4815,
+      "mean": 27.2691,
+      "max": 32.753
+    },
+    "peak_process_tree_rss_mib": {
+      "count": 20,
+      "min": 503.1,
+      "median": 504.85,
+      "mean": 504.79499999999996,
+      "max": 506.1
+    },
+    "dense_mean_abs_rel": {
+      "count": 20,
+      "min": 0.010296686119897466,
+      "median": 0.01895823393074737,
+      "mean": 0.019753170171845007,
+      "max": 0.03641693159047357
+    },
+    "dense_mean_abs_rel_within_5_percent": 20,
+    "gt_foreground_coverage": {
+      "count": 20,
+      "min": 0.9670573149325737,
+      "median": 0.9905799516738172,
+      "mean": 0.9897648971722047,
+      "max": 0.9996865256675195
+    },
+    "silhouette_iou": {
+      "count": 20,
+      "min": 0.7445770018163795,
+      "median": 0.8917049639279901,
+      "mean": 0.8800959241355211,
+      "max": 0.9406662514997632
+    },
+    "mesh_observed_surface_coverage": {
+      "count": 20,
+      "min": 0.5648740289282802,
+      "median": 0.9596041666666666,
+      "mean": 0.9018968179887636,
+      "max": 0.9842241132039392
+    },
+    "mesh_observed_surface_precision": {
+      "count": 20,
+      "min": 0.4045,
+      "median": 0.9897083333333334,
+      "mean": 0.9223541666666666,
+      "max": 0.99975
+    },
+    "mesh_full_surface_coverage": {
+      "count": 20,
+      "min": 0.2569166666666667,
+      "median": 0.5877083333333333,
+      "mean": 0.5481708333333334,
+      "max": 0.7755
+    },
+    "rotation_max_deg": {
+      "count": 20,
+      "min": 0.10735307127441134,
+      "median": 0.48441348019826647,
+      "mean": 0.843978712877648,
+      "max": 3.948167316282121
+    },
+    "translation_max_m": {
+      "count": 20,
+      "min": 0.0019508085467302583,
+      "median": 0.003988816864709528,
+      "mean": 0.00974969052789394,
+      "max": 0.08405966140788931
+    },
+    "sparse_mean_relative_error": {
+      "count": 20,
+      "min": 0.0038027035544184605,
+      "median": 0.012040220839440268,
+      "mean": 0.018533964861674888,
+      "max": 0.0866473297899535
+    },
+    "producer_source_hashes": [
+      "886272ea85611c5c95f9814f5a4e38520304568e3227343e285152546a8937ab"
+    ]
+  },
+  "surface_tradeoff": {
+    "method": "same fixed20 scene identities, original2percent GT diagonal diagnostic tolerance; not a newly relaxed acceptance threshold",
+    "coverage_delta": {
+      "count": 20,
+      "min": -0.06811451135241858,
+      "median": 0.02264583333333331,
+      "mean": 0.0536757766476391,
+      "max": 0.418625
+    },
+    "precision_delta": {
+      "count": 20,
+      "min": -0.06974999999999998,
+      "median": -0.02554166666666663,
+      "mean": 0.010516666666666669,
+      "max": 0.4105
+    },
+    "precision_regression_scenes": 18,
+    "paired": [
+      {
+        "id": "scene-00",
+        "observed_coverage_delta": 0.022958333333333303,
+        "observed_precision_delta": -0.008583333333333387,
+        "dense_mean_abs_rel_delta": -0.0005917273277389074,
+        "silhouette_iou_delta": 0.06057648554484851
+      },
+      {
+        "id": "scene-01",
+        "observed_coverage_delta": 0.006125000000000047,
+        "observed_precision_delta": -0.04749999999999999,
+        "dense_mean_abs_rel_delta": 0.00036668977873301895,
+        "silhouette_iou_delta": 0.03643551238858078
+      },
+      {
+        "id": "scene-02",
+        "observed_coverage_delta": 0.022333333333333316,
+        "observed_precision_delta": -0.04183333333333339,
+        "dense_mean_abs_rel_delta": 0.0015817357499548976,
+        "silhouette_iou_delta": 0.05003829711840302
+      },
+      {
+        "id": "scene-03",
+        "observed_coverage_delta": 0.03295833333333331,
+        "observed_precision_delta": -0.016583333333333394,
+        "dense_mean_abs_rel_delta": 0.0002755648054718375,
+        "silhouette_iou_delta": 0.0633089047349934
+      },
+      {
+        "id": "scene-04",
+        "observed_coverage_delta": 0.012525098001720969,
+        "observed_precision_delta": -0.005666666666666598,
+        "dense_mean_abs_rel_delta": 0.0021054722369216756,
+        "silhouette_iou_delta": 0.0430370321200656
+      },
+      {
+        "id": "scene-05",
+        "observed_coverage_delta": 0.018416666666666637,
+        "observed_precision_delta": -0.03141666666666665,
+        "dense_mean_abs_rel_delta": 0.0005292557100017581,
+        "silhouette_iou_delta": 0.056607885110591116
+      },
+      {
+        "id": "scene-06",
+        "observed_coverage_delta": 0.04266666666666674,
+        "observed_precision_delta": -0.033499999999999974,
+        "dense_mean_abs_rel_delta": -0.0009176264202428487,
+        "silhouette_iou_delta": 0.08433038385152702
+      },
+      {
+        "id": "scene-07",
+        "observed_coverage_delta": 0.04166666666666674,
+        "observed_precision_delta": -0.050583333333333313,
+        "dense_mean_abs_rel_delta": 0.0011844890172063721,
+        "silhouette_iou_delta": 0.05655060215944252
+      },
+      {
+        "id": "scene-08",
+        "observed_coverage_delta": 0.01678890914486797,
+        "observed_precision_delta": -0.026583333333333292,
+        "dense_mean_abs_rel_delta": -0.001153154392741277,
+        "silhouette_iou_delta": 0.06287448648353444
+      },
+      {
+        "id": "scene-09",
+        "observed_coverage_delta": 0.007774370491944849,
+        "observed_precision_delta": -0.008000000000000007,
+        "dense_mean_abs_rel_delta": 0.0003653092355710222,
+        "silhouette_iou_delta": 0.02029636967151116
+      },
+      {
+        "id": "scene-10",
+        "observed_coverage_delta": 0.03312499999999996,
+        "observed_precision_delta": -0.06974999999999998,
+        "dense_mean_abs_rel_delta": 0.0005532626853751027,
+        "silhouette_iou_delta": 0.0762798345415685
+      },
+      {
+        "id": "scene-11",
+        "observed_coverage_delta": 0.02416666666666667,
+        "observed_precision_delta": -0.06325000000000003,
+        "dense_mean_abs_rel_delta": -0.0011820449962531565,
+        "silhouette_iou_delta": 0.05344462091019786
+      },
+      {
+        "id": "scene-12",
+        "observed_coverage_delta": -0.06811451135241858,
+        "observed_precision_delta": -0.047083333333333366,
+        "dense_mean_abs_rel_delta": 0.0001704161656449904,
+        "silhouette_iou_delta": 0.03133222390897805
+      },
+      {
+        "id": "scene-13",
+        "observed_coverage_delta": 0.009166666666666656,
+        "observed_precision_delta": -0.023833333333333373,
+        "dense_mean_abs_rel_delta": -0.0008991232021292733,
+        "silhouette_iou_delta": 0.038790256770639076
+      },
+      {
+        "id": "scene-14",
+        "observed_coverage_delta": 0.015458333333333352,
+        "observed_precision_delta": -0.02533333333333332,
+        "dense_mean_abs_rel_delta": 0.00047813137473631806,
+        "silhouette_iou_delta": 0.06128495070170725
+      },
+      {
+        "id": "scene-15",
+        "observed_coverage_delta": 0.418625,
+        "observed_precision_delta": 0.3358333333333333,
+        "dense_mean_abs_rel_delta": -0.015128102878895572,
+        "silhouette_iou_delta": 0.1892218513566709
+      },
+      {
+        "id": "scene-16",
+        "observed_coverage_delta": 0.006958333333333289,
+        "observed_precision_delta": -0.02574999999999994,
+        "dense_mean_abs_rel_delta": 0.0004180082397554543,
+        "silhouette_iou_delta": 0.034363838299114824
+      },
+      {
+        "id": "scene-17",
+        "observed_coverage_delta": 0.035250000000000004,
+        "observed_precision_delta": -0.005666666666666598,
+        "dense_mean_abs_rel_delta": -1.536354546376531e-05,
+        "silhouette_iou_delta": 0.07437358097652313
+      },
+      {
+        "id": "scene-18",
+        "observed_coverage_delta": 0.34416666666666673,
+        "observed_precision_delta": 0.4105,
+        "dense_mean_abs_rel_delta": 0.00012830581547673345,
+        "silhouette_iou_delta": 0.1941660548415004
+      },
+      {
+        "id": "scene-19",
+        "observed_coverage_delta": 0.03049999999999997,
+        "observed_precision_delta": -0.005083333333333329,
+        "dense_mean_abs_rel_delta": -0.0010822501694991195,
+        "silhouette_iou_delta": 0.04748636696516062
+      }
+    ]
+  },
+  "affected_gate": {
+    "tests": 139,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "pytest_summary": "123 passed, 16 subtests passed in 6.81s",
+    "scope": "11 directly affected reconstruction test files; unchanged round2 gate and102 script results retained as historical evidence"
+  },
+  "pose_evaluator_gate": {
+    "tests": 23,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "pytest_summary": "23 passed, 1 warning in 1.48s",
+    "scope": "portable independent camera-par evaluator; separate from producer gate"
+  },
+  "wheel": {
+    "status": "passed",
+    "created_utc": "2026-11-19T05:17:02.655193+00:00",
+    "scope": "new wheel, noneditable isolated --target, reused round2 clean dependency venv; not a new venv or machine",
+    "final_batch": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\FINAL_BATCH.json",
+    "frozen_producer_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+    "skipped_unchanged_gates": [
+      "105-module import sweep",
+      "six artifact corruption cases",
+      "dependency reinstallation",
+      "native reconstruction",
+      "new downloads"
+    ],
+    "build": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-env\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-m",
+        "pip",
+        "wheel",
+        "--no-deps",
+        "--no-build-isolation",
+        "--wheel-dir",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\dist",
+        "D:\\AsiaInfo\\workspace\\lingshu\\upstream-lingshu"
+      ],
+      "returncode": 0,
+      "seconds": 3.9967634999775328,
+      "expected_returncode": 0,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\build.log"
+    },
+    "wheel": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\dist\\lingshu-0.0.1-py3-none-any.whl",
+    "wheel_sha256": "69e2a107674ae3c0a6c27be9ab69597f7e1c6ed89b542ab96bf1bc63ac7223a9",
+    "frozen_source_identity": {
+      "python_files": 105,
+      "all_equal": true,
+      "native_model_payload": []
+    },
+    "install": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-m",
+        "pip",
+        "install",
+        "--no-deps",
+        "--no-index",
+        "--target",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\wheel-installed",
+        "--report",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\pip-install-report.json",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\dist\\lingshu-0.0.1-py3-none-any.whl"
+      ],
+      "returncode": 0,
+      "seconds": 3.424191600002814,
+      "expected_returncode": 0,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\install.log"
+    },
+    "selected_current_products": {
+      "ordinary": {
+        "id": "scene-00",
+        "run": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\independent-truth-round3\\scene-00",
+        "feature_support": {
+          "status": "not_needed",
+          "minimum_features": 512,
+          "initial_peak_threshold": 0.006666666666666667,
+          "recovery_peak_threshold": 0.002,
+          "retried_images": [],
+          "initial_counts": {
+            "000000.jpg": 718,
+            "000001.jpg": 710,
+            "000002.jpg": 702,
+            "000003.jpg": 699,
+            "000004.jpg": 647
+          },
+          "recovered_counts": {},
+          "scratch_metadata_only": true,
+          "seconds": 0.002754
+        }
+      },
+      "weak_feature_recovery": {
+        "id": "scene-15",
+        "run": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\independent-truth-round3\\scene-15",
+        "feature_support": {
+          "status": "recovered",
+          "minimum_features": 512,
+          "initial_peak_threshold": 0.006666666666666667,
+          "recovery_peak_threshold": 0.002,
+          "retried_images": [
+            "000000.jpg",
+            "000001.jpg",
+            "000002.jpg",
+            "000003.jpg",
+            "000004.jpg"
+          ],
+          "initial_counts": {
+            "000000.jpg": 209,
+            "000001.jpg": 212,
+            "000002.jpg": 192,
+            "000003.jpg": 201,
+            "000004.jpg": 233
+          },
+          "recovered_counts": {
+            "000000.jpg": 869,
+            "000001.jpg": 885,
+            "000002.jpg": 875,
+            "000003.jpg": 776,
+            "000004.jpg": 749
+          },
+          "scratch_metadata_only": true,
+          "seconds": 0.900182
+        }
+      }
+    },
+    "installed_consumer": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-c",
+        "\nimport hashlib\nimport importlib.metadata\nimport importlib.util\nimport json\nfrom pathlib import Path\nimport sys\ntarget, helper, wheel, normal, weak, home = map(Path,sys.argv[1:])\nsys.path.insert(0,str(target))\nimport cv2\nimport numpy as np\nimport lingshu\nassert Path(lingshu.__file__).resolve().is_relative_to(target.resolve())\nspec=importlib.util.spec_from_file_location('previous_wheel_consumer_helpers',helper)\nmodule=importlib.util.module_from_spec(spec)\nspec.loader.exec_module(module)\nconsumed={\n    'ordinary':module.consume(normal,home/'ordinary-render'),\n    'weak_feature_recovery':module.consume(weak,home/'weak-recovery-render'),\n}\norigins={}\nfor name,item in sorted(sys.modules.items()):\n    if name=='lingshu' or name.startswith('lingshu.'):\n        origin=getattr(item,'__file__',None)\n        assert origin and Path(origin).resolve().is_relative_to(target.resolve()),(name,origin)\n        origins[name]=str(Path(origin).resolve())\nassert not any('upstream-lingshu' in value.lower() or 'frozen-producer' in value.lower() for value in sys.path)\ndistribution,=list(importlib.metadata.distributions(path=[str(target)]))\nassert distribution.metadata['Name'].lower()=='lingshu'\ndirect=json.loads(distribution.read_text('direct_url.json'))\nassert direct['url'].lower().endswith('.whl')\nassert not direct.get('dir_info',{}).get('editable',False)\nwith wheel.open('rb') as stream:\n    assert direct['archive_info']['hashes']['sha256']==hashlib.file_digest(stream,'sha256').hexdigest()\nreceipt=dict(python=sys.executable,install_target=str(target),noneditable=True,\n             reused_existing_dependency_environment=True,fresh_venv=False,\n             all_loaded_lingshu_modules_from_target=True,loaded_lingshu_module_count=len(origins),\n             imported_origins=origins,source_checkout_on_sys_path=False,\n             direct_url=direct,consumed=consumed)\n(home/'installed-consumer.json').write_text(json.dumps(receipt,indent=2),encoding='utf-8')\nprint('current wheel ordinary + weak recovery consumers passed')\n",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\wheel-installed",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-wheel-consumer-check.py",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\dist\\lingshu-0.0.1-py3-none-any.whl",
+        "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\independent-truth-round3\\scene-00",
+        "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\independent-truth-round3\\scene-15",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance"
+      ],
+      "returncode": 0,
+      "seconds": 9.754053199954797,
+      "expected_returncode": 0,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\installed-consumer.log"
+    },
+    "consumer_receipt": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\installed-consumer.json",
+    "stdlib_import": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-S",
+        "-c",
+        "\nfrom pathlib import Path\nimport json\nimport sys\nwheel=Path(sys.argv[1])\nsys.path.insert(0,str(wheel))\nimport lingshu\nfrom lingshu.world.reconstruction import Reconstruction\nfrom lingshu.world.reconstruction_render import render_reconstruction\nfrom lingshu.world.scene_model import WorldModel\nassert Path(lingshu.__file__).is_relative_to(wheel)\nforbidden={'numpy','cv2','PIL','open3d','torch','pycolmap'}\nassert not forbidden.intersection(sys.modules)\nprint(json.dumps(dict(wheel=str(wheel),stdlib_only_import=True,third_party_loaded=[])))\n",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\dist\\lingshu-0.0.1-py3-none-any.whl"
+      ],
+      "returncode": 0,
+      "seconds": 0.39030249998904765,
+      "expected_returncode": 0,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\stdlib-import.log"
+    },
+    "stdlib_cli_help": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-S",
+        "-c",
+        "\nimport sys\nsys.path.insert(0,sys.argv[1])\nfrom lingshu.world.reconstruct.__main__ import main\nif sys.argv[2]=='help':\n    raise SystemExit(main(['--help']))\nraise SystemExit(main([sys.argv[3],'--output',sys.argv[4]]))\n",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\dist\\lingshu-0.0.1-py3-none-any.whl",
+        "help",
+        "D:\\AsiaInfo\\workspace\\lingshu",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\unused-output"
+      ],
+      "returncode": 0,
+      "seconds": 0.12849810003535822,
+      "expected_returncode": 0,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\stdlib-cli-help.log"
+    },
+    "stdlib_missing_extra": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-S",
+        "-c",
+        "\nimport sys\nsys.path.insert(0,sys.argv[1])\nfrom lingshu.world.reconstruct.__main__ import main\nif sys.argv[2]=='help':\n    raise SystemExit(main(['--help']))\nraise SystemExit(main([sys.argv[3],'--output',sys.argv[4]]))\n",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\dist\\lingshu-0.0.1-py3-none-any.whl",
+        "missing",
+        "D:\\AsiaInfo\\workspace\\lingshu",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\unused-output"
+      ],
+      "returncode": 1,
+      "seconds": 0.15958039998076856,
+      "expected_returncode": 1,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\current-wheel-acceptance\\stdlib-missing-extra.log"
+    },
+    "completed_utc": "2026-11-19T05:17:20.680512+00:00"
+  },
+  "method_findings": [
+    "Actual cross-view observation noise interacts with a weak short-arc center direction; there is no evidence that a single calibration/BA switch universally fixes the remaining tail",
+    "Fixed true intrinsics did not consistently improve four diagnostic controls; GT was never supplied to production",
+    "3sigma boundary filtering was rejected after a paired native control showed limited gains and degraded a passed control",
+    "Whole-image lower SIFT threshold, unconditional view-graph calibrator, fixed-distortion selection and translation-only LK refinement were not promoted to production",
+    "Pure coordinate gauge errors and alpha-domain TSDF expansion were not supported by the independent checks"
+  ],
+  "remaining": [
+    "Original W3 quality remains 13/20; original fixed thresholds are unchanged",
+    "Archived47 real-photo official calibration reveals a remaining pose/model gap; unconditional principal refinement is unsafe for weak geometry",
+    "Retain the measured single-observation surface precision/coverage tradeoff; IoU success alone is not universal surface-accuracy acceptance",
+    "Actual20-thread AVX-512 target, Linux native execution and fresh-OS native asset installation remain unavailable locally",
+    "Default1600px historical real-photo pipeline exceeds30s on local i5-8250U; round3 448px timings do not replace that result",
+    "Real-photo independent surface/depth truth and absolute metric scale without an independent scale anchor remain unaccepted",
+    "Static geometric attachment does not provide semantic object identities, entity memory or dynamic temporal fusion",
+    "Original12-view split components remain independently scoped, not cross-registered; successful47-view run is a separate input, not a repair of that branch",
+    "47frames is the measured real-photo bound, not hundreds/thousands-frame scalability acceptance"
+  ],
+  "scenes": [
+    {
+      "id": "scene-00",
+      "family": "layered_boxes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.8398044669349585,
+          "median": 0.8492416837927989,
+          "p95": 0.8685476739591715,
+          "max": 0.8709778420506776
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0025097561983157173,
+          "median": 0.002520285001670202,
+          "p95": 0.0028215735895085535,
+          "max": 0.002895703646024383
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1637,
+        "mean": 0.016466535468906956,
+        "median": 0.0153544588370397,
+        "p95": 0.026842362732084894,
+        "max": 0.06776972609480941
+      },
+      "dense_depth_abs_rel": {
+        "samples": 507799,
+        "mean": 0.009704958792158559,
+        "median": 0.007066635230010459,
+        "p95": 0.02476983173949321,
+        "max": 0.6225136545888995
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 401168,
+        "covered_positive_pixels": 400515,
+        "covered_fused_confidence_pixels": 400515,
+        "positive_fraction": 0.9983722530211782,
+        "fused_confidence_fraction": 0.9983722530211782,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.05833445470405739,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.06172099000282901,
+          "median": 0.05183321673606613,
+          "p95": 0.12714731110280453,
+          "max": 0.5907833527415765
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.054947919405285775,
+          "median": 0.050362984314000325,
+          "p95": 0.09486038294614584,
+          "max": 0.4136109127526779
+        },
+        "tolerance_m": 0.1787842258697859,
+        "coverage": 0.9989583333333333,
+        "precision": 0.9790833333333333
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.1017960678338656,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.061162933312272,
+          "median": 0.056023357656180106,
+          "p95": 0.10538684686717015,
+          "max": 0.5349065607004984
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.1424292023554592,
+          "median": 0.06357548798480378,
+          "p95": 0.5614721106732626,
+          "max": 1.5027173109880787
+        },
+        "tolerance_m": 0.1787842258697859,
+        "coverage": 0.7975,
+        "precision": 0.99
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9500904880195844,
+        "median": 0.955324806583966,
+        "p95": 0.9585959865921598,
+        "max": 0.9590817762912521,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9361777625509318
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.955324806583966
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9566528277957909
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9590817762912521
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9432152668759811
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.4314267595091699,
+      "runtime_seconds": 21.53,
+      "peak_process_tree_rss_mib": 505.7,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": false,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": false,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-01",
+      "family": "layered_boxes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.3706806363214587,
+          "median": 0.36214029757014404,
+          "p95": 0.41617421987020997,
+          "max": 0.42365111774785646
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0017719182392195536,
+          "median": 0.0011651338236245365,
+          "p95": 0.0029366987163705087,
+          "max": 0.0030482874073353115
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1781,
+        "mean": 0.008452351202841156,
+        "median": 0.007180018697381232,
+        "p95": 0.015202572206724004,
+        "max": 0.08122787552385771
+      },
+      "dense_depth_abs_rel": {
+        "samples": 516443,
+        "mean": 0.021772832101617224,
+        "median": 0.016946787686385585,
+        "p95": 0.05995691134306441,
+        "max": 0.393579266537415
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 407486,
+        "covered_positive_pixels": 402818,
+        "covered_fused_confidence_pixels": 402818,
+        "positive_fraction": 0.988544391709163,
+        "fused_confidence_fraction": 0.988544391709163,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.06475957104764475,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.06544452268955668,
+          "median": 0.04595225165434201,
+          "p95": 0.19912517976415683,
+          "max": 0.5330616329531163
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.06407461940573282,
+          "median": 0.052289425061153576,
+          "p95": 0.1500540999654107,
+          "max": 0.6773545450472184
+        },
+        "tolerance_m": 0.1841252545263782,
+        "coverage": 0.9690416666666667,
+        "precision": 0.9411666666666667
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.12274037143792563,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.0644188845103656,
+          "median": 0.05344498992580521,
+          "p95": 0.15206059067070665,
+          "max": 0.4257906066565339
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.18106185836548563,
+          "median": 0.07735422941462006,
+          "p95": 0.7005203775686504,
+          "max": 1.7352435960832089
+        },
+        "tolerance_m": 0.1841252545263782,
+        "coverage": 0.7081666666666667,
+        "precision": 0.968
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9518853280552904,
+        "median": 0.9544971346879926,
+        "p95": 0.9591445704340473,
+        "max": 0.9597835056550653,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.949408031999605
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9597835056550653
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9565888295499753
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9544971346879926
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9391491383838131
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.506600210014814,
+      "runtime_seconds": 24.509,
+      "peak_process_tree_rss_mib": 504.8,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-02",
+      "family": "layered_boxes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.6136367055397172,
+          "median": 0.6109120676787351,
+          "p95": 0.6574734249928635,
+          "max": 0.6598217490064608
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.004129009140188089,
+          "median": 0.00437889633657511,
+          "p95": 0.005024617198169495,
+          "max": 0.005082397355818712
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1722,
+        "mean": 0.013496670086498797,
+        "median": 0.012622873886185177,
+        "p95": 0.01866884479361681,
+        "max": 0.0703197507679436
+      },
+      "dense_depth_abs_rel": {
+        "samples": 532080,
+        "mean": 0.01978189685958437,
+        "median": 0.01738647086869194,
+        "p95": 0.04813261364698571,
+        "max": 0.4496925617178894
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 420104,
+        "covered_positive_pixels": 416070,
+        "covered_fused_confidence_pixels": 416070,
+        "positive_fraction": 0.9903976158284615,
+        "fused_confidence_fraction": 0.9903976158284615,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.08032161325143239,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.09053063915856033,
+          "median": 0.0790223503637137,
+          "p95": 0.19231458511905353,
+          "max": 0.976250714466017
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.07011258734430446,
+          "median": 0.06540621340722932,
+          "p95": 0.12899256021145677,
+          "max": 0.5775272330043075
+        },
+        "tolerance_m": 0.19150488379735056,
+        "coverage": 0.9874583333333333,
+        "precision": 0.9496666666666667
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.16262416973248106,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.09115965971195435,
+          "median": 0.08265315684108757,
+          "p95": 0.1628919249558205,
+          "max": 0.9078008769519961
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.2340886797530078,
+          "median": 0.11540113716960307,
+          "p95": 0.8492506959944428,
+          "max": 2.007172067392848
+        },
+        "tolerance_m": 0.19150488379735056,
+        "coverage": 0.6644166666666667,
+        "precision": 0.9628333333333333
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9491625986531662,
+        "median": 0.9572386939388253,
+        "p95": 0.9587025069019842,
+        "max": 0.9589140668266568,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9341475375382388
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9578562672032938
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9589140668266568
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9572386939388253
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9376564277588169
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.45313521894802,
+      "runtime_seconds": 29.138,
+      "peak_process_tree_rss_mib": 505.3,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": false,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": false,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-03",
+      "family": "layered_boxes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.10955844129703055,
+          "median": 0.11044551495516808,
+          "p95": 0.12071261612279663,
+          "max": 0.12284743424393862
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.002328350097220088,
+          "median": 0.002412012033563151,
+          "p95": 0.003435156951299123,
+          "max": 0.0034460865628385146
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1413,
+        "mean": 0.004248100021310622,
+        "median": 0.003150075718788834,
+        "p95": 0.010056172644507661,
+        "max": 0.07620949850518122
+      },
+      "dense_depth_abs_rel": {
+        "samples": 566763,
+        "mean": 0.01095034589449647,
+        "median": 0.007303849575638298,
+        "p95": 0.030364789671216884,
+        "max": 0.569358609962521
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 447183,
+        "covered_positive_pixels": 443400,
+        "covered_fused_confidence_pixels": 443400,
+        "positive_fraction": 0.991540376087642,
+        "fused_confidence_fraction": 0.991540376087642,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.04246120493632084,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.04356809216147885,
+          "median": 0.03169453077278485,
+          "p95": 0.11029314913136808,
+          "max": 0.4733208057028931
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.04135431771116283,
+          "median": 0.03423922504042064,
+          "p95": 0.09444935780286035,
+          "max": 0.8152117872849031
+        },
+        "tolerance_m": 0.17946349068718948,
+        "coverage": 0.9920833333333333,
+        "precision": 0.9831666666666666
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.10750825427271749,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.0490829049586813,
+          "median": 0.044710300703876965,
+          "p95": 0.09221753590082601,
+          "max": 0.388449887657407
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.16593360358675366,
+          "median": 0.06853035591856868,
+          "p95": 0.6243759869481519,
+          "max": 1.5777030498876086
+        },
+        "tolerance_m": 0.17946349068718948,
+        "coverage": 0.7111666666666666,
+        "precision": 0.99275
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9604742704802037,
+        "median": 0.96005717112858,
+        "p95": 0.9713017865347884,
+        "max": 0.9725419756196401,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9663410301953819
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9725419756196401
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.96005717112858
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9597984909109147
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9436326845465014
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.5074790733490255,
+      "runtime_seconds": 25.396,
+      "peak_process_tree_rss_mib": 505.0,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-04",
+      "family": "layered_boxes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.2006634238182876,
+          "median": 0.20338994969857702,
+          "p95": 0.21027846815357384,
+          "max": 0.21055270439429044
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.002088067564325209,
+          "median": 0.00253515757541079,
+          "p95": 0.002583045686021657,
+          "max": 0.002589699883696624
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1872,
+        "mean": 0.006019547029561848,
+        "median": 0.003589235954561242,
+        "p95": 0.016861247124305187,
+        "max": 0.17834881943901307
+      },
+      "dense_depth_abs_rel": {
+        "samples": 424201,
+        "mean": 0.015790426922255622,
+        "median": 0.014217866047226047,
+        "p95": 0.03113628985359908,
+        "max": 0.4715095826444022
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 333819,
+        "covered_positive_pixels": 332160,
+        "covered_fused_confidence_pixels": 332160,
+        "positive_fraction": 0.995030240938952,
+        "fused_confidence_fraction": 0.995030240938952,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.04527662831168694,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.04481069956286272,
+          "median": 0.0363153643931788,
+          "p95": 0.10276513975464605,
+          "max": 0.4335070259779707
+        },
+        "truth_to_prediction_m": {
+          "samples": 20918,
+          "mean": 0.045742557060511155,
+          "median": 0.04079114624084639,
+          "p95": 0.09298515259458524,
+          "max": 0.31416664209579404
+        },
+        "tolerance_m": 0.18527335188647473,
+        "coverage": 0.9967492112056602,
+        "precision": 0.9905
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.08072199332835857,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.048679812669021334,
+          "median": 0.04494641211208918,
+          "p95": 0.0881634077462866,
+          "max": 0.42737961890312337
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.11276417398769581,
+          "median": 0.04997580655497319,
+          "p95": 0.49898883319731546,
+          "max": 0.9096194078725417
+        },
+        "tolerance_m": 0.18527335188647473,
+        "coverage": 0.8290833333333333,
+        "precision": 0.9941666666666666
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9565536082571822,
+        "median": 0.9578064041221936,
+        "p95": 0.9591223317058402,
+        "max": 0.9593423381180706,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9582423060569183
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9578064041221936
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9593423381180706
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9526153383005945
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.954761654688133
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.45016218814646985,
+      "runtime_seconds": 23.165,
+      "peak_process_tree_rss_mib": 505.8,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-05",
+      "family": "layered_boxes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.3817520480062451,
+          "median": 0.3569009294273167,
+          "p95": 0.44556222964980585,
+          "max": 0.46046756518179754
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0047860186882074905,
+          "median": 0.004563523560028524,
+          "p95": 0.005731252976521105,
+          "max": 0.005817529868993823
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1802,
+        "mean": 0.00975157269460686,
+        "median": 0.007990611369235595,
+        "p95": 0.017730661346277255,
+        "max": 0.14739940525028392
+      },
+      "dense_depth_abs_rel": {
+        "samples": 536998,
+        "mean": 0.019696096073829307,
+        "median": 0.015755328186740518,
+        "p95": 0.04319286758226797,
+        "max": 0.5899507565877142
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 424156,
+        "covered_positive_pixels": 420127,
+        "covered_fused_confidence_pixels": 420127,
+        "positive_fraction": 0.9905011363743529,
+        "fused_confidence_fraction": 0.9905011363743529,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.04861737792098296,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.05260913566651948,
+          "median": 0.035860278690729885,
+          "p95": 0.14904256124526058,
+          "max": 0.594915476378128
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.04462562017544644,
+          "median": 0.03660844564255603,
+          "p95": 0.10225966696119501,
+          "max": 0.519882601132488
+        },
+        "tolerance_m": 0.19125974977740412,
+        "coverage": 0.9898333333333333,
+        "precision": 0.9679166666666666
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.14375318316140534,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.05779093136847283,
+          "median": 0.047016241955854354,
+          "p95": 0.13081770334265694,
+          "max": 0.6314954195229168
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.22971543495433783,
+          "median": 0.06959940831076156,
+          "p95": 0.9863028049535791,
+          "max": 2.102102547832179
+        },
+        "tolerance_m": 0.19125974977740412,
+        "coverage": 0.68575,
+        "precision": 0.9784166666666667
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9455200357971887,
+        "median": 0.9508506175716617,
+        "p95": 0.9524194354036299,
+        "max": 0.9527612297002693,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.936410220330437
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9527612297002693
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9508506175716617
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9510522582170726
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9365258531665026
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.502217602090173,
+      "runtime_seconds": 23.169,
+      "peak_process_tree_rss_mib": 505.1,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-06",
+      "family": "layered_boxes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.3178437673367277,
+          "median": 0.32616691592857033,
+          "p95": 0.3614121858242097,
+          "max": 0.36756191179661474
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.004078113935908725,
+          "median": 0.004388779017525777,
+          "p95": 0.006008374638539538,
+          "max": 0.006175814315051711
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1233,
+        "mean": 0.007215427454711859,
+        "median": 0.005830750085534743,
+        "p95": 0.010764746328879192,
+        "max": 0.27319083782692694
+      },
+      "dense_depth_abs_rel": {
+        "samples": 544033,
+        "mean": 0.015034219936954515,
+        "median": 0.010230272575520113,
+        "p95": 0.0390761569123857,
+        "max": 0.5616762207537105
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 428703,
+        "covered_positive_pixels": 424806,
+        "covered_fused_confidence_pixels": 424806,
+        "positive_fraction": 0.9909097906942569,
+        "fused_confidence_fraction": 0.9909097906942569,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.056852769858596386,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.06663236454297233,
+          "median": 0.041951028053146266,
+          "p95": 0.19249382650917748,
+          "max": 0.7481890401492125
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.047073175174220445,
+          "median": 0.03970940607579966,
+          "p95": 0.10347141191087117,
+          "max": 0.33510389717786043
+        },
+        "tolerance_m": 0.1794825985771196,
+        "coverage": 0.99475,
+        "precision": 0.9433333333333334
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.12796507282180652,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.06521321397366578,
+          "median": 0.04938495043576848,
+          "p95": 0.13900352389818926,
+          "max": 0.6859136538825835
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.1907169316699473,
+          "median": 0.07482232086719245,
+          "p95": 0.7083353680099067,
+          "max": 1.8365469083236048
+        },
+        "tolerance_m": 0.1794825985771196,
+        "coverage": 0.6831666666666667,
+        "precision": 0.9611666666666666
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9593338134866617,
+        "median": 0.9594718398570807,
+        "p95": 0.9682092665059511,
+        "max": 0.9682490037994625,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9573002754820936
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9682490037994625
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9680503173319053
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9594718398570807
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9435976309627657
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.501719109894653,
+      "runtime_seconds": 24.521,
+      "peak_process_tree_rss_mib": 506.6,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-07",
+      "family": "curves_slopes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.795961832685181,
+          "median": 0.7775988570424224,
+          "p95": 0.9295387978121088,
+          "max": 0.9653230673520179
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.009437007096557076,
+          "median": 0.010180607360098666,
+          "p95": 0.011649696883852449,
+          "max": 0.011774001243898827
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1987,
+        "mean": 0.0167445619852528,
+        "median": 0.015981107414428458,
+        "p95": 0.021242388856084687,
+        "max": 0.09668529116425932
+      },
+      "dense_depth_abs_rel": {
+        "samples": 587821,
+        "mean": 0.021266720171990428,
+        "median": 0.01735461610988721,
+        "p95": 0.05213783432191157,
+        "max": 0.6989673324185256
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 464410,
+        "covered_positive_pixels": 460134,
+        "covered_fused_confidence_pixels": 460134,
+        "positive_fraction": 0.9907926185913309,
+        "fused_confidence_fraction": 0.9907926185913309,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.06687061767429636,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.07127341307645807,
+          "median": 0.048576704295260134,
+          "p95": 0.1981810612065349,
+          "max": 0.9401222771563368
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.06246782227213464,
+          "median": 0.047344465826523,
+          "p95": 0.1549884586655172,
+          "max": 1.2301544203851076
+        },
+        "tolerance_m": 0.1860306966167046,
+        "coverage": 0.9774166666666667,
+        "precision": 0.9401666666666667
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.15678278937847762,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.07445221577201909,
+          "median": 0.05774935898004427,
+          "p95": 0.18306226777367496,
+          "max": 0.841133977883914
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.23911336298493613,
+          "median": 0.1299555120747789,
+          "p95": 0.9744625066692642,
+          "max": 1.9831262832814105
+        },
+        "tolerance_m": 0.1860306966167046,
+        "coverage": 0.61275,
+        "precision": 0.9518333333333333
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.904179984618388,
+        "median": 0.9090327465051556,
+        "p95": 0.9133501714328164,
+        "max": 0.9141052274558019,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.8876702827479328
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9103299473408744
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9141052274558019
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9090327465051556
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.8997617190421746
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.4291262785701675,
+      "runtime_seconds": 24.005,
+      "peak_process_tree_rss_mib": 505.1,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": false,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": false,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-08",
+      "family": "curves_slopes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.17800767667782574,
+          "median": 0.1557712673382265,
+          "p95": 0.2313567528671188,
+          "max": 0.24222541410626777
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0021937157630160997,
+          "median": 0.0020559742946096573,
+          "p95": 0.0030162178403203067,
+          "max": 0.003089963803919923
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1961,
+        "mean": 0.007859007812560694,
+        "median": 0.005847130161630673,
+        "p95": 0.0191956067550589,
+        "max": 0.1373050586073425
+      },
+      "dense_depth_abs_rel": {
+        "samples": 479088,
+        "mean": 0.01680758623093866,
+        "median": 0.01204251270898615,
+        "p95": 0.04241242960590768,
+        "max": 0.5563415460368649
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 376303,
+        "covered_positive_pixels": 373390,
+        "covered_fused_confidence_pixels": 373390,
+        "positive_fraction": 0.9922588977499515,
+        "fused_confidence_fraction": 0.9922588977499515,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.05243124843118925,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.056660549359777816,
+          "median": 0.032171997306763414,
+          "p95": 0.17797206326875709,
+          "max": 0.7043040244905143
+        },
+        "truth_to_prediction_m": {
+          "samples": 23587,
+          "mean": 0.04820194750260069,
+          "median": 0.037539152984232056,
+          "p95": 0.1503521322731064,
+          "max": 0.49562020702659715
+        },
+        "tolerance_m": 0.19184442409614114,
+        "coverage": 0.9894009411964217,
+        "precision": 0.9586666666666667
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.08486801920691733,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.058067609975228,
+          "median": 0.04310319319428056,
+          "p95": 0.15704208107010623,
+          "max": 0.6446173776230616
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.11166842843860665,
+          "median": 0.047325356984324635,
+          "p95": 0.4246970066403015,
+          "max": 1.2216545039524835
+        },
+        "tolerance_m": 0.19184442409614114,
+        "coverage": 0.8235833333333333,
+        "precision": 0.9716666666666667
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9714606692803566,
+        "median": 0.9674096322057119,
+        "p95": 0.9787257198802258,
+        "max": 0.9788797183962453,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9788797183962453
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9781097258161479
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9660608404227894
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9674096322057119
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9668434295608885
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.41309293343171005,
+      "runtime_seconds": 22.497,
+      "peak_process_tree_rss_mib": 505.9,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-09",
+      "family": "curves_slopes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.14177498236216496,
+          "median": 0.13809640373754775,
+          "p95": 0.16865982428966989,
+          "max": 0.17335147102681736
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0011446893684455813,
+          "median": 0.0007127345197424914,
+          "p95": 0.002009454282462467,
+          "max": 0.0020359213925242522
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 2063,
+        "mean": 0.006472741626219365,
+        "median": 0.004928707008199113,
+        "p95": 0.01415850525924916,
+        "max": 0.09146589289295579
+      },
+      "dense_depth_abs_rel": {
+        "samples": 471400,
+        "mean": 0.018175029888572853,
+        "median": 0.015475495994650947,
+        "p95": 0.04137481757023604,
+        "max": 0.39420182437677737
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 369721,
+        "covered_positive_pixels": 367438,
+        "covered_fused_confidence_pixels": 367438,
+        "positive_fraction": 0.99382507350137,
+        "fused_confidence_fraction": 0.99382507350137,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.04673664164850683,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.041561360538137804,
+          "median": 0.029273495340882933,
+          "p95": 0.11476681636451522,
+          "max": 0.5244323620936565
+        },
+        "truth_to_prediction_m": {
+          "samples": 23153,
+          "mean": 0.05191192275887586,
+          "median": 0.04007809444544015,
+          "p95": 0.1336595831257288,
+          "max": 0.9748221904951424
+        },
+        "tolerance_m": 0.179732880296514,
+        "coverage": 0.9811255560834449,
+        "precision": 0.9871666666666666
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.1092141550026375,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.04632589692003524,
+          "median": 0.0400313213465281,
+          "p95": 0.10123588076080081,
+          "max": 0.44916881484507676
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.17210241308523974,
+          "median": 0.05325094444472478,
+          "p95": 0.7620307020875885,
+          "max": 1.5796267266207658
+        },
+        "tolerance_m": 0.179732880296514,
+        "coverage": 0.7281666666666666,
+        "precision": 0.9950833333333333
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9609626211712744,
+        "median": 0.9606873697151104,
+        "p95": 0.963923632271992,
+        "max": 0.9639371155160629,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9639371155160629
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9638696992957083
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9606873697151104
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9604854304194173
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9558334909100732
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.37560043210308486,
+      "runtime_seconds": 23.571,
+      "peak_process_tree_rss_mib": 505.6,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-10",
+      "family": "curves_slopes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.33467242143745796,
+          "median": 0.3335999550148738,
+          "p95": 0.3791460326692397,
+          "max": 0.3887756556978837
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.002784876779277488,
+          "median": 0.002488061743351606,
+          "p95": 0.004031013629549431,
+          "max": 0.004179398908190714
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1978,
+        "mean": 0.006196533438849457,
+        "median": 0.005551075476372747,
+        "p95": 0.01041815463912597,
+        "max": 0.0976774300237819
+      },
+      "dense_depth_abs_rel": {
+        "samples": 525008,
+        "mean": 0.0341192987463984,
+        "median": 0.025654066228459706,
+        "p95": 0.10323584419497918,
+        "max": 0.6528712090913188
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 414707,
+        "covered_positive_pixels": 410791,
+        "covered_fused_confidence_pixels": 410791,
+        "positive_fraction": 0.990557188569279,
+        "fused_confidence_fraction": 0.990557188569279,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.07958886671621701,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.08052558993614428,
+          "median": 0.06088990003509392,
+          "p95": 0.22627486265321195,
+          "max": 0.6155103022001995
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.07865214349628975,
+          "median": 0.056274672536951745,
+          "p95": 0.21051847793688133,
+          "max": 0.6002176560451267
+        },
+        "tolerance_m": 0.18460629645745516,
+        "coverage": 0.915125,
+        "precision": 0.9104166666666667
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.17681029452698452,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.07876079867116353,
+          "median": 0.06392267906910987,
+          "p95": 0.20207442313706014,
+          "max": 0.4744256890496128
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.2748597903828055,
+          "median": 0.1383805591603323,
+          "p95": 1.0627880818324558,
+          "max": 2.1369813926578933
+        },
+        "tolerance_m": 0.18460629645745516,
+        "coverage": 0.5704166666666667,
+        "precision": 0.9368333333333333
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9407948128372581,
+        "median": 0.9444662270540011,
+        "p95": 0.9474759363430147,
+        "max": 0.9476187601859117,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9388204063072253
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9476187601859117
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9444662270540011
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9469046409714266
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9261640296677263
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.34519346036329557,
+      "runtime_seconds": 23.742,
+      "peak_process_tree_rss_mib": 505.5,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-11",
+      "family": "curves_slopes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.587252234841218,
+          "median": 0.5866985283073766,
+          "p95": 0.61218319595326,
+          "max": 0.6183971936382795
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0019376857304849123,
+          "median": 0.0017512496983040726,
+          "p95": 0.002542113339726933,
+          "max": 0.0026533139265049774
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 2440,
+        "mean": 0.010517162890185932,
+        "median": 0.01004968850390849,
+        "p95": 0.012234102972313466,
+        "max": 0.10037349663550582
+      },
+      "dense_depth_abs_rel": {
+        "samples": 599522,
+        "mean": 0.023810169861902906,
+        "median": 0.01973741612429635,
+        "p95": 0.05118079753526399,
+        "max": 0.5996971862702419
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 472680,
+        "covered_positive_pixels": 466977,
+        "covered_fused_confidence_pixels": 466977,
+        "positive_fraction": 0.9879347550139629,
+        "fused_confidence_fraction": 0.9879347550139629,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.09232484379740497,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.0938764020935314,
+          "median": 0.09120420508832701,
+          "p95": 0.2093871483021363,
+          "max": 0.49298029969318113
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.09077328550127853,
+          "median": 0.09435991256168078,
+          "p95": 0.17804418680402345,
+          "max": 1.3961874479389196
+        },
+        "tolerance_m": 0.19129894707349,
+        "coverage": 0.964625,
+        "precision": 0.9278333333333333
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.21239201923397721,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.09322436343660306,
+          "median": 0.08997436565593739,
+          "p95": 0.19715254858882292,
+          "max": 0.48501221010508094
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.33155967503135136,
+          "median": 0.19426891973158728,
+          "p95": 1.1846891958259658,
+          "max": 2.298125918917927
+        },
+        "tolerance_m": 0.19129894707349,
+        "coverage": 0.4950833333333333,
+        "precision": 0.9441666666666667
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9290432264428471,
+        "median": 0.933520135144704,
+        "p95": 0.9364823515810222,
+        "max": 0.936584766836197,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9228079557374689
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.936072690560323
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.933520135144704
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.936584766836197
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9162305839355428
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.36126865012467196,
+      "runtime_seconds": 25.327,
+      "peak_process_tree_rss_mib": 506.5,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": false,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": false,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-12",
+      "family": "curves_slopes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 1.4589637799696153,
+          "median": 1.438692995559334,
+          "p95": 1.5049840650216697,
+          "max": 1.507815622188543
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.005808040814933026,
+          "median": 0.0068817890828847435,
+          "p95": 0.00727360794730884,
+          "max": 0.007301206598354175
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1744,
+        "mean": 0.038192565102549425,
+        "median": 0.035673264062244296,
+        "p95": 0.05241794093334883,
+        "max": 0.16374969564859615
+      },
+      "dense_depth_abs_rel": {
+        "samples": 470780,
+        "mean": 0.022489646808198288,
+        "median": 0.02239779138357048,
+        "p95": 0.041236727802458184,
+        "max": 0.38739853429903987
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 371886,
+        "covered_positive_pixels": 371571,
+        "covered_fused_confidence_pixels": 371571,
+        "positive_fraction": 0.9991529662315871,
+        "fused_confidence_fraction": 0.9991529662315871,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.19340392877912316,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.20338520827129344,
+          "median": 0.20721602754067298,
+          "p95": 0.30974418898001993,
+          "max": 0.433658787354146
+        },
+        "truth_to_prediction_m": {
+          "samples": 23299,
+          "mean": 0.18342264928695284,
+          "median": 0.18030318341664497,
+          "p95": 0.299597639128159,
+          "max": 0.718101098914982
+        },
+        "tolerance_m": 0.17972543416656891,
+        "coverage": 0.4967595175758616,
+        "precision": 0.35741666666666666
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.23504590702538275,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.2021328327952665,
+          "median": 0.20748524002601848,
+          "p95": 0.3093073399206253,
+          "max": 0.40767589346321936
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.267958981255499,
+          "median": 0.25206591416677904,
+          "p95": 0.5346874600879507,
+          "max": 1.1825370725645123
+        },
+        "tolerance_m": 0.17972543416656891,
+        "coverage": 0.24183333333333334,
+        "precision": 0.36025
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.8832074297217968,
+        "median": 0.8818886682435082,
+        "p95": 0.8917222238815717,
+        "max": 0.8923218109513613,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.8748764886369546
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.8776263051747466
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.8818886682435082
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.8923218109513613
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.8893238756024135
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.45497092823771723,
+      "runtime_seconds": 22.46,
+      "peak_process_tree_rss_mib": 505.5,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": false,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": false,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": false,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-13",
+      "family": "curves_slopes",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.1894342027799601,
+          "median": 0.19381955059725142,
+          "p95": 0.20589168491585455,
+          "max": 0.20810401218098667
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.002565157324865732,
+          "median": 0.002438493427731954,
+          "p95": 0.0034810120754621044,
+          "max": 0.003535588352506916
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1810,
+        "mean": 0.006404645826788062,
+        "median": 0.004765520138584896,
+        "p95": 0.014573051582176458,
+        "max": 0.09500919806358396
+      },
+      "dense_depth_abs_rel": {
+        "samples": 513755,
+        "mean": 0.020943829206999613,
+        "median": 0.015195989636943373,
+        "p95": 0.058193131282554385,
+        "max": 0.6761713270827618
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 405191,
+        "covered_positive_pixels": 401686,
+        "covered_fused_confidence_pixels": 401686,
+        "positive_fraction": 0.9913497585089501,
+        "fused_confidence_fraction": 0.9913497585089501,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.05461460987955971,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.0549251870077771,
+          "median": 0.03452089503564785,
+          "p95": 0.1706619604111874,
+          "max": 0.6235498690297878
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.05430403275134232,
+          "median": 0.03891437947272043,
+          "p95": 0.14133994902755156,
+          "max": 0.5489586179783811
+        },
+        "tolerance_m": 0.18610384943232464,
+        "coverage": 0.96925,
+        "precision": 0.95675
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.0952125024784761,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.056859084860637725,
+          "median": 0.0442904546925747,
+          "p95": 0.1472472418548756,
+          "max": 0.5040691955334549
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.13356592009631446,
+          "median": 0.053949767365181714,
+          "p95": 0.4955943825831269,
+          "max": 1.3185110782199516
+        },
+        "tolerance_m": 0.18610384943232464,
+        "coverage": 0.7725,
+        "precision": 0.9701666666666666
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9632339696842642,
+        "median": 0.9617789688616641,
+        "p95": 0.9669131441388307,
+        "max": 0.9671051826470048,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9617789688616641
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9671051826470048
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9615911384497092
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9661449901061342
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9595495683568087
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.39388153777255347,
+      "runtime_seconds": 24.935,
+      "peak_process_tree_rss_mib": 505.7,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-14",
+      "family": "texture_light_baseline",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.18888151721150317,
+          "median": 0.18148549109935472,
+          "p95": 0.24548508119080115,
+          "max": 0.25035805050836607
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0036486784235495334,
+          "median": 0.0037326161840559352,
+          "p95": 0.0049668035820916116,
+          "max": 0.005062531220843864
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1782,
+        "mean": 0.005457661811038826,
+        "median": 0.003826027032263124,
+        "p95": 0.01166487760326046,
+        "max": 0.18247648420105345
+      },
+      "dense_depth_abs_rel": {
+        "samples": 497334,
+        "mean": 0.020849257715065524,
+        "median": 0.01485436595772694,
+        "p95": 0.061075368266254794,
+        "max": 0.57422178777265
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 392008,
+        "covered_positive_pixels": 386424,
+        "covered_fused_confidence_pixels": 386424,
+        "positive_fraction": 0.9857553927470868,
+        "fused_confidence_fraction": 0.9857553927470868,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.05218563752132853,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.05412140105865982,
+          "median": 0.0401557351787859,
+          "p95": 0.15397104981820142,
+          "max": 0.5501367167744139
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.050249873983997245,
+          "median": 0.040279384850584354,
+          "p95": 0.1166889989728653,
+          "max": 0.8897826596949383
+        },
+        "tolerance_m": 0.19071869381640524,
+        "coverage": 0.9764583333333333,
+        "precision": 0.9744166666666667
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.12148589802761031,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.05820665989279002,
+          "median": 0.04885641666574157,
+          "p95": 0.14215615256188877,
+          "max": 0.5778035116960017
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.1847651361624306,
+          "median": 0.0648226167056134,
+          "p95": 0.7559444120605611,
+          "max": 1.5728353867244713
+        },
+        "tolerance_m": 0.19071869381640524,
+        "coverage": 0.70575,
+        "precision": 0.98
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9606895204834185,
+        "median": 0.9656340572891181,
+        "p95": 0.9706142757633699,
+        "max": 0.9709600059953536,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9507398193007726
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9692313548354353
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9709600059953536
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9656340572891181
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9468823649964135
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.4843003201794147,
+      "runtime_seconds": 23.455,
+      "peak_process_tree_rss_mib": 505.3,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-15",
+      "family": "texture_light_baseline",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.8723742427318131,
+          "median": 0.8448536928404821,
+          "p95": 0.9545980017979991,
+          "max": 0.9717682268839275
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0035726368372473844,
+          "median": 0.003702938733091027,
+          "p95": 0.005161028137507553,
+          "max": 0.0051738987649045535
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 806,
+        "mean": 0.016234173834148102,
+        "median": 0.015542272855176207,
+        "p95": 0.020479665051601682,
+        "max": 0.11224385063043729
+      },
+      "dense_depth_abs_rel": {
+        "samples": 602395,
+        "mean": 0.021288828711578,
+        "median": 0.018011211411347046,
+        "p95": 0.05045363805782157,
+        "max": 0.6578582459390481
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 475705,
+        "covered_positive_pixels": 468298,
+        "covered_fused_confidence_pixels": 468298,
+        "positive_fraction": 0.9844294257996027,
+        "fused_confidence_fraction": 0.9844294257996027,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.06526918044100263,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.06705825716446906,
+          "median": 0.05686390216456146,
+          "p95": 0.1515025869668076,
+          "max": 0.5743945026327332
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.0634801037175362,
+          "median": 0.060600970823789235,
+          "p95": 0.11714616640479308,
+          "max": 0.9402759231786672
+        },
+        "tolerance_m": 0.1796242512707248,
+        "coverage": 0.9898333333333333,
+        "precision": 0.9665
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.18051288069937815,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.06806589334684734,
+          "median": 0.06231199328279576,
+          "p95": 0.12022597054652108,
+          "max": 0.4979368748662461
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.29295986805190893,
+          "median": 0.12964234604339558,
+          "p95": 1.1336574064002303,
+          "max": 2.1528026741408928
+        },
+        "tolerance_m": 0.1796242512707248,
+        "coverage": 0.5726666666666667,
+        "precision": 0.9834166666666667
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9337988531730504,
+        "median": 0.9411592653481125,
+        "p95": 0.9466366126038637,
+        "max": 0.9476299463952298,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9253772348789044
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9426632774383994
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9476299463952298
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9411592653481125
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9121645418046066
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.6026605672797843,
+      "runtime_seconds": 24.027,
+      "peak_process_tree_rss_mib": 504.8,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": false,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": false,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-16",
+      "family": "texture_light_baseline",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.27737586560545147,
+          "median": 0.264338569322963,
+          "p95": 0.3167602170261638,
+          "max": 0.3173174599575851
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.0031882844917547823,
+          "median": 0.003782720546499839,
+          "p95": 0.003977773162614772,
+          "max": 0.0040026824967886255
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 2073,
+        "mean": 0.015061576803257896,
+        "median": 0.012795361359547487,
+        "p95": 0.025700793751619273,
+        "max": 0.26908371763694433
+      },
+      "dense_depth_abs_rel": {
+        "samples": 493277,
+        "mean": 0.015895587276191246,
+        "median": 0.010267672901693023,
+        "p95": 0.051211911772673015,
+        "max": 0.5195967214707663
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 389565,
+        "covered_positive_pixels": 385898,
+        "covered_fused_confidence_pixels": 385898,
+        "positive_fraction": 0.9905869367114603,
+        "fused_confidence_fraction": 0.9905869367114603,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.07475080883325574,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.07841874202330003,
+          "median": 0.06451882689282176,
+          "p95": 0.16879134601941992,
+          "max": 0.5910262756272843
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.07108287564321147,
+          "median": 0.0656805620993022,
+          "p95": 0.13658554867038403,
+          "max": 0.9347612322724913
+        },
+        "tolerance_m": 0.1847640036722483,
+        "coverage": 0.9759166666666667,
+        "precision": 0.9585833333333333
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.12379979060204402,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.07845944619089017,
+          "median": 0.06957391414947692,
+          "p95": 0.1447029427595426,
+          "max": 0.529051974056418
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.16914013501319786,
+          "median": 0.08282740819326641,
+          "p95": 0.5905090736751769,
+          "max": 1.4013891359455202
+        },
+        "tolerance_m": 0.1847640036722483,
+        "coverage": 0.7408333333333333,
+        "precision": 0.9724166666666667
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9685154185744027,
+        "median": 0.9704601473799824,
+        "p95": 0.9737034850648838,
+        "max": 0.9742098834546288,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9656147144240077
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9742098834546288
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9716778915059041
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9704601473799824
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9606144561074907
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.3885248483475992,
+      "runtime_seconds": 23.044,
+      "peak_process_tree_rss_mib": 507.0,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-17",
+      "family": "texture_light_baseline",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.24646792213935426,
+          "median": 0.238728743619592,
+          "p95": 0.27754585789149705,
+          "max": 0.28462521898715565
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.003174168735870948,
+          "median": 0.003382423216067899,
+          "p95": 0.003941358075167105,
+          "max": 0.003972784145021481
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1901,
+        "mean": 0.007477575835890782,
+        "median": 0.005956029645309559,
+        "p95": 0.015805945478188692,
+        "max": 0.07570819707033168
+      },
+      "dense_depth_abs_rel": {
+        "samples": 528533,
+        "mean": 0.018734263952203425,
+        "median": 0.01678577294246616,
+        "p95": 0.04434297575312041,
+        "max": 0.552269723670808
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 417311,
+        "covered_positive_pixels": 413342,
+        "covered_fused_confidence_pixels": 413342,
+        "positive_fraction": 0.9904891076439394,
+        "fused_confidence_fraction": 0.9904891076439394,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.04822799253481269,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.048796729535156826,
+          "median": 0.042638022752795754,
+          "p95": 0.10707598941746134,
+          "max": 0.4398745024392541
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.047659255534468564,
+          "median": 0.04260745063941525,
+          "p95": 0.0936696410359056,
+          "max": 0.3779002616606134
+        },
+        "tolerance_m": 0.19138034797271725,
+        "coverage": 0.990375,
+        "precision": 0.9895833333333334
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.0977649582265704,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.05216721158430118,
+          "median": 0.048793609769326084,
+          "p95": 0.09191834030106642,
+          "max": 0.46654377401016134
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.14336270486883962,
+          "median": 0.05598538021344439,
+          "p95": 0.6213264695350201,
+          "max": 1.6961945005949766
+        },
+        "tolerance_m": 0.19138034797271725,
+        "coverage": 0.8018333333333333,
+        "precision": 0.9955833333333334
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9682695063577675,
+        "median": 0.9711296923095066,
+        "p95": 0.9734036441637096,
+        "max": 0.9736835854927203,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9660010401673944
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9736835854927203
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.972283878847667
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9711296923095066
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9582493349715498
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.42807632901463755,
+      "runtime_seconds": 25.14,
+      "peak_process_tree_rss_mib": 505.6,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-18",
+      "family": "texture_light_baseline",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.4031641688178603,
+          "median": 0.35829310086100025,
+          "p95": 0.5175932306571224,
+          "max": 0.5294724335726162
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.007268527911822395,
+          "median": 0.008131856917828969,
+          "p95": 0.010537199536893707,
+          "max": 0.010965805509324255
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 1051,
+        "mean": 0.008605391712023017,
+        "median": 0.005738225888434586,
+        "p95": 0.018891344002643654,
+        "max": 0.46427063548232056
+      },
+      "dense_depth_abs_rel": {
+        "samples": 533932,
+        "mean": 0.0193141896256341,
+        "median": 0.01500894731746424,
+        "p95": 0.055136415284966656,
+        "max": 0.4733340467945156
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 419965,
+        "covered_positive_pixels": 413876,
+        "covered_fused_confidence_pixels": 413876,
+        "positive_fraction": 0.9855011727167741,
+        "fused_confidence_fraction": 0.9855011727167741,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.0462607530899794,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.046712976034271284,
+          "median": 0.036137232661513974,
+          "p95": 0.12010456115989046,
+          "max": 0.41153810957296627
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.045808530145687525,
+          "median": 0.03828051117160696,
+          "p95": 0.09565032869107717,
+          "max": 0.5337408851184796
+        },
+        "tolerance_m": 0.17981161010054503,
+        "coverage": 0.9846666666666667,
+        "precision": 0.9825833333333334
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.09325562312148637,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.049510530056566915,
+          "median": 0.04519120094128232,
+          "p95": 0.09518083575636148,
+          "max": 0.39676383410981114
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.13700071618640583,
+          "median": 0.05778714315890747,
+          "p95": 0.5066095116070807,
+          "max": 1.4595703399724709
+        },
+        "tolerance_m": 0.17981161010054503,
+        "coverage": 0.7590833333333333,
+        "precision": 0.9955
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.956932913824056,
+        "median": 0.9578935131364799,
+        "p95": 0.9654809564090371,
+        "max": 0.9663895790280261,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9487336896335885
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.961846465933081
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9663895790280261
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9578935131364799
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9498013213891044
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.6492401721386305,
+      "runtime_seconds": 24.395,
+      "peak_process_tree_rss_mib": 506.0,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": false,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": false,
+      "r4_silhouette_mean_ge_0_85": true
+    },
+    {
+      "id": "scene-19",
+      "family": "texture_light_baseline",
+      "status": "measured",
+      "producer_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+      "input_views": 5,
+      "registered_views": 5,
+      "dense_views": 5,
+      "pose": {
+        "rotation_degrees": {
+          "samples": 5,
+          "mean": 0.27014566189742073,
+          "median": 0.2582323867709446,
+          "p95": 0.324145426166729,
+          "max": 0.32535741920267774
+        },
+        "translation_m_after_sim3": {
+          "samples": 5,
+          "mean": 0.00200909532626342,
+          "median": 0.00153486991566294,
+          "p95": 0.0036414438103848663,
+          "max": 0.003885516298985214
+        }
+      },
+      "sparse_point_error_relative_to_depth": {
+        "samples": 3089,
+        "mean": 0.018060996787626963,
+        "median": 0.0160762525588325,
+        "p95": 0.030533300726783397,
+        "max": 0.24230080650891264
+      },
+      "dense_depth_abs_rel": {
+        "samples": 593985,
+        "mean": 0.01582546654221591,
+        "median": 0.013591141713729726,
+        "p95": 0.03508141300873785,
+        "max": 0.533691155508764
+      },
+      "dense_coverage": {
+        "gt_foreground_pixel_denominator_all_input_views": 469206,
+        "covered_positive_pixels": 464602,
+        "covered_fused_confidence_pixels": 464602,
+        "positive_fraction": 0.9901876787594361,
+        "fused_confidence_fraction": 0.9901876787594361,
+        "missing_camera_or_depth_views_contribute_zero": true
+      },
+      "mesh_observed_surface": {
+        "chamfer_mean_euclidean_m": 0.07372595464734366,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.07213640990401687,
+          "median": 0.06811643020005706,
+          "p95": 0.1386688336454769,
+          "max": 0.5591464143869137
+        },
+        "truth_to_prediction_m": {
+          "samples": 24000,
+          "mean": 0.07531549939067046,
+          "median": 0.06418643352155168,
+          "p95": 0.16470713909600676,
+          "max": 1.1371027725211837
+        },
+        "tolerance_m": 0.18605671878120866,
+        "coverage": 0.971625,
+        "precision": 0.9925
+      },
+      "mesh_full_surface": {
+        "chamfer_mean_euclidean_m": 0.1746267477101263,
+        "prediction_to_truth_m": {
+          "samples": 12000,
+          "mean": 0.07695858492317194,
+          "median": 0.07404886339713787,
+          "p95": 0.13398908849507896,
+          "max": 0.4541811070132382
+        },
+        "truth_to_prediction_m": {
+          "samples": 12000,
+          "mean": 0.27229491049708066,
+          "median": 0.1717981493319592,
+          "p95": 0.8346757067770274,
+          "max": 1.6674064526857737
+        },
+        "tolerance_m": 0.18605671878120866,
+        "coverage": 0.5211666666666667,
+        "precision": 0.99825
+      },
+      "silhouette_iou": {
+        "samples": 5,
+        "mean": 0.9226089522478208,
+        "median": 0.9234723807289056,
+        "p95": 0.9319628257088103,
+        "max": 0.9326997446574066,
+        "views": [
+          {
+            "image": "view-000.png",
+            "iou": 0.9093313834706123
+          },
+          {
+            "image": "view-001.png",
+            "iou": 0.9234723807289056
+          },
+          {
+            "image": "view-002.png",
+            "iou": 0.9326997446574066
+          },
+          {
+            "image": "view-003.png",
+            "iou": 0.9290151499144251
+          },
+          {
+            "image": "view-004.png",
+            "iou": 0.9185261024677546
+          }
+        ]
+      },
+      "reprojection_rmse_px": 0.4637081026102092,
+      "runtime_seconds": 26.29,
+      "peak_process_tree_rss_mib": 505.9,
+      "w3_sim3_aligned_checks": {
+        "at_least_three_registered_views": true,
+        "at_least_three_dense_views": true,
+        "rotation_max_le_0_5_deg": true,
+        "aligned_translation_max_le_5_cm": true,
+        "reprojection_rmse_le_2_px": true,
+        "sparse_mean_relative_error_le_2_percent": true,
+        "dense_mean_abs_rel_le_5_percent": true
+      },
+      "w3_sim3_aligned_pass": true,
+      "r4_silhouette_mean_ge_0_85": true
+    }
+  ],
+  "publication_context": "Evidence snapshot prepared before publication; draft PR is authorized for review. Publication is distinct from quality acceptance.",
+  "archived_real_photo_calibration": {
+    "schema": "lingshu.temple47-official-calibration-audit/1",
+    "scope": "Independent official-calibration pose evaluation of OLD round2 frozen47-view real-photo output; NOT a new round3 reconstruction; NOT part of fixed20 W3 pass count. GT never supplied to production by this evaluator.",
+    "source_run": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full",
+    "native_model": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\01_sfm\\sparse\\0",
+    "frozen_producer": {
+      "receipt": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\temple47-native.json",
+      "receipt_sha256": "da84c7c36b8c5d3423a6f1352ae3e8b43220fe357b72cd503e6ad6c63fdb310a",
+      "wheel": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\dist\\lingshu-0.0.1-py3-none-any.whl",
+      "wheel_sha256_as_recorded": "042701a7342ca6c0395aad0f1b1ec6641a3ea906fa36e61a3bf9cfa81e82e68f",
+      "command_as_recorded": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-m",
+        "lingshu.world.reconstruct",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\mview\\templeRing",
+        "--output",
+        "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full",
+        "--resource-root",
+        "D:\\AsiaInfo\\workspace\\lingshu",
+        "--threads",
+        "2",
+        "--depth-threads",
+        "4",
+        "--sfm-matching",
+        "exhaustive",
+        "--depth-views",
+        "all",
+        "--max-image-size",
+        "640"
+      ],
+      "historical_run_wall_seconds_as_recorded": 269.18752010003664
+    },
+    "provenance": {
+      "existing_archive": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\templeRing.zip",
+      "archive_sha256": "5f871fe96d25f510eac026c66c3a4c38229326260986e9926cba8a64e88c8359",
+      "archive_bytes": 11707443,
+      "README": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\mview\\templeRing\\README.txt",
+      "README_sha256": "0d9e9bf75741267f23f5e9b3514a469ff2420cf531c77498252d3418c79f299b",
+      "README_archive_member": "templeRing/README.txt",
+      "README_equals_archive_member": true,
+      "calibration": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\mview\\templeRing\\templeR_par.txt",
+      "calibration_sha256": "ad81a6208dd931997ea885859b711608614f11a6aa54c432b621cf3007fb09f6",
+      "calibration_archive_member": "templeRing/templeR_par.txt",
+      "calibration_equals_archive_member": true,
+      "archive_image_names_equal_official_calibration_names": true,
+      "benchmark_helper": "D:\\AsiaInfo\\workspace\\lingshu\\upstream-lingshu\\bench\\reconstruction_truth.py",
+      "benchmark_helper_sha256": "45e00fe48f047d7b69665bc9bd099ca58e4a272023b101959bc48c3434e5afeb",
+      "manifest_sha256": "709728b8e6437e7163ea456a678fe0826c4cc772241dc9584cb5cbb2398451d0",
+      "native_binary_sha256": {
+        "cameras.bin": "8fe1296f75e1f4ea4a1e357c7e34f64e12f3b7779c0c7587e6c5d350b7d6b040",
+        "images.bin": "cf9378c0fbdb76f2ec5784f7319405b0e594355280a061abbd1d11feeaf4c58b",
+        "points3D.bin": "056e6a918f04ec040d1c920bd6d06e7a2010cb8d2382e542023fb28cce8c01ef"
+      }
+    },
+    "conventions": {
+      "projection": "README K*[R t], row-major full K and world-to-camera[R|t]",
+      "image_axes": "README origin top-left; x horizontal, y vertical",
+      "length_units": "not declared by README; report dataset units only",
+      "pixel_center_offset": "README does not specify integer vs half-integer centers; pose/R evaluation does not rely on this ambiguity",
+      "absolute_metric_scale_observable": false,
+      "translation_helper_label_note": "existing helper calls its translation field meters, but that label is NOT propagated; numerical results here use dataset units"
+    },
+    "coverage": {
+      "official_calibrations": 47,
+      "input_images": 47,
+      "registered_native_images": 47,
+      "source_names_one_to_one": true,
+      "registered_all_inputs": true,
+      "image_size_checks": [
+        {
+          "native_name": "000000.jpg",
+          "official_image": "templeR0001.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000001.jpg",
+          "official_image": "templeR0002.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000002.jpg",
+          "official_image": "templeR0003.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000003.jpg",
+          "official_image": "templeR0004.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000004.jpg",
+          "official_image": "templeR0005.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000005.jpg",
+          "official_image": "templeR0006.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000006.jpg",
+          "official_image": "templeR0007.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000007.jpg",
+          "official_image": "templeR0008.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000008.jpg",
+          "official_image": "templeR0009.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000009.jpg",
+          "official_image": "templeR0010.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000010.jpg",
+          "official_image": "templeR0011.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000011.jpg",
+          "official_image": "templeR0012.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000012.jpg",
+          "official_image": "templeR0013.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000013.jpg",
+          "official_image": "templeR0014.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000014.jpg",
+          "official_image": "templeR0015.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000015.jpg",
+          "official_image": "templeR0016.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000016.jpg",
+          "official_image": "templeR0017.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000017.jpg",
+          "official_image": "templeR0018.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000018.jpg",
+          "official_image": "templeR0019.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000019.jpg",
+          "official_image": "templeR0020.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000020.jpg",
+          "official_image": "templeR0021.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000021.jpg",
+          "official_image": "templeR0022.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000022.jpg",
+          "official_image": "templeR0023.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000023.jpg",
+          "official_image": "templeR0024.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000024.jpg",
+          "official_image": "templeR0025.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000025.jpg",
+          "official_image": "templeR0026.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000026.jpg",
+          "official_image": "templeR0027.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000027.jpg",
+          "official_image": "templeR0028.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000028.jpg",
+          "official_image": "templeR0029.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000029.jpg",
+          "official_image": "templeR0030.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000030.jpg",
+          "official_image": "templeR0031.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000031.jpg",
+          "official_image": "templeR0032.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000032.jpg",
+          "official_image": "templeR0033.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000033.jpg",
+          "official_image": "templeR0034.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000034.jpg",
+          "official_image": "templeR0035.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000035.jpg",
+          "official_image": "templeR0036.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000036.jpg",
+          "official_image": "templeR0037.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000037.jpg",
+          "official_image": "templeR0038.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000038.jpg",
+          "official_image": "templeR0039.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000039.jpg",
+          "official_image": "templeR0040.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000040.jpg",
+          "official_image": "templeR0041.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000041.jpg",
+          "official_image": "templeR0042.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000042.jpg",
+          "official_image": "templeR0043.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000043.jpg",
+          "official_image": "templeR0044.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000044.jpg",
+          "official_image": "templeR0045.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000045.jpg",
+          "official_image": "templeR0046.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        },
+        {
+          "native_name": "000046.jpg",
+          "official_image": "templeR0047.png",
+          "source_size": [
+            640,
+            480
+          ],
+          "normalized_size": [
+            640,
+            480
+          ],
+          "native_size": [
+            640,
+            480
+          ]
+        }
+      ]
+    },
+    "sanity": {
+      "parser_declared_count": 47,
+      "GT_rotation_orthogonality_max_abs": 6.661338147750939e-16,
+      "GT_rotation_determinant_max_abs_error": 6.661338147750939e-16,
+      "known_Sim3_scale_abs_error": 1.3322676295501878e-15,
+      "known_Sim3_rotation_max_abs_error": 4.440892098500626e-16,
+      "known_Sim3_translation_max_dataset_units": 7.812344074452398e-16,
+      "known_Sim3_rotation_max_degrees": 2.4148365394514667e-06
+    },
+    "evaluation_similarity": {
+      "scale": 0.1493489359160217,
+      "rotation": [
+        [
+          0.17762770605811057,
+          -0.66780910593191,
+          0.7228273625665786
+        ],
+        [
+          0.954816413939168,
+          -0.060889740282072884,
+          -0.29089182731855423
+        ],
+        [
+          0.2382729814999582,
+          0.7418378782205745,
+          0.6268193908330502
+        ]
+      ],
+      "translation": [
+        -0.015416131153195749,
+        0.10140328944897627,
+        -0.06968085351840388
+      ],
+      "method": "all_camera_centers_umeyama",
+      "camera_center_rank": 3,
+      "scale_source": "official camera calibration used by evaluator only; dataset length units unspecified",
+      "absolute_scale_observable": false,
+      "coordinate_units": "dataset units, not asserted meters"
+    },
+    "pose": {
+      "rotation_degrees": {
+        "samples": 47,
+        "mean": 0.7548274522978857,
+        "median": 0.7853815099485782,
+        "p95": 0.9862167978160735,
+        "max": 1.0488315613706287
+      },
+      "center_translation_dataset_units": {
+        "samples": 47,
+        "mean": 0.001160326194783475,
+        "median": 0.00106450512105744,
+        "p95": 0.002158991800873813,
+        "max": 0.0039675094037279895
+      },
+      "center_translation_fraction_of_GT_center_diameter": {
+        "samples": 47,
+        "mean": 0.0010312010557176076,
+        "median": 0.0009460432847127731,
+        "p95": 0.0019187316759337555,
+        "max": 0.003525991142910726
+      },
+      "center_translation_fraction_of_median_all_pair_GT_baseline": {
+        "samples": 47,
+        "mean": 0.001434352070652557,
+        "median": 0.0013159016244513168,
+        "p95": 0.0026688653363402884,
+        "max": 0.0049044875089049225
+      }
+    },
+    "GT_center_geometry": {
+      "singular_values_dataset_units": [
+        2.826927695702902,
+        2.6124337010013803,
+        0.00272586107864201
+      ],
+      "s2_over_s1": 0.9241246972720366,
+      "rotation_information_condition_number": 2.1709489715830737,
+      "center_diameter_dataset_units": 1.1252181990601338,
+      "median_all_pair_baseline_dataset_units": 0.8089549410665862
+    },
+    "gauge_invariant_relative_rotation_degrees": {
+      "samples": 1081,
+      "mean": 0.8860106281645537,
+      "median": 0.8808540404619527,
+      "p95": 1.525975995979127,
+      "max": 1.839410609679175
+    },
+    "native_rectified_consistency": {
+      "same_names": true,
+      "world_to_camera_matrix_max_abs_difference": 0.0,
+      "optical_axis_max_angle_degrees_numerical": 0.0,
+      "rectified_sizes_distinct": [
+        [
+          640,
+          477
+        ]
+      ],
+      "note": "lens undistortion changes K/crop; pose/optical-axis comparison uses native model, not cropped pixel centers"
+    },
+    "initial_database_camera_records": [
+      {
+        "camera_id": 1,
+        "model_id": 2,
+        "size": [
+          640,
+          480
+        ],
+        "params": [
+          768.0,
+          320.0,
+          240.0,
+          0.0
+        ],
+        "prior_focal_length": false
+      }
+    ],
+    "per_view": [
+      {
+        "native_name": "000000.jpg",
+        "official_image": "templeR0001.png",
+        "rotation_degrees": 0.795642184837652,
+        "center_error_dataset_units": 0.0011567585929402031,
+        "center_error_fraction_of_GT_center_diameter": 0.0010280304690293974
+      },
+      {
+        "native_name": "000001.jpg",
+        "official_image": "templeR0002.png",
+        "rotation_degrees": 0.8102528507392568,
+        "center_error_dataset_units": 0.001154398675929158,
+        "center_error_fraction_of_GT_center_diameter": 0.0010259331718002766
+      },
+      {
+        "native_name": "000002.jpg",
+        "official_image": "templeR0003.png",
+        "rotation_degrees": 0.8293830094406407,
+        "center_error_dataset_units": 0.0011705454267081016,
+        "center_error_fraction_of_GT_center_diameter": 0.0010402830559315772
+      },
+      {
+        "native_name": "000003.jpg",
+        "official_image": "templeR0004.png",
+        "rotation_degrees": 0.8043678508873714,
+        "center_error_dataset_units": 0.0009688121837012055,
+        "center_error_fraction_of_GT_center_diameter": 0.0008609993906163532
+      },
+      {
+        "native_name": "000004.jpg",
+        "official_image": "templeR0005.png",
+        "rotation_degrees": 0.6785938712625458,
+        "center_error_dataset_units": 0.0017282134967971914,
+        "center_error_fraction_of_GT_center_diameter": 0.0015358918814508372
+      },
+      {
+        "native_name": "000005.jpg",
+        "official_image": "templeR0006.png",
+        "rotation_degrees": 1.0488315613679464,
+        "center_error_dataset_units": 0.0022191022809719394,
+        "center_error_fraction_of_GT_center_diameter": 0.001972152852509406
+      },
+      {
+        "native_name": "000006.jpg",
+        "official_image": "templeR0007.png",
+        "rotation_degrees": 1.0062458660462104,
+        "center_error_dataset_units": 0.0017515886763731444,
+        "center_error_fraction_of_GT_center_diameter": 0.001556665789654133
+      },
+      {
+        "native_name": "000007.jpg",
+        "official_image": "templeR0008.png",
+        "rotation_degrees": 0.9480134868233056,
+        "center_error_dataset_units": 0.0010399648015064378,
+        "center_error_fraction_of_GT_center_diameter": 0.000924233897367723
+      },
+      {
+        "native_name": "000008.jpg",
+        "official_image": "templeR0009.png",
+        "rotation_degrees": 0.9139863729255343,
+        "center_error_dataset_units": 0.0004928904745082186,
+        "center_error_fraction_of_GT_center_diameter": 0.000438039906322096
+      },
+      {
+        "native_name": "000009.jpg",
+        "official_image": "templeR0010.png",
+        "rotation_degrees": 0.8544541270219046,
+        "center_error_dataset_units": 0.00039553103262903166,
+        "center_error_fraction_of_GT_center_diameter": 0.00035151496212859753
+      },
+      {
+        "native_name": "000010.jpg",
+        "official_image": "templeR0011.png",
+        "rotation_degrees": 0.828398762642107,
+        "center_error_dataset_units": 0.0012355454859644438,
+        "center_error_fraction_of_GT_center_diameter": 0.001098049682271815
+      },
+      {
+        "native_name": "000011.jpg",
+        "official_image": "templeR0012.png",
+        "rotation_degrees": 0.7983102790824054,
+        "center_error_dataset_units": 0.0020187340139781866,
+        "center_error_fraction_of_GT_center_diameter": 0.0017940822639239073
+      },
+      {
+        "native_name": "000012.jpg",
+        "official_image": "templeR0013.png",
+        "rotation_degrees": 0.9269822864852141,
+        "center_error_dataset_units": 0.000790624106421912,
+        "center_error_fraction_of_GT_center_diameter": 0.0007026407030052486
+      },
+      {
+        "native_name": "000013.jpg",
+        "official_image": "templeR0014.png",
+        "rotation_degrees": 0.9191178069930218,
+        "center_error_dataset_units": 0.0007268427259677529,
+        "center_error_fraction_of_GT_center_diameter": 0.0006459571366468
+      },
+      {
+        "native_name": "000014.jpg",
+        "official_image": "templeR0015.png",
+        "rotation_degrees": 0.9291025171016922,
+        "center_error_dataset_units": 0.0008899751760025413,
+        "center_error_fraction_of_GT_center_diameter": 0.0007909356396349749
+      },
+      {
+        "native_name": "000015.jpg",
+        "official_image": "templeR0016.png",
+        "rotation_degrees": 0.9476607605913994,
+        "center_error_dataset_units": 0.00106450512105744,
+        "center_error_fraction_of_GT_center_diameter": 0.0009460432847127731
+      },
+      {
+        "native_name": "000016.jpg",
+        "official_image": "templeR0017.png",
+        "rotation_degrees": 0.9701001709847145,
+        "center_error_dataset_units": 0.0013760196421073547,
+        "center_error_fraction_of_GT_center_diameter": 0.0012228913852057397
+      },
+      {
+        "native_name": "000017.jpg",
+        "official_image": "templeR0018.png",
+        "rotation_degrees": 0.9931239235975107,
+        "center_error_dataset_units": 0.0015417409330634843,
+        "center_error_fraction_of_GT_center_diameter": 0.0013701706338835095
+      },
+      {
+        "native_name": "000018.jpg",
+        "official_image": "templeR0019.png",
+        "rotation_degrees": 0.8454820402196022,
+        "center_error_dataset_units": 0.0005453591969956641,
+        "center_error_fraction_of_GT_center_diameter": 0.00048466972668162386
+      },
+      {
+        "native_name": "000019.jpg",
+        "official_image": "templeR0020.png",
+        "rotation_degrees": 0.8012835192705596,
+        "center_error_dataset_units": 0.0009690387534218512,
+        "center_error_fraction_of_GT_center_diameter": 0.0008612007468695981
+      },
+      {
+        "native_name": "000020.jpg",
+        "official_image": "templeR0021.png",
+        "rotation_degrees": 0.7641863961216256,
+        "center_error_dataset_units": 0.0009884538072191642,
+        "center_error_fraction_of_GT_center_diameter": 0.0008784552258795623
+      },
+      {
+        "native_name": "000021.jpg",
+        "official_image": "templeR0022.png",
+        "rotation_degrees": 0.765016524551459,
+        "center_error_dataset_units": 0.0007486001584526909,
+        "center_error_fraction_of_GT_center_diameter": 0.0006652933262881614
+      },
+      {
+        "native_name": "000022.jpg",
+        "official_image": "templeR0023.png",
+        "rotation_degrees": 0.7658238015061343,
+        "center_error_dataset_units": 0.000682435336163116,
+        "center_error_fraction_of_GT_center_diameter": 0.0006064915558005878
+      },
+      {
+        "native_name": "000023.jpg",
+        "official_image": "templeR0024.png",
+        "rotation_degrees": 0.8072500256812418,
+        "center_error_dataset_units": 0.0002834017690944439,
+        "center_error_fraction_of_GT_center_diameter": 0.00025186383346017887
+      },
+      {
+        "native_name": "000024.jpg",
+        "official_image": "templeR0025.png",
+        "rotation_degrees": 0.7833600108378928,
+        "center_error_dataset_units": 0.000510066215006392,
+        "center_error_fraction_of_GT_center_diameter": 0.0004533042706138573
+      },
+      {
+        "native_name": "000025.jpg",
+        "official_image": "templeR0026.png",
+        "rotation_degrees": 0.7853815099460141,
+        "center_error_dataset_units": 0.00046409395281582207,
+        "center_error_fraction_of_GT_center_diameter": 0.00041244796182950827
+      },
+      {
+        "native_name": "000026.jpg",
+        "official_image": "templeR0027.png",
+        "rotation_degrees": 0.8130381967666043,
+        "center_error_dataset_units": 0.0006073237957355013,
+        "center_error_fraction_of_GT_center_diameter": 0.0005397386891207265
+      },
+      {
+        "native_name": "000027.jpg",
+        "official_image": "templeR0028.png",
+        "rotation_degrees": 0.8259251816254344,
+        "center_error_dataset_units": 0.0007956844519121779,
+        "center_error_fraction_of_GT_center_diameter": 0.0007071379156298688
+      },
+      {
+        "native_name": "000028.jpg",
+        "official_image": "templeR0029.png",
+        "rotation_degrees": 0.7866413708618067,
+        "center_error_dataset_units": 0.001171742615410356,
+        "center_error_fraction_of_GT_center_diameter": 0.0010413470173065837
+      },
+      {
+        "native_name": "000029.jpg",
+        "official_image": "templeR0030.png",
+        "rotation_degrees": 0.7474538350235993,
+        "center_error_dataset_units": 0.0014416260061450865,
+        "center_error_fraction_of_GT_center_diameter": 0.001281196844620217
+      },
+      {
+        "native_name": "000030.jpg",
+        "official_image": "templeR0031.png",
+        "rotation_degrees": 0.759339607360634,
+        "center_error_dataset_units": 0.0014100524415737556,
+        "center_error_fraction_of_GT_center_diameter": 0.0012531368962495778
+      },
+      {
+        "native_name": "000031.jpg",
+        "official_image": "templeR0032.png",
+        "rotation_degrees": 0.6309338696806811,
+        "center_error_dataset_units": 0.0012066005304009991,
+        "center_error_fraction_of_GT_center_diameter": 0.0010723258221461774
+      },
+      {
+        "native_name": "000032.jpg",
+        "official_image": "templeR0033.png",
+        "rotation_degrees": 0.5616358437444926,
+        "center_error_dataset_units": 0.0003166250937416635,
+        "center_error_fraction_of_GT_center_diameter": 0.00028138995086120396
+      },
+      {
+        "native_name": "000033.jpg",
+        "official_image": "templeR0034.png",
+        "rotation_degrees": 0.6289356413134771,
+        "center_error_dataset_units": 0.0009078259703483485,
+        "center_error_fraction_of_GT_center_diameter": 0.0008067999354317522
+      },
+      {
+        "native_name": "000034.jpg",
+        "official_image": "templeR0035.png",
+        "rotation_degrees": 0.607075022177155,
+        "center_error_dataset_units": 0.0006350164386860318,
+        "center_error_fraction_of_GT_center_diameter": 0.0005643495983414105
+      },
+      {
+        "native_name": "000035.jpg",
+        "official_image": "templeR0036.png",
+        "rotation_degrees": 0.6084853090372019,
+        "center_error_dataset_units": 0.0009119623512663524,
+        "center_error_fraction_of_GT_center_diameter": 0.0008104760054788408
+      },
+      {
+        "native_name": "000036.jpg",
+        "official_image": "templeR0037.png",
+        "rotation_degrees": 0.6104272711421076,
+        "center_error_dataset_units": 0.0010743716430151031,
+        "center_error_fraction_of_GT_center_diameter": 0.0009548118257529949
+      },
+      {
+        "native_name": "000037.jpg",
+        "official_image": "templeR0038.png",
+        "rotation_degrees": 0.6077293956877957,
+        "center_error_dataset_units": 0.0012496680373312436,
+        "center_error_fraction_of_GT_center_diameter": 0.0011106006269495637
+      },
+      {
+        "native_name": "000038.jpg",
+        "official_image": "templeR0039.png",
+        "rotation_degrees": 0.6113665245638843,
+        "center_error_dataset_units": 0.0016436912240403554,
+        "center_error_fraction_of_GT_center_diameter": 0.0014607755415023407
+      },
+      {
+        "native_name": "000039.jpg",
+        "official_image": "templeR0040.png",
+        "rotation_degrees": 0.43937568555771017,
+        "center_error_dataset_units": 0.003342273296463533,
+        "center_error_fraction_of_GT_center_diameter": 0.0029703334866564095
+      },
+      {
+        "native_name": "000040.jpg",
+        "official_image": "templeR0041.png",
+        "rotation_degrees": 0.46486892706558747,
+        "center_error_dataset_units": 0.0039675094037279895,
+        "center_error_fraction_of_GT_center_diameter": 0.003525991142910726
+      },
+      {
+        "native_name": "000041.jpg",
+        "official_image": "templeR0042.png",
+        "rotation_degrees": 0.5261317938812584,
+        "center_error_dataset_units": 0.001447314760322664,
+        "center_error_fraction_of_GT_center_diameter": 0.0012862525344253847
+      },
+      {
+        "native_name": "000042.jpg",
+        "official_image": "templeR0043.png",
+        "rotation_degrees": 0.5573164288954807,
+        "center_error_dataset_units": 0.0012477547095072184,
+        "center_error_fraction_of_GT_center_diameter": 0.0011089002209077638
+      },
+      {
+        "native_name": "000043.jpg",
+        "official_image": "templeR0044.png",
+        "rotation_degrees": 0.5750950961994921,
+        "center_error_dataset_units": 0.0011494110101880587,
+        "center_error_fraction_of_GT_center_diameter": 0.0010215005508692736
+      },
+      {
+        "native_name": "000044.jpg",
+        "official_image": "templeR0045.png",
+        "rotation_degrees": 0.5607321592840687,
+        "center_error_dataset_units": 0.0008702516921039236,
+        "center_error_fraction_of_GT_center_diameter": 0.0007734070536992939
+      },
+      {
+        "native_name": "000045.jpg",
+        "official_image": "templeR0046.png",
+        "rotation_degrees": 0.5957768217175211,
+        "center_error_dataset_units": 0.000847878292902059,
+        "center_error_fraction_of_GT_center_diameter": 0.0007535234442619843
+      },
+      {
+        "native_name": "000046.jpg",
+        "official_image": "templeR0047.png",
+        "rotation_degrees": 0.6382547593313842,
+        "center_error_dataset_units": 0.001377505354204017,
+        "center_error_fraction_of_GT_center_diameter": 0.0012242117620872221
+      }
+    ],
+    "timing": {
+      "pose_and_relative_math_seconds_including_small_native_readback": 0.14612819999456406,
+      "audit_wall_seconds": 0.38010009995196015
+    }
+  },
+  "principal_point_diagnostic": {
+    "protocol": {
+      "schema": "lingshu.principal-point-diagnostic-protocol/1",
+      "scope": "One OLD47 real-photo diagnostic and one current5-view pass guard; NOT complete producer models or new acceptance results",
+      "motivation": "Official Temple47 calibration exposed fixed-center principal-point model restriction; hypothesis thus not blind to prior GT",
+      "optimizer_inputs": "Only original native images/features/tracks/poses and camera parameters; no official K/poses or synthetic truth",
+      "native_model": "SIMPLE_RADIAL unchanged; one shared camera; only B.refine_principal_point differs",
+      "split": "All original eligible>=3-view tracks; lowest SHA256 principal-point-ab-v1:pointID 10% entirely excluded from both BA training sets; all other original points retained",
+      "holdout": "Fixed original maximum-baseline pair fresh-triangulates every held track; other observations predicted; original held XYZ never scored",
+      "same_denominator": "Both arms score identical held tracks and views; invalid prediction penalized at image diagonal",
+      "BA": "CPU2; Huber1px; variable focal/radial/poses/points; gauge TWO_CAMS_FROM_WORLD; max50iterations;47-view each12sec and5-view each2sec; total solve budget28sec",
+      "selection": "B only if paired held-track mean(A-B)>one paired SE and no increase in invalid predictions; GT never changes selection",
+      "official_source_url": "https://colmap.github.io/faq.html#principal-point-refinement",
+      "official_source_local": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\colmap-faq-principal.html",
+      "official_source_sha256": "6044df48f7025e7674eaf0131ac90893fedbb410fb4c87f84832fca6b21fa810",
+      "output_models": "90% of eligible tracks trained; no full-data refit, parameter sweep, default change or20-scene W3 claim"
+    },
+    "cases": [
+      {
+        "id": "temple47",
+        "run": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full",
+        "source_model": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\round2-temple47-full\\01_sfm\\sparse\\0",
+        "source_hashes": {
+          "cameras.bin": "8fe1296f75e1f4ea4a1e357c7e34f64e12f3b7779c0c7587e6c5d350b7d6b040",
+          "images.bin": "cf9378c0fbdb76f2ec5784f7319405b0e594355280a061abbd1d11feeaf4c58b",
+          "points3D.bin": "056e6a918f04ec040d1c920bd6d06e7a2010cb8d2382e542023fb28cce8c01ef"
+        },
+        "original_registered_views": 47,
+        "original_points": 7422,
+        "original_observations": 46416,
+        "eligible_tracks_ge_3": 7372,
+        "source_cameras": [
+          {
+            "model": "SIMPLE_RADIAL",
+            "params": [
+              1559.120665817923,
+              320.0,
+              240.0,
+              -0.3067244200857566
+            ]
+          }
+        ],
+        "selection_without_GT": {
+          "paired_A_minus_B_mean_px": 0.006631131514383956,
+          "paired_standard_error_px": 0.0010479018597528797,
+          "selected": "B_free_pp",
+          "relative_mean_error_reduction": 0.013749295133161366
+        },
+        "original_model_unchanged": true,
+        "arms": {
+          "A_fixed_pp": {
+            "model": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\principal-point-ab\\temple47\\A_fixed_pp",
+            "BA_seconds": 4.9819482999737374,
+            "usable": true,
+            "termination_type": "BundleAdjustmentTerminationType.NO_CONVERGENCE",
+            "brief_report": "Ceres Solver Report: Iterations: 51, Initial cost: 5.252532e+03, Final cost: 5.169608e+03, Termination: NO_CONVERGENCE",
+            "training_points": 6685,
+            "training_observations": 41599,
+            "held_points_absent_from_training": true,
+            "camera": [
+              {
+                "model": "SIMPLE_RADIAL",
+                "params": [
+                  1560.1864019569834,
+                  320.0,
+                  240.0,
+                  -0.32154603137666793
+                ]
+              }
+            ],
+            "training_pixel_residual": {
+              "samples": 41599,
+              "mean": 0.3329835214573411,
+              "median": 0.18974485790621667,
+              "p95": 1.0363678585202136,
+              "max": 8.230019868988709
+            },
+            "postselection_GT_only": {
+              "rotation_degrees": {
+                "samples": 47,
+                "mean": 0.7546229004413331,
+                "median": 0.7860131459487378,
+                "p95": 0.9647757750655099,
+                "max": 1.0096222529404577
+              },
+              "camera_center_error": {
+                "samples": 47,
+                "mean": 0.001216677496251954,
+                "median": 0.0011362344486946225,
+                "p95": 0.002129547855760533,
+                "max": 0.003459300667964739
+              },
+              "camera_center_error_fraction_GT_diameter": {
+                "samples": 47,
+                "mean": 0.001081281388150506,
+                "median": 0.0010097903230179626,
+                "p95": 0.0018925643555528077,
+                "max": 0.003074337644782323
+              },
+              "translation_units": "dataset units; README does not declare meters",
+              "gauge_invariant_relative_rotation_degrees": {
+                "samples": 1081,
+                "mean": 0.8860523732061043,
+                "median": 0.8739415625041719,
+                "p95": 1.5319749941643097,
+                "max": 1.8084336111158708
+              },
+              "evaluation_only_similarity": {
+                "scale": 0.14932007468671057,
+                "rotation": [
+                  [
+                    0.1775029244761207,
+                    -0.6677556079188433,
+                    0.7229074352193106
+                  ],
+                  [
+                    0.954872837325452,
+                    -0.06089187300709817,
+                    -0.29070611335114577
+                  ],
+                  [
+                    0.23813982518777982,
+                    0.7418858590744424,
+                    0.6268132064378589
+                  ]
+                ],
+                "translation": [
+                  -0.015457127369638387,
+                  0.10134637293595945,
+                  -0.06986178310886332
+                ],
+                "method": "all_camera_centers_umeyama",
+                "camera_center_rank": 3,
+                "scale_source": "GT evaluation only; no metric scale recovery",
+                "absolute_scale_observable": false,
+                "coordinate_units": "dataset units; README does not declare meters"
+              }
+            },
+            "holdout": {
+              "mean_track_error_px": 0.48228883373015097,
+              "median_track_error_px": 0.27333040416735027,
+              "track_denominator": 737,
+              "prediction_denominator": 3342,
+              "invalid_predictions_penalized": 0
+            }
+          },
+          "B_free_pp": {
+            "model": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\principal-point-ab\\temple47\\B_free_pp",
+            "BA_seconds": 5.252286300004926,
+            "usable": true,
+            "termination_type": "BundleAdjustmentTerminationType.NO_CONVERGENCE",
+            "brief_report": "Ceres Solver Report: Iterations: 51, Initial cost: 5.252532e+03, Final cost: 5.145028e+03, Termination: NO_CONVERGENCE",
+            "training_points": 6685,
+            "training_observations": 41599,
+            "held_points_absent_from_training": true,
+            "camera": [
+              {
+                "model": "SIMPLE_RADIAL",
+                "params": [
+                  1541.2049665677102,
+                  298.191328477426,
+                  251.8272039604674,
+                  -0.15763547037840805
+                ]
+              }
+            ],
+            "training_pixel_residual": {
+              "samples": 41599,
+              "mean": 0.3304473657489423,
+              "median": 0.18603379503655357,
+              "p95": 1.0373655938676167,
+              "max": 8.263394992854797
+            },
+            "postselection_GT_only": {
+              "rotation_degrees": {
+                "samples": 47,
+                "mean": 0.26153904511362863,
+                "median": 0.28053104147240904,
+                "p95": 0.4156339466003999,
+                "max": 0.5787057948856652
+              },
+              "camera_center_error": {
+                "samples": 47,
+                "mean": 0.0011515478935899463,
+                "median": 0.0010083184199553403,
+                "p95": 0.002341979591588821,
+                "max": 0.003303752188905599
+              },
+              "camera_center_error_fraction_GT_diameter": {
+                "samples": 47,
+                "mean": 0.0010233996344458389,
+                "median": 0.0008961092353443653,
+                "p95": 0.002081355948157448,
+                "max": 0.0029360991420731906
+              },
+              "translation_units": "dataset units; README does not declare meters",
+              "gauge_invariant_relative_rotation_degrees": {
+                "samples": 1081,
+                "mean": 0.33567088337374,
+                "median": 0.32178892243109664,
+                "p95": 0.6273954275169796,
+                "max": 0.9743544573011046
+              },
+              "evaluation_only_similarity": {
+                "scale": 0.14947471820181282,
+                "rotation": [
+                  [
+                    0.17531864231940883,
+                    -0.6732829484271823,
+                    0.7182989941608434
+                  ],
+                  [
+                    0.9582477109794828,
+                    -0.05070177508725359,
+                    -0.28140834103768686
+                  ],
+                  [
+                    0.22588647161319933,
+                    0.7376444952415777,
+                    0.6362828778003832
+                  ]
+                ],
+                "translation": [
+                  -0.011173269301829429,
+                  0.09300582268727768,
+                  -0.06994131187463545
+                ],
+                "method": "all_camera_centers_umeyama",
+                "camera_center_rank": 3,
+                "scale_source": "GT evaluation only; no metric scale recovery",
+                "absolute_scale_observable": false,
+                "coordinate_units": "dataset units; README does not declare meters"
+              }
+            },
+            "holdout": {
+              "mean_track_error_px": 0.4756577022157669,
+              "median_track_error_px": 0.26450243483797614,
+              "track_denominator": 737,
+              "prediction_denominator": 3342,
+              "invalid_predictions_penalized": 0
+            }
+          }
+        }
+      },
+      {
+        "id": "scene-03",
+        "run": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\independent-truth-round3\\scene-03",
+        "source_model": "D:\\AsiaInfo\\workspace\\lingshu\\test-output\\independent-truth-round3\\scene-03\\01_sfm\\sparse\\0",
+        "source_hashes": {
+          "cameras.bin": "239d01105f793d5a78fa26fa0563fbd0f8c1773cfa8b2aaeb8ca4d5ac3df25f8",
+          "images.bin": "1e706115bee0136e47d9ef85fda87cab7ab129f790468a5189c2acbfb22ef5bf",
+          "points3D.bin": "b0380177983997d0fe3eafa3777cdc2da8d50144fa551c623baa9be5fe479d85"
+        },
+        "original_registered_views": 5,
+        "original_points": 373,
+        "original_observations": 1413,
+        "eligible_tracks_ge_3": 372,
+        "source_cameras": [
+          {
+            "model": "SIMPLE_RADIAL",
+            "params": [
+              577.241921997971,
+              224.0,
+              168.0,
+              0.01270213446247217
+            ]
+          }
+        ],
+        "selection_without_GT": {
+          "paired_A_minus_B_mean_px": -0.005369522823238697,
+          "paired_standard_error_px": 0.004094683699761722,
+          "selected": "A_fixed_pp",
+          "relative_mean_error_reduction": -0.008654732944711752
+        },
+        "original_model_unchanged": true,
+        "arms": {
+          "A_fixed_pp": {
+            "model": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\principal-point-ab\\scene-03\\A_fixed_pp",
+            "BA_seconds": 0.1146796999964863,
+            "usable": true,
+            "termination_type": "BundleAdjustmentTerminationType.NO_CONVERGENCE",
+            "brief_report": "Ceres Solver Report: Iterations: 51, Initial cost: 1.183960e+02, Final cost: 1.180696e+02, Termination: NO_CONVERGENCE",
+            "training_points": 336,
+            "training_observations": 1272,
+            "held_points_absent_from_training": true,
+            "camera": [
+              {
+                "model": "SIMPLE_RADIAL",
+                "params": [
+                  577.3287808385852,
+                  224.0,
+                  168.0,
+                  0.021094967888196703
+                ]
+              }
+            ],
+            "training_pixel_residual": {
+              "samples": 1272,
+              "mean": 0.31168933514067093,
+              "median": 0.21572736955103983,
+              "p95": 0.8692659576977954,
+              "max": 3.673924517634139
+            },
+            "postselection_GT_only": {
+              "rotation_degrees": {
+                "samples": 5,
+                "mean": 0.12251780570455914,
+                "median": 0.13518418377091349,
+                "p95": 0.15465638353582767,
+                "max": 0.15562960103067464
+              },
+              "camera_center_error": {
+                "samples": 5,
+                "mean": 0.003157741513781781,
+                "median": 0.0031557403606453267,
+                "p95": 0.0049112522792230185,
+                "max": 0.004932272530648389
+              },
+              "camera_center_error_fraction_GT_diameter": {
+                "samples": 5,
+                "mean": 0.0005931632563910247,
+                "median": 0.0005927873514900771,
+                "p95": 0.0009225499877641617,
+                "max": 0.0009264985189315207
+              },
+              "translation_units": "meters in synthetic GT only",
+              "gauge_invariant_relative_rotation_degrees": {
+                "samples": 10,
+                "mean": 0.0622669716283328,
+                "median": 0.06756721397153752,
+                "p95": 0.08083831252340118,
+                "max": 0.08505251401727365
+              },
+              "evaluation_only_similarity": {
+                "scale": 0.5366315652984248,
+                "rotation": [
+                  [
+                    0.9771550703387268,
+                    -0.05720352938552159,
+                    0.204684451625318
+                  ],
+                  [
+                    -0.21252716475149133,
+                    -0.26489226682024747,
+                    0.9405659419846771
+                  ],
+                  [
+                    0.00041563687254851016,
+                    -0.9625797853708911,
+                    -0.2709981255310074
+                  ]
+                ],
+                "translation": [
+                  0.003829022888291883,
+                  -6.162869756156854,
+                  2.5182395576518086
+                ],
+                "method": "all_camera_centers_umeyama",
+                "camera_center_rank": 3,
+                "scale_source": "GT evaluation only; no metric scale recovery",
+                "absolute_scale_observable": false,
+                "coordinate_units": "meters in synthetic GT only"
+              }
+            },
+            "holdout": {
+              "mean_track_error_px": 0.6204146167813971,
+              "median_track_error_px": 0.4366943633854953,
+              "track_denominator": 37,
+              "prediction_denominator": 67,
+              "invalid_predictions_penalized": 0
+            }
+          },
+          "B_free_pp": {
+            "model": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\principal-point-ab\\scene-03\\B_free_pp",
+            "BA_seconds": 0.12298129999544472,
+            "usable": true,
+            "termination_type": "BundleAdjustmentTerminationType.NO_CONVERGENCE",
+            "brief_report": "Ceres Solver Report: Iterations: 51, Initial cost: 1.183960e+02, Final cost: 1.171772e+02, Termination: NO_CONVERGENCE",
+            "training_points": 336,
+            "training_observations": 1272,
+            "held_points_absent_from_training": true,
+            "camera": [
+              {
+                "model": "SIMPLE_RADIAL",
+                "params": [
+                  554.7021041108858,
+                  234.32112918314445,
+                  218.2497928162578,
+                  0.06418634791593414
+                ]
+              }
+            ],
+            "training_pixel_residual": {
+              "samples": 1272,
+              "mean": 0.31188424348411675,
+              "median": 0.2120797379532035,
+              "p95": 0.8666358300482907,
+              "max": 3.680255919895142
+            },
+            "postselection_GT_only": {
+              "rotation_degrees": {
+                "samples": 5,
+                "mean": 4.951111701698798,
+                "median": 4.95955571873099,
+                "p95": 4.9765546875447235,
+                "max": 4.976664836235418
+              },
+              "camera_center_error": {
+                "samples": 5,
+                "mean": 0.0033287496270600963,
+                "median": 0.003284178073182757,
+                "p95": 0.004899714530462616,
+                "max": 0.004901136711606522
+              },
+              "camera_center_error_fraction_GT_diameter": {
+                "samples": 5,
+                "mean": 0.0006252861293047006,
+                "median": 0.0006169136238526544,
+                "p95": 0.0009203826892071796,
+                "max": 0.000920649837608914
+              },
+              "translation_units": "meters in synthetic GT only",
+              "gauge_invariant_relative_rotation_degrees": {
+                "samples": 10,
+                "mean": 2.0505727842167767,
+                "median": 2.053353638860915,
+                "p95": 3.6037644150862675,
+                "max": 4.027817312806494
+              },
+              "evaluation_only_similarity": {
+                "scale": 0.5384166036852303,
+                "rotation": [
+                  [
+                    0.9736702477499287,
+                    -0.09136109713021678,
+                    0.20885257618175362
+                  ],
+                  [
+                    -0.22760200974083752,
+                    -0.33820661092198107,
+                    0.9131339515594624
+                  ],
+                  [
+                    -0.012789597668566934,
+                    -0.9366266269222915,
+                    -0.35009568396603447
+                  ]
+                ],
+                "translation": [
+                  0.004224305077265276,
+                  -6.212266567019848,
+                  2.459107748906156
+                ],
+                "method": "all_camera_centers_umeyama",
+                "camera_center_rank": 3,
+                "scale_source": "GT evaluation only; no metric scale recovery",
+                "absolute_scale_observable": false,
+                "coordinate_units": "meters in synthetic GT only"
+              }
+            },
+            "holdout": {
+              "mean_track_error_px": 0.6257841396046357,
+              "median_track_error_px": 0.4334627860887828,
+              "track_denominator": 37,
+              "prediction_denominator": 67,
+              "invalid_predictions_penalized": 0
+            }
+          }
+        }
+      }
+    ],
+    "BA_seconds": 10.471895599970594,
+    "elapsed_total_seconds": 13.264618999965023,
+    "source": ".cache/pr-validation/round3/principal-point-ab/result.json",
+    "source_sha256": "943ea0c6e5c5b191c033ed406967ee1ad7fe5638f065b7cfc5ff07aa48a2c279",
+    "initialization_limit": "Held tracks excluded from BA targets, but both arms share a full-track native warm start; conditional BA holdout, not strict from-SfM cross-validation. One-SE rule is diagnostic only, not a proven safety guard.",
+    "production_change": false,
+    "full_data_refit": false,
+    "counts_toward_fixed20_W3": false
+  },
+  "portable_pose_evaluator": {
+    "source": "bench/reconstruction_pose.py",
+    "tests": "tests/test_reconstruction_pose.py",
+    "source_sha256": {
+      "bench/reconstruction_pose.py": "891d9f96a4f8435539c08eef046fac74ab5d8d2effb5ededd07d4281180c0eb2",
+      "bench/reconstruction_truth.py": "45e00fe48f047d7b69665bc9bd099ca58e4a272023b101959bc48c3434e5afeb",
+      "tests/test_reconstruction_pose.py": "7a7125ac40b9ff741cf3f670ce0f3bb57dda790c49d897aafdb3a8c8b8d5b45c"
+    },
+    "gate": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "pytest_summary": "23 passed, 1 warning in 1.48s",
+      "scope": "portable independent camera-par evaluator; separate from producer gate"
+    },
+    "command": "python bench/reconstruction_pose.py --run RUN --calibration CAMERA_par.txt --output result.json",
+    "scope": "strict saved-run camera calibration evaluation; original01_sfm preferred; one center-only Sim3; relative rotations; dataset units only; output source-file protection"
+  },
+  "post_freeze_auto_keyframes_fix": {
+    "status": "passed",
+    "created_utc": "2026-11-19T05:46:12.692811+00:00",
+    "scope": "independent patched wheel; opt-in auto regressions and unchanged all/default guards only",
+    "full20_source_sha256": "50f7959847e9205696b836d8206a077ecaf9b12c0eaad1f50bb21f113ca7e74a",
+    "full20_receipt": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\FINAL_BATCH.json",
+    "full20_not_rerun": true,
+    "full20_applies_to_prior_frozen_source": true,
+    "reused_dependency_python": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+    "fresh_venv": false,
+    "skipped": [
+      "native reconstruction",
+      "consumer renders",
+      "105-module import sweep",
+      "legacy corruption cases",
+      "dependency reinstallation",
+      "downloads"
+    ],
+    "source_delta_files": [
+      "lingshu/world/reconstruct/keyframes.py"
+    ],
+    "all_early_return_ast_equal": true,
+    "default_entry_files_unchanged": {
+      "lingshu/world/reconstruct/__main__.py": true,
+      "lingshu/world/reconstruct/pipeline.py": true
+    },
+    "current_producer_sha256": "9db2b64118eaa1cdca2db6965771d030f8f026c9fc09f90108e2afe890528ed3",
+    "source_identity_105": {
+      "python_files": 105,
+      "unchanged_files": 104,
+      "changed_files": 1,
+      "map": {
+        "lingshu/__init__.py": "99d7e9a38bfaab8d913152c9d8b80928a4557c51d65f8547da06d44cc1e3c504",
+        "lingshu/_pathguard.py": "3632ec75eee7d5a8dec016268b8bc529eaabd17f5596e429530e041d4479505f",
+        "lingshu/core/__init__.py": "c44d5ddba5251a463d0499522d8c1139658924ade10bc72061f75cd5b8f4ebba",
+        "lingshu/core/activation.py": "de97f1af3805020b0c6fabc52f26605653dc37aad8daf735d7e4ba87b6c441d5",
+        "lingshu/core/component_resolver.py": "23aead3904256151d868bdfac2a76d5dbb7eaacc4f2034389703fa4a6b3593ff",
+        "lingshu/core/condition_normalize.py": "cdfcb6d6a13bfe2bb7b26d7d11463933fcdc51634f4b2bacc32ec9a2d659ae55",
+        "lingshu/core/contradiction.py": "a4543567cec5592ed7458ee498b6c617af274717fa0f1cba0b1756248c6f0a0b",
+        "lingshu/core/core.py": "ddfe736349550981456268747a740f591b7321d9f8a7f22bba734e28cc2bd2e9",
+        "lingshu/core/evidence.py": "61790c2071f4030da148ed662f707d6b60c299852d15e93b5bd02125f4ab25e9",
+        "lingshu/core/longterm_gate.py": "68e10ba7f880f9ae89c343b60e5c012bc7509157511e897e2f9dc2a90bd739cc",
+        "lingshu/core/provenance.py": "dbe8c989ba11e489af5c5925bea97df94c61a2e4293985fff40ae1b02d4fd38e",
+        "lingshu/core/retrieval.py": "c918eb7f007ca1cf87eec72ec4ade0561a2a3623a5863b9473805736c676c2b9",
+        "lingshu/core/structure_permissions.py": "72549826d6b9771ad2eabf68a84beba5e42f69c28ddf0304082c60c404322360",
+        "lingshu/core/structure_service.py": "26b06777a18ddde3453c4414d146c7e928b2465338addc4251113df430a23720",
+        "lingshu/core/structure_writer.py": "4f7e9d2bf78ab8b5f649825fdbdb49e3797db679a65566528a99e4d6a6acb617",
+        "lingshu/core/time_core.py": "73e2cf1eb27d81d7ee7f747d5e3f5600b63aac7f97b1239e45417f77f709a926",
+        "lingshu/core/tms.py": "8fb4537fdfc29b86bca1026587d05ba3672e82c996d79a73d4f3bdfcf4c6fa64",
+        "lingshu/core/verdict.py": "50ef0a6b6d3496486dae8e69233e65d4f9c0cf9660f4a65602e36f30055b0ba6",
+        "lingshu/gen/__init__.py": "15e98f30dcb46da990583768b494cd4333a85780e81b6084a0c6ea9da72bebc7",
+        "lingshu/gen/hex_composite.py": "5b0bd22884d11150f44432651bea1374d8fa975b8b673ac85707343ef8163b44",
+        "lingshu/gen/hexgen_align_probe.py": "4dced4c36731b7bbe03fa3f95722878c7e741c0fce3cc1f8ebd0873479599107",
+        "lingshu/gen/hexgen_c1_real.py": "fff30be6883998567a7aa69ec1724d0b1bfd86ad9b248d830249c712bdd4fa33",
+        "lingshu/gen/hexgen_multi_seed.py": "d02a60418da1385e820efbd5ea295b8e5b1e48ebb667f6663e82d7923fddb18c",
+        "lingshu/gen/hexgen_pack_certify.py": "87218d9932fa58e89331cb1ea71ca0811cf8cda0f6b3028a155d50df6eeeb07a",
+        "lingshu/gen/hexgen_self_source.py": "2182e91584570d683935afe198418d3d5dd9bca68fbbbc25eb6b9b456b49c562",
+        "lingshu/gen/hexgen_subject_split.py": "13de1215b1c713583ca5a194708448248f57ecc8eec05dc8fcb2e19111eb6be7",
+        "lingshu/nn/__init__.py": "4ba504401a291047bc0a9c662fee95f12d48d07832c963d4ebae2b6403cabcc7",
+        "lingshu/nn/hex_cnn.py": "8a4a5e501a92a4b17024eb9dee36f8da004e9d036d9eb766212ac30303b7aac5",
+        "lingshu/nn/hex_composite.py": "5b0bd22884d11150f44432651bea1374d8fa975b8b673ac85707343ef8163b44",
+        "lingshu/nn/hex_gen.py": "f5bc3b8a13facd944647858ac395d06ca545c633cd0b6e6104da90bace0f1ebd",
+        "lingshu/nn/hex_hier.py": "e6988f75e8ddaa1fe03cb90c3c04eacc877374a5cac4991dc65666b581380a36",
+        "lingshu/nn/hex_nn_preview.py": "d9fa7e989f5068cfef2e4f80eaa8e146ad2838642c899f8693c5fb3050c86808",
+        "lingshu/nn/hex_ortho.py": "07976d3902f8bba3c1e02bff8c3c966c2fa6ae85e0be25510b6c6298314201b3",
+        "lingshu/nn/hex_query.py": "073cddf4d56284ca4eafe6090347b95979543d1fcd60479197f9b7ef438c1a9f",
+        "lingshu/nn/hex_recon.py": "5f42c0e0348a322785a5556f93cb53ee6f0231c48078c3d26e11e12f52f0fd4a",
+        "lingshu/nn/hex_search.py": "e7c71ec837ae67473933f99138ebd9d88dde685ba0223a007687d3abc6403af1",
+        "lingshu/nn/hex_text.py": "330269be933d1949c42739fd9dcf284369a1b52aac7b74fb82c74af2c2bd95db",
+        "lingshu/nn/hex_train.py": "1a443c27d8423b8e1a317ddd6d1ce1e6923275d6c0f2bc33289f48b50379a7cc",
+        "lingshu/nn/hex_unit.py": "3b16d8252a4c5969b2adc9a1b51130021aaba6242bd60eb31780df6fb38147f8",
+        "lingshu/nn/rust_bridge.py": "84a41bc1b951b6f6069dff9ad9ec1fae128e5688814bd7c052dc1c3330581e3c",
+        "lingshu/nn/stcnn.py": "406538be87fab5126421f2d9ddd984fe598ff686e2510c738ffafc798cd25509",
+        "lingshu/vision/__init__.py": "88efca82201bd070b617397dd6c8baabd09535f59aa4d668750943edf2f1a568",
+        "lingshu/vision/lineart.py": "b33bdfcca84be434ff49efb1003c23dfcbe75a56d15713d178301ecf39536418",
+        "lingshu/world/__init__.py": "700d97c453cb1c0ba9ba65141ac1938b8289a9802bab29ab97a13866cfc5b680",
+        "lingshu/world/anchor_verify.py": "e1496eaf87968f05bd3455b392d243436fa8d49981cc132dd3c28d4d7541e30d",
+        "lingshu/world/anchored_verification.py": "e50f42f82b94b919ecc4621e0d78d2e3c928d4c23c346a59198a6d52997cf65c",
+        "lingshu/world/anim.py": "04712c23295c31e5cae86c05c51f6c19cb7fc4115cf0bc52f0670591fa8b0de2",
+        "lingshu/world/autoframe.py": "d3e494b8f2aeb4750db2396a5a790d18174bc68f01c0a299a2b123e558379cc2",
+        "lingshu/world/brain_store.py": "3c3c13a276281847b6a76da86995a6c5dba95686f3fa95e7e02fc332f8724e47",
+        "lingshu/world/camera_bridge.py": "d39fd1c9567a62610a0e5f9ad19d0bcfc290870b6048279c657448d3e0c7c226",
+        "lingshu/world/camera_calib.py": "1df6c7b0ff10f5c473f8f46d428c674a16831be18c08be084f343e2c96bab731",
+        "lingshu/world/camera_calibrate.py": "f4eb35cfad063ee2ac3e3538ad0c8f2e1f30c2ed91a66d04ecc99b5c09ab10be",
+        "lingshu/world/channel_credibility.py": "318ac1a1133d59c9c92c05487bb19078ca9affc03974dd35ecb32475e9f6ed84",
+        "lingshu/world/confirmation.py": "2741c1011064d489f9f5ef14f6739e043e98d0df77fdccc8c38b3c91026dc636",
+        "lingshu/world/coord_contract.py": "2393d826d520f340be1e73b6f3ec0d85a7df4afff70460478663cd94a8dd1d29",
+        "lingshu/world/curiosity_explorer.py": "75b675c57a21868e7255ba4f2b5164bd546b77a9c568cf2ed016fda81259d108",
+        "lingshu/world/gap_dual.py": "8f899b2d8de21855259f5760b633ad65d8d829928ebcea6601ee7c57c30882f2",
+        "lingshu/world/identity.py": "76fa201dbae46776337ff03e60a3bd99e238bd32818605d7d061c914e0c2abf2",
+        "lingshu/world/mesh3d.py": "995feec5dd4af54449e80a6d9b563489b8d28889dba7833cea0b68aa66d51e80",
+        "lingshu/world/mesh_gen.py": "b2c798eb6dd39f42fde022abb1ad134d0786a0b5b4d69273fd5ffbbf822dbbb4",
+        "lingshu/world/mesh_svg.py": "6dfb2a2230680bc5f3963368e3141948d3d845555ebf155f1cd9b52c88561670",
+        "lingshu/world/motion.py": "8911ca9947c2b72e643d627b0711fce0d7e2dea5c63ad91e0842484debadad77",
+        "lingshu/world/motion_groups.py": "fa755466da9a4babb31d5b7fc07c9c447becdd5d5df31066e34a554d0b02a254",
+        "lingshu/world/multiview.py": "5b43bc061a7e4da0233036c1d3211c3f203b7686234a8ac017af5e35159ec993",
+        "lingshu/world/physics.py": "8a94b03642c3f7a7cd011f05f809b5ce4290234f307d4c7aa1935244d61bc59a",
+        "lingshu/world/physics_predict.py": "11a55469cf79005f8ba3b0fb92143f3ccd2c6cfd0cbf958285fc7ca60c7cdea9",
+        "lingshu/world/prediction.py": "75bc1ddc925535c9fec7087570d6dffb2c6ac8a8c762a9970d6fd8a3f9b7d66c",
+        "lingshu/world/process_ops.py": "78f3e5d67545c9a60d0aac31751d254ec1defa54ad51bdb3a4f4dc28af4e7c43",
+        "lingshu/world/reconstruct/__init__.py": "4a28a3e12b5b650e5c3b429ec27f501348e7a902a1b5b9195bc57c2579a9f216",
+        "lingshu/world/reconstruct/__main__.py": "7c927f68a0e91bed9a2dd26fb279e81b0f487714b247010cc5b925904c9de24f",
+        "lingshu/world/reconstruct/alignment.py": "b2319b85c383997e5b132c377e188d50a3fc111ea7fb5b83a1e6382d9f7bef83",
+        "lingshu/world/reconstruct/colmap.py": "89091c96fe144e87dabc8ed05ebb4f422ad30e222a704d3332665668517d7a1f",
+        "lingshu/world/reconstruct/config.py": "24b9a348a0c39d9c922253cb1934c3a5de3c25ec46164ee6c9741bb9dcab5ea6",
+        "lingshu/world/reconstruct/depth.py": "6cfd3b3e770a159d0c2cedf5e0d9748c478516f878eb9ab2401c829da8b7f645",
+        "lingshu/world/reconstruct/fusion.py": "3ab26b3a818bc104931a302fa2c712ea3c0734824511ebbc0bca1f0197a5cef1",
+        "lingshu/world/reconstruct/images.py": "4a0f3664430b9f8f4a63e5b43f22b4dea203c1901b9054e8a329049389f24e61",
+        "lingshu/world/reconstruct/keyframes.py": "6a5602de9e19f458733890d1161bc428188430a7a2e74d4d60b9a6a2fbba7038",
+        "lingshu/world/reconstruct/match_pairs.py": "8d9ccb55d3969df5e2fa4605789f91f3d1c2bd81a640fc113e588c07477de613",
+        "lingshu/world/reconstruct/pipeline.py": "91fbc4020228e325ae5d51411a450f32dae03cea0cdee742026e457516c1f063",
+        "lingshu/world/reconstruct/verify.py": "e5dbcb251d1d2d91ea8f4d4279b101485c668ab5acebbf06471b0e977349049f",
+        "lingshu/world/reconstruction.py": "e40477705928f0248a2930c078394ccf608076a4285e68162650283b62c64d2b",
+        "lingshu/world/reconstruction_artifacts.py": "8fd6959bc47443976c7bba7a8d8df1711dffed341bc51b2b957e2407d93a5ad1",
+        "lingshu/world/reconstruction_camera.py": "cdc068025614cd77708854f8da2f18d9607c9dcf2130c89fd6cff71685b0489b",
+        "lingshu/world/reconstruction_render.py": "b72fc94c5e08ed157cd59f9bad6530d98f82c516e7b5c804bece356f6542b8b2",
+        "lingshu/world/scenario.py": "8ccf1a898ea3298a1fdca6308254820e23d8ee115a31d914ec7506d91c75d525",
+        "lingshu/world/scenario_cli.py": "8db0146b224b117bb3978f2170e659eaee78468337b8738d240e97272e3cb066",
+        "lingshu/world/scene_model.py": "ad571489d12d0d4e94c67419a1d7fbef619935ace9f66f2dbbc2d7dc84ba90b3",
+        "lingshu/world/scene_simulator.py": "45caf73deff9d23fa68ead8a4cbac2302587bba63bb2f161853e9d6fd8fa6151",
+        "lingshu/world/semantic_anchor_graph.py": "a7ef66d6b57d375eba63cc8026d9f30f7c793914856b04565d7fef685d6a4fba",
+        "lingshu/world/seven_layer_loop.py": "ee07f9ddb46d301bb575abbfead2af0d81c06bca325726737d4964187b2b2f1a",
+        "lingshu/world/shade_paint.py": "dfb7a4d49e4a232daf3a4fda61150654380e89a2befa3e71a668702097d48339",
+        "lingshu/world/shapes.py": "ae6b51116e4d08f80e6c4ccf310a7c3f6a413bcb331c14c63ea64ecfa84ea98f",
+        "lingshu/world/silhouette3d.py": "ab76906e5fcaf8f1ad41f4ed24cb1c4c5f9b4e9e2990a6f1df61f6bfa0051891",
+        "lingshu/world/skeleton3d.py": "c52d984697eaa1060df92592a02c42d9ac9969ed3010e24bb48a766794cb3e69",
+        "lingshu/world/spacetime_consistency.py": "cd46c8c9877bfa4017b465988d057fd3c43a40e7e3dd237ffb9bc5e882c4518f",
+        "lingshu/world/stable_lease.py": "bb07e562020feb74bd800fe235b915639f4e07c0b16d4ba6ad748a333ff4755c",
+        "lingshu/world/svg_backend.py": "5c3d03229514ce667b51d308ae8393d175ad880c49771ba8c7b60d814d22aee3",
+        "lingshu/world/time_core.py": "73e2cf1eb27d81d7ee7f747d5e3f5600b63aac7f97b1239e45417f77f709a926",
+        "lingshu/world/voxel_world.py": "c8c0299e1a88c0b08704fc5de62f9539e97f3f449647865ced3a596c8603deb7",
+        "lingshu/world/vprim.py": "649978c9e9b53aff2a2dd63c9a5b970921f0e0e6b69a13e8da5df781c58c0b22",
+        "lingshu/world/wm_simloop.py": "bea92f8529c5818090bc5f327a046015d724ae5723925e1ff76fe3be9c3df72a",
+        "lingshu/world/world3d.py": "82f68cce4b7704d4dc5b18d0b4e26b7cd8e255d7570b2a7e37ccd0772a73628f",
+        "lingshu/world/world_learner.py": "d5b87d647bff8500af2717dde04390d516b2bed4b4cd4cb3972ece8fccfed3c1",
+        "lingshu/world/world_model.py": "f9a119f4d8de7ced6b996d947e8a84bd6c7e1140049e34f8d080f035d3b34076",
+        "lingshu/world/world_process.py": "c88d225d4a49521f084484af5e85077d280187df1722fedd1c74bf26392d990d"
+      },
+      "only_expected_keyframes_delta": true
+    },
+    "build": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-env\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-m",
+        "pip",
+        "wheel",
+        "--no-deps",
+        "--no-build-isolation",
+        "--wheel-dir",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\dist",
+        "D:\\AsiaInfo\\workspace\\lingshu\\upstream-lingshu"
+      ],
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 3.6868389999726787,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\build.log"
+    },
+    "wheel": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\dist\\lingshu-0.0.1-py3-none-any.whl",
+    "wheel_sha256": "8a3f09f4da721fb264cd9fd5bb407e31e0bb20d7bbf5519169e8440b57961cd4",
+    "wheel_source_identity": {
+      "python_files": 105,
+      "all_equal_to_current": true,
+      "native_model_payload": []
+    },
+    "install": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-m",
+        "pip",
+        "install",
+        "--no-deps",
+        "--no-index",
+        "--target",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed",
+        "--report",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\pip-install-report.json",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\dist\\lingshu-0.0.1-py3-none-any.whl"
+      ],
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 3.0896199999842793,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\install.log"
+    },
+    "installed_auto_regressions": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-c",
+        "\nimport ast\nimport importlib.metadata\nimport json\nfrom pathlib import Path\nimport sys\ntarget,testfile,wheel=map(Path,sys.argv[1:])\nsys.path.insert(0,str(target))\nfrom lingshu.world.reconstruct import keyframes\nassert Path(keyframes.__file__).resolve().is_relative_to(target.resolve())\n# Run the committed test bodies without adding pytest to the reused clean deps.\ntree=ast.parse(testfile.read_text(encoding='utf-8'))\nbody=[]\nfor node in tree.body:\n    if isinstance(node,ast.Import) and any(alias.name=='pytest' for alias in node.names):\n        continue\n    if isinstance(node,ast.Expr) and isinstance(node.value,ast.Call):\n        call=node.value.func\n        if isinstance(call,ast.Attribute) and isinstance(call.value,ast.Name) and call.value.id=='pytest':\n            continue\n    if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):\n        node.decorator_list=[]\n    body.append(node)\ntree.body=body\nast.fix_missing_locations(tree)\nns={'__name__':'installed_auto_keyframe_regressions','__file__':str(testfile)}\nexec(compile(tree,str(testfile),'exec'),ns)\ncases=[\n ('duplicate-view-selection',lambda:ns['test_repeating_same_view_features_preserves_selection_ratios_and_raw_tracks']()),\n ('same-tile-repeat-support',lambda:ns['test_repeated_same_view_does_not_create_independent_repeat_support']((10.,10.))),\n ('cross-tile-repeat-support',lambda:ns['test_repeated_same_view_does_not_create_independent_repeat_support']((90.,90.))),\n ('local-track-identity',lambda:ns['test_local_track_ratio_is_not_weighted_by_repeated_features']()),\n ('per-track-tile-support-and-order',lambda:ns['test_cross_tile_features_retain_each_track_tile_without_an_arbitrary_pixel']()),\n ('depth-median-duplicate-weight',lambda:ns['test_repeated_features_do_not_reweight_the_camera_depth_median']()),\n ('all-early-return',lambda:ns['test_all_and_small_inputs_return_before_inspecting_tracks'](5,True,'all')),\n ('small-early-return',lambda:ns['test_all_and_small_inputs_return_before_inspecting_tracks'](4,False,'coverage')),\n]\nresults=[]\nfor name,case in cases:\n    case()\n    results.append(dict(name=name,status='passed'))\norigins={}\nfor name,item in sorted(sys.modules.items()):\n    if name=='lingshu' or name.startswith('lingshu.'):\n        origin=Path(item.__file__).resolve()\n        assert origin.is_relative_to(target.resolve()),(name,str(origin))\n        origins[name]=str(origin)\ndistribution,=list(importlib.metadata.distributions(path=[str(target)]))\ndirect=json.loads(distribution.read_text('direct_url.json'))\nassert direct['url'].lower().endswith('.whl') and not direct.get('dir_info',{}).get('editable',False)\nresult=dict(status='passed',case_count=len(results),cases=results,installed_module=keyframes.__file__,\n            imported_origins=origins,noneditable=True,reused_existing_dependency_environment=True,\n            fresh_venv=False,pytest_installed_for_this_check=False,direct_url=direct)\nprint(json.dumps(result))\n",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed",
+        "D:\\AsiaInfo\\workspace\\lingshu\\upstream-lingshu\\tests\\test_reconstruct_keyframes.py",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\dist\\lingshu-0.0.1-py3-none-any.whl"
+      ],
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 1.1526885000057518,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed-auto-regressions.log"
+    },
+    "installed_auto_results": {
+      "status": "passed",
+      "case_count": 8,
+      "cases": [
+        {
+          "name": "duplicate-view-selection",
+          "status": "passed"
+        },
+        {
+          "name": "same-tile-repeat-support",
+          "status": "passed"
+        },
+        {
+          "name": "cross-tile-repeat-support",
+          "status": "passed"
+        },
+        {
+          "name": "local-track-identity",
+          "status": "passed"
+        },
+        {
+          "name": "per-track-tile-support-and-order",
+          "status": "passed"
+        },
+        {
+          "name": "depth-median-duplicate-weight",
+          "status": "passed"
+        },
+        {
+          "name": "all-early-return",
+          "status": "passed"
+        },
+        {
+          "name": "small-early-return",
+          "status": "passed"
+        }
+      ],
+      "installed_module": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed\\lingshu\\world\\reconstruct\\keyframes.py",
+      "imported_origins": {
+        "lingshu": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed\\lingshu\\__init__.py",
+        "lingshu._pathguard": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed\\lingshu\\_pathguard.py",
+        "lingshu.world": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed\\lingshu\\world\\__init__.py",
+        "lingshu.world.reconstruct": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed\\lingshu\\world\\reconstruct\\__init__.py",
+        "lingshu.world.reconstruct.keyframes": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\installed\\lingshu\\world\\reconstruct\\keyframes.py"
+      },
+      "noneditable": true,
+      "reused_existing_dependency_environment": true,
+      "fresh_venv": false,
+      "pytest_installed_for_this_check": false,
+      "direct_url": {
+        "archive_info": {
+          "hash": "sha256=8a3f09f4da721fb264cd9fd5bb407e31e0bb20d7bbf5519169e8440b57961cd4",
+          "hashes": {
+            "sha256": "8a3f09f4da721fb264cd9fd5bb407e31e0bb20d7bbf5519169e8440b57961cd4"
+          }
+        },
+        "url": "file:///D:/AsiaInfo/workspace/lingshu/.cache/pr-validation/round3/auto-keyframes-wheel/dist/lingshu-0.0.1-py3-none-any.whl"
+      }
+    },
+    "stdlib_cli_default": {
+      "command": [
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round2\\windows-clean-final\\venv\\Scripts\\python.exe",
+        "-X",
+        "utf8",
+        "-I",
+        "-S",
+        "-c",
+        "\nfrom pathlib import Path\nimport json\nimport sys\nwheel=Path(sys.argv[1])\nsys.path.insert(0,str(wheel))\nfrom lingshu.world.reconstruct.__main__ import parser, main\nargs=parser().parse_args(['input-images'])\nassert args.depth_views=='all'\nassert not {'numpy','cv2','PIL','open3d','torch','pycolmap','scipy'}.intersection(sys.modules)\nprint(json.dumps(dict(stdlib_only=True,default_depth_views=args.depth_views)))\nassert main(['--help'])==0\n",
+        "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\dist\\lingshu-0.0.1-py3-none-any.whl"
+      ],
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 0.11699279997264966,
+      "log": "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\auto-keyframes-wheel\\stdlib-cli-default.log"
+    },
+    "completed_utc": "2026-11-19T05:46:20.849214+00:00"
+  },
+  "current_package_source_sha256": "9db2b64118eaa1cdca2db6965771d030f8f026c9fc09f90108e2afe890528ed3",
+  "auto_keyframes_gate": {
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "method_followup": {
+    "camera_calibration": "shared-camera assumption, nuisance-marginalized observability, conditional holdout and full-data transfer require distinct guards; no production implementation",
+    "surface_quality": "shared global affine has conditional model-adequacy failures; worst surface tail also needs local depth/pose explanations; no evidence that a visibility-only filter fixes all",
+    "duplicate_view_observations": "raw feature provenance preserved; independent view support must not inherit raw observation multiplicity",
+    "designs": [
+      "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\guarded-calibration-method.md",
+      "D:\\AsiaInfo\\workspace\\lingshu\\.cache\\pr-validation\\round3\\fusion-quality-method.md"
+    ]
+  }
+}

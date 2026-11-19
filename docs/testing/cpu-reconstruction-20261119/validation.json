@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "upstream_base": "d78185c3796e5782df05b6304a4b20fe8a1cb048",
+  "branch": "feat/cpu-reconstruction-bridge",
+  "full_frozen_pytest": {
+    "passed": 5548,
+    "failed": 20,
+    "errors": 0,
+    "skipped": 39,
+    "subtests_passed": 119,
+    "seconds": 1032.91,
+    "script_modules_excluded": 102,
+    "workers": 4,
+    "skipped_reasons": {
+      "frozen_baseline_or_git_history_unavailable": 8,
+      "real_geometry_assets_unavailable": 11,
+      "external_real_MCP_brain_unavailable": 7,
+      "Windows_permission_or_symlink_semantics": 7,
+      "external_pixel_metrics_unavailable": 3,
+      "OpenSSL_CLI_unavailable": 2,
+      "serial_only_timing_check": 1
+    }
+  },
+  "ci_script_processes": {
+    "passed": 102,
+    "failed": 0
+  },
+  "baseline_failed_case_replay": {
+    "new_tree_selected_failures": 20,
+    "baseline_passed": 16,
+    "baseline_failed": 4,
+    "integration_introduced_failures": 16,
+    "same_environment_external_failures": 4
+  },
+  "after_fix": {
+    "new_reconstruction_tests": {
+      "passed": 100,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "targeted_batch": {
+      "passed": 178,
+      "failed": 0,
+      "errors": 1,
+      "skipped": 0,
+      "subtests_passed": 21,
+      "seconds": 57.41
+    },
+    "collection_error_resolution": "tools namespace was blocked after lingshu pathguard initialization in selected-file collection order; reran only coverage file in a fresh process",
+    "standalone_coverage_replay": {
+      "passed": 15,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 23.61
+    },
+    "standalone_time_core": {
+      "passed": 52,
+      "failed": 0,
+      "seconds": 265.22
+    },
+    "serial_timing_replay": {
+      "passed": 1,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "distinct_affected_test_cases_passed": 246,
+    "full_suite_rerun": false,
+    "integration_introduced_failed_cases_remaining": 0
+  },
+  "integration_fix_categories": {
+    "geometry_scaling_static_classification": 5,
+    "direct_pipeline_guards": 4,
+    "live_manifest_fingerprint": 2,
+    "recursive_documented_module_counts": 3,
+    "explicit_subprocess_encoding": 1,
+    "declared_import_classification": 1
+  },
+  "independent_review_regression": {
+    "issue": "inferred frames silently dropped by TSDF could produce a success bundle rejected by the consumer",
+    "before": {
+      "failed": 4,
+      "passed": 1
+    },
+    "after": {
+      "failed": 0,
+      "passed": 5
+    }
+  },
+  "external_failure_root": "4 unchanged upstream viewer tests: pinned Cytoscape CDN download URLError/WinError10054",
+  "module_import_smoke": {
+    "module_files": 103,
+    "imports_passed": 103,
+    "failed": [],
+    "seconds": 1.619
+  },
+  "final_wheel": {
+    "stdlib_import": {
+      "returncode": 0,
+      "expected_returncode": 0
+    },
+    "cli_help": {
+      "returncode": 0,
+      "expected_returncode": 0
+    },
+    "missing_extra": {
+      "returncode": 1,
+      "expected_returncode": 1,
+      "actionable_error": true
+    },
+    "producer_modules_in_wheel": 12,
+    "no_models_or_native_binaries": true,
+    "final_fusion_and_verification_sources_match": true,
+    "wheel_sha256": "bef59300b8312e5b820c4b763e3eea37fec6cb361b885bbd392a9013c189bf55"
+  },
+  "not_measured": [
+    "20-thread deployment",
+    "Linux native reconstruction",
+    "independent pose/depth/mesh ground truth",
+    "W3 20-scene acceptance"
+  ],
+  "same_environment_upstream_failures": [
+    "tests.test_issue625_export_title_mask_guard::test_g1_no_leak_in_all_products",
+    "tests.test_issue625_export_title_mask_guard::test_g2_mask_format_and_discrimination",
+    "tests.test_issue625_export_title_mask_guard::test_g3_plain_title_zero_regression",
+    "tests.test_issue625_export_title_mask_guard::test_g4_ref_root_mask_not_regressed"
+  ],
+  "historical_scope_note": "Existing full_frozen_pytest and after_fix keys are first-round history; latest evidence is round2.json",
+  "latest_round": "round2.json"
+}

@@ -71,6 +71,7 @@ LOCAL_TOP = {"lingshu", "tools", "scripts", "tests", "experiments", "wm_bridge",
              "bench"}  # #2281 交付（批一百零九）：bench_world 首次被测试导入
                       # （test_batch109_bench_horizon_guard）——仓库本地顶层包，非第三方
 DIST_ALIAS = {"pil": "pillow", "yaml": "pyyaml", "pytest": "pytest",
+              "cv2": "opencv-python-headless",
                "markdown_it": "markdown-it-py"}
 
 

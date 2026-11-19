@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "scope": "External assets used by the Windows CPU integration run; not distributed in the wheel",
+  "depth_anything_commit": "14f7461d1f704761a038ac9f50dbde8fdb7275e2",
+  "ggml_commit": "eced84c86f8b012c752c016f7fe789adea168e1e",
+  "patched_da_capi_cpp_sha256": "3575bbe9eb7c6f292fc60361f279c689f98a4c867302f86f9ff0ac4b6fdcae85",
+  "assets": [
+    {
+      "filename": "cmake-4.5.0-windows-x86_64.zip",
+      "size_bytes": 56341654,
+      "sha256": "301b1728317ccd84e984b02e366a8293735bc5ac618757d3d8f58b578f062411",
+      "origin": "https://github.com/Kitware/CMake/releases/tag/v4.5.0"
+    },
+    {
+      "filename": "colmap-x64-windows-nocuda.zip",
+      "size_bytes": 127731595,
+      "sha256": "c493d88cb4a43f21afba42cb55bf786e5434a0420e73db0ba1454c5d8b3686ae",
+      "origin": "https://github.com/colmap/colmap/releases/tag/4.2.1"
+    },
+    {
+      "filename": "depth-anything-base-q8_0.gguf",
+      "size_bytes": 148713024,
+      "sha256": "71b1c953113657f9a4fbef43ab6a16fe7a6f87b36da113a184f13c4a564968a0",
+      "origin": "https://huggingface.co/mudler/depth-anything.cpp-gguf"
+    },
+    {
+      "filename": "depth-anything.cpp.tar.gz",
+      "size_bytes": 5985905,
+      "sha256": "0500333d3b04c73cc4de893b90551e92ed2a6442a0aae09171b9ff5eb55f660f",
+      "origin": "https://github.com/mudler/depth-anything.cpp"
+    },
+    {
+      "filename": "ggml-eced84c86f8b012c752c016f7fe789adea168e1e.tar.gz",
+      "size_bytes": 3228432,
+      "sha256": "0f4870ecfe7aadfb3a3f6daa337a946d5ed00a5485d09c1e05fb90c1c25ff038",
+      "origin": "https://github.com/ggml-org/ggml/tree/eced84c86f8b012c752c016f7fe789adea168e1e"
+    },
+    {
+      "filename": "llvm-mingw-20261104-ucrt-x86_64.zip",
+      "size_bytes": 191037046,
+      "sha256": "552191b5754c49a5a20723276a6fc56541ea1922c4c50b7b669022333fc1b40f",
+      "origin": "https://github.com/mstorsjo/llvm-mingw/releases"
+    },
+    {
+      "filename": "ninja-win.zip",
+      "size_bytes": 291570,
+      "sha256": "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65",
+      "origin": "https://github.com/ninja-build/ninja/releases"
+    }
+  ]
+}

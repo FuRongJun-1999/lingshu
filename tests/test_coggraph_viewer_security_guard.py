@@ -48,11 +48,10 @@ VIEW_MEMORY = os.path.join(COG, "view_memory.py")
 WF_DIR = os.path.join(HERE, ".github", "workflows")
 WF_FILES = ("gate.yml", "repro-bot.yml", "pr-lint.yml", "upstream-tracker.yml")
 
-# 经包路径导入本仓 tools 模块（`tools` 在依赖闭包守卫 tests/test_gate_dependency_closure.py
-# 的 LOCAL_TOP 白名单内）。裸 `import build_viewer`（含 sys.path.insert 后导入）会被该
-# 守卫判为「未声明的第三方模块 build_viewer」⇒ 门禁红。同仓先例见
-# tests/test_coggraph_generic_tag.py:39-41。
-from tools.coggraph import build_viewer as V  # noqa: E402
+# 按已知仓内文件加载，不依赖 CWD 裸包解析或测试收集顺序。
+_spec = importlib.util.spec_from_file_location("build_viewer_security_under_test", BUILD_VIEWER)
+V = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(V)
 
 # 固定版本 cytoscape@3.30.2 的官方产物指纹（2026-10-10 对 CYTO_URL 实测）
 CYTO_SHA256 = "83e8c54a6bec655bfd81df07df605649c268af69aeca67a5ea2da54ea42dac81"

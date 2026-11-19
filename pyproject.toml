@@ -49,6 +49,13 @@ full = ["numpy>=2.3.5,<2.6", "Pillow>=12.3,<13"]
 core-sparse = ["numpy>=2.3.5,<2.6", "scipy"]
 nn-train = ["pyarrow"]
 gen-diffusion = ["torch", "diffusers"]
+# Optional CPU reconstruction. Native GLOMAP and depth-anything.cpp libraries and
+# GGUF weights are external assets; importing world/core does not load them.
+world-reconstruct = [
+    "numpy>=2.3.5,<2.6",
+    "opencv-python-headless==4.11.0.86", "open3d==0.20.0",
+    "pycolmap==4.2.1", "scipy==1.16.1", "psutil==7.1.3",
+]
 # dev = 开发/测试面：pytest（运行器）+ PyYAML（**测试件的运行依赖**）。
 #   PyYAML 之所以落 dev 而非新建 tools extra / 不入 full：tools/ 不进 wheel
 #   （本文件 packages.find 只收 lingshu*），该依赖只在「本仓开发：跑本仓测试 / 驱动 tools/」

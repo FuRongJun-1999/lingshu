@@ -31,6 +31,7 @@ continue`）⇒ G1 全红、G3 的 d_many 断言红；恢复 ⇒ 全绿。
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -40,10 +41,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL = REPO_ROOT / "tools" / "silent_except_lint.py"
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from tools import silent_except_lint as S  # noqa: E402
+# 按已知仓内文件加载，不依赖 CWD 裸包解析或测试收集顺序。
+_spec = importlib.util.spec_from_file_location("silent_except_lint_ast_under_test", TOOL)
+S = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(S)
 
 
 def run_lint(*args, cwd=None, timeout=300):
