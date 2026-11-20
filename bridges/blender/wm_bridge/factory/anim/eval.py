@@ -398,17 +398,10 @@ def elliptic_k(k):
     return math.pi / (2.0 * _agm(1.0, math.sqrt(1.0 - k * k)))
 
 
-def _jacobi_cn(u, k, iters=24):
-    """Jacobi `cn(u, k)`（AGM/Landen 降变换，A&S 16.4）。
-
-    ⚠ **已知缺陷**：振幅一大就散（θ0=30°→7.0e-03 rad、60°→5.8e-02、120°→5.3e-01
-    vs 独立 RK4）。故 `pendulum(exact=True)` 被限制在 |θ0| <= 5°（见 `pendulum_exact_angle`）。
-    """
-    k = float(k)
-    if abs(k) >= 1.0:
-        raise AnimError("jacobi_cn：|k| 须 < 1，得到 %r" % (k,))
+def _jacobi_amplitude(u, k, complementary_modulus, iters=24, stable=False):
+    """AGM amplitude; the exact release path retains the complementary modulus."""
     a = [1.0]
-    b = [math.sqrt(1.0 - k * k)]
+    b = [complementary_modulus]
     c = [k]
     n = 0
     while abs(c[n]) > 1e-15 and n < iters:
@@ -418,36 +411,58 @@ def _jacobi_cn(u, k, iters=24):
         n += 1
     phi = (2.0 ** n) * a[n] * float(u)
     for i in range(n - 1, -1, -1):
-        sig = c[i + 1] / a[i + 1] * math.sin(phi)
-        sig = 1.0 if sig > 1.0 else (-1.0 if sig < -1.0 else sig)
-        phi = 0.5 * (phi + math.asin(sig))
-    return math.cos(phi)
+        if stable:
+            # a²-c²=b² avoids asin precision loss when c/a rounds to one.
+            correction = math.atan2(c[i + 1] * math.sin(phi),
+                                    math.hypot(b[i + 1], c[i + 1] * math.cos(phi)))
+        else:
+            sig = c[i + 1] / a[i + 1] * math.sin(phi)
+            sig = 1.0 if sig > 1.0 else (-1.0 if sig < -1.0 else sig)
+            correction = math.asin(sig)
+        phi = 0.5 * (phi + correction)
+    return phi
 
 
-#: `pendulum_exact_angle` 的**已实测有效域**（度）。超出即 `AnimError`，不给"近似当精确"。
-PENDULUM_EXACT_MAX_DEG = 5.0
-#: 有效域内实测最大偏差（rad，vs 独立 RK4 @dt=1/8192s）—— 原始读数见 `_det/gate_anim.py`
-PENDULUM_EXACT_MAX_ERR = 4.0e-05
+def _jacobi_cn(u, k, iters=24):
+    """Jacobi `cn(u, k)`（AGM/Landen 降变换，A&S 16.4）。"""
+    k = float(k)
+    if abs(k) >= 1.0:
+        raise AnimError("jacobi_cn：|k| 须 < 1，得到 %r" % (k,))
+    return math.cos(_jacobi_amplitude(u, k, math.sqrt(1.0 - k * k), iters))
+
+
+#: 单摆振幅物理域上界（度）；±180° 分离点单独拒绝。
+PENDULUM_EXACT_MAX_DEG = 180.0
+#: 多振幅独立 RK4 回归样本误差门槛（rad），不是全域浮点误差上界。
+PENDULUM_EXACT_MAX_ERR = 1e-11
 
 
 def pendulum_exact_angle(theta0_rad, omega0, t):
-    """椭圆函数解 `θ(t) = 2·asin(k·cn(ω0 t, k))`，`k = sin(θ0/2)`。
+    """释放初速为零的精确解 `θ(t) = 2·asin(k·sn(K−ω0 t,k))`。
 
-    ⚠ **实测有效域 |θ0| <= 5°**：域内与独立 RK4 一致到 4.0e-05 rad；域外偏差迅速变大
-    （30°→7.0e-03、60°→5.8e-02、120°→5.3e-01 rad）。按 fail-closed：超出即 raise，
-    **不把近似当精确**。权威实现在 `lingshu.world.physics`（此处为桥侧最小副本，公式一字不差）。
+    保留 `k'=cos(θ0/2)`；稳定 AGM 降变换及 atan2 回读避免临近 ±π 的精度损失。
+    与上游 physics 同式但保持桥侧纯标准库；大时间仍受浮点相位约减精度限制。
     """
-    k = math.sin(0.5 * float(theta0_rad))
-    if abs(k) >= 1.0:
-        raise AnimError("pendulum_exact_angle：|sin(θ0/2)| 须 < 1（θ0 不能恰好 ±180°）")
-    if math.degrees(abs(float(theta0_rad))) > PENDULUM_EXACT_MAX_DEG:
-        raise AnimError(
-            "pendulum_exact_angle：|θ0|=%.2f° 超出已实测有效域 %.1f°（域内 vs RK4 最大偏差 %.1e rad；"
-            "30°/60°/120° 实测 7.0e-03/5.8e-02/5.3e-01）—— 按 fail-closed 拒绝，不把近似当精确"
-            % (math.degrees(abs(float(theta0_rad))), PENDULUM_EXACT_MAX_DEG, PENDULUM_EXACT_MAX_ERR))
-    if k == 0.0:
-        return 0.0
-    return 2.0 * math.asin(k * _jacobi_cn(float(omega0) * float(t), k))
+    for name, value in (("theta0_rad", theta0_rad), ("omega0", omega0), ("t", t)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            raise AnimError("pendulum_exact_angle：%s 须为有限数，得到 %r" % (name, value))
+    theta0, omega0, t = float(theta0_rad), float(omega0), float(t)
+    if abs(theta0) >= math.pi:
+        raise AnimError("pendulum_exact_angle：|theta0_rad| 须 < π")
+    u = omega0 * t
+    if not math.isfinite(u):
+        raise AnimError("pendulum_exact_angle：omega0*t 须为有限数")
+    if theta0 == 0.0 or u == 0.0:
+        return theta0
+    k = math.sin(0.5 * theta0)
+    complementary = math.cos(0.5 * theta0)
+    quarter = math.pi / (2.0 * _agm(1.0, complementary))
+    phase = abs(math.remainder(u, 4.0 * quarter))
+    direction = 1.0 if phase <= quarter else -1.0
+    shifted_u = abs(quarter - phase)
+    phi = _jacobi_amplitude(shifted_u, k, complementary, stable=True)
+    sn, cn = math.sin(phi), math.cos(phi)
+    return direction * 2.0 * math.atan2(k * sn, math.hypot(complementary, k * cn))
 
 
 def _projectile_state(m, t, where="motion"):
@@ -581,7 +596,10 @@ def pendulum_truth(m, where="motion"):
     out = {"omega0": w, "theta0_rad": theta0, "zeta": z,
            "period_small_angle": small, "k": k}
     if k > 0.0:
-        exact = 4.0 * elliptic_k(k) / w
+        if abs(theta0) < math.pi:
+            exact = 2.0 * math.pi / (_agm(1.0, math.cos(0.5 * theta0)) * w)
+        else:
+            exact = 4.0 * elliptic_k(k) / w
         out["period_exact_elliptic"] = exact
         out["small_angle_error_pct"] = (small - exact) / exact * 100.0
     return out
