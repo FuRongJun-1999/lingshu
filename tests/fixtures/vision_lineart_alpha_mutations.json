@@ -1,13 +1,16 @@
 {
   "guard": "tests/test_vision_lineart_alpha.py",
-  "total": 4,
+  "total": 25,
   "sources": [
     "lingshu/vision/lineart.py"
   ],
   "baseline_failures": [
-    "test_transparent_pixels_are_composited_over_white[rgba]",
-    "test_transparent_pixels_are_composited_over_white[palette]",
-    "test_partial_alpha_is_composited_over_white"
+    "test_transparent_pixels_are_composited_over_white[premultiplied_rgba]",
+    "test_transparent_pixels_are_composited_over_white[premultiplied_la]",
+    "test_opaque_alpha_keeps_rgb_results[premultiplied_la]",
+    "test_partial_alpha_is_composited_over_white[premultiplied_rgba]",
+    "test_partial_alpha_is_composited_over_white[premultiplied_la]",
+    "test_alpha_input_is_not_modified[premultiplied_la]"
   ],
   "mutations": [
     {
@@ -18,7 +21,7 @@
         {
           "file": "lingshu/vision/lineart.py",
           "method": "darkline",
-          "old": "if \"A\" in img.getbands() or \"transparency\" in img.info:",
+          "old": "if img.mode in (\"RGBA\", \"RGBa\", \"LA\", \"La\", \"PA\") or \"transparency\" in img.info:",
           "new": "if False:"
         }
       ]
@@ -46,6 +49,97 @@
           "method": "darkline",
           "old": "or \"transparency\" in img.info:",
           "new": "or False:"
+        }
+      ]
+    },
+    {
+      "name": "ignore_premultiplied_rgba",
+      "test": "test_transparent_pixels_are_composited_over_white[premultiplied_rgba]",
+      "assertion": "alpha input must be composited over white",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "\"RGBA\", \"RGBa\",",
+          "new": "\"RGBA\","
+        }
+      ]
+    },
+    {
+      "name": "ignore_premultiplied_la",
+      "test": "test_transparent_pixels_are_composited_over_white[premultiplied_la]",
+      "assertion": "conversion from La to L not supported",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "\"LA\", \"La\", \"PA\"",
+          "new": "\"LA\", \"PA\""
+        }
+      ]
+    },
+    {
+      "name": "skip_premultiplied_la_normalization",
+      "test": "test_transparent_pixels_are_composited_over_white[premultiplied_la]",
+      "assertion": "conversion from La to L not supported",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "img.convert(\"LA\") if img.mode == \"La\" else img",
+          "new": "img"
+        }
+      ]
+    },
+    {
+      "name": "ignore_straight_la",
+      "test": "test_transparent_pixels_are_composited_over_white[la]",
+      "assertion": "alpha input must be composited over white",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "\"RGBa\", \"LA\", \"La\"",
+          "new": "\"RGBa\", \"La\""
+        }
+      ]
+    },
+    {
+      "name": "ignore_palette_alpha",
+      "test": "test_transparent_pixels_are_composited_over_white[pa]",
+      "assertion": "alpha input must be composited over white",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "\"La\", \"PA\")",
+          "new": "\"La\")"
+        }
+      ]
+    },
+    {
+      "name": "ignore_palette_transparency_index",
+      "test": "test_palette_transparency_index_is_composited_over_white",
+      "assertion": "palette transparency index must be composited over white",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "\"transparency\" in img.info",
+          "new": "isinstance(img.info.get(\"transparency\"), bytes)"
+        }
+      ]
+    },
+    {
+      "name": "clear_input_metadata",
+      "test": "test_alpha_input_is_not_modified[rgba]",
+      "assertion": "alpha input must remain unchanged",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "rgba = source.convert(\"RGBA\")",
+          "new": "img.info.clear()\n        rgba = source.convert(\"RGBA\")"
         }
       ]
     }

@@ -50,8 +50,9 @@ def darkline(img: Image.Image, thr_mult: float = 1.5, white_bg: bool = True) -> 
     · 阈值随图走：thr = max(_THR_FLOOR, mag.mean() + mag.std()*thr_mult)。
     · 纯二值输出：像素只可能是 0 或 255——线稿要能直接描摹。
     """
-    if "A" in img.getbands() or "transparency" in img.info:
-        rgba = img.convert("RGBA")
+    if img.mode in ("RGBA", "RGBa", "LA", "La", "PA") or "transparency" in img.info:
+        source = img.convert("LA") if img.mode == "La" else img
+        rgba = source.convert("RGBA")
         white = Image.new("RGBA", img.size, (255, 255, 255, 255))
         visible = Image.alpha_composite(white, rgba).convert("RGB")
     else:
