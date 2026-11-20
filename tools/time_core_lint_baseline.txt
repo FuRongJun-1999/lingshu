@@ -8,6 +8,10 @@
 # 格式：<仓内相对路径>:<行号>:<规则id>    （R1=exp_decay / R2=keep_rate / R3=ema）
 # `#` 起为注释；本文件由人工复核，--update-baseline 只做机械重写。
 # 规则表 / 豁免表 / 退出码 / 已知局限见 tools/time_core_lint.py 头部。
+# ── 2026-11-20 OBB/SAT 修复后重测 ──
+# physics.py 碰撞轴实现前增加，已登记物理闭式/运动学形态行号整体后移 7 行；
+# --update-baseline 仅同步既有 6 条物理条目，条目总数守恒 23 → 23，无新豁免。
+# #607 形态锚仍为 physics R3=11 / R1=9（test_issue607_time_core_shapes_guard.py::test_g4）。
 
 lingshu/core/activation.py:355:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:379:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
@@ -24,11 +28,11 @@ lingshu/world/physics.py:599:R3    # 既有：由 --update-baseline 机械登记
 lingshu/world/physics.py:600:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:602:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:1011:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2554:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2557:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2559:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2575:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2674:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2716:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2561:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2564:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2566:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2582:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2681:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2723:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/shade_paint.py:215:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/stable_lease.py:302:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
