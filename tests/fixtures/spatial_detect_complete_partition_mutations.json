@@ -1,0 +1,12 @@
+{
+ "guard": "tests/test_spatial_detect_complete_partition.py",
+ "sources": ["lingshu/nn/hex_text.py"],
+ "baseline_failures": ["test_quadrant_crops_cover_each_cell_exactly_once", "test_last_cell_energy_and_color_reach_bottom_right[4-4]", "test_real_image_final_column_reaches_multimodal_check[16]"],
+ "mutations": [
+  {"name":"drop_remainder_rows", "test":"test_last_cell_energy_and_color_reach_bottom_right[7-6]", "assertion":"last-cell evidence was lost", "old":"row_edges = [i * r // 3 for i in range(4)]", "new":"row_edges = [i * (r // 3) for i in range(4)]"},
+  {"name":"drop_remainder_columns", "test":"test_last_cell_energy_and_color_reach_bottom_right[6-7]", "assertion":"last-cell evidence was lost", "old":"col_edges = [i * c // 3 for i in range(4)]", "new":"col_edges = [i * (c // 3) for i in range(4)]"},
+  {"name":"energy_uses_truncated_partition", "test":"test_last_cell_energy_and_color_reach_bottom_right[4-4]", "assertion":"last-cell evidence was lost", "old":"shares[q] = w[b, row_edges[qy]:row_edges[qy + 1],\n                          col_edges[qx]:col_edges[qx + 1]].sum()", "new":"shares[q] = w[b, qy * (r // 3):(qy + 1) * (r // 3),\n                          qx * (c // 3):(qx + 1) * (c // 3)].sum()"},
+  {"name":"classification_uses_truncated_partition", "test":"test_last_cell_energy_and_color_reach_bottom_right[4-4]", "assertion":"last-cell evidence was lost", "old":"sub = lat[b:b + 1, row_edges[qy]:row_edges[qy + 1],\n                      col_edges[qx]:col_edges[qx + 1]]", "new":"sub = lat[b:b + 1, qy * (r // 3):(qy + 1) * (r // 3),\n                      qx * (c // 3):(qx + 1) * (c // 3)]"},
+  {"name":"classify_empty_quadrants", "test":"test_dark_tiny_lattice_does_not_classify_empty_quadrants[1-1]", "assertion":"classified an empty crop", "old":"if sub.shape[1] == 0 or sub.shape[2] == 0:\n                continue", "new":"if False:\n                continue"}
+ ]
+}
