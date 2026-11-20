@@ -5,7 +5,19 @@
 """
 from __future__ import annotations
 
-__all__ = ["register_world_process"]
+from importlib import import_module
+
+__all__ = ["register_world_process", "unproject_depth_samples"]
+
+
+def __getattr__(name):
+    if name == "unproject_depth_samples":
+        return getattr(import_module(".depth_samples", __name__), name)
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
+
+
+def __dir__():
+    return sorted(set(globals()) | set(__all__))
 
 
 def register_world_process(engine) -> None:

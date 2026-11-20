@@ -47,12 +47,14 @@
 ## 代码主体
 
 身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 15 件 ·
-world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿 1 件）：
+world 世界模型 46 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿 1 件）：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
 pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规路径）
 ```
+
+`lingshu.world.unproject_depth_samples()` 可将最多4096条显式像素/相机前向深度样本转换为世界坐标，先完整校验再委托已有相机反投影，不读文件或写记忆。详见[批量深度样本](docs/world_depth_samples.md)。
 
 结构事件与版本历史的写入接口、授权及同步边界见
 [结构历史与受保护写服务](docs/structure-events.md)。
