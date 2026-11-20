@@ -165,6 +165,6 @@ assert all(math.isfinite(v) for v in E.eval_at(spec, 12, [motion])['bob']['quat'
 print('standalone bridge exact motion PASS')
 """
     result = subprocess.run([sys.executable, "-B", "-S", "-X", "utf8", "-c", code, str(BRIDGE)],
-                            capture_output=True, text=True, check=False)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     assert result.returncode == 0, "bridge exact motion must remain stdlib-only: " + result.stderr
     assert "standalone bridge exact motion PASS" in result.stdout

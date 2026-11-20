@@ -50,8 +50,8 @@ def capture_sources(expected):
  if expected is None:expected=lfsha(fixed)
  directory=ROOT/"sources";directory.mkdir(exist_ok=True);bp=directory/("physics_baseline_"+BASE[:12]+".py");fp=directory/("physics_fixed_"+expected[:12]+".py");bp.write_bytes(baseline);fp.write_bytes(fixed)
  meta={"baseline":{"commit":BASE,"snapshot":str(bp),"sha256":sha(baseline),"lf_sha256":lfsha(baseline)},"fixed":{"working_source":str(FIXED_SOURCE),"snapshot":str(fp),"sha256":sha(fixed),"lf_sha256":lfsha(fixed),"expected_lf_sha256":expected},"runner_lf_sha256":lfsha(Path(__file__).read_bytes())}
- meta["repository"]=str(REPO);meta["git_head"]=subprocess.run(["git","-C",str(REPO),"rev-parse","HEAD"],check=True,stdout=subprocess.PIPE,text=True).stdout.strip()
- meta["fixed_source_git_status"]=subprocess.run(["git","-C",str(REPO),"status","--porcelain","--","lingshu/world/physics.py"],check=True,stdout=subprocess.PIPE,text=True).stdout.strip()
+ meta["repository"]=str(REPO);meta["git_head"]=subprocess.run(["git","-C",str(REPO),"rev-parse","HEAD"],check=True,stdout=subprocess.PIPE,text=True,encoding="utf-8",errors="replace").stdout.strip()
+ meta["fixed_source_git_status"]=subprocess.run(["git","-C",str(REPO),"status","--porcelain","--","lingshu/world/physics.py"],check=True,stdout=subprocess.PIPE,text=True,encoding="utf-8",errors="replace").stdout.strip()
  write_json(ROOT/"source_manifest.json",meta);return load_source("pendulum_baseline_frozen",bp),load_source("pendulum_fixed_frozen",fp),meta
 
 def period(theta):
@@ -239,7 +239,7 @@ def main():
  p.add_argument("--expected-fixed-sha",default=EXPECTED,help="Optional required LF-normalized fixed-source SHA-256")
  args=p.parse_args();REPO=args.repo.resolve();ROOT=args.output.resolve();FIXED_SOURCE=REPO/"lingshu/world/physics.py"
  if not FIXED_SOURCE.is_file():p.error("--repo does not contain lingshu/world/physics.py")
- BASE=subprocess.run(["git","-C",str(REPO),"rev-parse",args.baseline],check=True,stdout=subprocess.PIPE,text=True).stdout.strip()
+ BASE=subprocess.run(["git","-C",str(REPO),"rev-parse",args.baseline],check=True,stdout=subprocess.PIPE,text=True,encoding="utf-8",errors="replace").stdout.strip()
  mp.mp.dps=DPS;ROOT.mkdir(parents=True,exist_ok=True)
  base,fixed,source=capture_sources(args.expected_fixed_sha);environment={"python":sys.version,"executable":sys.executable,"platform":platform.platform(),"processor":platform.processor(),"cpu_count":os.cpu_count(),"mpmath":mp.__version__,"mpmath_dps":mp.mp.dps,"pythonhashseed":os.environ.get("PYTHONHASHSEED"),"wall_clock_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),"perf_counter":vars(time.get_clock_info("perf_counter")),"process_time":vars(time.get_clock_info("process_time"))};write_json(ROOT/"environment.json",environment)
  summary,grid,long=accuracy(base,fixed);rk=rk4_checks(fixed);perf,rkperf=performance(base,fixed);dc=domains(fixed);compat=public_cn_compatibility(base,fixed);periods=period_truth_checks(base,fixed);combined={"period_truth_summary":{k:v for k,v in periods.items() if k!="rows"},"public_jacobi_cn_compatibility":compat,"environment":environment,"sources":source,"accuracy_summary":summary,"domain_checks":dc,"rk4_summary":{k:v for k,v in rk.items() if k not in ("rows",)},"performance":perf,"rk4_performance":rkperf};write_json(ROOT/"comparison.json",combined)
