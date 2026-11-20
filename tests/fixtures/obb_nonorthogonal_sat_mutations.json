@@ -1,0 +1,33 @@
+{
+  "guard": "tests/test_obb_nonorthogonal_sat.py",
+  "total": 2,
+  "sources": ["lingshu/world/physics.py"],
+  "baseline_failures": [
+    "test_supported_skew_boxes_use_face_normal_separating_axis",
+    "test_non_spanning_rot_rows_are_rejected"
+  ],
+  "mutations": [
+    {
+      "name": "omit_skew_face_normals",
+      "test": "test_supported_skew_boxes_use_face_normal_separating_axis",
+      "assertion": "SAT must test each parallelepiped face normal",
+      "changes": [{
+        "file": "lingshu/world/physics.py",
+        "method": "_sat_axes",
+        "old": "for i, j in ((1, 2), (2, 0), (0, 1)):",
+        "new": "for i, j in ():"
+      }]
+    },
+    {
+      "name": "allow_degenerate_rot_basis",
+      "test": "test_non_spanning_rot_rows_are_rejected",
+      "assertion": "线性无关",
+      "changes": [{
+        "file": "lingshu/world/physics.py",
+        "method": "_box_frame",
+        "old": "if volume <= _SAT_DEGENERATE:",
+        "new": "if False:"
+      }]
+    }
+  ]
+}
