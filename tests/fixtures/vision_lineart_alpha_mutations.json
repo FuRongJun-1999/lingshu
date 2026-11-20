@@ -1,0 +1,53 @@
+{
+  "guard": "tests/test_vision_lineart_alpha.py",
+  "total": 4,
+  "sources": [
+    "lingshu/vision/lineart.py"
+  ],
+  "baseline_failures": [
+    "test_transparent_pixels_are_composited_over_white[rgba]",
+    "test_transparent_pixels_are_composited_over_white[palette]",
+    "test_partial_alpha_is_composited_over_white"
+  ],
+  "mutations": [
+    {
+      "name": "skip_alpha_inputs",
+      "test": "test_transparent_pixels_are_composited_over_white[rgba]",
+      "assertion": "alpha input must be composited over white",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "if \"A\" in img.getbands() or \"transparency\" in img.info:",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "name": "skip_white_matte",
+      "test": "test_transparent_pixels_are_composited_over_white[rgba]",
+      "assertion": "alpha input must be composited over white",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "Image.alpha_composite(white, rgba)",
+          "new": "rgba"
+        }
+      ]
+    },
+    {
+      "name": "ignore_palette_transparency",
+      "test": "test_transparent_pixels_are_composited_over_white[palette]",
+      "assertion": "alpha input must be composited over white",
+      "changes": [
+        {
+          "file": "lingshu/vision/lineart.py",
+          "method": "darkline",
+          "old": "or \"transparency\" in img.info:",
+          "new": "or False:"
+        }
+      ]
+    }
+  ]
+}
