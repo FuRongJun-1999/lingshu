@@ -92,6 +92,22 @@ def test_project_unproject_roundtrip_with_explicit_basis():
     assert restored == pytest.approx(point, abs=1e-12)
 
 
+def test_project_unproject_roundtrip_with_basis_and_ignored_roll():
+    cam = Camera3D(
+        fov_deg=57.0,
+        cx=1.0,
+        cy=2.0,
+        cz=3.0,
+        roll=0.41,
+        basis=((0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (-1.0, 0.0, 0.0)),
+    )
+    point = (-4.0, 2.5, 1.5)
+    px = cam.project(point, 800, 600)
+    assert px is not None
+    restored = cam.unproject(px[0], px[1], cam.depth_of(point), 800, 600)
+    assert restored == pytest.approx(point, abs=1e-12)
+
+
 def test_format_parse_camera_observation_roundtrip():
     """The persisted observation carries the same camera and scalar fields."""
     cam = Camera3D(
