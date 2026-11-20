@@ -182,15 +182,21 @@ def spatial_detect(net: HexHierNet, lat: np.ndarray,
                    exist_mult: float = 1.15) -> List[List[Dict]]:
     """每样本:3×3 象限独立走 L1→L2→L3 → 子物体清单(拆分)。
     检测规则(白箱显式):能量最高象限必选(主导区),
-    其余象限份额 > 均匀基线(1/9)×exist_mult 才追加(防噪声虚警)。
+    其余象限份额 > 该象限面积份额×exist_mult 才追加(防噪声虚警)。
     象限边界按每轴的三等分取整，覆盖所有行列；不足三格的轴跳过空象限。"""
     B, r, c, _ = lat.shape
+    if r == 0 or c == 0:
+        return [[] for _ in range(B)]
     energy, _ = net.l1(lat)
     w = np.abs(energy).sum(axis=-1)                       # (B,r,c)
     # Scale each boundary before flooring: a repeated floor(r/3) width drops
     # the final r%3 rows (and c%3 columns) from both energy and classification.
     row_edges = [i * r // 3 for i in range(4)]
     col_edges = [i * c // 3 for i in range(4)]
+    area_shares = [((row_edges[q // 3 + 1] - row_edges[q // 3])
+                    * (col_edges[q % 3 + 1] - col_edges[q % 3])) / (r * c)
+                   for q in range(9)]
+    nonempty = [q for q in range(9) if area_shares[q] > 0.0]
     out = []
     for b in range(B):
         shares = np.zeros(9)
@@ -199,9 +205,9 @@ def spatial_detect(net: HexHierNet, lat: np.ndarray,
             shares[q] = w[b, row_edges[qy]:row_edges[qy + 1],
                           col_edges[qx]:col_edges[qx + 1]].sum()
         shares = shares / (shares.sum() + 1e-9)
-        keep_q = {int(shares.argmax())}
+        keep_q = {max(nonempty, key=lambda q: shares[q])}
         for q in range(9):
-            if shares[q] > (1.0 / 9.0) * exist_mult:
+            if shares[q] > area_shares[q] * exist_mult:
                 keep_q.add(q)
         found = []
         for q in sorted(keep_q):

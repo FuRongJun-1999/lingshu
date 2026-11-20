@@ -59,6 +59,16 @@ def test_quadrant_crops_cover_each_cell_exactly_once():
             widths = [p.shape[2] for p in net.crops]
             assert max(heights) - min(heights) <= 1
             assert max(widths) - min(widths) <= 1
+            # Independent per-cell ownership: invert a scaled third using
+            # integer ceiling, rather than reproducing the detector's slices.
+            expected = {}
+            for y in range(rows):
+                for x in range(cols):
+                    q = ((3*(y+1)-1)//rows)*3 + (3*(x+1)-1)//cols
+                    expected.setdefault(q, []).append(int(ids[0,y,x,0]))
+            assert len(net.crops) == len(expected)
+            for crop, q in zip(net.crops, sorted(expected)):
+                assert sorted(crop.ravel()) == expected[q], "cell assigned to the wrong quadrant"
 
 
 @pytest.mark.parametrize("rows,cols", [(4,4), (6,7), (7,6), (18,16), (19,17), (6,6)])
@@ -124,5 +134,29 @@ def test_empty_batch_remains_empty():
 @pytest.mark.parametrize("rows,cols", [(1,1), (2,2), (1,5), (5,2)])
 def test_dark_tiny_lattice_does_not_classify_empty_quadrants(rows, cols):
     net = CropRecorder()
-    assert spatial_detect(net,np.zeros((1,rows,cols,1))) == [[]]
-    assert not net.crops
+    result = spatial_detect(net,np.zeros((1,rows,cols,1)))
+    assert len(result[0]) == len(net.crops) == 1, "nonempty dominant region disappeared"
+    assert net.crops[0].size > 0
+
+
+@pytest.mark.parametrize("rows,cols", [(1,1), (1,2), (2,1), (2,2), (4,4), (5,5), (8,8), (18,16)])
+@pytest.mark.parametrize("value", [0.0,0.25,1.0])
+@pytest.mark.parametrize("model", ["default","transparent"])
+def test_uniform_real_network_does_not_mistake_area_for_extra_evidence(rows,cols,value,model):
+    net = HexHierNet(seed=7) if model == "default" else _color_net()
+    lat = np.zeros((1,rows,cols,3))
+    lat[...,0] = value
+    result = spatial_detect(net,lat)[0]
+    assert len(result) == 1, "uniform field produced extra detections from unequal quadrant areas"
+    assert all(np.isfinite(d["conf"]) and np.isfinite(d["share"]) for d in result), (
+        "uniform field was classified through an empty crop")
+    if value > 0:
+        q = int(result[0]["pos"][1:])
+        area = sum((((3*(y+1)-1)//rows)*3 + (3*(x+1)-1)//cols) == q
+                   for y in range(rows) for x in range(cols))
+        assert result[0]["share"] == round(area/(rows*cols),3), "share ceased to mean total-energy fraction"
+
+
+@pytest.mark.parametrize("rows,cols", [(0,5),(5,0),(0,0)])
+def test_empty_spatial_extent_has_no_regions(rows,cols):
+    assert spatial_detect(_color_net(),np.zeros((2,rows,cols,3))) == [[],[]]
