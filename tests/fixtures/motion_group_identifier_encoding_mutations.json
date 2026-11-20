@@ -1,0 +1,10 @@
+{
+  "guard": "tests/test_motion_group_identifier_encoding.py",
+  "total": 9,
+  "sources": ["lingshu/world/motion_groups.py"],
+  "baseline_failures": ["test_disjoint_groups_have_distinct_identifiers", "test_core_predictions_keep_group_lineage_distinct", "test_delimiter_partitions_do_not_alias[partition]", "test_delimiter_partitions_do_not_alias[empty_component]", "test_delimiter_partitions_do_not_alias[repeated_separator]"],
+  "mutations": [
+    {"name": "reuse_ambiguous_delimiter_join", "test": "test_disjoint_groups_have_distinct_identifiers", "assertion": "distinct member sets need distinct group IDs", "changes": [{"file": "lingshu/world/motion_groups.py", "method": "_group_id", "old": "if any(\"|\" in eid for eid in members):", "new": "if False:"}]},
+    {"name": "share_legacy_hash_namespace", "test": "test_structured_ids_cannot_alias_a_legacy_join", "assertion": "v2 encoding needs a separate namespace", "changes": [{"file": "lingshu/world/motion_groups.py", "method": "_group_id", "old": "prefix = \"mg_v2_\"", "new": "prefix = \"mg_\""}]}
+  ]
+}
