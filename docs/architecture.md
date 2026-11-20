@@ -37,12 +37,13 @@ lingshu
 └── world  世界模型：推演循环与物理沙盒（重载可选）
 ```
 
-- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **89** 个 `.py`
-  （**83** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 45 / vision 1 / 包根 1；
-  import 冒烟 **89/89**（2026-10-24 逐模块 `import` 实跑读数；守卫只核该行的分子
+- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **90** 个 `.py`
+  （**84** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 45 / vision 2 / 包根 1；
+  import 冒烟 **90/90**（2026-11-20 逐模块 `import` 实跑读数；守卫只核该行的分子
   分母相等且等于实读 `.py` 总数，见 `tests/test_doc_module_counts_guard.py`）。
   下表 §七 各行是**逐次聚合动作的快照**（计数为该次引入时的读数），当前计数以本行为准。
 - **轻核承诺**：`core` 不因本仓的「完整」而增重——可单独安装、单独运行；
+- **vision 工具面**：线稿及明确二值掩码几何摘要；惰性导出，不属于架构层树，不写记忆。
 - **重载声明**：`nn`/`gen`/`world` 的依赖与模型资产按需安装（extra 形态），
   安装体积与依赖深度如实在各件 README 登记。
 
@@ -207,5 +208,7 @@ lingshu
 | 2026-10-09 | 结构历史与受保护写服务：`core/structure_writer.py`、`structure_service.py`、`structure_permissions.py`；旧库事务接入与合成业务回归 | 本仓新增（#329）；不复制脑核 | 仅标准库；无真实密钥、记忆资产或本机路径；证书在测试临时目录生成，部署私钥不入仓 | 见对应 PR 提交 |
 
 | 2026-10-09 | 场景消费整合 v0.1：共享场景 API + demo/local/brain CLI + 五任务/只读库/真实 MCP 验收；intake 见 `docs/intake/scenario-v0.1/` | **本仓新件**，身体侧消费入口，复用现有 core/WorldModel/MCP | 内容/隐私双清单 CLEAN；隔离合成数据，资格不升格；接口与可见性取舍交理论核 | [PR #375（提交见 PR）](https://github.com/FuRongJun-1999/lingshu/pull/375) |
+
+| 2026-11-20 | 有界二值掩码几何：`vision/mask_geometry.py`；4/8 邻接面积、半开 bbox、像素中心质心及边界摘要；intake 见 `docs/intake/body-vision-mask-geometry-v0.1/` | 本仓新件 | 262,144 像素预算、最多 128 区域；标准库计算，不写文件或记忆；合成回归通过 | 见对应 PR |
 
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*
