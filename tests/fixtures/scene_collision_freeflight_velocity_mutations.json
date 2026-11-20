@@ -1,0 +1,134 @@
+{
+  "guard": "tests/test_scene_collision_freeflight_velocity.py",
+  "total": 41,
+  "sources": [
+    "lingshu/world/scene_simulator.py"
+  ],
+  "baseline_failures": [
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.01-0]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.01-1]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.01-2]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.05-0]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.05-1]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.05-2]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.2-0]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.2-1]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.2-2]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.5-0]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.5-1]",
+    "test_freeflight_all_axes_and_step_sizes[0.5-0.5-2]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.01-0]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.01-1]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.01-2]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.05-0]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.05-1]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.05-2]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.2-0]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.2-1]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.2-2]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.5-0]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.5-1]",
+    "test_freeflight_all_axes_and_step_sizes[9.80665-0.5-2]",
+    "test_noncontact_keeps_instantaneous_endpoint_velocity",
+    "test_noncontact_keeps_original_physics_state",
+    "test_physics_readout_matches_public_noncontact_endpoint",
+    "test_adding_a_distant_box_keeps_the_same_closed_form_trajectory[2]",
+    "test_noncontact_obb_keeps_endpoint_and_initial_state",
+    "test_colliding_pair_does_not_reseed_a_third_free_entity[False]",
+    "test_colliding_pair_does_not_reseed_a_third_free_entity[True]",
+    "test_end_of_tick_touch_is_not_a_collision_and_keeps_endpoint_velocity"
+  ],
+  "mutations": [
+    {
+      "name": "replace_endpoint_with_average_again",
+      "test": "test_noncontact_keeps_instantaneous_endpoint_velocity",
+      "assertion": "SCENE_ENDPOINT_IS_NOT_MEAN",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_resolve_collisions",
+          "old": "if eid not in contacted:",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "name": "reseed_unmodified_endpoint",
+      "test": "test_noncontact_keeps_original_physics_state",
+      "assertion": "SCENE_NO_CONTACT_RESEEDED",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_resolve_collisions",
+          "old": "                if eid not in contacted:\n                    continue",
+          "new": "                if eid not in contacted:\n                    self._reseed_physics(eid)\n                    continue"
+        }
+      ]
+    },
+    {
+      "name": "skip_reseed_for_real_contacts",
+      "test": "test_real_collision_still_reseeds_at_the_correct_contact_surface",
+      "assertion": "SCENE_CONTACT_WAS_NOT_RESEEDED",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_resolve_collisions",
+          "old": "if eid not in contacted:",
+          "new": "if True:"
+        }
+      ]
+    },
+    {
+      "name": "drop_contact_reseed",
+      "test": "test_real_collision_still_reseeds_at_the_correct_contact_surface",
+      "assertion": "SCENE_CONTACT_WAS_NOT_RESEEDED",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_resolve_collisions",
+          "old": "            self._reseed_physics(eid)",
+          "new": "            pass"
+        }
+      ]
+    },
+    {
+      "name": "keep_precollision_kinematic_velocity",
+      "test": "test_kinematic_velocity_still_records_collision_corrected_displacement",
+      "assertion": "SCENE_KINEMATIC_DISPLACEMENT_CHANGED",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_resolve_collisions",
+          "old": "                e.velocity = moved",
+          "new": "                pass"
+        }
+      ]
+    },
+    {
+      "name": "use_position_equality_instead_of_contact",
+      "test": "test_fully_overlapping_static_boxes_keep_existing_contact_velocity",
+      "assertion": "SCENE_STATIC_CONTACT_VELOCITY_CHANGED",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_resolve_collisions",
+          "old": "        start = self._tick_start_pos",
+          "new": "        start = self._tick_start_pos\n        proposed = {eid: self.entities[eid].pos for eid in ids}"
+        },
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_resolve_collisions",
+          "old": "if eid not in contacted:",
+          "new": "if e.pos == proposed[eid]:"
+        }
+      ]
+    }
+  ]
+}

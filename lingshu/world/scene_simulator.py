@@ -992,12 +992,18 @@ class SceneSimulator:
             for bi in range(ai + 1, len(ids)):
                 ia, ib = ids[ai], ids[bi]
                 self._collide_pair(physics, ia, ib, disp)
+        contacted = {eid for c in self._collision_last if c["hit"]
+                     for eid in (c["i"], c["j"])}
         # 本 tick 的位移/速度口径：拦停后重算一次（运动学 = 实际位移）
         for eid in ids:
             e = self.entities[eid]
             s0 = start.get(eid, e.pos)
             moved = tuple(e.pos[i] - s0[i] for i in range(3))
             if self._physics_mode(e) == PHYSICS_DYNAMICS:
+                # 无接触的实体保留 simulate 给出的瞬时末速度与闭式初值。
+                # 位移 / dt 是平均速度；把它重播种会使无接触自由落体也只受半重力。
+                if eid not in contacted:
+                    continue
                 env = self._env_for(e)
                 e.velocity = tuple(moved[i] / env.dt for i in range(3))
             else:
