@@ -1,0 +1,162 @@
+{
+  "guard": "tests/test_fresh_row_decay.py",
+  "total": 48,
+  "sources": [
+    "lingshu/core/core.py"
+  ],
+  "baseline_failures": [
+    "test_newborn_uses_only_its_post_birth_span[0.0-context]",
+    "test_newborn_uses_only_its_post_birth_span[0.0-edge]",
+    "test_newborn_uses_only_its_post_birth_span[0.0-knowledge]",
+    "test_newborn_uses_only_its_post_birth_span[1.0-context]",
+    "test_newborn_uses_only_its_post_birth_span[1.0-edge]",
+    "test_newborn_uses_only_its_post_birth_span[1.0-knowledge]",
+    "test_newborn_uses_only_its_post_birth_span[3600.0-context]",
+    "test_newborn_uses_only_its_post_birth_span[3600.0-edge]",
+    "test_newborn_uses_only_its_post_birth_span[3600.0-knowledge]",
+    "test_newborn_uses_only_its_post_birth_span[60.0-context]",
+    "test_newborn_uses_only_its_post_birth_span[60.0-edge]",
+    "test_newborn_uses_only_its_post_birth_span[60.0-knowledge]",
+    "test_old_and_new_rows_have_independent_ages_in_one_tick[context]",
+    "test_old_and_new_rows_have_independent_ages_in_one_tick[edge]",
+    "test_old_and_new_rows_have_independent_ages_in_one_tick[knowledge]",
+    "test_public_creation_after_downtime_survives_the_next_tick",
+    "test_rollback_and_recovery_do_not_double_age_newborn[context]",
+    "test_rollback_and_recovery_do_not_double_age_newborn[edge]",
+    "test_rollback_and_recovery_do_not_double_age_newborn[knowledge]",
+    "test_zero_age_and_repeated_now_do_not_decay[context-0.02]",
+    "test_zero_age_and_repeated_now_do_not_decay[context-1.0]",
+    "test_zero_age_and_repeated_now_do_not_decay[edge-0.02]",
+    "test_zero_age_and_repeated_now_do_not_decay[edge-1.0]",
+    "test_zero_age_and_repeated_now_do_not_decay[knowledge-0.02]",
+    "test_zero_age_and_repeated_now_do_not_decay[knowledge-1.0]"
+  ],
+  "mutations": [
+    {
+      "name": "omit_birth_clipping",
+      "test": "test_newborn_uses_only_its_post_birth_span[0.0-context]",
+      "assertion": "newborn was aged before its birth",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "_row_decay_dt",
+          "old": "            return min(dt, now - born)\n",
+          "new": "            return dt\n"
+        }
+      ]
+    },
+    {
+      "name": "omit_context_leg",
+      "test": "test_newborn_uses_only_its_post_birth_span[1.0-context]",
+      "assertion": "newborn was aged before its birth",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "decay_cycle",
+          "old": "                row_dt = self._row_decay_dt(created_at, interval_start, now, dt)\n                new_imp = self._decay_value(imp, factor, row_dt)\n",
+          "new": "                row_dt = dt\n                new_imp = self._decay_value(imp, factor, row_dt)\n"
+        }
+      ]
+    },
+    {
+      "name": "omit_knowledge_leg",
+      "test": "test_newborn_uses_only_its_post_birth_span[1.0-knowledge]",
+      "assertion": "newborn was aged before its birth",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "decay_cycle",
+          "old": "                row_dt = self._row_decay_dt(created_at, interval_start, now, dt)\n                c.execute(\"UPDATE nodes SET confidence=? WHERE id=?\",\n",
+          "new": "                row_dt = dt\n                c.execute(\"UPDATE nodes SET confidence=? WHERE id=?\",\n"
+        }
+      ]
+    },
+    {
+      "name": "omit_edge_leg",
+      "test": "test_newborn_uses_only_its_post_birth_span[1.0-edge]",
+      "assertion": "newborn was aged before its birth",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "decay_cycle",
+          "old": "                row_dt = self._row_decay_dt(edge.created_at, interval_start, now, dt)\n",
+          "new": "                row_dt = dt\n"
+        }
+      ]
+    },
+    {
+      "name": "accept_future_birth_as_comparable",
+      "test": "test_noncomparable_birth_metadata_preserves_existing_clock_semantics[context-1800604801.0]",
+      "assertion": "noncomparable creation metadata froze",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "_row_decay_dt",
+          "old": "        if math.isfinite(born) and interval_start < born <= now:\n",
+          "new": "        if math.isfinite(born) and interval_start < born:\n"
+        }
+      ]
+    },
+    {
+      "name": "freeze_all_newborns",
+      "test": "test_newborn_uses_only_its_post_birth_span[60.0-context]",
+      "assertion": "newborn was aged before its birth",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "_row_decay_dt",
+          "old": "            return min(dt, now - born)\n",
+          "new": "            return 0.0\n"
+        }
+      ]
+    },
+    {
+      "name": "decay_even_when_elapsed_is_zero",
+      "test": "test_zero_age_and_repeated_now_do_not_decay[context-1.0]",
+      "assertion": "zero elapsed time changed a row",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "_decay_value",
+          "old": "        if dt == 0.0:\n            return x\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "name": "clip_first_clock_tick",
+      "test": "test_first_clock_tick_keeps_the_existing_one_period_bootstrap[context]",
+      "assertion": "first clock tick lost its bootstrap decay",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "decay_cycle",
+          "old": "        interval_start = None\n",
+          "new": "        interval_start = 0.0\n"
+        }
+      ]
+    },
+    {
+      "name": "disable_old_row_decay",
+      "test": "test_old_and_new_rows_have_independent_ages_in_one_tick[context]",
+      "assertion": "old row missed downtime decay",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "_row_decay_dt",
+          "old": "        if math.isfinite(born) and interval_start < born <= now:\n            return min(dt, now - born)\n        return dt\n",
+          "new": "        if math.isfinite(born) and interval_start < born <= now:\n            return min(dt, now - born)\n        return 0.0\n"
+        }
+      ]
+    }
+  ]
+}
