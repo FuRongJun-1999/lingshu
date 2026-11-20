@@ -1,0 +1,940 @@
+{
+  "code_head": "6d1048f6df5610de1e71c346e1f95182d1dfb84a",
+  "code_base": "6b73082406d40a630a44cd68559c1f66b3652390",
+  "baseline": "04e0ecb6a3669c90efbb4a1583816a8f7ca26bc7",
+  "source_sha256_lf": {
+    "baseline": "45caf73deff9d23fa68ead8a4cbac2302587bba63bb2f161853e9d6fd8fa6151",
+    "fixed": "984d8abeaaa5a4b9d50e6d604758ac128d120f6b3bd56289b8b2a665a7bd1046"
+  },
+  "benchmark_sha256_lf": "1c4e039932777a8399c9d26dbec18503c8cc8f48fabe18a4091b4e7c8d41e303",
+  "unchanged_dependency_sha256_lf": {
+    "lingshu/world/physics.py": "8a94b03642c3f7a7cd011f05f809b5ce4290234f307d4c7aa1935244d61bc59a",
+    "lingshu/world/coord_contract.py": "2393d826d520f340be1e73b6f3ec0d85a7df4afff70460478663cd94a8dd1d29"
+  },
+  "guard_sha256_lf": "77c43293f245db4a38ef4d7b5b275df998dc17adef9aa66b67be4b0ab4ec5933",
+  "fixed_guard": {
+    "passed": 61,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "baseline_guard": {
+    "passed": 3,
+    "failed": 58,
+    "errors": 0,
+    "skipped": 0
+  },
+  "mutation_assertions": [
+    {
+      "name": "omit_command_reanchor",
+      "guard": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_POSITION_ANCHOR_STALE",
+      "actual_failure_message": "AssertionError: COMMAND_PHYSICS_POSITION_ANCHOR_STALE\nassert (64.0, 1000.0, 64.0) == (66.0, 999.55, 64.0)\n  \n  At index 0 diff: 64.0 != 66.0\n  Use -v to get more diff",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "c6a2d7b6724a8ca641d729e14e99c20a808f308d38f79383da80409115fe0aeb"
+      }
+    },
+    {
+      "name": "keep_old_position_anchor",
+      "guard": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_POSITION_ANCHOR_STALE",
+      "actual_failure_message": "AssertionError: COMMAND_PHYSICS_POSITION_ANCHOR_STALE\nassert (64.0, 999.55, 64.0) == (66.0, 999.55, 64.0)\n  \n  At index 0 diff: 64.0 != 66.0\n  Use -v to get more diff",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "e206871ddbd8c653611e179e3e6df10f409bcdf18ef95b10ab6a810b043fa4bc"
+      }
+    },
+    {
+      "name": "forget_physical_velocity_units",
+      "guard": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_VELOCITY_NOT_PER_SECOND",
+      "actual_failure_message": "AssertionError: COMMAND_PHYSICS_VELOCITY_NOT_PER_SECOND\nassert (2.0, 0.0, 0.0) == (20.0, 0.0, 0.0)\n  \n  At index 0 diff: 2.0 != 20.0\n  Use -v to get more diff",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "b94ea9e27cd67162b99d429c572b466079865b2ef278978f41dec4804caaef67"
+      }
+    },
+    {
+      "name": "keep_old_reference_time",
+      "guard": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_TIME_ANCHOR_STALE",
+      "actual_failure_message": "AssertionError: COMMAND_PHYSICS_TIME_ANCHOR_STALE\nassert 0.0 == 0.4",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "8c9b4197ae7dbf155ba7da99777e67ebfbfe7b6b53622985b9f2aabb4c44f18b"
+      }
+    },
+    {
+      "name": "seed_from_requested_step",
+      "guard": "test_clamping_uses_actual_displacement_for_the_physics_velocity",
+      "assertion": "COMMAND_REQUESTED_STEP_REPLACED_ACTUAL_MOTION",
+      "actual_failure_message": "AssertionError: COMMAND_REQUESTED_STEP_REPLACED_ACTUAL_MOTION\nassert (50.0, 0.0, 0.0) == (2.5, 0.0, 0.0)\n  \n  At index 0 diff: 50.0 != 2.5\n  Use -v to get more diff",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "ef636e98a8d79284f8ff1e905bdd56ff32959eeaa6164cadef859435bef50e12"
+      }
+    },
+    {
+      "name": "skip_first_command_seed",
+      "guard": "test_first_command_initializes_a_physics_anchor_without_a_blank_resume_tick",
+      "assertion": "COMMAND_FIRST_RESUME_WAS_ONLY_A_SEED",
+      "actual_failure_message": "AssertionError: ('COMMAND_FIRST_RESUME_WAS_ONLY_A_SEED', (64.0, 1000.0, 63.25), (64.0, 999.8, 62.5))\nassert False\n +  where False = all(<generator object close.<locals>.<genexpr> at 0x0000024A6645E110>)",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "8361068a31c96c705788d6aeb015035c1cd47d94c90f210a6535f5ff440ada3d"
+      }
+    },
+    {
+      "name": "keep_old_momentum_on_stay",
+      "guard": "test_stay_stops_prior_velocity_including_the_vertical_component",
+      "assertion": "COMMAND_STAY_DID_NOT_STOP_PRIOR_MOMENTUM",
+      "actual_failure_message": "AssertionError: ('COMMAND_STAY_DID_NOT_STOP_PRIOR_MOMENTUM', (64.8, 1000.6999999999999, 64.39999999999999), (64.6, 1000.4, 64.3))\nassert False\n +  where False = all(<generator object close.<locals>.<genexpr> at 0x000001E9AD0F2110>)",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "c9613e08d9e9da1298693d175be624ac54b18565abec191d1d2020969c477d5f"
+      }
+    },
+    {
+      "name": "drop_physics_parameters",
+      "guard": "test_command_preserves_custom_metadata_without_mutating_the_previous_state",
+      "assertion": "COMMAND_DROPPED_STATE_METADATA",
+      "actual_failure_message": "AssertionError: COMMAND_DROPPED_STATE_METADATA\nassert None == {'source': 'external', 'sequence': [1, 2]}\n +  where None = <built-in method get of dict object at 0x000001895F2315C0>('audit_marker')\n +    where <built-in method get of dict object at 0x000001895F2315C0> = {'p0': (66.0, 1000.0, 64.0), 'v0': (20.0, 0.0, 0.0), 't_ref': 0.1}.get",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "2e7179dacafb9a911ff5c1bb8e877dff56b9e7528430da07bd2b8bee67c79e42"
+      }
+    },
+    {
+      "name": "mutate_previous_state",
+      "guard": "test_command_preserves_custom_metadata_without_mutating_the_previous_state",
+      "assertion": "COMMAND_MUTATED_OLD_STATE",
+      "actual_failure_message": "AssertionError: COMMAND_MUTATED_OLD_STATE\nassert ({'p0': (66.0, 1000.0, 64.0), 'v0': (20.0, 0.0, 0.0), 't_ref': 0.1, 'beta': 0.4, ...} is not {'p0': (66.0, 1000.0, 64.0), 'v0': (20.0, 0.0, 0.0), 't_ref': 0.1, 'beta': 0.4, ...})",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "2db547c60837f3ec9a19329af896b00f28f6fc1fc81050978ebf1d536c20063e"
+      }
+    },
+    {
+      "name": "skip_velocity_finite_guard",
+      "guard": "test_unrepresentable_physical_command_velocity_does_not_poison_the_entity",
+      "assertion": "DID NOT RAISE",
+      "actual_failure_message": "Failed: DID NOT RAISE ValueError",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "1b0cc896727c08ce46e70068a41e80e607e40e347e938c87a9f42c8e4c84845f"
+      }
+    },
+    {
+      "name": "skip_time_finite_guard",
+      "guard": "test_unrepresentable_command_reference_time_does_not_poison_the_entity",
+      "assertion": "DID NOT RAISE",
+      "actual_failure_message": "Failed: DID NOT RAISE ValueError",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "91039fa7979fd4f08ac289284b766e3b306f3a61144644b085ab228c82f3c1fc"
+      }
+    },
+    {
+      "name": "drop_known_parameters",
+      "guard": "test_command_preserves_custom_metadata_without_mutating_the_previous_state",
+      "assertion": "COMMAND_DROPPED_PHYSICAL_PARAMETERS",
+      "actual_failure_message": "AssertionError: COMMAND_DROPPED_PHYSICAL_PARAMETERS\nassert (None, None, None) == (0.4, 0.3, 2.5)\n  \n  At index 0 diff: None != 0.4\n  Use -v to get more diff",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "df41cb7337d5190e32acab9b613dc1597199a174167c0b2e5fee48a56fa9dc68"
+      }
+    },
+    {
+      "name": "expose_physical_velocity_on_command_tick",
+      "guard": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PUBLIC_VELOCITY_UNITS_CHANGED",
+      "actual_failure_message": "AssertionError: COMMAND_PUBLIC_VELOCITY_UNITS_CHANGED\nassert (20.0, 0.0, 0.0) == (2.0, 0.0, 0.0)\n  \n  At index 0 diff: 20.0 != 2.0\n  Use -v to get more diff",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "a8d31efad51cb153392a0d44586bbfaf9b2245b48b29ceba99905d02b441c234"
+      }
+    },
+    {
+      "name": "reanchor_kinematic_commands",
+      "guard": "test_kinematic_commands_keep_their_existing_state_and_units",
+      "assertion": "COMMAND_CHANGED_KINEMATIC_STATE",
+      "actual_failure_message": "AssertionError: COMMAND_CHANGED_KINEMATIC_STATE\nassert 'physics_state' not in {'physics_state': {'p0': (66.0, 1000.0, 64.0), 'v0': (20.0, 0.0, 0.0), 't_ref': 0.1}}\n[+1 more line; full report in element text]",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "7b288eef1efc6062fdfd6b7c9d928c4cb192b69959eb0630d11aef92d7c3dba9"
+      }
+    },
+    {
+      "name": "round_endpoint_displacement_again",
+      "guard": "test_continuous_position_uses_unrounded_actual_endpoint_displacement[east-2.0-64.003-66.0-19.97]",
+      "assertion": "COMMAND_REROUNDED_CONTINUOUS_DISPLACEMENT",
+      "actual_failure_message": "AssertionError: COMMAND_REROUNDED_CONTINUOUS_DISPLACEMENT\nassert 20.0 == 19.97 ± 1.0e-12\n  \n  comparison failed\n  Obtained: 20.0\n  Expected: 19.97 ± 1.0e-12",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "55ba351757f3787a4c6bcd6bfa1f1ec8449c7c60a9c4747213f542d633213a42"
+      }
+    },
+    {
+      "name": "turn_stay_quantization_into_momentum",
+      "guard": "test_stay_quantizes_continuous_position_without_creating_new_momentum",
+      "assertion": "COMMAND_STAY_QUANTIZATION_CREATED_MOMENTUM",
+      "actual_failure_message": "AssertionError: COMMAND_STAY_QUANTIZATION_CREATED_MOMENTUM\nassert (-0.030000000...0000000001137) == (0.0, 0.0, 0.0)\n  \n  At index 0 diff: -0.030000000000001137 != 0.0\n  Use -v to get more diff",
+      "source_sha256": {
+        "lingshu/world/scene_simulator.py": "b4b49f47cabecf8ba34ec0dadc39f5b6c0a7934928386662d5f18857bd7099e6"
+      }
+    }
+  ],
+  "adjacent_physics_action_integration": {
+    "passed": 340,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "frozen_physics_baseline": "124ea433fe9a2ad2fd66a7360df85f6d61bab793"
+  },
+  "oracle": {
+    "method": "independent Decimal precision60 endpoint differences + ballistic equations; never reads public velocity for truth; stay is explicit stop; seed20261121; 5actions,11dt,7step sizes,0..7pre/1..7resume ticks; continuous starting coordinates,clamping,quantization included",
+    "summary": {
+      "baseline": {
+        "cases": 2000,
+        "mismatches": 2000,
+        "max_position_error": 15948.696237381198,
+        "max_velocity_error": 1068485.4944406194
+      },
+      "fixed": {
+        "cases": 2000,
+        "mismatches": 0,
+        "max_position_error": 1.1641532182693481e-10,
+        "max_velocity_error": 1.1641532182693481e-10
+      }
+    },
+    "cases_sha256": "66b6ef09a6bde5da21706507a8bd79128dc686ed051fd73c119e876fd5524c0d"
+  },
+  "timing": {
+    "method": "same process randomized adjacent pairs seed424242; one warmup per case+variant;11 measured pairs default; setup/import/hash excluded from timing; GC disabled equally for timing; independent separate tracemalloc includes scene setup,3 repeats per size; diagnostics then drained for retained-state reading; no timing pass threshold",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.12.10",
+    "ticks": 400,
+    "repeats": 11,
+    "cases": [
+      {
+        "case": "kinematic_commands",
+        "entities": 64,
+        "ticks": 400,
+        "command_interval_ticks": 1,
+        "seconds": {
+          "baseline": [
+            0.1179487,
+            0.1193567,
+            0.1160666,
+            0.1143801,
+            0.105186,
+            0.1062272,
+            0.1056522,
+            0.1059515,
+            0.1050621,
+            0.1053044,
+            0.1249644
+          ],
+          "fixed": [
+            0.1207231,
+            0.1206578,
+            0.1200039,
+            0.1195886,
+            0.1169483,
+            0.1103541,
+            0.116113,
+            0.1099272,
+            0.109723,
+            0.1178632,
+            0.1198145
+          ]
+        },
+        "median_seconds": {
+          "baseline": 0.1062272,
+          "fixed": 0.1178632
+        },
+        "fixed_over_baseline": 1.1095387998554043,
+        "added_microseconds_per_entity_tick": 0.4545312500000003,
+        "result_sha256": {
+          "baseline": "143a3f729ebf038d8c74902bd22fb899478c8777b4de4e0f3d4a03d356339c41",
+          "fixed": "143a3f729ebf038d8c74902bd22fb899478c8777b4de4e0f3d4a03d356339c41"
+        },
+        "oracle": {
+          "fixed": {
+            "max_abs_error": 0.0,
+            "matches": true
+          },
+          "baseline": {
+            "max_abs_error": 0.0,
+            "matches": true
+          }
+        },
+        "order": [
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ]
+        ]
+      },
+      {
+        "case": "dynamics_free",
+        "entities": 64,
+        "ticks": 400,
+        "command_interval_ticks": 0,
+        "seconds": {
+          "baseline": [
+            0.4507533,
+            0.4114178,
+            0.3961752,
+            0.4440426,
+            0.4525275,
+            0.460976,
+            0.4426797,
+            0.4415539,
+            0.4545422,
+            0.4559602,
+            0.4665986
+          ],
+          "fixed": [
+            0.462096,
+            0.4222779,
+            0.4230559,
+            0.4604567,
+            0.4662019,
+            0.4846077,
+            0.4473621,
+            0.4367471,
+            0.4852037,
+            0.452604,
+            0.4958921
+          ]
+        },
+        "median_seconds": {
+          "baseline": 0.4507533,
+          "fixed": 0.4604567
+        },
+        "fixed_over_baseline": 1.0215270747879162,
+        "added_microseconds_per_entity_tick": 0.3790390624999989,
+        "result_sha256": {
+          "baseline": "d3496a4d16826520e983c3f2a85bf87e49cc395b614559733afe7c3a360fcbec",
+          "fixed": "d3496a4d16826520e983c3f2a85bf87e49cc395b614559733afe7c3a360fcbec"
+        },
+        "oracle": {
+          "fixed": {
+            "max_abs_error": 0.0,
+            "matches": true
+          },
+          "baseline": {
+            "max_abs_error": 0.0,
+            "matches": true
+          }
+        },
+        "order": [
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ]
+        ]
+      },
+      {
+        "case": "dynamics_commands",
+        "entities": 64,
+        "ticks": 400,
+        "command_interval_ticks": 1,
+        "seconds": {
+          "baseline": [
+            0.1334778,
+            0.1258929,
+            0.1170453,
+            0.1203297,
+            0.1238842,
+            0.1390106,
+            0.1207006,
+            0.1306904,
+            0.1240692,
+            0.1306346,
+            0.1135491
+          ],
+          "fixed": [
+            0.1971858,
+            0.2006504,
+            0.1638823,
+            0.1853604,
+            0.1899536,
+            0.1905143,
+            0.1692657,
+            0.1782552,
+            0.1719697,
+            0.1684444,
+            0.1727237
+          ]
+        },
+        "median_seconds": {
+          "baseline": 0.1240692,
+          "fixed": 0.1782552
+        },
+        "fixed_over_baseline": 1.4367401417918386,
+        "added_microseconds_per_entity_tick": 2.116640625,
+        "result_sha256": {
+          "baseline": "143a3f729ebf038d8c74902bd22fb899478c8777b4de4e0f3d4a03d356339c41",
+          "fixed": "143a3f729ebf038d8c74902bd22fb899478c8777b4de4e0f3d4a03d356339c41"
+        },
+        "oracle": {
+          "fixed": {
+            "max_abs_error": 0.0,
+            "matches": true
+          },
+          "baseline": {
+            "max_abs_error": 0.0,
+            "matches": true
+          }
+        },
+        "order": [
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ]
+        ]
+      },
+      {
+        "case": "dynamics_resume_8",
+        "entities": 8,
+        "ticks": 400,
+        "command_interval_ticks": 2,
+        "seconds": {
+          "baseline": [
+            0.0353582,
+            0.03422,
+            0.0335694,
+            0.0481909,
+            0.0413311,
+            0.0347942,
+            0.0347154,
+            0.0371119,
+            0.0328833,
+            0.0376661,
+            0.0342278
+          ],
+          "fixed": [
+            0.039192,
+            0.0382022,
+            0.0359549,
+            0.0470805,
+            0.0374186,
+            0.0425225,
+            0.0401484,
+            0.0381234,
+            0.0371262,
+            0.0380077,
+            0.0374965
+          ]
+        },
+        "median_seconds": {
+          "baseline": 0.0347942,
+          "fixed": 0.0381234
+        },
+        "fixed_over_baseline": 1.0956826137689617,
+        "added_microseconds_per_entity_tick": 1.0403750000000014,
+        "result_sha256": {
+          "baseline": "be5cdae305626f7342be09ea857877662377873e8cfcc71cf86ae6c99aa58ee0",
+          "fixed": "800766633ef9b93ffe50449badf7fe2477b971f8bbba7f9303f78f02afb36ca5"
+        },
+        "oracle": {
+          "baseline": {
+            "max_abs_error": 1997.5000000093132,
+            "matches": false
+          },
+          "fixed": {
+            "max_abs_error": 2.842170943040401e-14,
+            "matches": true
+          }
+        },
+        "order": [
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ]
+        ]
+      },
+      {
+        "case": "dynamics_resume_64",
+        "entities": 64,
+        "ticks": 400,
+        "command_interval_ticks": 2,
+        "seconds": {
+          "baseline": [
+            0.2604418,
+            0.263239,
+            0.2896467,
+            0.3078689,
+            0.3025686,
+            0.2983149,
+            0.297577,
+            0.2708375,
+            0.3086157,
+            0.2767569,
+            0.3093412
+          ],
+          "fixed": [
+            0.3795155,
+            0.3032076,
+            0.347115,
+            0.3335509,
+            0.350825,
+            0.3230374,
+            0.340705,
+            0.3139306,
+            0.3579041,
+            0.3337366,
+            0.2979748
+          ]
+        },
+        "median_seconds": {
+          "baseline": 0.297577,
+          "fixed": 0.3337366
+        },
+        "fixed_over_baseline": 1.1215134234164603,
+        "added_microseconds_per_entity_tick": 1.4124843750000005,
+        "result_sha256": {
+          "baseline": "d3496a4d16826520e983c3f2a85bf87e49cc395b614559733afe7c3a360fcbec",
+          "fixed": "0228ea012ddd56ec8387f2fb371665939dfd256e835113628a6b733388a7a3fa"
+        },
+        "oracle": {
+          "fixed": {
+            "max_abs_error": 2.842170943040401e-14,
+            "matches": true
+          },
+          "baseline": {
+            "max_abs_error": 1997.5000000093132,
+            "matches": false
+          }
+        },
+        "order": [
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ]
+        ]
+      },
+      {
+        "case": "dynamics_sparse",
+        "entities": 64,
+        "ticks": 400,
+        "command_interval_ticks": 20,
+        "seconds": {
+          "baseline": [
+            0.4800612,
+            0.4375235,
+            0.3938734,
+            0.4123032,
+            0.4781983,
+            0.4839812,
+            0.4327171,
+            0.5957913,
+            0.498225,
+            0.4376282,
+            0.4447003
+          ],
+          "fixed": [
+            0.4050579,
+            0.4066466,
+            0.4368405,
+            0.4357841,
+            0.4399784,
+            0.6100044,
+            0.4564536,
+            0.5023207,
+            0.6238522,
+            0.4595077,
+            0.4471995
+          ]
+        },
+        "median_seconds": {
+          "baseline": 0.4447003,
+          "fixed": 0.4471995
+        },
+        "fixed_over_baseline": 1.005619964726806,
+        "added_microseconds_per_entity_tick": 0.09762500000000136,
+        "result_sha256": {
+          "baseline": "d3496a4d16826520e983c3f2a85bf87e49cc395b614559733afe7c3a360fcbec",
+          "fixed": "18eac964b19524fe6100b46744f30db88bc23ecb1b75989fcd1c5d92d6ef6da2"
+        },
+        "oracle": {
+          "fixed": {
+            "max_abs_error": 7.105427357601002e-15,
+            "matches": true
+          },
+          "baseline": {
+            "max_abs_error": 1909.7500000009313,
+            "matches": false
+          }
+        },
+        "order": [
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ]
+        ]
+      },
+      {
+        "case": "dynamics_singlebox",
+        "entities": 1,
+        "ticks": 400,
+        "command_interval_ticks": 2,
+        "seconds": {
+          "baseline": [
+            0.0057109,
+            0.0059312,
+            0.0060705,
+            0.0055562,
+            0.0060305,
+            0.0080256,
+            0.0055077,
+            0.0129398,
+            0.0120823,
+            0.008163,
+            0.0080228
+          ],
+          "fixed": [
+            0.0059932,
+            0.0061116,
+            0.0062444,
+            0.0063131,
+            0.007605,
+            0.0063961,
+            0.0064853,
+            0.0066112,
+            0.0137065,
+            0.0104049,
+            0.0083566
+          ]
+        },
+        "median_seconds": {
+          "baseline": 0.0060705,
+          "fixed": 0.0064853
+        },
+        "fixed_over_baseline": 1.0683304505394942,
+        "added_microseconds_per_entity_tick": 1.0369999999999997,
+        "result_sha256": {
+          "baseline": "7bb078e3df41ee9a931a04b22abe5427457fe57faa9ded54937dc9f7a7751625",
+          "fixed": "866dba5e78a4c65d43bbe562f9b9c6bc4d76f0194f0b8974aa7baa5a5f41519e"
+        },
+        "oracle": {
+          "fixed": {
+            "max_abs_error": 2.842170943040401e-14,
+            "matches": true
+          },
+          "baseline": {
+            "max_abs_error": 1997.5000000093132,
+            "matches": false
+          }
+        },
+        "order": [
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "fixed",
+            "baseline"
+          ],
+          [
+            "baseline",
+            "fixed"
+          ]
+        ]
+      }
+    ]
+  },
+  "at_code_freeze": {
+    "full_windows_gate": "running; raw results separately sealed",
+    "tracemalloc_memory": "running; raw results separately sealed",
+    "pinned_brain": "98d6b899533a82fb1047f952987229c62a9929fb"
+  }
+}
