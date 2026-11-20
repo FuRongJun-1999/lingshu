@@ -23,7 +23,8 @@ def analyze_image_pixels(image: "PIL.Image.Image") -> dict:
 
     Raises TypeError for non-Pillow inputs, or ValueError for non-positive,
     non-integer dimensions and images exceeding 4,194,304 pixels. These size
-    checks happen before image conversion or pixel-buffer allocation.
+    checks happen before image conversion or pixel-buffer allocation. Lazy or
+    closed images are rejected: the caller must load the current frame first.
     """
     from PIL import Image, ImageStat
 
@@ -36,6 +37,13 @@ def analyze_image_pixels(image: "PIL.Image.Image") -> dict:
     pixel_count = width * height
     if pixel_count > _MAX_PIXELS:
         raise ValueError("image exceeds the 4,194,304 pixel limit")
+
+    # Pillow Image.open() is lazy: convert() would otherwise read its file/stream
+    # and mutate the caller's decode state. Inspect the stored core without calling
+    # load()/getdata()/im (which can trigger decoding). Pillow 12.3 is the tested floor.
+    core = getattr(image, "_im", None)
+    if core is None or isinstance(core, Image.DeferredError) or getattr(image, "tile", ()):
+        raise ValueError("image must already be decoded; call image.load() before analysis")
 
     source_mode = image.mode
     rgba = image.convert("RGBA")

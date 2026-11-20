@@ -5,6 +5,7 @@
 ## 范围
 
 - `lingshu.vision.analyze_image_pixels(image)` 接收 Pillow `Image.Image`，返回 JSON-safe 尺寸、每通道 16 桶直方图、亮度摘要和 alpha 摘要。
+- 只接受当前帧已解码图像：调用方须先执行 `image.load()`；未解码、关闭及多帧 `seek()` 后待解码状态直接拒绝，统计不触发流读取。
 - 像素上限 4,194,304；超限直接拒绝，不缩放。
 - alpha 像素按白底合成后统计可见 RGB；另报源 alpha 的不透明类别计数。亮度是 Pillow `convert("L")` 的 8-bit 编码空间统计，不声称物理/线性亮度。
 - ICC/gamma 管理不额外改变；Pillow 自身负责源 mode 到 RGBA 的转换。

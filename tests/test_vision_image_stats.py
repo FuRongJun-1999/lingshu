@@ -2,6 +2,7 @@
 """Synthetic, Pillow-only guards for bounded image pixel measurements."""
 from __future__ import annotations
 
+import io
 import json
 import math
 from pathlib import Path
@@ -36,6 +37,71 @@ def _subprocess(code):
         timeout=30,
         check=False,
     )
+
+
+class _GuardedStream(io.BytesIO):
+    """Allow explicit caller decode, then catch any implicit codec access."""
+    blocked = False
+
+    def read(self, *args):
+        if self.blocked:
+            raise AssertionError("analysis read the encoded stream")
+        return super().read(*args)
+
+    def seek(self, *args):
+        if self.blocked:
+            raise AssertionError("analysis sought in the encoded stream")
+        return super().seek(*args)
+
+
+@pytest.mark.parametrize("format", ["PNG", "BMP", "JPEG"])
+def test_lazy_images_rejected_before_stream_access_and_state_change(format):
+    encoded = io.BytesIO()
+    Image.new("RGB", (3, 2), "red").save(encoded, format=format)
+    stream = _GuardedStream(encoded.getvalue())
+    image = Image.open(stream)
+    state = (image._im, image.fp, list(image.tile), stream.tell(), image.info.copy())
+    stream.blocked = True
+    with pytest.raises(ValueError, match="already be decoded"):
+        analyze_image_pixels(image)
+    assert (image._im, image.fp, image.tile, stream.tell(), image.info) == state
+    stream.blocked = False
+    image.load()  # The caller explicitly opts into codec/stream work.
+    stream.blocked = True
+    assert analyze_image_pixels(image)["pixel_count"] == 6
+    image.close()
+    stream.close()
+
+
+@pytest.mark.parametrize("format", ["GIF", "TIFF"])
+def test_seek_to_lazy_frame_is_rejected_even_with_previous_core(format):
+    encoded = io.BytesIO()
+    first = Image.new("RGB", (3, 2), "red")
+    second = Image.new("RGB", (3, 2), "blue")
+    first.save(encoded, format=format, save_all=True, append_images=[second])
+    stream = _GuardedStream(encoded.getvalue())
+    image = Image.open(stream)
+    image.load()
+    image.seek(1)
+    assert image._im is not None and image.tile
+    before = (image._im, image.fp, list(image.tile), stream.tell(), image.tell())
+    stream.blocked = True
+    with pytest.raises(ValueError, match="already be decoded"):
+        analyze_image_pixels(image)
+    assert (image._im, image.fp, image.tile, stream.tell(), image.tell()) == before
+    stream.blocked = False
+    image.load()
+    stream.blocked = True
+    assert analyze_image_pixels(image)["pixel_count"] == 6
+    image.close()
+    stream.close()
+
+
+def test_closed_image_rejected_without_conversion():
+    image = Image.new("RGB", (2, 2))
+    image.close()
+    with pytest.raises(ValueError, match="already be decoded"):
+        analyze_image_pixels(image)
 
 
 def test_solid_color_and_original_dimensions():
@@ -179,6 +245,7 @@ def test_pixel_budget_rejected_before_conversion_or_allocation(monkeypatch, size
 
 def test_exact_pixel_budget_reaches_conversion_without_resizing(monkeypatch):
     image = _SizedImage((2048, 2048))
+    image._im = Image.new("RGBA", (1, 1))._im
     convert = Mock(side_effect=RuntimeError("reached conversion"))
     monkeypatch.setattr(image, "convert", convert)
     with pytest.raises(RuntimeError, match="reached conversion"):

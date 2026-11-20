@@ -207,6 +207,6 @@ lingshu
 | 2026-10-09 | 结构历史与受保护写服务：`core/structure_writer.py`、`structure_service.py`、`structure_permissions.py`；旧库事务接入与合成业务回归 | 本仓新增（#329）；不复制脑核 | 仅标准库；无真实密钥、记忆资产或本机路径；证书在测试临时目录生成，部署私钥不入仓 | 见对应 PR 提交 |
 
 | 2026-10-09 | 场景消费整合 v0.1：共享场景 API + demo/local/brain CLI + 五任务/只读库/真实 MCP 验收；intake 见 `docs/intake/scenario-v0.1/` | **本仓新件**，身体侧消费入口，复用现有 core/WorldModel/MCP | 内容/隐私双清单 CLEAN；隔离合成数据，资格不升格；接口与可见性取舍交理论核 | [PR #375（提交见 PR）](https://github.com/FuRongJun-1999/lingshu/pull/375) |
-| 2026-11-20 | 本地图像像素统计：`vision/image_stats.py` 与公开惰性导出；固定 RGB/亮度直方图和透明像素统计，无语义识别、路径读取或记忆写入；intake 见 `docs/intake/body-image-pixel-stats-v0.1/` | **本仓新件** | Pillow 延迟导入；4,194,304 像素硬上限；合成模式/透明度回归 | 待 PR |
+| 2026-11-20 | 本地图像像素统计：`vision/image_stats.py` 与公开惰性导出；固定 RGB/亮度直方图和透明像素统计，无语义识别、路径读取或记忆写入；intake 见 `docs/intake/body-image-pixel-stats-v0.1/` | **本仓新件** | Pillow 延迟导入；4,194,304 像素硬上限；合成模式/透明度回归 | [PR #1462](https://github.com/FuRongJun-1999/lingshu/pull/1462) |
 
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*
