@@ -25,4 +25,3 @@ python -m pytest tests/test_vision_mask_geometry.py tests/test_vision_lineart.py
 python -X utf8 tools/intake_smoke_min.py --quiet
 # import ok=90 fail=0 constructive=ok
 ```
-
