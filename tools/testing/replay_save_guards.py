@@ -86,7 +86,9 @@ def main():
             shutil.copytree(ROOT / "lingshu", sandbox / "lingshu",
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             for path, text in candidate.items():
-                under(sandbox, path).write_text(text, encoding="utf-8", newline="\n")
+                source_target = under(sandbox, path)
+                source_target.parent.mkdir(parents=True, exist_ok=True)
+                source_target.write_text(text, encoding="utf-8", newline="\n")
             target = under(sandbox, guard)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(under(ROOT, guard), target)
