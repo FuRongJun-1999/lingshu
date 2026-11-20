@@ -1,8 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Bounded pixel measurements for an already decoded Pillow image.
+"""Bounded pixel measurements for a Pillow image the caller has already decoded.
 
-Pillow is imported only when analyze_image_pixels is called. No file or
-network access, resizing, model calls, or ICC/gamma color management is used.
+Decoding (opening files, reading streams) is the caller's precondition: this
+module opens no paths and makes no network calls, and it is not a decoding
+sandbox. It checks only the Image type and dimensions; callers need not call
+load() first, and decode safety is not validated. Pillow's convert() may load
+a lazily opened file-backed image from its already-open stream.
+
+Pillow is imported only when analyze_image_pixels is called. No resizing or
+model calls are performed. No ICC/gamma profile attached to the input is
+applied on top of Pillow's default mode conversion; that conversion can itself
+use built-in profiles (for example LAB), so this is not a claim of zero color
+management.
 """
 from __future__ import annotations
 
