@@ -12753,6 +12753,53 @@ class SpacetimeMemoryEngine:
                 self._local_visual_buffer = self._local_visual_buffer[-self._visual_buffer_max:]
         return node
 
+    def list_local_visual_frames(self, entity_id: str = None, limit: int = 50) -> List[Dict]:
+        """只读本地帧引用元数据，按摄入顺序倒序；不读取引用文件或访问数据库。
+
+        entity_id 为 None 时选取全部实体，否则精确匹配；过滤后至多返回 limit 项。
+        只校验被选中的记录并构造全新 dict，不复制或暴露原始帧对象。
+        """
+        if self.store._closed:
+            raise sqlite3.ProgrammingError(
+                "LayeredStore 已关闭（close() 已调用）：本实例不可再用于读写。close() 是"
+                "生命周期终点；如需继续使用请新建实例（#660）")
+        if entity_id is not None:
+            if not isinstance(entity_id, str):
+                raise TypeError("list_local_visual_frames 的 entity_id 必须是 str 或 None")
+            if not entity_id.strip():
+                raise ValueError("list_local_visual_frames 的 entity_id 不得为空白")
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise TypeError("list_local_visual_frames 的 limit 必须是 int（非 bool）")
+        if not 0 <= limit <= 200:
+            raise ValueError("list_local_visual_frames 的 limit 必须在 0..200 范围内")
+        if limit == 0:
+            return []
+
+        result = []
+        for record in reversed(self._local_visual_buffer):
+            if not isinstance(record, dict):
+                raise TypeError("本地视觉缓冲记录必须是 dict")
+            if "entity_id" not in record:
+                raise ValueError("本地视觉缓冲记录缺少 entity_id")
+            record_entity_id = record["entity_id"]
+            if entity_id is not None and record_entity_id != entity_id:
+                continue
+            if record_entity_id is not None and not isinstance(record_entity_id, str):
+                raise TypeError("本地视觉缓冲记录的 entity_id 必须是 str 或 None")
+            if "frame_ref" not in record or "ts" not in record:
+                raise ValueError("本地视觉缓冲记录缺少 frame_ref 或 ts")
+            frame_ref, ts = record["frame_ref"], record["ts"]
+            if frame_ref is not None and not isinstance(frame_ref, str):
+                raise TypeError("本地视觉缓冲记录的 frame_ref 必须是 str 或 None")
+            if isinstance(ts, bool) or not isinstance(ts, (int, float)):
+                raise TypeError("本地视觉缓冲记录的 ts 必须是 int/float（非 bool）")
+            if isinstance(ts, float) and not math.isfinite(ts):
+                raise ValueError("本地视觉缓冲记录的 ts 必须是有限数值")
+            result.append({"entity_id": record_entity_id, "frame_ref": frame_ref, "ts": ts})
+            if len(result) == limit:
+                break
+        return result
+
     def _frame_state_changed(self, prev_id: str, node: STNode) -> bool:
         prev = self.store.get_node(prev_id)
         if not prev:

@@ -209,4 +209,6 @@ lingshu
 | 2026-10-09 | 场景消费整合 v0.1：共享场景 API + demo/local/brain CLI + 五任务/只读库/真实 MCP 验收；intake 见 `docs/intake/scenario-v0.1/` | **本仓新件**，身体侧消费入口，复用现有 core/WorldModel/MCP | 内容/隐私双清单 CLEAN；隔离合成数据，资格不升格；接口与可见性取舍交理论核 | [PR #375（提交见 PR）](https://github.com/FuRongJun-1999/lingshu/pull/375) |
 | 2026-11-20 | 本地图像像素统计：`vision/image_stats.py` 与公开惰性导出；固定 RGB/亮度直方图和透明像素统计，无语义识别、路径读取或记忆写入；intake 见 `docs/intake/body-image-pixel-stats-v0.1/` | **本仓新件** | Pillow 延迟导入；4,194,304 像素硬上限；合成模式/透明度回归 | [PR #1462](https://github.com/FuRongJun-1999/lingshu/pull/1462) |
 
+| 2026-11-20 | 实例内视觉引用只读查询：`SpacetimeMemoryEngine.list_local_visual_frames()`，只返回entity_id/frame_ref/ts，不执行SQL、不打开引用、不改共享载荷；intake见 `docs/intake/body-local-visual-query-v0.1/` | 本仓新件 | 0..200限量、精确实体过滤、关闭后拒绝；摄入/同步/关闭/零I/O回归通过 | 见对应PR |
+
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*
