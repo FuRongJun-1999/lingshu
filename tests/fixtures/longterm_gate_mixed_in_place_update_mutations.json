@@ -1,0 +1,20 @@
+{
+  "guard": "tests/test_longterm_gate_mixed_in_place_update.py",
+  "total": 1,
+  "sources": ["lingshu/core/longterm_gate.py"],
+  "baseline_failures": ["test_same_row_rewrite_plus_append_rebuilds_mixed_cache"],
+  "mutations": [
+    {
+      "name": "skip_old_row_digest_check",
+      "test": "test_same_row_rewrite_plus_append_rebuilds_mixed_cache",
+      "assertion": "changed old content must force a full gram rebuild",
+      "changes": [{
+        "file": "lingshu/core/longterm_gate.py",
+        "class": "LongTermMemoryGate",
+        "method": "_known_snapshot",
+        "old": "if (unchanged_old_rows",
+        "new": "if (True"
+      }]
+    }
+  ]
+}
