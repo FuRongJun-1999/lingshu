@@ -37,9 +37,10 @@ lingshu
 └── world  世界模型：推演循环与物理沙盒（重载可选）
 ```
 
-- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **90** 个 `.py`
-  （**84** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 46 / vision 1 / 包根 1；
-  import 冒烟 **90/90**（2026-11-20 逐模块 `import` 实跑读数；守卫只核该行的分子
+- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **91** 个 `.py`
+  （**85** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 46 / vision 2 / 包根 1；
+  import 冒烟 **91/91**（2026-11-20 逐模块 `import` 实跑读数；守卫只核该行的分子
+
   分母相等且等于实读 `.py` 总数，见 `tests/test_doc_module_counts_guard.py`）。
   下表 §七 各行是**逐次聚合动作的快照**（计数为该次引入时的读数），当前计数以本行为准。
 - **轻核承诺**：`core` 不因本仓的「完整」而增重——可单独安装、单独运行；
@@ -207,7 +208,8 @@ lingshu
 | 2026-10-09 | 结构历史与受保护写服务：`core/structure_writer.py`、`structure_service.py`、`structure_permissions.py`；旧库事务接入与合成业务回归 | 本仓新增（#329）；不复制脑核 | 仅标准库；无真实密钥、记忆资产或本机路径；证书在测试临时目录生成，部署私钥不入仓 | 见对应 PR 提交 |
 
 | 2026-10-09 | 场景消费整合 v0.1：共享场景 API + demo/local/brain CLI + 五任务/只读库/真实 MCP 验收；intake 见 `docs/intake/scenario-v0.1/` | **本仓新件**，身体侧消费入口，复用现有 core/WorldModel/MCP | 内容/隐私双清单 CLEAN；隔离合成数据，资格不升格；接口与可见性取舍交理论核 | [PR #375（提交见 PR）](https://github.com/FuRongJun-1999/lingshu/pull/375) |
+| 2026-11-20 | 本地图像像素统计：`vision/image_stats.py` 与公开惰性导出；固定 RGB/亮度直方图和透明像素统计，无语义识别、路径读取或记忆写入；intake 见 `docs/intake/body-image-pixel-stats-v0.1/` | **本仓新件** | Pillow 延迟导入；4,194,304 像素硬上限；合成模式/透明度回归 | [PR #1462](https://github.com/FuRongJun-1999/lingshu/pull/1462) |
 
-| 2026-11-20 | 批量深度样本反投影：`world/depth_samples.py`，委托现有 Camera3D.unproject，显式像素/前向深度批量转世界坐标；intake 见 `docs/intake/body-depth-samples-v0.1/` | 本仓新件 | 最多4096条，预验证有限性/边界/深度，纯委托、不写文件或记忆；回代回归通过 | 待 PR |
+| 2026-11-20 | 批量深度样本反投影：`world/depth_samples.py`，委托现有 Camera3D.unproject，显式像素/前向深度批量转世界坐标；intake 见 `docs/intake/body-depth-samples-v0.1/` | 本仓新件 | 最多4096条，预验证有限性/边界/深度，纯委托、不写文件或记忆；回代回归通过 | [PR #1466](https://github.com/FuRongJun-1999/lingshu/pull/1466) |
 
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*
