@@ -5298,6 +5298,8 @@ class LayeredStore:
         # 不指参数名。同文件 `search_content` 早有 `"search_content 的 query 必须是
         # 字符串"` 闸（#1396 类型闸族同款纪律），本方法零闸属同族漏网。修法同款
         # fail-loud；空串/纯空白保持既有「列出前 100 张」语义（不改为报错）。
+        # #658 / #1795：与其它检索切片入口一致，None/负数表示全量，0 表示空。
+        limit = _normalize_limit(limit)
         if not isinstance(query, str):
             raise TypeError("search_skills 的 query 必须是字符串，收到 %r"
                             % (type(query).__name__,))
