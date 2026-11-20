@@ -105,6 +105,11 @@ class HexGrid:
         return (q, r)
 
     def neighbors(self, q: int, r: int) -> List[Tuple[int, int]]:
+        if self.mode == "odd_r_offset":
+            # offset 列 = axial q + floor(r/2)；沿 axial 六方向后转回列号。
+            row_offset = r // 2
+            return [(q + dq + (r + dr) // 2 - row_offset, r + dr)
+                    for dq, dr in HEX_DIRS]
         return [(q + dq, r + dr) for dq, dr in HEX_DIRS]
 
     def in_bounds(self, q: int, r: int) -> bool:
