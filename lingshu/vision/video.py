@@ -7,6 +7,7 @@ are never returned or written to disk.
 """
 from __future__ import annotations
 
+import ctypes
 import math
 import ntpath
 import os
@@ -103,7 +104,6 @@ def _is_windows() -> bool:
 
 
 def _windows_drive_type(drive: str) -> int:
-    import ctypes
     return int(ctypes.windll.kernel32.GetDriveTypeW(drive + "\\"))
 
 
@@ -118,7 +118,8 @@ def _is_network_path(path: str) -> bool:
                 # Only local fixed/removable drives are allowed. DRIVE_REMOTE, unknown,
                 # and unrecognized types fail closed before any file stat/open call.
                 return _windows_drive_type(drive) not in (2, 3)
-            except Exception:
+            except (OSError, AttributeError, TypeError, ValueError, ctypes.ArgumentError):
+                # An unavailable Win32 query cannot establish that the drive is local.
                 return True
     return False
 

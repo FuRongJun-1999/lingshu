@@ -2,6 +2,7 @@
 """Bounded video gray-frame sampling and adjacent pixel-difference tests."""
 from __future__ import annotations
 
+import ctypes
 import io
 import struct
 from types import SimpleNamespace
@@ -201,6 +202,20 @@ def test_windows_drive_allowlist_is_fail_closed(monkeypatch):
         monkeypatch.setattr(video_module, "_windows_drive_type", lambda drive, kind=drive_type: kind)
         result = video_module._is_network_path("C:\\sample.mp4")
         assert result is (name not in ("fixed", "removable")), name
+
+
+@pytest.mark.parametrize("error_type", [OSError, AttributeError, TypeError, ValueError, ctypes.ArgumentError])
+def test_windows_drive_query_failure_is_rejected_before_file_probe(monkeypatch, error_type):
+    def fail_query(_drive):
+        raise error_type("GetDriveTypeW failed")
+
+    monkeypatch.setattr(video_module, "_is_windows", lambda: True)
+    monkeypatch.setattr(video_module.os.path, "abspath", lambda path: path)
+    monkeypatch.setattr(video_module, "_windows_drive_type", fail_query)
+    monkeypatch.setattr(video_module, "_has_reparse_component",
+                        lambda path: pytest.fail("unverified drive reached path probing"))
+    with pytest.raises(VideoAnalysisError, match="UNC"):
+        video_module._read_bounded_source(r"C:\sample.mp4")
 
 
 def test_relative_path_on_unc_cwd_is_resolved_then_rejected(monkeypatch):

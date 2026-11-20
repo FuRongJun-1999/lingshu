@@ -122,6 +122,9 @@ STDLIB_ALLOWED = frozenset({
     #   xml←world/mesh_svg.py 的 SVG 解析。皆标准库；守卫按设计判红「未知裸名」，
     #   此处**补分类而非放宽判据**。
     "tempfile", "array", "xml",
+    # PR #1461 视频分析：ntpath 解析 Windows 盘符，shutil 查找 FFmpeg，
+    # stat 检查符号链接。均为标准库，只补分类，不放宽未知裸名判据。
+    "ntpath", "shutil", "stat",
     # 命令行 / 子进程
     "argparse", "subprocess",
 })
