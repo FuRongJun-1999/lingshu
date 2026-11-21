@@ -15,7 +15,10 @@
 纯 numpy(D-005 零 LLM)。
 """
 from __future__ import annotations
+import hashlib
+import json
 import re
+import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -178,15 +181,13 @@ def corrupt_description(desc: str, rng: np.random.Generator,
 
 # ==================== 象限级子物体检测(图像路空间拆分) ====================
 
-def spatial_detect(net: HexHierNet, lat: np.ndarray,
-                   exist_mult: float = 1.15) -> List[List[Dict]]:
-    """每样本:3×3 象限独立走 L1→L2→L3 → 子物体清单(拆分)。
-    检测规则(白箱显式):能量最高象限必选(主导区),
-    其余象限份额 > 该象限面积份额×exist_mult 才追加(防噪声虚警)。
-    象限边界按每轴的三等分取整，覆盖所有行列；不足三格的轴跳过空象限。"""
+def _quadrant_crops(net, lat, exist_mult):
+    """Yield selected region ids, energy shares and matching views per sample."""
     B, r, c, _ = lat.shape
     if r == 0 or c == 0:
-        return [[] for _ in range(B)]
+        for _ in range(B):
+            yield []
+        return
     energy, _ = net.l1(lat)
     w = np.abs(energy).sum(axis=-1)                       # (B,r,c)
     # Scale each boundary before flooring: a repeated floor(r/3) width drops
@@ -197,7 +198,6 @@ def spatial_detect(net: HexHierNet, lat: np.ndarray,
                     * (col_edges[q % 3 + 1] - col_edges[q % 3])) / (r * c)
                    for q in range(9)]
     nonempty = [q for q in range(9) if area_shares[q] > 0.0]
-    out = []
     for b in range(B):
         shares = np.zeros(9)
         for q in range(9):
@@ -209,19 +209,33 @@ def spatial_detect(net: HexHierNet, lat: np.ndarray,
         for q in range(9):
             if shares[q] > area_shares[q] * exist_mult:
                 keep_q.add(q)
-        found = []
+        regions = []
         for q in sorted(keep_q):
             qy, qx = divmod(q, 3)
             sub = lat[b:b + 1, row_edges[qy]:row_edges[qy + 1],
                       col_edges[qx]:col_edges[qx + 1]]
             if sub.shape[1] == 0 or sub.shape[2] == 0:
                 continue
+            regions.append((q, float(shares[q]), sub))
+        yield regions
+
+
+def spatial_detect(net: HexHierNet, lat: np.ndarray,
+                   exist_mult: float = 1.15) -> List[List[Dict]]:
+    """每样本:3×3 象限独立走 L1→L2→L3 → 子物体清单(拆分)。
+    检测规则(白箱显式):能量最高象限必选(主导区),
+    其余象限份额 > 该象限面积份额×exist_mult 才追加(防噪声虚警)。
+    象限边界按每轴的三等分取整，覆盖所有行列；不足三格的轴跳过空象限。"""
+    out = []
+    for regions in _quadrant_crops(net, lat, exist_mult):
+        found = []
+        for q, share, sub in regions:
             sf, cf = net.l2_features(sub)
             logits = net.l3_logits(sf, cf)[0]
             p = softmax(logits[None])[0]
             found.append({"pos": POS[q], "obj": OBJ[int(logits.argmax())],
                           "conf": round(float(p.max()), 3),
-                          "share": round(float(shares[q]), 3)})
+                          "share": round(share, 3)})
         found.sort(key=lambda d: -d["share"])
         out.append(found)
     return out
@@ -310,3 +324,591 @@ def multimodal_check(net: HexHierNet, lat: np.ndarray, text: str,
             fused["note"] = (f"{fused['note']};计数不符:"
                              f"期望 {n_expected} 个,实测 {len(detections)} 个")
     return fused
+
+
+# ==================== M5.5 感知-知识桥（条件卡灌入 / 四态回写 / 白箱问答） ====================
+
+def semantic_card_table() -> Dict[str, Dict]:
+    """统一语义卡表：感知键（SHAPES/COLORS/POS/OBJ）与中文词典单一真源对齐。"""
+    return {
+        "shapes": {
+            s: {"cn": SHAPE_CN[s], "words": [w for w, v in SHAPE_WORDS.items() if v == s]}
+            for s in SHAPES
+        },
+        "colors": {
+            c: {"cn": COLOR_CN[c], "words": [w for w, v in COLOR_WORDS.items() if v == c]}
+            for c in COLORS
+        },
+        "positions": {
+            p: {"cn": POS_CN[p], "words": [w for w, v in POS_WORDS.items() if v == p]}
+            for p in POS
+        },
+        "objects": {
+            o: {
+                "shape": o.split("|")[0],
+                "color": o.split("|")[1],
+                "cn": f"{COLOR_CN[o.split('|')[1]]}{SHAPE_CN[o.split('|')[0]]}",
+            }
+            for o in OBJ
+        },
+    }
+
+
+class _BridgeLayer:
+    """鸭子类型层枚举，对接持久化存储写接口而零反向导入 core。"""
+
+    def __init__(self, value: str):
+        self.value = value
+
+    def __eq__(self, other) -> bool:
+        return getattr(other, "value", other) == self.value
+
+
+class _BridgeConditionSpace:
+    """鸭子类型四栏 ConditionSpace，提供 to_json() 落库序列化。"""
+
+    def __init__(self, observation_position: str, observation_tool: str,
+                 time_window: Tuple[float, float], existence_constraint: str):
+        self.observation_position = observation_position
+        self.observation_tool = observation_tool
+        self.time_window = (float(time_window[0]), float(time_window[1]))
+        self.existence_constraint = existence_constraint
+
+    def to_json(self) -> str:
+        return json.dumps({
+            "observation_position": self.observation_position,
+            "observation_tool": self.observation_tool,
+            "time_window": [self.time_window[0], self.time_window[1]],
+            "existence_constraint": self.existence_constraint,
+        }, ensure_ascii=False)
+
+
+class _BridgeNode:
+    """鸭子类型时空节点（16 列行契约与 LayeredStore.add_node 对齐）。"""
+
+    def __init__(self, node_id: str, content: str, modality: str,
+                 spatial_coordinates: Dict, temporal_coordinate: float,
+                 condition_space: _BridgeConditionSpace, importance: float,
+                 confidence: float, layer_value: str, tags: List[str],
+                 semantic_coordinates: Dict, state_attributes: Dict,
+                 entity_id: Optional[str] = None):
+        now = float(temporal_coordinate)
+        self.id = node_id
+        self.content = content
+        self.modality = modality
+        self.spatial_coordinates = dict(spatial_coordinates)
+        self.temporal_coordinate = now
+        self.condition_space = condition_space
+        self.importance = float(importance)
+        self.confidence = float(confidence)
+        self.layer = _BridgeLayer(layer_value)
+        self.access_count = 0
+        self.last_access = now
+        self.created_at = now
+        self.tags = list(tags)
+        self.semantic_coordinates = dict(semantic_coordinates)
+        self.state_attributes = dict(state_attributes)
+        self.entity_id = entity_id
+
+    def to_row(self) -> Tuple:
+        return (
+            self.id,
+            self.content,
+            self.modality,
+            json.dumps(self.spatial_coordinates, ensure_ascii=False),
+            self.temporal_coordinate,
+            self.condition_space.to_json(),
+            max(0.0, min(1.0, self.importance)),
+            max(0.0, min(1.0, self.confidence)),
+            self.layer.value,
+            self.access_count,
+            self.last_access,
+            self.created_at,
+            json.dumps(self.tags, ensure_ascii=False),
+            json.dumps(self.semantic_coordinates, ensure_ascii=False),
+            json.dumps(self.state_attributes, ensure_ascii=False),
+            self.entity_id,
+        )
+
+
+def _validate_finite_num(val, name: str, min_val: Optional[float] = None,
+                         max_val: Optional[float] = None) -> float:
+    if isinstance(val, bool) or not isinstance(val, (int, float, np.number)):
+        raise ValueError(f"{name} 须为有限数值（禁 bool），实得 {val!r}")
+    fval = float(val)
+    if not np.isfinite(fval):
+        raise ValueError(f"{name} 须为有限数值，实得 {val!r}")
+    if min_val is not None and fval < min_val:
+        raise ValueError(f"{name} 须 >= {min_val}，实得 {fval}")
+    if max_val is not None and fval > max_val:
+        raise ValueError(f"{name} 须 <= {max_val}，实得 {fval}")
+    return fval
+
+
+def _validate_nonempty_str(val, name: str) -> str:
+    if not isinstance(val, str) or not val.strip():
+        raise ValueError(f"{name} 须为非空字符串，实得 {val!r}")
+    return val.strip()
+
+
+def _validate_time_window(time_window) -> Tuple[float, float]:
+    if not isinstance(time_window, (tuple, list)) or len(time_window) != 2:
+        raise ValueError(f"time_window 须为二元序列 (start, end)，实得 {time_window!r}")
+    t0 = _validate_finite_num(time_window[0], "time_window[0]")
+    t1 = _validate_finite_num(time_window[1], "time_window[1]")
+    if t0 > t1:
+        raise ValueError(f"time_window 须满足 start <= end，实得 ({t0}, {t1})")
+    return (t0, t1)
+
+
+def _validate_lattice(lat) -> np.ndarray:
+    if lat is None or isinstance(lat, bool):
+        raise ValueError(f"lat 须为 3D/4D 数值晶格数组，实得 {lat!r}")
+    arr = np.asarray(lat)
+    if arr.dtype == np.bool_ or not np.issubdtype(arr.dtype, np.number):
+        raise ValueError(f"lat 须为数值型数组，实得 dtype={arr.dtype}")
+    if arr.ndim == 3:
+        arr = arr[None, ...]
+    elif arr.ndim != 4:
+        raise ValueError(f"lat 须为 3D (r,c,C) 或 4D (B,r,c,C) 数组，实得 shape={arr.shape}")
+    if arr.shape[0] <= 0 or arr.shape[1] < 3 or arr.shape[2] < 3 or arr.shape[3] <= 0:
+        raise ValueError(f"lat 维度非法（需 B>=1, r>=3, c>=3, C>=1），实得 shape={arr.shape}")
+    arr_f = arr.astype(np.float64)
+    if not np.isfinite(arr_f).all():
+        raise ValueError("lat 含 NaN/Inf，拒绝静默感知")
+    return arr_f
+
+
+def _resolve_store(store_or_engine):
+    if store_or_engine is None or isinstance(store_or_engine, (bool, int, float, str)):
+        raise ValueError(f"store_or_engine 非法：{store_or_engine!r}")
+    store = getattr(store_or_engine, "store", store_or_engine)
+    if store is None:
+        raise ValueError("store_or_engine.store 为空")
+    for meth in ("add_node", "get_nodes_by_tag", "search_content"):
+        if not callable(getattr(store, meth, None)):
+            raise ValueError(f"store 缺少必需鸭子类型方法 {meth}()")
+    return store
+
+
+def _lookup_calibrated_threshold(calibrated_cards: Optional[Dict], obj: str,
+                                 base_threshold: float) -> float:
+    if calibrated_cards is None:
+        return base_threshold
+    if not isinstance(calibrated_cards, dict):
+        raise ValueError("calibrated_cards 须为 dict 或 None")
+    for card in calibrated_cards.get("obj") or []:
+        if isinstance(card, dict) and card.get("obj") == obj and not card.get("missing"):
+            pq = card.get("p_q25")
+            if pq is not None:
+                return max(base_threshold, _validate_finite_num(pq, "p_q25", 0.0, 1.0))
+    return base_threshold
+
+
+def extract_perception_cards(net: HexHierNet, lat: np.ndarray,
+                             exist_mult: float = 1.15,
+                             p_threshold: float = 0.25,
+                             min_margin: float = 0.03,
+                             calibrated_cards: Optional[Dict] = None) -> List[List[Dict]]:
+    """从晶格提取带 p_threshold / margin 校准统计的象限感知条件卡清单。"""
+    if not isinstance(net, HexHierNet):
+        raise ValueError(f"net 须为 HexHierNet 实例，实得 {type(net).__name__}")
+    lat4d = _validate_lattice(lat)
+    em = _validate_finite_num(exist_mult, "exist_mult", min_val=0.0)
+    if em <= 0.0:
+        raise ValueError(f"exist_mult 须 > 0，实得 {em}")
+    p_thr_base = _validate_finite_num(p_threshold, "p_threshold", 0.0, 1.0)
+    m_thr = _validate_finite_num(min_margin, "min_margin", 0.0, 1.0)
+
+    out: List[List[Dict]] = []
+    for regions in _quadrant_crops(net, lat4d, em):
+        cards: List[Dict] = []
+        for q, share, sub in regions:
+            qy, qx = divmod(q, 3)
+            sf, cf = net.l2_features(sub)
+            logits = net.l3_logits(sf, cf)[0]
+            probs = softmax(logits[None])[0]
+            obj_idx = int(logits.argmax())
+            obj = OBJ[obj_idx]
+            shape, color = obj.split("|")
+            conf = float(probs[obj_idx])
+            p_sorted = np.sort(probs)
+            l_sorted = np.sort(logits)
+            margin = float(p_sorted[-1] - p_sorted[-2]) if len(p_sorted) >= 2 else conf
+            logit_margin = float(l_sorted[-1] - l_sorted[-2]) if len(l_sorted) >= 2 else 0.0
+            eff_p_thr = _lookup_calibrated_threshold(calibrated_cards, obj, p_thr_base)
+
+            if conf >= eff_p_thr and margin >= m_thr:
+                card_verdict = "ACCEPT"
+            elif conf >= 0.5 * eff_p_thr:
+                card_verdict = "DEFER"
+            else:
+                card_verdict = "BLINDSPOT"
+
+            pos = POS[q]
+            cards.append({
+                "pos": pos,
+                "pos_cn": POS_CN[pos],
+                "qx": qx,
+                "qy": qy,
+                "obj": obj,
+                "shape": shape,
+                "shape_cn": SHAPE_CN[shape],
+                "color": color,
+                "color_cn": COLOR_CN[color],
+                "conf": round(conf, 4),
+                "margin": round(margin, 4),
+                "logit_margin": round(logit_margin, 4),
+                "share": round(share, 4),
+                "p_threshold": round(eff_p_thr, 4),
+                "min_margin": round(m_thr, 4),
+                "card_verdict": card_verdict,
+                "qualified": card_verdict in ("ACCEPT", "DEFER"),
+            })
+        cards.sort(key=lambda d: -d["share"])
+        out.append(cards)
+    return out
+
+
+def ingest_perception_cards(store_or_engine, net: HexHierNet, lat: np.ndarray,
+                            image_id: str = "img_0",
+                            exist_mult: float = 1.15,
+                            p_threshold: float = 0.25,
+                            min_margin: float = 0.03,
+                            time_window: Tuple[float, float] = (0.0, 1e9),
+                            timestamp: Optional[float] = None,
+                            calibrated_cards: Optional[Dict] = None) -> Dict:
+    """M5.5 ①：把感知条件卡（p_threshold/margin）灌入灵枢认知图为条件节点。"""
+    store = _resolve_store(store_or_engine)
+    img_id = _validate_nonempty_str(image_id, "image_id")
+    tw = _validate_time_window(time_window)
+    ts = time.time() if timestamp is None else _validate_finite_num(timestamp, "timestamp")
+    lat4d = _validate_lattice(lat)
+    if lat4d.shape[0] != 1:
+        raise ValueError(f"ingest_perception_cards 仅接收单图晶格 (B=1)，实得 B={lat4d.shape[0]}")
+
+    cards = extract_perception_cards(
+        net, lat4d, exist_mult=exist_mult, p_threshold=p_threshold,
+        min_margin=min_margin, calibrated_cards=calibrated_cards,
+    )[0]
+    node_ids: List[str] = []
+    for card in cards:
+        pos = card["pos"]
+        shape = card["shape"]
+        color = card["color"]
+        obj = card["obj"]
+        cv = card["card_verdict"]
+        cs = _BridgeConditionSpace(
+            observation_position=f"{img_id}:{pos}",
+            observation_tool="hex_hier+hex_text.m55",
+            time_window=tw,
+            existence_constraint=(
+                f"image={img_id};p_threshold={card['p_threshold']:.4f};"
+                f"margin={card['margin']:.4f};verdict={cv}"
+            ),
+        )
+        content = (
+            f"图像 {img_id} {card['pos_cn']}有{card['color_cn']}{card['shape_cn']} "
+            f"({obj}) [conf={card['conf']:.3f}, margin={card['margin']:.3f}, "
+            f"p_threshold={card['p_threshold']:.3f}, verdict={cv}]"
+        )
+        layer_val = "knowledge" if card["qualified"] else "context"
+        nid = f"m55_card_{img_id}_{pos}"
+        node = _BridgeNode(
+            node_id=nid,
+            content=content,
+            modality="image",
+            spatial_coordinates={"qx": card["qx"], "qy": card["qy"], "share": card["share"]},
+            temporal_coordinate=ts,
+            condition_space=cs,
+            importance=max(0.2, min(1.0, card["share"] + 0.4 * card["conf"])),
+            confidence=card["conf"],
+            layer_value=layer_val,
+            tags=[
+                "m55_card", f"m55_img:{img_id}", f"pos:{pos}",
+                f"shape:{shape}", f"color:{color}", f"obj:{obj}",
+                f"verdict:{cv}",
+            ],
+            semantic_coordinates={
+                "kind": "perception_card",
+                "image_id": img_id,
+                "pos": pos,
+                "pos_cn": card["pos_cn"],
+                "shape": shape,
+                "shape_cn": card["shape_cn"],
+                "color": color,
+                "color_cn": card["color_cn"],
+                "obj": obj,
+            },
+            state_attributes={
+                "kind": "perception_card",
+                "image_id": img_id,
+                "p_threshold": card["p_threshold"],
+                "min_margin": card["min_margin"],
+                "margin": card["margin"],
+                "logit_margin": card["logit_margin"],
+                "conf": card["conf"],
+                "share": card["share"],
+                "card_verdict": cv,
+                "qualified": card["qualified"],
+            },
+            entity_id=img_id,
+        )
+        store.add_node(node)
+        node_ids.append(nid)
+    return {
+        "image_id": img_id,
+        "node_ids": node_ids,
+        "cards": cards,
+        "p_threshold": round(float(p_threshold), 4),
+        "min_margin": round(float(min_margin), 4),
+    }
+
+
+def record_multimodal_verdict(store_or_engine, net: HexHierNet, lat: np.ndarray,
+                              text: str, image_id: str = "img_0",
+                              n_expected: Optional[int] = None,
+                              time_window: Tuple[float, float] = (0.0, 1e9),
+                              timestamp: Optional[float] = None) -> Dict:
+    """M5.5 ②：将 multimodal_check 四态判定回写认知图（REJECT/BLINDSPOT 不伪装为事实）。"""
+    store = _resolve_store(store_or_engine)
+    if not isinstance(net, HexHierNet):
+        raise ValueError(f"net 须为 HexHierNet 实例，实得 {type(net).__name__}")
+    desc = _validate_nonempty_str(text, "text")
+    img_id = _validate_nonempty_str(image_id, "image_id")
+    tw = _validate_time_window(time_window)
+    ts = time.time() if timestamp is None else _validate_finite_num(timestamp, "timestamp")
+    if n_expected is not None:
+        if isinstance(n_expected, bool) or not isinstance(n_expected, (int, np.integer)) or int(n_expected) < 0:
+            raise ValueError(f"n_expected 须为非负整数或 None，实得 {n_expected!r}")
+        n_expected = int(n_expected)
+    lat4d = _validate_lattice(lat)
+    if lat4d.shape[0] != 1:
+        raise ValueError(f"record_multimodal_verdict 仅接收单图晶格 (B=1)，实得 B={lat4d.shape[0]}")
+
+    fused = multimodal_check(net, lat4d, desc, n_expected=n_expected)
+    verdict = fused["verdict"]
+    score = float(fused["score"])
+    align = float(fused["align"])
+    clauses = parse_description(desc)
+
+    qualified = verdict in ("ACCEPT", "DEFER")
+    confirmed = (verdict == "ACCEPT")
+    layer_val = "knowledge" if qualified else "context"
+    conf = score if verdict == "ACCEPT" else (min(0.75, score) if verdict == "DEFER" else min(0.25, score))
+    if qualified:
+        content = f"[图文融合·{verdict}] 图像 {img_id}: {desc} (score={score:.3f}, align={align:.3f})"
+    else:
+        content = f"[图文冲突·{verdict}·未确认] 图像 {img_id} 拒收描述: {desc} (score={score:.3f}, align={align:.3f})"
+
+    digest = hashlib.sha256(desc.encode("utf-8")).hexdigest()[:8]
+    nid = f"m55_fuse_{img_id}_{digest}"
+    cs = _BridgeConditionSpace(
+        observation_position=f"{img_id}:multimodal",
+        observation_tool="hex_text.multimodal_check",
+        time_window=tw,
+        existence_constraint=f"image={img_id};verdict={verdict};score={score:.3f};align={align:.3f}",
+    )
+    node = _BridgeNode(
+        node_id=nid,
+        content=content,
+        modality="text",
+        spatial_coordinates={"clauses": len(clauses), "detections": fused["detections"]},
+        temporal_coordinate=ts,
+        condition_space=cs,
+        importance=0.8 if qualified else 0.25,
+        confidence=conf,
+        layer_value=layer_val,
+        tags=[
+            "m55_fuse", f"m55_img:{img_id}", f"verdict:{verdict}",
+            "m55_confirmed" if confirmed else "m55_unconfirmed",
+        ],
+        semantic_coordinates={
+            "kind": "multimodal_verdict",
+            "image_id": img_id,
+            "clauses": clauses,
+        },
+        state_attributes={
+            "kind": "multimodal_verdict",
+            "image_id": img_id,
+            "verdict": verdict,
+            "score": score,
+            "align": align,
+            "confirmed": confirmed,
+            "qualified": qualified,
+            "rejected": verdict == "REJECT",
+            "note": fused.get("note", ""),
+        },
+        entity_id=img_id,
+    )
+    store.add_node(node)
+    return {
+        "node_id": nid,
+        "image_id": img_id,
+        "fused": fused,
+        "confirmed": confirmed,
+        "qualified": qualified,
+    }
+
+
+def bridge_perceive_and_record(store_or_engine, net: HexHierNet, lat: np.ndarray,
+                               text: Optional[str] = None,
+                               image_id: str = "img_0",
+                               exist_mult: float = 1.15,
+                               p_threshold: float = 0.25,
+                               min_margin: float = 0.03,
+                               n_expected: Optional[int] = None,
+                               time_window: Tuple[float, float] = (0.0, 1e9),
+                               timestamp: Optional[float] = None,
+                               calibrated_cards: Optional[Dict] = None) -> Dict:
+    """一站式执行感知条件卡灌入，并在给出描述时回写图文四态判定。"""
+    ingested = ingest_perception_cards(
+        store_or_engine, net, lat, image_id=image_id, exist_mult=exist_mult,
+        p_threshold=p_threshold, min_margin=min_margin, time_window=time_window,
+        timestamp=timestamp, calibrated_cards=calibrated_cards,
+    )
+    fusion_res = None
+    if text is not None:
+        fusion_res = record_multimodal_verdict(
+            store_or_engine, net, lat, text, image_id=image_id,
+            n_expected=n_expected, time_window=time_window, timestamp=timestamp,
+        )
+    return {"ingested": ingested, "fusion": fusion_res}
+
+
+def _parse_visual_question(question: str) -> Dict:
+    shape = next((SHAPE_WORDS[w] for w in SHAPE_WORDS if w in question), None)
+    color = next((COLOR_WORDS[w] for w in COLOR_WORDS if w in question), None)
+    pos = next((POS_WORDS[w] for w in POS_WORDS if w in question), None)
+    if any(k in question for k in ("有没有", "是否有", "存在", "吗")):
+        intent = "exists"
+    elif any(k in question for k in ("在哪里", "在哪", "什么位置", "哪个位置", "位置")):
+        intent = "where"
+    else:
+        intent = "what"
+    return {"shape": shape, "color": color, "pos": pos, "intent": intent}
+
+
+def _node_matches_scope(node, image_id: Optional[str], time_at: Optional[float]) -> bool:
+    sem = getattr(node, "semantic_coordinates", None) or {}
+    tags = set(getattr(node, "tags", None) or [])
+    if image_id is not None:
+        if sem.get("image_id") != image_id and f"m55_img:{image_id}" not in tags:
+            return False
+    if time_at is not None:
+        cs = getattr(node, "condition_space", None)
+        tw = getattr(cs, "time_window", None)
+        if not tw or len(tw) != 2 or not (float(tw[0]) <= time_at <= float(tw[1])):
+            return False
+    return True
+
+
+def query_visual_memory(store_or_engine, question: str,
+                        image_id: Optional[str] = None,
+                        allow_unconfirmed: bool = False,
+                        time_at: Optional[float] = None) -> Dict:
+    """M5.5 ③：桥上白箱视觉问答——只从认知图条件节点检索并用感知词回答。
+
+    绝不偷读像素或真值标签；默认过滤 REJECT / BLINDSPOT 冲突或未确认记录。
+    """
+    store = _resolve_store(store_or_engine)
+    q = _validate_nonempty_str(question, "question")
+    if image_id is not None:
+        image_id = _validate_nonempty_str(image_id, "image_id")
+    if not isinstance(allow_unconfirmed, bool):
+        raise ValueError(f"allow_unconfirmed 须为 bool，实得 {allow_unconfirmed!r}")
+    if time_at is not None:
+        time_at = _validate_finite_num(time_at, "time_at")
+
+    parsed = _parse_visual_question(q)
+    card_nodes = store.get_nodes_by_tag("m55_card", limit=200)
+    fuse_nodes = store.get_nodes_by_tag("m55_fuse", limit=200)
+
+    rejected_filtered = 0
+    verdicts: List[Dict] = []
+    for fn in fuse_nodes:
+        if not _node_matches_scope(fn, image_id, time_at):
+            continue
+        st = getattr(fn, "state_attributes", None) or {}
+        v = st.get("verdict", "")
+        qualified = bool(st.get("qualified", v in ("ACCEPT", "DEFER")))
+        if not qualified and not allow_unconfirmed:
+            rejected_filtered += 1
+        verdicts.append({
+            "node_id": fn.id,
+            "image_id": st.get("image_id"),
+            "verdict": v,
+            "score": st.get("score"),
+            "align": st.get("align"),
+            "qualified": qualified,
+            "content": fn.content,
+        })
+
+    matches: List[Dict] = []
+    for cn in card_nodes:
+        if not _node_matches_scope(cn, image_id, time_at):
+            continue
+        st = getattr(cn, "state_attributes", None) or {}
+        sem = getattr(cn, "semantic_coordinates", None) or {}
+        cv = st.get("card_verdict", "BLINDSPOT")
+        qualified = bool(st.get("qualified", cv in ("ACCEPT", "DEFER")))
+        if not qualified and not allow_unconfirmed:
+            rejected_filtered += 1
+            continue
+        pos = sem.get("pos")
+        shape = sem.get("shape")
+        color = sem.get("color")
+        if parsed["pos"] is not None and pos != parsed["pos"]:
+            continue
+        if parsed["shape"] is not None and shape != parsed["shape"]:
+            continue
+        if parsed["color"] is not None and color != parsed["color"]:
+            continue
+        matches.append({
+            "node_id": cn.id,
+            "image_id": sem.get("image_id"),
+            "pos": pos,
+            "pos_cn": POS_CN.get(pos, pos),
+            "shape": shape,
+            "shape_cn": SHAPE_CN.get(shape, shape),
+            "color": color,
+            "color_cn": COLOR_CN.get(color, color),
+            "obj": sem.get("obj"),
+            "conf": st.get("conf"),
+            "margin": st.get("margin"),
+            "p_threshold": st.get("p_threshold"),
+            "card_verdict": cv,
+            "qualified": qualified,
+        })
+
+    matches.sort(key=lambda m: (-(m["conf"] or 0.0), m["pos"] or ""))
+    phrases = [f"{m['pos_cn']}有{m['color_cn']}{m['shape_cn']}" for m in matches]
+    found = len(matches) > 0
+
+    if parsed["intent"] == "where":
+        if found:
+            locs = "、".join(dict.fromkeys(m["pos_cn"] for m in matches))
+            answer = f"在{locs}（" + "，".join(phrases) + "）"
+        else:
+            answer = "未检出已确认目标位置"
+    elif parsed["intent"] == "exists":
+        if found:
+            answer = "有：" + "，".join(phrases)
+        else:
+            suffix = f"（已过滤 {rejected_filtered} 条冲突/未确认记录）" if rejected_filtered else ""
+            answer = "没有已确认匹配物体" + suffix
+    else:
+        if found:
+            answer = "，".join(phrases)
+        else:
+            suffix = f"（已过滤 {rejected_filtered} 条冲突/未确认记录）" if rejected_filtered else ""
+            answer = "未检出已确认物体" + suffix
+
+    return {
+        "answer": answer,
+        "found": found,
+        "matches": matches,
+        "verdicts": verdicts,
+        "rejected_filtered": rejected_filtered,
+        "query_parsed": parsed,
+    }
