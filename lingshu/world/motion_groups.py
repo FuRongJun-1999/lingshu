@@ -39,7 +39,22 @@ actual 恒为 False，不写回观测历史。高度取已观测锚点的 y 加�
 from __future__ import annotations
 
 import hashlib
+import json
 import math
+
+
+def _finite_position(pos, eid, source: str) -> tuple:
+    """Convert a shape-checked position to finite floats."""
+    try:
+        x, y, z = float(pos[0]), float(pos[1]), float(pos[2])
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("%s[%r] 位置坐标必须为有限数值" % (source, eid)) from exc
+    if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+        for axis, value in enumerate((x, y, z)):
+            if not math.isfinite(value):
+                raise ValueError("%s[%r] 位置坐标[%d] 必须为有限数值：%r"
+                                 % (source, eid, axis, value))
+    return x, y, z
 
 
 def _records(history, window: int) -> list:
@@ -64,19 +79,31 @@ def _records(history, window: int) -> list:
 
 
 def _frames(records) -> dict:
-    """把记录展成 tick 到 {eid: (x, y, z)} 的观测帧。只收真实出现的观测。"""
+    """把形状已校验记录展成有限坐标的 tick 观测帧。"""
     frames = {}
     for _record in records:
         frame = frames.setdefault(_record["tick"], {})
         for eid, pos in _record["entities"].items():
-            frame[eid] = (float(pos[0]), float(pos[1]), float(pos[2]))
+            # y 不参与移动判据，但会写入组模型的高度偏移。
+            frame[eid] = _finite_position(pos, eid, "entities")
     return frames
 
 
 def _group_id(members: list) -> str:
-    """组标识只由成员集合决定，与观测顺序、窗口无关。"""
-    digest = hashlib.sha1("|".join(members).encode("utf-8")).hexdigest()
-    return "mg_" + digest[:12]
+    """组标识只由成员集合决定，与观测顺序、窗口无关。
+
+    普通名称保留已有标识；名称含分隔符时用 JSON 数组编码与独立 v2 前缀，
+    避免不同成员划分或旧格式名称恰好拼成 JSON 时产生确定性别名。
+    这不是鉴权标识，也不承诺截断哈希不存在一般碰撞。
+    """
+    if any("|" in eid for eid in members):
+        encoded = json.dumps(members, ensure_ascii=True, separators=(",", ":"))
+        prefix = "mg_v2_"
+    else:
+        encoded = "|".join(members)
+        prefix = "mg_"
+    digest = hashlib.sha1(encoded.encode("utf-8")).hexdigest()
+    return prefix + digest[:12]
 
 
 def _pair_evidence(frames, ticks, a, b, tol_pos, min_samples, min_speed):
@@ -316,6 +343,7 @@ def predict_group_members(group: dict, observed: dict, tick=None) -> dict:
                                "group_id": group["group_id"]}
         return {"tick": tick, "group_id": group["group_id"],
                 "predictions": predictions, "unresolved": unresolved}
+    anchors = {eid: _finite_position(observed[eid], eid, "observed") for eid in visible}
     tol_pos = float(group["evidence"]["tol_pos"])
     # _fit_group 的偏移按六位小数保存；两成员各一份偏移相减，每轴至多
     # 1e-6 的舍入差，二维范数至多 sqrt(2)*1e-6。此预算只补偿序列化精度。
@@ -323,8 +351,8 @@ def predict_group_members(group: dict, observed: dict, tick=None) -> dict:
     for index, first in enumerate(visible):
         for second in visible[index + 1:]:
             expected = _offset_between(group, base, first, second)
-            actual = (float(observed[second][0]) - float(observed[first][0]),
-                      float(observed[second][2]) - float(observed[first][2]))
+            actual = (anchors[second][0] - anchors[first][0],
+                      anchors[second][2] - anchors[first][2])
             drift = math.hypot(actual[0] - expected[0], actual[1] - expected[2])
             if drift > limit:
                 for eid in missing:
@@ -337,7 +365,7 @@ def predict_group_members(group: dict, observed: dict, tick=None) -> dict:
                 return {"tick": tick, "group_id": group["group_id"],
                         "predictions": predictions, "unresolved": unresolved}
     anchor = base if base in observed else visible[0]
-    anchor_pos = [float(value) for value in observed[anchor]]
+    anchor_pos = anchors[anchor]
     offset_tick = group["window"]["end_tick"]
     gap = tick - offset_tick if isinstance(tick, int) and not isinstance(tick, bool) else None
     for eid in missing:
