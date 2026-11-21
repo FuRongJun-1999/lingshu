@@ -32,9 +32,8 @@
    —— 用户要的"物理运动预测动画"。**为什么走旁路而不是改 spec.py**：
       `spec.py` 是冻结契约（四条产线共用），加一个 `kind` 必须由 Lead 改；
       本产线先用 `motions=` 把能力做出来，并把"要给 spec 加的字段"结论回报给 Lead。
-      （`motions` 也可以直接写在 spec 顶层的 `"motions"` 键里：`spec.py` 的
-        `normalize_spec` 只挑它认识的键，会把 `motions` **静默丢掉** ——
-        所以本模块在 normalize **之前**先把它取出来，这一点在返回值与报告里都写明了。）
+      （`motions` 也可以直接写在 spec 顶层的 `"motions"` 键里；本模块先读取该扩展，
+        再从副本中摘出它，将其余字段交给冻结的 `spec.py` 严格校验。）
 
 ✅ 解析真值对照：`projectile_truth()` / `spring_truth()` / `pendulum_truth()`
    给闭式量（顶点高度 / 落点 / 飞行时间 / 阻尼周期 / 精确椭圆周期），
@@ -163,7 +162,10 @@ def normalize(spec):
     故这里先把 tuple 深转回 list 再交给 `normalize_spec`；校验完整性一点没少
     （`normalize_spec` 仍然从头校验每个字段）。
     """
-    return _spec.normalize_spec(_tuples_to_lists(spec), _copy=True)
+    geometry_spec = _tuples_to_lists(spec)
+    if isinstance(geometry_spec, dict):
+        geometry_spec.pop("motions", None)
+    return _spec.normalize_spec(geometry_spec, _copy=True)
 
 
 # --------------------------------------------------------------------- 四元数
@@ -769,7 +771,7 @@ def eval_at(spec, frame, motions=None):
 
     纯函数：同一 (spec, frame) 恒得同一结果；不依赖 Blender / numpy / 时钟 / 文件系统。
     `motions` 给物理运动声明（`projectile` / `spring` / `pendulum`）；不给则读 spec 顶层的
-    `"motions"` 键（该键不在冻结契约里，`normalize_spec` 会静默丢掉，故在此**先取后规范化**）。
+    `"motions"` 键（该键由动画层从副本摘出，冻结的规格校验仍严格拒绝其他未知字段）。
     """
     mm = _motions_by_link(spec, motions)
     nspec = normalize(spec)

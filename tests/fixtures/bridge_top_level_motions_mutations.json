@@ -1,0 +1,83 @@
+{
+  "guard": "tests/test_bridge_top_level_motions.py",
+  "total": 30,
+  "sources": [
+    "bridges/blender/wm_bridge/__init__.py",
+    "bridges/blender/wm_bridge/factory/anim/eval.py",
+    "bridges/blender/wm_bridge/factory/geo/spec.py",
+    "bridges/blender/wm_bridge/geom.py",
+    "bridges/blender/wm_bridge/oracle.py",
+    "bridges/blender/wm_bridge/contract.py"
+  ],
+  "baseline_failures": [
+    "test_top_level_motions_match_explicit_public_path[eval_at-spring]",
+    "test_top_level_motions_match_explicit_public_path[eval_at-pendulum]",
+    "test_top_level_motions_match_explicit_public_path[eval_at-projectile]",
+    "test_top_level_motions_match_explicit_public_path[eval_link-spring]",
+    "test_top_level_motions_match_explicit_public_path[eval_link-pendulum]",
+    "test_top_level_motions_match_explicit_public_path[eval_link-projectile]",
+    "test_top_level_motions_match_explicit_public_path[eval_frames-spring]",
+    "test_top_level_motions_match_explicit_public_path[eval_frames-pendulum]",
+    "test_top_level_motions_match_explicit_public_path[eval_frames-projectile]",
+    "test_top_level_motions_match_explicit_public_path[to_oracle_records-spring]",
+    "test_top_level_motions_match_explicit_public_path[to_oracle_records-pendulum]",
+    "test_top_level_motions_match_explicit_public_path[to_oracle_records-projectile]",
+    "test_top_level_motions_match_explicit_public_path[tracks_to_oracle_doc-spring]",
+    "test_top_level_motions_match_explicit_public_path[tracks_to_oracle_doc-pendulum]",
+    "test_top_level_motions_match_explicit_public_path[tracks_to_oracle_doc-projectile]",
+    "test_normalize_removes_only_animation_extension",
+    "test_normalize_does_not_modify_caller_input",
+    "test_explicit_motions_override_top_level_declarations",
+    "test_explicit_empty_motions_disable_top_level_motion",
+    "test_optional_empty_top_level_motion_keeps_static_behavior[none]",
+    "test_optional_empty_top_level_motion_keeps_static_behavior[empty]",
+    "test_explicit_parameter_can_override_invalid_top_level_motion",
+    "test_normalized_tuple_ease_keys_remain_accepted"
+  ],
+  "mutations": [
+    {
+      "name": "keep_extension_in_geometry_spec",
+      "test": "test_top_level_motions_match_explicit_public_path[eval_at-spring]",
+      "assertion": "top-level motions must reach animation evaluation",
+      "changes": [{"file": "bridges/blender/wm_bridge/factory/anim/eval.py", "method": "normalize",
+                   "old": "geometry_spec.pop(\"motions\", None)", "new": "geometry_spec.get(\"motions\", None)"}]
+    },
+    {
+      "name": "remove_extension_from_caller_input",
+      "test": "test_normalize_does_not_modify_caller_input",
+      "assertion": "normalization must not remove motions from caller input",
+      "changes": [{"file": "bridges/blender/wm_bridge/factory/anim/eval.py", "method": "normalize",
+                   "old": "geometry_spec = _tuples_to_lists(spec)", "new": "geometry_spec = spec"}]
+    },
+    {
+      "name": "silently_drop_all_unknown_root_keys",
+      "test": "test_other_unknown_keys_remain_rejected[root]",
+      "assertion": "DID NOT RAISE",
+      "changes": [{"file": "bridges/blender/wm_bridge/factory/anim/eval.py", "method": "normalize",
+                   "old": "geometry_spec.pop(\"motions\", None)",
+                   "new": "geometry_spec = {k: v for k, v in geometry_spec.items() if k in _spec._KEYS_SPEC}"}]
+    },
+    {
+      "name": "top_level_overrides_explicit_parameter",
+      "test": "test_explicit_motions_override_top_level_declarations",
+      "assertion": "explicit motions must take precedence over top-level declarations",
+      "changes": [{"file": "bridges/blender/wm_bridge/factory/anim/eval.py", "method": "_motions_by_link",
+                   "old": "if motions is None and isinstance(spec_raw, dict):", "new": "if isinstance(spec_raw, dict):"}]
+    },
+    {
+      "name": "empty_parameter_falls_back_to_top_level",
+      "test": "test_explicit_empty_motions_disable_top_level_motion",
+      "assertion": "explicit empty motions must disable top-level fallback",
+      "changes": [{"file": "bridges/blender/wm_bridge/factory/anim/eval.py", "method": "_motions_by_link",
+                   "old": "if motions is None and isinstance(spec_raw, dict):", "new": "if not motions and isinstance(spec_raw, dict):"}]
+    },
+    {
+      "name": "strip_nested_motions_keys",
+      "test": "test_other_unknown_keys_remain_rejected[scene]",
+      "assertion": "DID NOT RAISE",
+      "changes": [{"file": "bridges/blender/wm_bridge/factory/anim/eval.py", "method": "_tuples_to_lists",
+                   "old": "return {k: _tuples_to_lists(v) for k, v in obj.items()}",
+                   "new": "return {k: _tuples_to_lists(v) for k, v in obj.items() if k != \"motions\"}"}]
+    }
+  ]
+}
