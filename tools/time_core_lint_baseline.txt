@@ -13,6 +13,10 @@
 # 其余 21 条不变；条目总数保持 23 → 23，没有新增或删除 lint 豁免。
 # #607 形态守卫仍保持 physics R3=11 / R1=9。
 
+# ── 2026-11-21 OBB/SAT 与主线单摆修复合并 ──
+# 保留主线单摆实现与 SAT 面法线修复；后段 6 条已登记物理形态仅行号后移 7 行。
+# 逐条核对主线与合并后对应代码内容一致；条目总数 23 → 23，没有新增豁免。
+
 lingshu/core/activation.py:355:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:379:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:407:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
@@ -28,11 +32,11 @@ lingshu/world/physics.py:599:R3    # 既有：由 --update-baseline 机械登记
 lingshu/world/physics.py:600:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:602:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:1011:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2554:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2557:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2559:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2575:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2697:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2739:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2561:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2564:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2566:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2582:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2704:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2746:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/shade_paint.py:215:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/stable_lease.py:302:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
