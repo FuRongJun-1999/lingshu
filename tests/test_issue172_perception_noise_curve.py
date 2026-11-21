@@ -23,6 +23,7 @@
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -35,9 +36,24 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-import bench.perception_noise_curve as pnc  # noqa: E402
-
 BENCH_PATH = REPO / "bench" / "perception_noise_curve.py"
+_BENCH_MODULE = "_lingshu_perception_noise_curve_acceptance"
+
+
+def _load_benchmark():
+    """Use this test's canonical file after product imports remove implicit cwd."""
+    if _BENCH_MODULE in sys.modules:
+        return sys.modules[_BENCH_MODULE]
+    spec = importlib.util.spec_from_file_location(_BENCH_MODULE, BENCH_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError("cannot load the canonical perception noise benchmark")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_BENCH_MODULE] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+pnc = _load_benchmark()
 RUN_TIMEOUT = 120
 
 
@@ -173,11 +189,9 @@ repo = os.getcwd()
 if repo not in sys.path:
     sys.path.insert(0, repo)
 mut_path, test_path = sys.argv[1], sys.argv[2]
-import bench  # noqa: F401
-spec = importlib.util.spec_from_file_location("bench.perception_noise_curve", mut_path)
+spec = importlib.util.spec_from_file_location("_lingshu_perception_noise_curve_acceptance", mut_path)
 mod = importlib.util.module_from_spec(spec)
-sys.modules["bench.perception_noise_curve"] = mod
-bench.perception_noise_curve = mod
+sys.modules["_lingshu_perception_noise_curve_acceptance"] = mod
 spec.loader.exec_module(mod)
 tspec = importlib.util.spec_from_file_location("test_issue172_pnc", test_path)
 tgt = importlib.util.module_from_spec(tspec)
