@@ -15,8 +15,9 @@ def test_verifier_selftest_exercises_false_green_rejection():
     assert set(report["rejected"]) == {
         "missing_result", "empty_result", "omitted_guard", "skipped_guard", "failed_guard",
         "missing_baseline", "tampered_baseline",
+        "clean_source_commit_changed",
     }
-    assert report["positive_controls_passed"] == 2
+    assert report["positive_controls_passed"] == 3
 
 
 def test_zero_exit_style_summary_does_not_replace_executed_cases(tmp_path):

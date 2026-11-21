@@ -128,13 +128,24 @@ def validate_junit(path, required):
             "junit_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
+def source_identity(repo):
+    return {"head": git(repo, "rev-parse", "HEAD").decode().strip(),
+            "tree": git(repo, "rev-parse", "HEAD^{tree}").decode().strip(),
+            "status": git(repo, "status", "--porcelain").decode().strip()}
+
+
+def verify_source_identity(before, after):
+    require(set(before) == {"head", "tree", "status"} and before == after
+            and not before["status"], "source commit, tree or status changed during acceptance")
+
+
 class Runner:
     def __init__(self, repo, output):
         self.repo, self.output = repo, output
         self.env = clean_env()
-        self.report = {"source_head": git(repo, "rev-parse", "HEAD").decode().strip(),
-                       "source_tree": git(repo, "rev-parse", "HEAD^{tree}").decode().strip(),
-                       "source_status": git(repo, "status", "--porcelain").decode().strip(),
+        initial = source_identity(repo)
+        self.report = {"source_head": initial["head"], "source_tree": initial["tree"],
+                       "source_status": initial["status"],
                        "python": sys.version, "steps": [], "accepted": False}
         self.save()
         require(not self.report["source_status"], "acceptance requires a clean committed source checkout")
@@ -185,7 +196,10 @@ def export_baseline(runner, fetch):
         expected[name.decode("utf-8")] = oid
     require("lingshu/world/physics.py" in expected, "pinned tree has no physics implementation")
     archive = runner.output / "physics-baseline.tar"
-    runner.run("archive-baseline", ["git", "-C", str(runner.repo), "archive", "--format=tar",
+    # Archive conversion otherwise inherits Windows core.autocrlf. The verifier
+    # deliberately compares exact pinned blobs, including their original LF bytes.
+    runner.run("archive-baseline", ["git", "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+                                   "-C", str(runner.repo), "archive", "--format=tar",
                                    "--output=" + str(archive), BASE_COMMIT, "lingshu"])
     destination = runner.output / "physics-baseline"
     destination.mkdir()
@@ -266,6 +280,8 @@ def wheel(runner):
         runner.run("install-" + phase, [str(interpreter), "-I", "-X", "utf8", "-m", "pip",
                                         "install", *(["--no-deps"] if phase == "light" else []), spec],
                    cwd=runner.output)
+        runner.run("pip-check-" + phase, [str(interpreter), "-I", "-X", "utf8", "-m", "pip", "check"],
+                   cwd=runner.output)
         result = runner.output / (phase + "-journey")
         result.mkdir()
         runner.run("probe-" + phase, [str(interpreter), "-I", "-B", "-X", "utf8", str(probe),
@@ -321,7 +337,15 @@ def selftest():
                 raise AcceptanceError("false baseline selftest was accepted: " + name)
         target.write_bytes(b"pinned source\n")
         require(verify_baseline_export(baseline, expected)["files"] == 1, "positive baseline selftest failed")
-    return {"rejected": rejected, "positive_controls_passed": 2}
+        before = {"head": "first", "tree": "first-tree", "status": ""}
+        verify_source_identity(before, dict(before))
+        try:
+            verify_source_identity(before, {"head": "second", "tree": "second-tree", "status": ""})
+        except AcceptanceError:
+            rejected.append("clean_source_commit_changed")
+        else:
+            raise AcceptanceError("clean source commit change was accepted")
+    return {"rejected": rejected, "positive_controls_passed": 3}
 
 
 def main():
@@ -347,8 +371,10 @@ def main():
             contracts(runner, args.fetch_baseline)
         else:
             wheel(runner)
-        require(git(repo, "status", "--porcelain").decode().strip() == runner.report["source_status"],
-                "source status changed during acceptance")
+        before = {key: runner.report["source_" + key] for key in ("head", "tree", "status")}
+        after = source_identity(repo)
+        runner.report.update(source_after=after, source_unchanged=(before == after))
+        verify_source_identity(before, after)
         runner.report["accepted"] = True
     except (AcceptanceError, subprocess.SubprocessError, OSError, ValueError) as exc:
         runner.report["error"] = str(exc)

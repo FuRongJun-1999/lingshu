@@ -25,7 +25,8 @@ from outside source, for `all` and each of its five views. The JSON checks retai
 scope, provenance, qualification, world state and causal ordering. Full acceptance
 also checks the 500 × 500 PNG pixels and consumes the installed NN asset through
 `load_consolidated` and a constant-field convolution oracle. Product imports must
-come from the new environment's site-packages. No editable install or inherited
+come from the new environment's site-packages. Each fresh environment must also
+pass `pip check`. No editable install or inherited
 `PYTHONPATH` is accepted for either wheel environment.
 
 ## Local reproduction
@@ -48,7 +49,9 @@ evidence is preserved. The driver retains raw command stdout/stderr, exact sourc
 head, authenticated baseline records, JUnit, wheel identity, CLI JSON and PNG.
 It fails on missing/empty results, skipped or missing required cases, changed
 baseline files, failed commands or unverified installed-package output. Its
-selftest exercises seven rejected evidence cases and two positive controls.
+selftest exercises eight rejected evidence cases and three positive controls,
+including a clean source commit change. Both the Git commit/tree and working-tree
+status must agree before and after acceptance.
 
 These are synthetic acceptance journeys, not accuracy measurements on real camera
 assets or production memories. The workflow needs public package indexes and,
