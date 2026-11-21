@@ -425,6 +425,7 @@ def fit_circular(samples, up=1):
 
     水平：(x, z) 用 **Kåsa 代数圆拟合**（对 `x²+z² + D x + E z + F = 0` 做 LS）；
     沿 up：一次多项式（匀速漂移）。角速度由**累积转角 / 时间**给出（unwrap，不用 atan2 差值）。
+    两项时间拟合均以首样本为基准；残差按三维坐标 RMS 计，与其他候选模型同口径。
     """
     ts = _check_samples(samples, 3)
     up = _axis_of(up)
@@ -459,20 +460,23 @@ def fit_circular(samples, up=1):
             acc += dth
         prev = th
         ang.append(acc)
-    cw = polyfit(ts, ang, 1)
-    cu = polyfit(ts, [float(s[1][up]) for s in samples], 1)
+    tau = [t - ts[0] for t in ts]
+    ys = [float(s[1][up]) for s in samples]
+    cw = polyfit(tau, ang, 1)
+    cu = polyfit(tau, ys, 1)
     # ⚠ 相位基准：`ang[0]` 恒为 0（unwrap 的起点），必须把**首个样本的真实极角**加回来；
     #    否则预测圆整体转了一个初相 ⇒ 半径/ω 都对，残差却是 2r·sin(Δθ/2)（实测 rms 0.42）。
     ang0 = math.atan2(zs[0] - cz, xs[0] - cx)
     resid = 0.0
-    for t, x, z, _an in zip(ts, xs, zs, ang):
-        th = ang0 + cw[1] * (t - ts[0])
+    for t, x, z, y in zip(tau, xs, zs, ys):
+        th = ang0 + cw[1] * t
         resid += (cx + r * math.cos(th) - x) ** 2 + (cz + r * math.sin(th) - z) ** 2
+        resid += (cu[0] + cu[1] * t - y) ** 2
     return {"schema": PHYSICS_SCHEMA, "kind": "circular", "up": up,
             "center": _unhv((cx, cz), cu[0], up), "radius": r,
             "omega": cw[1], "theta0": ang0,
             "v_up": cu[1], "t_ref": ts[0],
-            "residual_rms": math.sqrt(resid / (2.0 * n)), "n_samples": n}
+            "residual_rms": math.sqrt(resid / (3.0 * n)), "n_samples": n}
 
 
 _FITTERS = {
@@ -1690,6 +1694,9 @@ def _box_frame(box):
         if n <= _EPS:
             raise PhysicsError("box['rot'] 出现零行（不是基），得到 %r" % (r,))
         axes.append(vscale(v, 1.0 / n))          # 归一化后再投影（对非正交矩阵也自洽）
+    volume = abs(vdot(axes[0], vcross(axes[1], axes[2])))
+    if volume <= _SAT_DEGENERATE:
+        raise PhysicsError("box['rot'] 三行须线性无关，组成三维箱体基")
     return center, half, tuple(axes)
 
 
@@ -1792,7 +1799,7 @@ def obb_of(points=None, *, aabb=None, rot=None):
     """点集（或已有 AABB）+ 旋转 ⇒ OBB `{"center","half","rot"}`。
 
     `rot=None` ⇒ 轴对齐（等价 AABB）。`rot` 为 3x3 行主序矩阵（行 = 箱体局部轴）。
-    ⚠ 边界：SAT 对**凸**体成立；行不要求严格正交，但会**归一化**后使用（见 `_box_frame`）。
+    ⚠ 边界：SAT 对**凸**体成立；行不要求严格正交，但须线性无关、张成三维，再归一化使用。
     """
     if aabb is None:
         if points is None:
@@ -1813,12 +1820,16 @@ def obb_of(points=None, *, aabb=None, rot=None):
 
 
 def _sat_axes(A, B):
-    """SAT 候选轴：A 的 3 轴 + B 的 3 轴 + 9 条叉积轴（退化轴跳过），全部单位化。"""
+    """SAT 候选轴：两箱各 3 个面法线 + 9 条边叉积轴，全部单位化。"""
     _ca, _ha, ax = A
     _cb, _hb, bx = B
     out = []
-    for v in list(ax) + list(bx):
-        out.append(v)                                   # 已是单位轴
+    for edges in (ax, bx):
+        for i, j in ((1, 2), (2, 0), (0, 1)):
+            normal = vcross(edges[i], edges[j])
+            length = vlen(normal)
+            if length > _SAT_DEGENERATE:
+                out.append(vscale(normal, 1.0 / length))
     for u in ax:
         for v in bx:
             c = vcross(u, v)
@@ -1853,7 +1864,7 @@ def _sat_report(a, b):
 
 
 def obb_overlap(a, b):
-    """OBB 相交判定：**SAT 15 轴**（A 的 3 / B 的 3 / 9 条叉积轴；叉积退化跳过）。
+    """凸平行六面体相交判定：**SAT 15 轴**（每箱 3 个面法线 + 9 条边叉积轴）。
 
     ⚠ 凸体才有分离轴定理；OBB 是凸的 ⇒ 成立。**贴着不算重叠**（`sep >= 0` ⇒ 不相交）。
     """

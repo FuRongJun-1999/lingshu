@@ -45,9 +45,9 @@ from typing import Dict, List, Optional, Tuple
 from .identity import validate_history
 
 try:
-    from .world_model import UnifiedWorldModel, WMNode, WMEdge
+    from .world_model import UnifiedWorldModel, WMNode, WMEdge, coord_frame_status
 except ImportError:
-    from .world_model import UnifiedWorldModel, WMNode, WMEdge
+    from .world_model import UnifiedWorldModel, WMNode, WMEdge, coord_frame_status
 try:
     from .scene_simulator import SceneSimulator
 except ImportError:
@@ -726,6 +726,19 @@ class SimulationLoop:
             candidate = copy(self.wm)
             candidate.set_identity_policy(state["identity_policy"]
                                           if schema == "lingshu.world-prior.v2" else "legacy")
+            # 坐标口径决定恢复经验的位置怎样参与后续预测，是逐模型的运行语义。
+            # 旧 v1/v2 载荷没有此字段；保留候选模型按当前进程默认初始化得到的
+            # 口径（通常 bounded，也可能来自显式环境声明），不把旧格式解释成一次
+            # 显式 bounded 重置。新载荷在候选上走同一公开校验器，非法声明在发布前失败。
+            coord_frame = state.get("coord_frame")
+            if "coord_frame" in state:
+                if not isinstance(coord_frame, dict) or "frame" not in coord_frame:
+                    raise ValueError("世界经验坐标口径必须包含有效的 frame 对象")
+                candidate.set_coord_frame(
+                    coord_frame["frame"],
+                    boundary=coord_frame.get("boundary"),
+                    quantize=coord_frame.get("quantize"),
+                )
             if schema == "lingshu.world-prior.v2":
                 validate_history(state["history"], state["nodes"])
             candidate.nodes = {eid: WMNode(**{**node, "pos": tuple(node["pos"])})
@@ -895,6 +908,13 @@ class SimulationLoop:
                  "relation_history": self.wm.relation_history,
                  "hypotheses": confirmed, "rolling_rates": self._rolling_rates,
                  "last_verification": self.wm._compare}
+        # 只序列化显式逐模型覆盖。未覆盖时，接收端应使用自己的有效模块默认；
+        # 这也使旧 v1/v2 归档缺该字段时继续按各自进程的默认策略工作。
+        coord_override = getattr(self.wm, "_wm_coord", None)
+        if isinstance(coord_override, dict):
+            coord = coord_frame_status(self.wm)
+            state["coord_frame"] = {key: coord[key]
+                                    for key in ("frame", "boundary", "quantize")}
         if qualified:
             state["identity_policy"] = self.wm.identity_policy
         lines += ["", "## 可恢复的观测经验（内部先验）", "```lingshu-world",
