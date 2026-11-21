@@ -1,0 +1,29 @@
+{
+  "guard": "tests/test_hexgrid_odd_r_nearest_cell.py",
+  "total": 4,
+  "sources": [
+    "lingshu/nn/hex_cnn.py"
+  ],
+  "baseline_failures": [
+    "test_odd_r_checks_both_neighbor_rows_for_nearest_center",
+    "test_odd_r_pixel_lookup_matches_brute_force_nearby_centers[0.5-origin0]",
+    "test_odd_r_pixel_lookup_matches_brute_force_nearby_centers[1.0-origin1]",
+    "test_odd_r_pixel_lookup_matches_brute_force_nearby_centers[2.75-origin2]"
+  ],
+  "mutations": [
+    {
+      "name": "round_y_to_one_row_only",
+      "test": "test_odd_r_checks_both_neighbor_rows_for_nearest_center",
+      "assertion": "nearest odd-r center is in the adjacent staggered row",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_cnn.py",
+          "class": "HexGrid",
+          "method": "pixel_to_cell",
+          "old": "for r in sorted({row_lo, row_hi}):",
+          "new": "for r in (int(round(rf)),):"
+        }
+      ]
+    }
+  ]
+}

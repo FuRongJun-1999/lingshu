@@ -1,0 +1,293 @@
+{
+  "guard": "tests/test_dynamics_command_reanchor.py",
+  "total": 61,
+  "sources": [
+    "lingshu/world/scene_simulator.py"
+  ],
+  "baseline_failures": [
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.05-east]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.05-west]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.05-north]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.05-south]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.05-stay]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.1-east]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.1-west]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.1-north]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.1-south]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-0.1-stay]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-1.0-east]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-1.0-west]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-1.0-north]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-1.0-south]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[0-1.0-stay]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.05-east]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.05-west]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.05-north]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.05-south]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.05-stay]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.1-east]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.1-west]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.1-north]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.1-south]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-0.1-stay]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-1.0-east]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-1.0-west]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-1.0-north]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-1.0-south]",
+    "test_command_then_resume_uses_real_endpoint_and_velocity[1-1.0-stay]",
+    "test_command_reanchors_at_current_time_without_changing_public_velocity",
+    "test_first_command_initializes_a_physics_anchor_without_a_blank_resume_tick",
+    "test_multiple_translation_direction_changes_and_stay_stop",
+    "test_stay_stops_prior_velocity_including_the_vertical_component",
+    "test_clamping_uses_actual_displacement_for_the_physics_velocity",
+    "test_quantized_zero_move_stops_instead_of_using_the_requested_step",
+    "test_real_seven_layer_actuator_then_clear_does_not_undo_execution",
+    "test_unrepresentable_physical_command_velocity_does_not_poison_the_entity",
+    "test_entity_environment_override_is_used_when_physics_resumes[dict]",
+    "test_entity_environment_override_is_used_when_physics_resumes[environment]",
+    "test_command_preserves_custom_metadata_without_mutating_the_previous_state",
+    "test_unrepresentable_command_reference_time_does_not_poison_the_entity",
+    "test_command_resume_respects_the_gravity_axis[0]",
+    "test_command_resume_respects_the_gravity_axis[1]",
+    "test_command_resume_respects_the_gravity_axis[2]",
+    "test_stay_resumes_quadratic_drag_from_rest_instead_of_the_old_momentum",
+    "test_stay_resumes_the_existing_slope_model_from_its_new_anchor[False]",
+    "test_stay_resumes_the_existing_slope_model_from_its_new_anchor[True]",
+    "test_continuous_position_uses_unrounded_actual_endpoint_displacement[east-2.0-64.003-66.0-19.97]",
+    "test_continuous_position_uses_unrounded_actual_endpoint_displacement[west-2.0-64.003-62.0--20.03]",
+    "test_continuous_position_uses_unrounded_actual_endpoint_displacement[east-0.001-64.003-64.0--0.03]",
+    "test_continuous_position_uses_unrounded_actual_endpoint_displacement[west-0.001-64.007-64.01-0.03]",
+    "test_continuous_position_uses_unrounded_actual_endpoint_displacement[east-5.0-127.499-127.5-0.01]",
+    "test_continuous_position_uses_unrounded_actual_endpoint_displacement[west-5.0-0.501-0.5--0.01]",
+    "test_continuous_z_endpoint_uses_its_actual_displacement[north-2.0-62.01--19.97]",
+    "test_continuous_z_endpoint_uses_its_actual_displacement[south-2.0-66.01-20.03]",
+    "test_continuous_z_endpoint_uses_its_actual_displacement[north-0.001-64.01-0.03]",
+    "test_stay_quantizes_continuous_position_without_creating_new_momentum"
+  ],
+  "mutations": [
+    {
+      "name": "omit_command_reanchor",
+      "test": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_POSITION_ANCHOR_STALE",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "        if state is not None:\n            e.attrs[\"physics_state\"] = state",
+          "new": "        if False:\n            e.attrs[\"physics_state\"] = state"
+        }
+      ]
+    },
+    {
+      "name": "keep_old_position_anchor",
+      "test": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_POSITION_ANCHOR_STALE",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            state.update(p0=pos, v0=v0, t_ref=t_ref)",
+          "new": "            state.update(p0=old, v0=v0, t_ref=t_ref)"
+        }
+      ]
+    },
+    {
+      "name": "forget_physical_velocity_units",
+      "test": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_VELOCITY_NOT_PER_SECOND",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            v0 = ((0.0, 0.0, 0.0) if cmd[\"action\"] == \"stay\" else\n                  tuple((pos[i] - old[i]) / env.dt for i in range(3)))",
+          "new": "            v0 = tuple(velocity)"
+        }
+      ]
+    },
+    {
+      "name": "keep_old_reference_time",
+      "test": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PHYSICS_TIME_ANCHOR_STALE",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            t_ref = self.tick_count * env.dt",
+          "new": "            t_ref = 0.0"
+        }
+      ]
+    },
+    {
+      "name": "seed_from_requested_step",
+      "test": "test_clamping_uses_actual_displacement_for_the_physics_velocity",
+      "assertion": "COMMAND_REQUESTED_STEP_REPLACED_ACTUAL_MOTION",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            v0 = ((0.0, 0.0, 0.0) if cmd[\"action\"] == \"stay\" else\n                  tuple((pos[i] - old[i]) / env.dt for i in range(3)))",
+          "new": "            v0 = (dx * step / env.dt, 0.0, dz * step / env.dt)"
+        }
+      ]
+    },
+    {
+      "name": "skip_first_command_seed",
+      "test": "test_first_command_initializes_a_physics_anchor_without_a_blank_resume_tick",
+      "assertion": "COMMAND_FIRST_RESUME_WAS_ONLY_A_SEED",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "        if e.attrs.get(\"physics\") == PHYSICS_DYNAMICS:",
+          "new": "        if e.attrs.get(\"physics\") == PHYSICS_DYNAMICS and \"physics_state\" in e.attrs:"
+        }
+      ]
+    },
+    {
+      "name": "keep_old_momentum_on_stay",
+      "test": "test_stay_stops_prior_velocity_including_the_vertical_component",
+      "assertion": "COMMAND_STAY_DID_NOT_STOP_PRIOR_MOMENTUM",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            v0 = ((0.0, 0.0, 0.0) if cmd[\"action\"] == \"stay\" else\n                  tuple((pos[i] - old[i]) / env.dt for i in range(3)))",
+          "new": "            v0 = (tuple(v / env.dt for v in velocity) if any(velocity)\n                  else e.attrs[\"physics_state\"][\"v0\"])"
+        }
+      ]
+    },
+    {
+      "name": "drop_physics_parameters",
+      "test": "test_command_preserves_custom_metadata_without_mutating_the_previous_state",
+      "assertion": "COMMAND_DROPPED_STATE_METADATA",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            state = dict(e.attrs.get(\"physics_state\") or {})",
+          "new": "            state = {}"
+        }
+      ]
+    },
+    {
+      "name": "mutate_previous_state",
+      "test": "test_command_preserves_custom_metadata_without_mutating_the_previous_state",
+      "assertion": "COMMAND_MUTATED_OLD_STATE",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            state = dict(e.attrs.get(\"physics_state\") or {})",
+          "new": "            state = e.attrs.get(\"physics_state\") or {}"
+        }
+      ]
+    },
+    {
+      "name": "skip_velocity_finite_guard",
+      "test": "test_unrepresentable_physical_command_velocity_does_not_poison_the_entity",
+      "assertion": "DID NOT RAISE",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            if not all(math.isfinite(v) for v in (*v0, t_ref)):",
+          "new": "            if not math.isfinite(t_ref):"
+        }
+      ]
+    },
+    {
+      "name": "skip_time_finite_guard",
+      "test": "test_unrepresentable_command_reference_time_does_not_poison_the_entity",
+      "assertion": "DID NOT RAISE",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            if not all(math.isfinite(v) for v in (*v0, t_ref)):",
+          "new": "            if not all(math.isfinite(v) for v in v0):"
+        }
+      ]
+    },
+    {
+      "name": "drop_known_parameters",
+      "test": "test_command_preserves_custom_metadata_without_mutating_the_previous_state",
+      "assertion": "COMMAND_DROPPED_PHYSICAL_PARAMETERS",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            state.update(p0=pos, v0=v0, t_ref=t_ref)",
+          "new": "            for name in (\"beta\", \"radius\", \"mass\"):\n                state.pop(name, None)\n            state.update(p0=pos, v0=v0, t_ref=t_ref)"
+        }
+      ]
+    },
+    {
+      "name": "expose_physical_velocity_on_command_tick",
+      "test": "test_command_reanchors_at_current_time_without_changing_public_velocity",
+      "assertion": "COMMAND_PUBLIC_VELOCITY_UNITS_CHANGED",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "        e.velocity = velocity",
+          "new": "        e.velocity = v0 if state is not None else velocity"
+        }
+      ]
+    },
+    {
+      "name": "reanchor_kinematic_commands",
+      "test": "test_kinematic_commands_keep_their_existing_state_and_units",
+      "assertion": "COMMAND_CHANGED_KINEMATIC_STATE",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "        if e.attrs.get(\"physics\") == PHYSICS_DYNAMICS:",
+          "new": "        if True:"
+        }
+      ]
+    },
+    {
+      "name": "round_endpoint_displacement_again",
+      "test": "test_continuous_position_uses_unrounded_actual_endpoint_displacement[east-2.0-64.003-66.0-19.97]",
+      "assertion": "COMMAND_REROUNDED_CONTINUOUS_DISPLACEMENT",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            v0 = ((0.0, 0.0, 0.0) if cmd[\"action\"] == \"stay\" else\n                  tuple((pos[i] - old[i]) / env.dt for i in range(3)))",
+          "new": "            v0 = tuple(v / env.dt for v in velocity)"
+        }
+      ]
+    },
+    {
+      "name": "turn_stay_quantization_into_momentum",
+      "test": "test_stay_quantizes_continuous_position_without_creating_new_momentum",
+      "assertion": "COMMAND_STAY_QUANTIZATION_CREATED_MOMENTUM",
+      "changes": [
+        {
+          "file": "lingshu/world/scene_simulator.py",
+          "class": "SceneSimulator",
+          "method": "_apply_command",
+          "old": "            v0 = ((0.0, 0.0, 0.0) if cmd[\"action\"] == \"stay\" else\n                  tuple((pos[i] - old[i]) / env.dt for i in range(3)))",
+          "new": "            v0 = tuple((pos[i] - old[i]) / env.dt for i in range(3))"
+        }
+      ]
+    }
+  ]
+}
