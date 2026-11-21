@@ -1,0 +1,82 @@
+{
+  "guard": "tests/test_pendulum_release_solution.py",
+  "total": 6,
+  "sources": [
+    "lingshu/world/physics.py"
+  ],
+  "baseline_failures": [
+    "test_release_solution_matches_independent_rk4",
+    "test_explicit_large_domain_uses_the_correct_release_formula",
+    "test_release_initial_symmetry_and_near_separatrix_quarter_periods",
+    "test_near_separatrix_matches_frozen_80_digit_reference",
+    "test_truth_period_retains_near_separatrix_complementary_modulus",
+    "test_nonfinite_and_out_of_domain_arguments_fail_explicitly"
+  ],
+  "mutations": [
+    {
+      "name": "restore_rounded_modulus_truth_period",
+      "test": "test_truth_period_retains_near_separatrix_complementary_modulus",
+      "assertion": "truth period must preserve complementary modulus",
+      "changes": [
+        {
+          "file": "lingshu/world/physics.py",
+          "method": "pendulum_truth",
+          "old": "exact = 2.0 * math.pi / (w * agm(1.0, math.cos(0.5 * theta0)))",
+          "new": "exact = 4.0 * elliptic_k(k) / w"
+        }
+      ]
+    },
+    {
+      "name": "restore_unstable_asin_descent",
+      "test": "test_near_separatrix_matches_frozen_80_digit_reference",
+      "assertion": "stable descent must match high-precision reference",
+      "changes": [
+        {
+          "file": "lingshu/world/physics.py",
+          "method": "pendulum_exact_angle",
+          "old": "phi = _jacobi_amplitude(shifted_u, k, complementary, stable=True)",
+          "new": "phi = _jacobi_amplitude(shifted_u, k, complementary, stable=False)"
+        }
+      ]
+    },
+    {
+      "name": "restore_unshifted_cn_release",
+      "test": "test_explicit_large_domain_uses_the_correct_release_formula",
+      "assertion": "release formula must include the dn factor",
+      "changes": [
+        {
+          "file": "lingshu/world/physics.py",
+          "method": "pendulum_exact_angle",
+          "old": "return direction * 2.0 * math.atan2(k * sn, math.hypot(complementary, k * cn))",
+          "new": "return 2.0 * math.asin(k * jacobi_cn(u, k))"
+        }
+      ]
+    },
+    {
+      "name": "reconstruct_complement_from_rounded_k",
+      "test": "test_release_initial_symmetry_and_near_separatrix_quarter_periods",
+      "assertion": "complementary modulus must retain near-separatrix precision",
+      "changes": [
+        {
+          "file": "lingshu/world/physics.py",
+          "method": "pendulum_exact_angle",
+          "old": "complementary = math.cos(0.5 * theta0)",
+          "new": "complementary = math.sqrt(max(0.0, 1.0 - k * k))"
+        }
+      ]
+    },
+    {
+      "name": "skip_absolute_physical_domain",
+      "test": "test_nonfinite_and_out_of_domain_arguments_fail_explicitly",
+      "assertion": "DID NOT RAISE",
+      "changes": [
+        {
+          "file": "lingshu/world/physics.py",
+          "method": "pendulum_exact_angle",
+          "old": "if abs(theta0) >= math.pi:",
+          "new": "if False:"
+        }
+      ]
+    }
+  ]
+}

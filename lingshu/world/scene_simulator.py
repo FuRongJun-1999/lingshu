@@ -1151,9 +1151,27 @@ class SceneSimulator:
             return None
         # ⚠ 边界语义收归 coord_contract.clamp_xz（与自主行为分支同一算式，逐字一致）
         nx, nz = clamp_xz(nx, nz, self.world.size)
-        e.pos = (round(nx, 2), old[1], round(nz, 2))
-        e.velocity = (round(e.pos[0] - old[0], 2), 0.0,
-                      round(e.pos[2] - old[2], 2))
+        pos = (round(nx, 2), old[1], round(nz, 2))
+        velocity = (round(pos[0] - old[0], 2), 0.0,
+                    round(pos[2] - old[2], 2))
+        state = None
+        if e.attrs.get("physics") == PHYSICS_DYNAMICS:
+            # 受控 tick 与动力学互斥，但其真实位移必须成为恢复动力学的初值。
+            # 对外仍保留两位小数的位移/tick；simulate 的 v0 用未再次取整的
+            # 真实端点差/秒（原位置可能来自连续物理轨迹）。stay 是显式停止，
+            # 既有坐标取整造成的微小重定位不生成动量。
+            env = self._env_for(e)
+            v0 = ((0.0, 0.0, 0.0) if cmd["action"] == "stay" else
+                  tuple((pos[i] - old[i]) / env.dt for i in range(3)))
+            t_ref = self.tick_count * env.dt
+            if not all(math.isfinite(v) for v in (*v0, t_ref)):
+                raise ValueError("受控动力学初值含非有限速度或时刻")
+            state = dict(e.attrs.get("physics_state") or {})
+            state.update(p0=pos, v0=v0, t_ref=t_ref)
+        e.pos = pos
+        e.velocity = velocity
+        if state is not None:
+            e.attrs["physics_state"] = state
         # 决策记录（behavior_log）与自主行为同面：含动作名/步长，便于外部审计
         # 「这一 tick 谁被指挥动了」。stay 也留一条（动作确实被决策并执行，
         # 只是位移为 0）——而 actions 计数仍只数**实际位移**（#193-A 口径）。
