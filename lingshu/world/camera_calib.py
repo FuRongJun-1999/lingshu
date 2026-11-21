@@ -69,6 +69,36 @@ class SpecError(ValueError):
     """相机规格不自洽（缺字段 / 数值非法 / 冗余校验不通过）。"""
 
 
+def _require_finite(name: str, val: Any, *, positive: bool = False,
+                    min_val: Optional[float] = None,
+                    max_val: Optional[float] = None) -> float:
+    """校验有限实数且拒绝 bool（#196 census）。"""
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise SpecError("%s: 必须是有限数值，收到 %r" % (name, val))
+    try:
+        f = float(val)
+    except OverflowError as exc:
+        raise SpecError("%s: 数值溢出，收到 %r" % (name, val)) from exc
+    if not math.isfinite(f):
+        raise SpecError("%s: 必须是有限数值，收到 %r" % (name, val))
+    if positive and f <= 0.0:
+        raise SpecError("%s: 必须为正，收到 %r" % (name, val))
+    if min_val is not None and f < min_val:
+        raise SpecError("%s: 不能小于 %r，收到 %r" % (name, min_val, val))
+    if max_val is not None and f > max_val:
+        raise SpecError("%s: 不能大于 %r，收到 %r" % (name, max_val, val))
+    return f
+
+
+def _require_positive_int(name: str, val: Any) -> int:
+    """校验正整数且拒绝 bool / 非整数浮点（#196 census）。"""
+    if isinstance(val, bool) or not isinstance(val, int):
+        raise SpecError("%s: 必须是正整数，收到 %r" % (name, val))
+    if val <= 0:
+        raise SpecError("%s: 必须为正，收到 %r" % (name, val))
+    return val
+
+
 def sensor_dims(name: str) -> Tuple[float, float]:
     """画幅名 → (宽 mm, 高 mm)。未知画幅**抛出**并列出已知项（不猜）。"""
     key = name.strip().lower()
@@ -81,48 +111,46 @@ def sensor_dims(name: str) -> Tuple[float, float]:
 
 def crop_factor(sensor_width_mm: float, sensor_height_mm: float) -> float:
     """裁剪系数 = 全画幅对角线 / 传感器对角线。全画幅恰好 1.0（可作自检）。"""
-    if sensor_width_mm <= 0 or sensor_height_mm <= 0:
-        raise SpecError("crop_factor: 传感器尺寸必须为正")
-    return FULLFRAME_DIAG_MM / math.hypot(sensor_width_mm, sensor_height_mm)
+    w = _require_finite("crop_factor.sensor_width_mm", sensor_width_mm, positive=True)
+    h = _require_finite("crop_factor.sensor_height_mm", sensor_height_mm, positive=True)
+    return FULLFRAME_DIAG_MM / math.hypot(w, h)
 
 
 def focal35(lens_mm: float, sensor_width_mm: float,
             sensor_height_mm: float) -> float:
     """35mm 等效焦距。"""
-    if lens_mm <= 0:
-        raise SpecError("focal35: 焦距必须为正")
-    return lens_mm * crop_factor(sensor_width_mm, sensor_height_mm)
+    lens = _require_finite("focal35.lens_mm", lens_mm, positive=True)
+    return lens * crop_factor(sensor_width_mm, sensor_height_mm)
 
 
 def hfov_deg(lens_mm: float, sensor_width_mm: float) -> float:
     """水平视场角（度）。"""
-    if lens_mm <= 0 or sensor_width_mm <= 0:
-        raise SpecError("hfov_deg: 焦距与传感器宽度必须为正")
-    return 2.0 * math.degrees(math.atan(sensor_width_mm / (2.0 * lens_mm)))
+    lens = _require_finite("hfov_deg.lens_mm", lens_mm, positive=True)
+    w = _require_finite("hfov_deg.sensor_width_mm", sensor_width_mm, positive=True)
+    return 2.0 * math.degrees(math.atan(w / (2.0 * lens)))
 
 
 def vfov_deg(lens_mm: float, sensor_height_mm: float) -> float:
     """垂直视场角（度）。"""
-    if lens_mm <= 0 or sensor_height_mm <= 0:
-        raise SpecError("vfov_deg: 焦距与传感器高度必须为正")
-    return 2.0 * math.degrees(math.atan(sensor_height_mm / (2.0 * lens_mm)))
+    lens = _require_finite("vfov_deg.lens_mm", lens_mm, positive=True)
+    h = _require_finite("vfov_deg.sensor_height_mm", sensor_height_mm, positive=True)
+    return 2.0 * math.degrees(math.atan(h / (2.0 * lens)))
 
 
 def lens_from_focal35(f35: float, sensor_width_mm: float,
                       sensor_height_mm: float) -> float:
     """35mm 等效焦距 → 实际焦距(mm)（反解，用于与厂商数据对照）。"""
-    if f35 <= 0:
-        raise SpecError("lens_from_focal35: 等效焦距必须为正")
-    return f35 / crop_factor(sensor_width_mm, sensor_height_mm)
+    f35_val = _require_finite("lens_from_focal35.f35", f35, positive=True)
+    return f35_val / crop_factor(sensor_width_mm, sensor_height_mm)
 
 
 def lens_from_hfov(hfov: float, sensor_width_mm: float) -> float:
     """水平视场角 → 焦距(mm)（反解）。"""
-    if not (0.0 < hfov < 180.0):
+    fov = _require_finite("lens_from_hfov.hfov", hfov)
+    if not (0.0 < fov < 180.0):
         raise SpecError("lens_from_hfov: FOV 必须在 (0,180) 度，得到 %r" % (hfov,))
-    if sensor_width_mm <= 0:
-        raise SpecError("lens_from_hfov: 传感器宽度必须为正")
-    return sensor_width_mm / (2.0 * math.tan(math.radians(hfov) / 2.0))
+    w = _require_finite("lens_from_hfov.sensor_width_mm", sensor_width_mm, positive=True)
+    return w / (2.0 * math.tan(math.radians(fov) / 2.0))
 
 
 @dataclass
@@ -176,12 +204,15 @@ class CameraIntrinsics:
         if miss:
             raise SpecError("CameraIntrinsics.from_dict: 缺字段 %s" % (", ".join(miss),))
         return cls(
-            fx=float(doc["fx"]), fy=float(doc["fy"]),
-            cx=float(doc["cx"]), cy=float(doc["cy"]),
-            width=int(doc["width"]), height=int(doc["height"]),
-            sensor_w_mm=float(doc["sensor_w_mm"]),
-            sensor_h_mm=float(doc["sensor_h_mm"]),
-            lens_mm=float(doc["lens_mm"]),
+            fx=_require_finite("CameraIntrinsics.from_dict.fx", doc["fx"], positive=True),
+            fy=_require_finite("CameraIntrinsics.from_dict.fy", doc["fy"], positive=True),
+            cx=_require_finite("CameraIntrinsics.from_dict.cx", doc["cx"]),
+            cy=_require_finite("CameraIntrinsics.from_dict.cy", doc["cy"]),
+            width=_require_positive_int("CameraIntrinsics.from_dict.width", doc["width"]),
+            height=_require_positive_int("CameraIntrinsics.from_dict.height", doc["height"]),
+            sensor_w_mm=_require_finite("CameraIntrinsics.from_dict.sensor_w_mm", doc["sensor_w_mm"], min_val=0.0),
+            sensor_h_mm=_require_finite("CameraIntrinsics.from_dict.sensor_h_mm", doc["sensor_h_mm"], min_val=0.0),
+            lens_mm=_require_finite("CameraIntrinsics.from_dict.lens_mm", doc["lens_mm"], min_val=0.0),
             sensor=str(doc.get("sensor", "unknown")),
             principal_point_source=str(
                 doc.get("principal_point_source", "center_assumption")),
@@ -201,22 +232,21 @@ def intrinsics_from_spec(*, sensor: str, lens_mm: float,
     `principal_point_source`，不让调用方误以为它是观测量。
     """
     w_mm, h_mm = sensor_dims(sensor)
-    res_x, res_y = int(resolution[0]), int(resolution[1])
-    if res_x <= 0 or res_y <= 0:
-        raise SpecError("intrinsics_from_spec: 分辨率必须为正")
-    if lens_mm <= 0:
-        raise SpecError("intrinsics_from_spec: 焦距必须为正")
-    fpx = lens_mm / w_mm * res_x
+    res_x = _require_positive_int("intrinsics_from_spec.resolution[0]", resolution[0])
+    res_y = _require_positive_int("intrinsics_from_spec.resolution[1]", resolution[1])
+    lens_val = _require_finite("intrinsics_from_spec.lens_mm", lens_mm, positive=True)
+    fpx = lens_val / w_mm * res_x
     if principal_point is None:
         cx, cy = res_x / 2.0, res_y / 2.0
         src = "center_assumption"
     else:
-        cx, cy = float(principal_point[0]), float(principal_point[1])
+        cx = _require_finite("intrinsics_from_spec.principal_point[0]", principal_point[0])
+        cy = _require_finite("intrinsics_from_spec.principal_point[1]", principal_point[1])
         src = "given"
     return CameraIntrinsics(fx=fpx, fy=fpx, cx=cx, cy=cy,
                             width=res_x, height=res_y,
                             sensor_w_mm=w_mm, sensor_h_mm=h_mm,
-                            lens_mm=lens_mm, sensor=sensor.strip().lower(),
+                            lens_mm=lens_val, sensor=sensor.strip().lower(),
                             principal_point_source=src)
 
 
@@ -232,28 +262,39 @@ def cross_check(*, sensor: str, lens_mm: float, resolution: Tuple[int, int],
     两个 claim 都缺时**抛出**——没有独立口径就没有校验，不能返回"通过"。
     """
     w_mm, h_mm = sensor_dims(sensor)
+    lens_val = _require_finite("cross_check.lens_mm", lens_mm, positive=True)
+    tol_val = _require_finite("cross_check.tol_frac", tol_frac, min_val=0.0, max_val=1.0)
+    _require_positive_int("cross_check.resolution[0]", resolution[0])
+    _require_positive_int("cross_check.resolution[1]", resolution[1])
     if claim_focal35_mm is None and claim_hfov_deg is None:
         raise SpecError("cross_check: 至少给 claim_focal35_mm 或 claim_hfov_deg 之一"
                         "（没有独立口径就无法校验）")
-    for _cname, _cv in (("claim_focal35_mm", claim_focal35_mm),
-                        ("claim_hfov_deg", claim_hfov_deg)):
-        if _cv is not None and _cv == 0:
-            raise SpecError("cross_check: %s 为 0（厂商字段缺失常填 0）——"
-                            "无独立口径可校验" % _cname)
-    derived_f35 = focal35(lens_mm, w_mm, h_mm)
-    derived_fov = hfov_deg(lens_mm, w_mm)
+    if claim_focal35_mm is not None:
+        if not isinstance(claim_focal35_mm, bool) and claim_focal35_mm == 0:
+            raise SpecError("cross_check: claim_focal35_mm 为 0（厂商字段缺失常填 0）——"
+                            "无独立口径可校验")
+        claim_focal35_mm = _require_finite("cross_check.claim_focal35_mm", claim_focal35_mm, positive=True)
+    if claim_hfov_deg is not None:
+        if not isinstance(claim_hfov_deg, bool) and claim_hfov_deg == 0:
+            raise SpecError("cross_check: claim_hfov_deg 为 0（厂商字段缺失常填 0）——"
+                            "无独立口径可校验")
+        claim_hfov_deg = _require_finite("cross_check.claim_hfov_deg", claim_hfov_deg)
+        if not (0.0 < claim_hfov_deg < 180.0):
+            raise SpecError("cross_check: claim_hfov_deg 必须在 (0,180) 度，收到 %r" % (claim_hfov_deg,))
+    derived_f35 = focal35(lens_val, w_mm, h_mm)
+    derived_fov = hfov_deg(lens_val, w_mm)
     out: Dict[str, Any] = {
         "sensor": sensor.strip().lower(), "sensor_mm": [w_mm, h_mm],
-        "lens_mm": lens_mm,
+        "lens_mm": lens_val,
         "derived_focal35_mm": round(derived_f35, 4),
         "derived_hfov_deg": round(derived_fov, 4),
         "crop_factor": round(crop_factor(w_mm, h_mm), 4),
-        "tol_frac": tol_frac, "checks": [],
+        "tol_frac": tol_val, "checks": [],
     }
     ok = True
     if claim_focal35_mm is not None:
         rel = abs(derived_f35 - claim_focal35_mm) / claim_focal35_mm
-        passed = rel <= tol_frac
+        passed = rel <= tol_val
         ok = ok and passed
         back = lens_from_focal35(claim_focal35_mm, w_mm, h_mm)
         out["checks"].append({
@@ -261,11 +302,11 @@ def cross_check(*, sensor: str, lens_mm: float, resolution: Tuple[int, int],
             "derived": round(derived_f35, 4), "rel_err": round(rel, 6),
             "pass": passed,
             "back_solved_lens_mm": round(back, 6),
-            "back_solve_rel_err": round(abs(back - lens_mm) / lens_mm, 6),
+            "back_solve_rel_err": round(abs(back - lens_val) / lens_val, 6),
         })
     if claim_hfov_deg is not None:
         rel = abs(derived_fov - claim_hfov_deg) / claim_hfov_deg
-        passed = rel <= tol_frac
+        passed = rel <= tol_val
         ok = ok and passed
         back = lens_from_hfov(claim_hfov_deg, w_mm)
         out["checks"].append({
@@ -273,11 +314,11 @@ def cross_check(*, sensor: str, lens_mm: float, resolution: Tuple[int, int],
             "derived": round(derived_fov, 4), "rel_err": round(rel, 6),
             "pass": passed,
             "back_solved_lens_mm": round(back, 6),
-            "back_solve_rel_err": round(abs(back - lens_mm) / lens_mm, 6),
+            "back_solve_rel_err": round(abs(back - lens_val) / lens_val, 6),
         })
     out["pass"] = ok
     out["intrinsics"] = intrinsics_from_spec(
-        sensor=sensor, lens_mm=lens_mm, resolution=resolution).to_dict()
+        sensor=sensor, lens_mm=lens_val, resolution=resolution).to_dict()
     return out
 
 
