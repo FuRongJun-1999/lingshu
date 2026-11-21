@@ -24,6 +24,68 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 
+def _require_finite(value, name: str) -> float:
+    """校验数值为有限实数（拒绝 bool / 非数值 / NaN / ±inf；#196）。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("%s 必须是有限实数，收到 %r" % (name, value))
+    try:
+        v = float(value)
+    except OverflowError as exc:
+        raise ValueError("%s 超出浮点范围，收到 %r" % (name, value)) from exc
+    if not math.isfinite(v):
+        raise ValueError("%s 必须是有限实数（拒绝 NaN/±inf），收到 %r" % (name, value))
+    return v
+
+
+def _validate_camera(cam) -> None:
+    """校验相机位姿字段均为有限实数且 fov_deg ∈ (0, 180)（#196）。"""
+    if cam is None:
+        raise ValueError("camera 不能为 None")
+    for attr in ("cx", "cy", "cz", "fov_deg", "yaw", "pitch", "roll"):
+        if not hasattr(cam, attr):
+            raise ValueError("camera 缺少字段 %r" % attr)
+        _require_finite(getattr(cam, attr), "camera.%s" % attr)
+    fov = float(cam.fov_deg)
+    if not (0.0 < fov < 180.0):
+        raise ValueError("camera.fov_deg 必须落在 (0, 180)，收到 %r" % (cam.fov_deg,))
+    if not hasattr(cam, "basis"):
+        raise ValueError("camera 缺少字段 'basis'")
+    if cam.basis is not None:
+        if not isinstance(cam.basis, (tuple, list)) or len(cam.basis) != 3:
+            raise ValueError("camera.basis 必须是 3x3 序列，收到 %r" % (cam.basis,))
+        for r_idx, row in enumerate(cam.basis):
+            if not isinstance(row, (tuple, list)) or len(row) != 3:
+                raise ValueError("camera.basis[%d] 必须是长度为 3 的序列，收到 %r" % (r_idx, row))
+            for c_idx, val in enumerate(row):
+                _require_finite(val, "camera.basis[%d][%d]" % (r_idx, c_idx))
+    if not callable(getattr(cam, "focal", None)):
+        raise ValueError("camera 必须提供可调用的 focal(screen_w) 方法")
+
+
+def _validate_view_obs(obs) -> None:
+    """校验单视角观测的相机、屏幕中心与画布尺寸（#196）。"""
+    if obs is None:
+        raise ValueError("obs 不能为 None")
+    for attr in ("camera", "bbox_center", "screen_w", "screen_h"):
+        if not hasattr(obs, attr):
+            raise ValueError("obs 缺少字段 %r" % attr)
+    _validate_camera(obs.camera)
+    bc = obs.bbox_center
+    if not isinstance(bc, (tuple, list)) or len(bc) != 2:
+        raise ValueError("bbox_center 必须是长度为 2 的有限实数序列，收到 %r" % (bc,))
+    _require_finite(bc[0], "bbox_center[0]")
+    _require_finite(bc[1], "bbox_center[1]")
+    sw = _require_finite(obs.screen_w, "screen_w")
+    sh = _require_finite(obs.screen_h, "screen_h")
+    if sw <= 0.0:
+        raise ValueError("screen_w 必须 > 0，收到 %r" % (obs.screen_w,))
+    if sh <= 0.0:
+        raise ValueError("screen_h 必须 > 0，收到 %r" % (obs.screen_h,))
+    f = _require_finite(obs.camera.focal(obs.screen_w), "camera.focal")
+    if f <= 0.0:
+        raise ValueError("camera.focal 必须 > 0，收到 %r" % (f,))
+
+
 @dataclass
 class ViewObs:
     """单视角观测：相机位姿 + 2D bbox 中心 + 焦距。"""
@@ -31,6 +93,9 @@ class ViewObs:
     bbox_center: Tuple[float, float]  # 屏幕 2D 中心 (sx, sy)
     screen_w: float
     screen_h: float
+
+    def __post_init__(self) -> None:
+        _validate_view_obs(self)
 
 
 def _ray_from_view(obs: ViewObs) -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
@@ -42,6 +107,7 @@ def _ray_from_view(obs: ViewObs) -> Tuple[Tuple[float, float, float], Tuple[floa
     的 docstring）。只抄 yaw/pitch 的旧实现把 basis 相机当成「相机在原点、无旋转
     朝 +z 看」：多视角融合对这些相机不收敛或收敛到错位（#710）。
     """
+    _validate_view_obs(obs)
     cam = obs.camera
     f = cam.focal(obs.screen_w)
     # 屏幕坐标 → 相机坐标（针孔逆投影，深度=1）
@@ -74,10 +140,14 @@ def _ray_from_view(obs: ViewObs) -> Tuple[Tuple[float, float, float], Tuple[floa
         z2 = cx_cam * sin_y + z1 * cos_y
         direction = (x2, y1, z2)
     norm = math.sqrt(sum(d * d for d in direction))
+    if not math.isfinite(norm):
+        raise ValueError("射线方向模长为非有限值：%r" % (direction,))
     if norm < 1e-9:
         direction = (0, 0, 1)
     else:
         direction = tuple(d / norm for d in direction)
+    if not (all(math.isfinite(v) for v in origin) and all(math.isfinite(v) for v in direction)):
+        raise ValueError("射线包含非有限分量：origin=%r direction=%r" % (origin, direction))
     return origin, direction
 
 
@@ -104,18 +174,27 @@ def _triangulate(views: List[ViewObs]) -> Optional[Tuple[float, float, float]]:
             b[i] += sum(M[i][j] * o[j] for j in range(3))
     # 高斯消元解 3x3
     try:
-        return _solve3x3(A, b)
+        res = _solve3x3(A, b)
     except ZeroDivisionError:
         return None
+    if res is None or not all(math.isfinite(c) for c in res):
+        return None
+    return res
 
 
 def _solve3x3(A: List[List[float]], b: List[float]) -> Optional[Tuple[float, float, float]]:
-    """高斯消元解 3x3 线性方程组。奇异 → None。"""
+    """高斯消元解 3x3 线性方程组。奇异或含非有限值 → None。"""
     M = [A[i][:] + [b[i]] for i in range(3)]
+    for row in M:
+        if any(isinstance(v, bool) or not isinstance(v, (int, float))
+               or not math.isfinite(float(v)) for v in row):
+            return None
     for col in range(3):
         # 选主元
+        if any(not math.isfinite(M[r][col]) for r in range(col, 3)):
+            return None
         pivot = max(range(col, 3), key=lambda r: abs(M[r][col]))
-        if abs(M[pivot][col]) < 1e-12:
+        if not math.isfinite(M[pivot][col]) or abs(M[pivot][col]) < 1e-12:
             return None
         M[col], M[pivot] = M[pivot], M[col]
         pv = M[col][col]
@@ -127,7 +206,10 @@ def _solve3x3(A: List[List[float]], b: List[float]) -> Optional[Tuple[float, flo
                 if abs(factor) > 1e-12:
                     for j in range(4):
                         M[r][j] -= factor * M[col][j]
-    return (M[0][3], M[1][3], M[2][3])
+    res = (M[0][3], M[1][3], M[2][3])
+    if not all(math.isfinite(v) for v in res):
+        return None
+    return res
 
 
 def _point_ray_dist(p: Tuple[float, float, float],
@@ -153,6 +235,26 @@ def _ray_ray_dist(o1: Tuple[float, float, float], d1: Tuple[float, float, float]
     return abs(w[0] * n[0] + w[1] * n[1] + w[2] * n[2]) / nn
 
 
+def _validate_observation_args(size, color, confidence, tick) -> None:
+    """校验 add_observation 的元信息与帧号参数（#196）。"""
+    conf = _require_finite(confidence, "confidence")
+    if not (0.0 <= conf <= 1.0):
+        raise ValueError("confidence 必须落在 [0.0, 1.0]，收到 %r" % (confidence,))
+    if not isinstance(size, (tuple, list)) or len(size) != 3:
+        raise ValueError("size 必须是长度为 3 的正有限实数序列，收到 %r" % (size,))
+    for idx, s in enumerate(size):
+        if _require_finite(s, "size[%d]" % idx) <= 0.0:
+            raise ValueError("size[%d] 必须 > 0，收到 %r" % (idx, s))
+    if not isinstance(color, (tuple, list)) or len(color) != 3:
+        raise ValueError("color 必须是长度为 3 的 [0, 255] 实数序列，收到 %r" % (color,))
+    for idx, c in enumerate(color):
+        cv = _require_finite(c, "color[%d]" % idx)
+        if not (0.0 <= cv <= 255.0):
+            raise ValueError("color[%d] 必须落在 [0, 255]，收到 %r" % (idx, c))
+    if tick is not None:
+        _require_finite(tick, "tick")
+
+
 class MultiViewFusion:
     """多视角融合器：多帧观测 → 3D 位置（三角化 + 时间收敛）。
 
@@ -161,6 +263,8 @@ class MultiViewFusion:
     """
 
     def __init__(self, merge_dist: float = 1.0):
+        if _require_finite(merge_dist, "merge_dist") < 0.0:
+            raise ValueError("merge_dist 必须 >= 0，收到 %r" % (merge_dist,))
         self.merge_dist = merge_dist
         # category -> [ {views, center, size, color, shape}, ... ]（每桶=一个物体）
         self._objects: Dict[str, List[Dict]] = {}
@@ -205,6 +309,8 @@ class MultiViewFusion:
         观测先按 merge_dist 关联到该类别下的某个物体桶，再在桶内三角化——
         同类不同物体各自成桶，互不污染。
         """
+        _validate_view_obs(obs)
+        _validate_observation_args(size, color, confidence, tick)
         if eid:
             tracks = self._objects.setdefault(category, [])
             rec = next((tr for tr in tracks if tr.get("eid") == eid), None)
