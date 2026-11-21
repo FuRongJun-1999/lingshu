@@ -8,12 +8,7 @@ from __future__ import annotations
 
 from importlib import import_module
 
-__all__ = [
-    "darkline", "linework", "AudioPerceptionError", "AudioCodecUnavailable",
-    "analyze_wav", "analyze_audio", "decode_compressed_audio", "ffmpeg_available",
-    "segment_audio_events", "infer_audio_activity_period", "format_audio_summary",
-    "perceive_wav", "perceive_audio_file",
-]
+__all__ = ['darkline', 'linework', 'AudioPerceptionError', 'AudioCodecUnavailable', 'analyze_wav', 'analyze_audio', 'decode_compressed_audio', 'ffmpeg_available', 'segment_audio_events', 'infer_audio_activity_period', 'format_audio_summary', 'perceive_wav', 'perceive_audio_file', 'analyze_image_pixels']
 
 
 def __getattr__(name):
@@ -24,6 +19,8 @@ def __getattr__(name):
                 "infer_audio_activity_period", "format_audio_summary",
                 "perceive_wav", "perceive_audio_file"}:
         return getattr(import_module(".audio", __name__), name)
+    if name == "analyze_image_pixels":
+        return getattr(import_module(".image_stats", __name__), name)
     raise AttributeError("module %r has no attribute %r" % (__name__, name))
 
 

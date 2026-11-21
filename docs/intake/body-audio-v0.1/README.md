@@ -34,6 +34,6 @@
 - 覆盖 8/16/24/32-bit PCM、bytes/bytearray/memoryview 内存输入及无临时文件闭环、立体声满幅样本、损坏/截断输入、时长上限、摘要入 audio 模态及路径不泄漏。
 - 标准库导入子进程显式阻断 numpy/Pillow，验证轻核音频入口不触发图像重依赖。
 - 复跑：python -X utf8 -m pytest tests/test_world_audio_perception.py -q --no-header（含事件画像、FFmpeg mock 边界及真实 MP3 往返）。
-- 身体包烟测：python -X utf8 tools/intake_smoke_min.py --quiet（将包根也计入，当前 90/90）。
+- 身体包烟测：python -X utf8 tools/intake_smoke_min.py --quiet（将包根也计入，合入当前主线后为 91/91（2026-11-21））。
 
 范围不包括 ASR/转写、说话人识别、实时设备采集、网络媒体 URL、原始音频持久化或语义事件分类。

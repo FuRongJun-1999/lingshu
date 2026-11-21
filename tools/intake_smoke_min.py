@@ -40,10 +40,11 @@ import sys
 
 
 def discover() -> list:
-    """发现包根与全部子模块（不含测试件），使冒烟数与 .py 文件计数同口径。"""
+    """发现并返回 lingshu 包根与全部子模块（不含测试件）。"""
     import lingshu
-    return ["lingshu"] + sorted(
-        m.name for m in pkgutil.walk_packages(lingshu.__path__, prefix="lingshu."))
+    # Count the package root itself as well as each discovered submodule.
+    return sorted(["lingshu", *(m.name for m in pkgutil.walk_packages(
+        lingshu.__path__, prefix="lingshu."))])
 
 
 def smoke() -> dict:

@@ -4123,11 +4123,33 @@ class LayeredStore:
         if not math.isfinite(_f) or not (0.0 <= _f <= 1.0):
             raise ValueError("decay factor 必须是 [0, 1] 内的有限值，收到 %r" % (factor,))
         factor = _f
+        if dt == 0.0:
+            return x
         ratio = 1.0 - factor
         if ratio <= 0.0:
             return 0.0
         gamma = -math.log(ratio) / self._DECAY_PERIOD_SECONDS
         return cred(x, 0.0, gamma, dt)
+
+    @staticmethod
+    def _row_decay_dt(created_at, interval_start, now, dt: float) -> float:
+        """Do not age a comparable newborn row before its creation.
+
+        An existing cursor and ``start < created_at <= now`` establish that the
+        row was born during this interval. A first clock tick retains #176's
+        one-period bootstrap. Missing/nonfinite/future timestamps retain the
+        existing interval: injected clocks need not share the creation clock's
+        epoch, so those timestamps do not establish a comparable birth time.
+        """
+        if interval_start is None:
+            return dt
+        try:
+            born = float(created_at)
+        except (TypeError, ValueError, OverflowError):
+            return dt
+        if math.isfinite(born) and interval_start < born <= now:
+            return min(dt, now - born)
+        return dt
 
     @_transactional
     def decay_cycle(self, factor: float = 0.02, min_confidence: float = 0.1, now=None):
@@ -4206,6 +4228,21 @@ class LayeredStore:
         if not math.isfinite(_mc) or not (0.0 <= _mc <= 1.0):
             raise ValueError("min_confidence 必须是 [0, 1] 内的有限值，收到 %r" % (min_confidence,))
         min_confidence = _mc
+        # A whole-store cursor predates rows written between ticks (including
+        # the first writes after downtime). Apply only their post-birth span,
+        # when created_at is comparable with this clock interval. Read before
+        # _decay_dt advances the cursor; the enclosing write transaction keeps
+        # these two reads on the same snapshot. No cursor / now=None preserve
+        # the bootstrap / discrete-step contracts respectively.
+        interval_start = None
+        if now is not None:
+            last = self.get_meta(self._LAST_DECAY_META_KEY).get(self._LAST_DECAY_META_KEY)
+            try:
+                candidate_start = float(last)
+            except (TypeError, ValueError, OverflowError):
+                candidate_start = None
+            if candidate_start is not None and math.isfinite(candidate_start):
+                interval_start = candidate_start
         dt = self._decay_dt(now)
         # #720：本轮逐行容错计数（写路径也刷新一次；语义＝「本次调用跳过的坏行 id」，
         # 与装载面 `_tolerant_nodes` 的刷新口径同名同义）。下方情境段/知识段遇到
@@ -4283,7 +4320,8 @@ class LayeredStore:
                 if row[5] is None or not math.isfinite(conf):
                     conf = 0.0
                 # #176：连续核按流逝时间 dt 演化（dt=周期时 == 旧 cred_step）。
-                new_conf = self._decay_value(conf, factor, dt)
+                row_dt = self._row_decay_dt(edge.created_at, interval_start, now, dt)
+                new_conf = self._decay_value(conf, factor, row_dt)
                 if new_conf < min_confidence:
                     # 低于最小置信度，删除边
                     c.execute("DELETE FROM edges WHERE id=?", (edge.id,))
@@ -4311,10 +4349,10 @@ class LayeredStore:
             # 边界（削掉的判别力）：阈值本体**未改**（仍是 `min_confidence`）；
             # 受保护件仍经 `_is_forget_protected` 跳过（#36 不变）。判别力变化只在
             # 「≤ 阈值的低价值情境节点现在会进入遗忘面」——这正是本件要修的死区。
-            c.execute("SELECT id, importance, tags FROM nodes WHERE layer='context'")
+            c.execute("SELECT id, importance, tags, created_at FROM nodes WHERE layer='context'")
             # #720：本轮逐行容错跳过的坏行 id（两段共用，末尾一次性如实上报）。
             _bad_rows: List[str] = []
-            for nid, imp, _tags in c.fetchall():
+            for nid, imp, _tags, created_at in c.fetchall():
                 # ★优化（本笔）：旧实现传 `self.get_node(nid)` —— 那是
                 # `SELECT * FROM nodes WHERE id=?`（读**整行** + 建 `STNode`），
                 # 每节点一次；而本谓词只用 `tags` 与 `id` 两字段。现由本查询带出
@@ -4343,7 +4381,8 @@ class LayeredStore:
                 if imp is None or not math.isfinite(imp):
                     imp = 0.0
                 # #176：连续核按流逝时间 dt 演化（dt=周期时 == 旧 cred_step）。
-                new_imp = self._decay_value(imp, factor, dt)
+                row_dt = self._row_decay_dt(created_at, interval_start, now, dt)
+                new_imp = self._decay_value(imp, factor, row_dt)
                 if new_imp < min_confidence:
                     # #93：先删边再删节点（外键开启后顺序反了会 FK constraint failed）。
                     # #168：删边经唯一真源（对不可变层对端的边先落审计）
@@ -4365,10 +4404,10 @@ class LayeredStore:
             # ③ 置信度已达上限（1.0）者视为已确证，不衰减；④ 只降 confidence，
             # **不删节点**（知识层不适用情境层的自然遗忘删除）。
             c.execute('''
-                SELECT id, confidence, tags FROM nodes
+                SELECT id, confidence, tags, created_at FROM nodes
                 WHERE layer='knowledge' AND confidence > ? AND confidence < 1.0
             ''', (min_confidence,))
-            for nid, conf, _tags in c.fetchall():
+            for nid, conf, _tags, created_at in c.fetchall():
                 # ★优化（本笔）：与上一段同款——`tags` 由本查询带出，不再逐节点
                 # `get_node`（读整行 + 建 STNode）。
                 # #720：与情境段同款逐行容错——坏 `tags` 此前抛 `JSONDecodeError`
@@ -4384,8 +4423,9 @@ class LayeredStore:
                                              node_id=nid,
                                              tags=_k_tags):
                     continue
+                row_dt = self._row_decay_dt(created_at, interval_start, now, dt)
                 c.execute("UPDATE nodes SET confidence=? WHERE id=?",
-                          (self._decay_value(conf, factor, dt), nid))
+                          (self._decay_value(conf, factor, row_dt), nid))
             if _bad_rows:
                 # #720：与 `_strip_incident_edges` 本轮已记的坏 layer 行**合并**
                 # （同一轮内删边助手也往 `last_skipped_rows` 记账）——不覆盖，避免漏报。
@@ -5298,6 +5338,8 @@ class LayeredStore:
         # 不指参数名。同文件 `search_content` 早有 `"search_content 的 query 必须是
         # 字符串"` 闸（#1396 类型闸族同款纪律），本方法零闸属同族漏网。修法同款
         # fail-loud；空串/纯空白保持既有「列出前 100 张」语义（不改为报错）。
+        # #658 / #1795：与其它检索切片入口一致，None/负数表示全量，0 表示空。
+        limit = _normalize_limit(limit)
         if not isinstance(query, str):
             raise TypeError("search_skills 的 query 必须是字符串，收到 %r"
                             % (type(query).__name__,))
@@ -12791,6 +12833,53 @@ class SpacetimeMemoryEngine:
             if len(self._local_visual_buffer) > self._visual_buffer_max:
                 self._local_visual_buffer = self._local_visual_buffer[-self._visual_buffer_max:]
         return node
+
+    def list_local_visual_frames(self, entity_id: str = None, limit: int = 50) -> List[Dict]:
+        """只读本地帧引用元数据，按摄入顺序倒序；不读取引用文件或访问数据库。
+
+        entity_id 为 None 时选取全部实体，否则精确匹配；过滤后至多返回 limit 项。
+        只校验被选中的记录并构造全新 dict，不复制或暴露原始帧对象。
+        """
+        if self.store._closed:
+            raise sqlite3.ProgrammingError(
+                "LayeredStore 已关闭（close() 已调用）：本实例不可再用于读写。close() 是"
+                "生命周期终点；如需继续使用请新建实例（#660）")
+        if entity_id is not None:
+            if not isinstance(entity_id, str):
+                raise TypeError("list_local_visual_frames 的 entity_id 必须是 str 或 None")
+            if not entity_id.strip():
+                raise ValueError("list_local_visual_frames 的 entity_id 不得为空白")
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise TypeError("list_local_visual_frames 的 limit 必须是 int（非 bool）")
+        if not 0 <= limit <= 200:
+            raise ValueError("list_local_visual_frames 的 limit 必须在 0..200 范围内")
+        if limit == 0:
+            return []
+
+        result = []
+        for record in reversed(self._local_visual_buffer):
+            if not isinstance(record, dict):
+                raise TypeError("本地视觉缓冲记录必须是 dict")
+            if "entity_id" not in record:
+                raise ValueError("本地视觉缓冲记录缺少 entity_id")
+            record_entity_id = record["entity_id"]
+            if entity_id is not None and record_entity_id != entity_id:
+                continue
+            if record_entity_id is not None and not isinstance(record_entity_id, str):
+                raise TypeError("本地视觉缓冲记录的 entity_id 必须是 str 或 None")
+            if "frame_ref" not in record or "ts" not in record:
+                raise ValueError("本地视觉缓冲记录缺少 frame_ref 或 ts")
+            frame_ref, ts = record["frame_ref"], record["ts"]
+            if frame_ref is not None and not isinstance(frame_ref, str):
+                raise TypeError("本地视觉缓冲记录的 frame_ref 必须是 str 或 None")
+            if isinstance(ts, bool) or not isinstance(ts, (int, float)):
+                raise TypeError("本地视觉缓冲记录的 ts 必须是 int/float（非 bool）")
+            if isinstance(ts, float) and not math.isfinite(ts):
+                raise ValueError("本地视觉缓冲记录的 ts 必须是有限数值")
+            result.append({"entity_id": record_entity_id, "frame_ref": frame_ref, "ts": ts})
+            if len(result) == limit:
+                break
+        return result
 
     def _frame_state_changed(self, prev_id: str, node: STNode) -> bool:
         prev = self.store.get_node(prev_id)

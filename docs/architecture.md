@@ -37,9 +37,9 @@ lingshu
 └── world  世界模型：推演循环与物理沙盒（重载可选）
 ```
 
-- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **90** 个 `.py`
-  （**84** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 45 / vision 2 / 包根 1；
-  import 冒烟 **90/90**（2026-11-19 实跑；包括 lingshu 包根，守卫只核该行的分子
+- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **91** 个 `.py`
+  （**85** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 45 / vision 3 / 包根 1；
+  import 冒烟 **91/91**（2026-11-21 合入主线后逐模块 `import` 实跑读数；守卫只核该行的分子
   分母相等且等于实读 `.py` 总数，见 `tests/test_doc_module_counts_guard.py`）。
   下表 §七 各行是**逐次聚合动作的快照**（计数为该次引入时的读数），当前计数以本行为准。
 - **轻核承诺**：`core` 不因本仓的「完整」而增重——可单独安装、单独运行；
@@ -207,6 +207,9 @@ lingshu
 | 2026-10-09 | 结构历史与受保护写服务：`core/structure_writer.py`、`structure_service.py`、`structure_permissions.py`；旧库事务接入与合成业务回归 | 本仓新增（#329）；不复制脑核 | 仅标准库；无真实密钥、记忆资产或本机路径；证书在测试临时目录生成，部署私钥不入仓 | 见对应 PR 提交 |
 
 | 2026-10-09 | 场景消费整合 v0.1：共享场景 API + demo/local/brain CLI + 五任务/只读库/真实 MCP 验收；intake 见 `docs/intake/scenario-v0.1/` | **本仓新件**，身体侧消费入口，复用现有 core/WorldModel/MCP | 内容/隐私双清单 CLEAN；隔离合成数据，资格不升格；接口与可见性取舍交理论核 | [PR #375（提交见 PR）](https://github.com/FuRongJun-1999/lingshu/pull/375) |
+| 2026-11-20 | 本地图像像素统计：`vision/image_stats.py` 与公开惰性导出；固定 RGB/亮度直方图和透明像素统计，无语义识别、路径读取或记忆写入；intake 见 `docs/intake/body-image-pixel-stats-v0.1/` | **本仓新件** | Pillow 延迟导入；4,194,304 像素硬上限；合成模式/透明度回归 | [PR #1462](https://github.com/FuRongJun-1999/lingshu/pull/1462) |
+
+| 2026-11-20 | 实例内视觉引用只读查询：`SpacetimeMemoryEngine.list_local_visual_frames()`，只返回entity_id/frame_ref/ts，不执行SQL、不打开引用、不改共享载荷；intake见 `docs/intake/body-local-visual-query-v0.1/` | 本仓新件 | 0..200限量、精确实体过滤、关闭后拒绝；摄入/同步/关闭/零I/O回归通过 | 见对应PR |
 
 | 2026-11-19 | **身体音频感知 v0.5（事件画像、内存输入、压缩音频与周期估计）**：`lingshu/vision/audio.py` + `SpacetimeMemoryEngine.perceive_audio` + 合成 WAV 守卫；登记见 `docs/intake/body-audio-v0.1/README.md` | **本仓新件**，身体侧视觉/音频感知；复用 `add_perception` 的 audio 模态 | CLEAN：WAV 纯标准库，FFmpeg 可选且 pipe-only；事件精度/截断/内存流/压缩输入/周期证据边界显式，无原始音频持久化；PR #1460 / intake #2760 | PR #1460（事件画像、压缩解码与周期估计增量） |
 
