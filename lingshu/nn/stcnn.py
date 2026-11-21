@@ -5,6 +5,7 @@
   （运动方向/速度/周期/形状变化）→ 时空记忆图写入（看见→记住→回忆 白箱闭环）
 零依赖：纯 numpy 确定性实现（D-005 核心零外部依赖哲学）。
 """
+import math
 import sys
 from copy import deepcopy
 
@@ -419,6 +420,646 @@ def synth_blinking(frames=12, size=32, period=3):
         if (t % period) < period // 2:
             frame[:] = 1.0
         out.append(frame)
+    return out
+
+
+# ============ 五.B、M7 时序运动轨迹提取、未来位置预测与 4D 时空体素桥接 ============
+MOTION_MODES = ("static", "linear", "bounce_or_turn", "blindspot")
+
+
+def _m7_require_int(value, name, *, min_value=None):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError("%s 必须是 int（拒绝 bool/非整数），收到 %r" % (name, value))
+    iv = int(value)
+    if min_value is not None and iv < min_value:
+        raise ValueError("%s 必须 >= %d，收到 %r" % (name, min_value, value))
+    return iv
+
+
+def _m7_require_finite(value, name, *, min_value=None, min_exclusive=None):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, float, np.number)):
+        raise ValueError("%s 必须是有限数值（拒绝 bool/非数值），收到 %r" % (name, value))
+    fv = float(value)
+    if not math.isfinite(fv):
+        raise ValueError("%s 必须是有限数值（拒绝 NaN/inf），收到 %r" % (name, value))
+    if min_value is not None and fv < min_value:
+        raise ValueError("%s 必须 >= %r，收到 %r" % (name, min_value, value))
+    if min_exclusive is not None and fv <= min_exclusive:
+        raise ValueError("%s 必须 > %r，收到 %r" % (name, min_exclusive, value))
+    return fv
+
+
+def _m7_validate_frames(frames, name, *, min_frames=2):
+    if frames is None or isinstance(frames, (str, bytes, dict)):
+        raise ValueError("%s 必须是帧序列 (T, H, W[, C])，收到 %r" % (name, type(frames).__name__))
+    try:
+        n = len(frames)
+    except TypeError as exc:
+        raise ValueError("%s 必须是可求长度的帧序列：%s" % (name, exc)) from exc
+    if n < min_frames:
+        raise ValueError("%s 帧数不足（至少需要 %d 帧，得到 %d 帧）" % (name, min_frames, n))
+    arr = np.asarray(frames)
+    if arr.dtype == np.bool_:
+        raise ValueError("%s 拒绝 bool 帧数组（须数值像素）" % (name,))
+    if not np.issubdtype(arr.dtype, np.number):
+        raise ValueError("%s 须为数值像素数组，收到 dtype=%r" % (name, arr.dtype))
+    arr = arr.astype(np.float32, copy=False)
+    _require_finite(arr, name)
+    if arr.ndim not in (3, 4):
+        raise ValueError("%s 维度须为 3 (T,H,W) 或 4 (T,H,W,C)，收到 shape=%s" % (name, tuple(arr.shape)))
+    if arr.shape[1] < 2 or arr.shape[2] < 2:
+        raise ValueError("%s 空间尺寸至少 2×2，收到 shape=%s" % (name, tuple(arr.shape)))
+    if arr.ndim == 4 and arr.shape[3] < 1:
+        raise ValueError("%s 通道维不能为空，收到 shape=%s" % (name, tuple(arr.shape)))
+    return frames_to_voxel(arr)
+
+
+def _largest_fg_component(delta_frame, thr):
+    """在单帧前景残差图上选出总能量最高的 8-连通前景簇，抗孤立背景噪点。"""
+    mask = delta_frame > thr
+    ys, xs = np.nonzero(mask)
+    if len(xs) == 0:
+        return None, None
+    h, w = delta_frame.shape
+    visited = np.zeros((h, w), dtype=bool)
+    best_energy = -1.0
+    best_pts = None
+    for sy, sx in zip(ys.tolist(), xs.tolist()):
+        if visited[sy, sx]:
+            continue
+        stack = [(sy, sx)]
+        visited[sy, sx] = True
+        comp = []
+        energy = 0.0
+        while stack:
+            cy, cx = stack.pop()
+            comp.append((cy, cx))
+            energy += float(delta_frame[cy, cx])
+            for dy in (-1, 0, 1):
+                ny = cy + dy
+                if ny < 0 or ny >= h:
+                    continue
+                for dx in (-1, 0, 1):
+                    nx = cx + dx
+                    if nx < 0 or nx >= w or visited[ny, nx] or not mask[ny, nx]:
+                        continue
+                    visited[ny, nx] = True
+                    stack.append((ny, nx))
+        if energy > best_energy:
+            best_energy = energy
+            best_pts = comp
+    if not best_pts:
+        return None, None
+    total_w = 0.0
+    sum_x = 0.0
+    sum_y = 0.0
+    x_min = w
+    x_max = -1
+    y_min = h
+    y_max = -1
+    for py, px in best_pts:
+        wt = float(delta_frame[py, px])
+        total_w += wt
+        sum_x += px * wt
+        sum_y += py * wt
+        if px < x_min:
+            x_min = px
+        if px > x_max:
+            x_max = px
+        if py < y_min:
+            y_min = py
+        if py > y_max:
+            y_max = py
+    if total_w <= 0.0:
+        return None, None
+    return (sum_x / total_w, sum_y / total_w), (int(x_min), int(y_min), int(x_max), int(y_max))
+
+
+def _extract_foreground_series(voxel, min_contrast):
+    bg_val = float(np.median(voxel))
+    fg_delta = np.abs(voxel - bg_val)
+    peak = float(fg_delta.max())
+    if peak < min_contrast:
+        t_len = voxel.shape[0]
+        return [None] * t_len, [None] * t_len
+    noise_mad = float(np.median(fg_delta))
+    thr = max(float(min_contrast), 5.0 * 1.4826 * noise_mad)
+    if thr >= peak:
+        thr = max(float(min_contrast), 0.5 * peak)
+    centroids = []
+    bboxes = []
+    for t in range(voxel.shape[0]):
+        c, bb = _largest_fg_component(fg_delta[t], thr)
+        centroids.append(c)
+        bboxes.append(bb)
+    return centroids, bboxes
+
+
+def _conv3d_directional_consistency(motion_feat, centroids):
+    """计算 3D 时空卷积正/负响应瓣质心向量与前景位移的一致性（[0, 1]）。"""
+    if motion_feat.size == 0:
+        return 0.0, 0.0
+    total_energy = float(np.abs(motion_feat).sum())
+    scores = []
+    for t in range(motion_feat.shape[0]):
+        c0, c1 = centroids[t], centroids[t + 1]
+        if c0 is None or c1 is None:
+            continue
+        dx = c1[0] - c0[0]
+        dy = c1[1] - c0[1]
+        step_norm = math.hypot(dx, dy)
+        if step_norm < 1e-6:
+            continue
+        mf = motion_feat[t]
+        pos_y, pos_x = np.nonzero(mf > 1e-4)
+        neg_y, neg_x = np.nonzero(mf < -1e-4)
+        if len(pos_x) == 0 or len(neg_x) == 0:
+            continue
+        pw = mf[pos_y, pos_x]
+        nw = np.abs(mf[neg_y, neg_x])
+        p_sum = float(pw.sum())
+        n_sum = float(nw.sum())
+        if p_sum <= 0.0 or n_sum <= 0.0:
+            continue
+        cx_p = float((pos_x * pw).sum()) / p_sum
+        cy_p = float((pos_y * pw).sum()) / p_sum
+        cx_n = float((neg_x * nw).sum()) / n_sum
+        cy_n = float((neg_y * nw).sum()) / n_sum
+        cdx = cx_p - cx_n
+        cdy = cy_p - cy_n
+        c_norm = math.hypot(cdx, cdy)
+        if c_norm < 1e-6:
+            continue
+        cos_sim = (dx * cdx + dy * cdy) / (step_norm * c_norm)
+        scores.append(max(0.0, min(1.0, cos_sim)))
+    if not scores:
+        return 0.0, total_energy
+    return sum(scores) / len(scores), total_energy
+
+
+def _classify_and_estimate_velocity(voxel, centroids, visible_idx, motion_feat, static_tol):
+    """根据逐帧可见质心与 3D 卷积能量判定运动模式并估计当前速度 (vx, vy)。"""
+    t_len = voxel.shape[0]
+    if len(visible_idx) < 2:
+        temporal_diff = float(np.max(np.abs(np.diff(voxel, axis=0))))
+        has_content = float(np.max(np.abs(voxel))) > 1e-6
+        if len(visible_idx) == 0 and has_content and temporal_diff <= 1e-6:
+            return (0.0, 0.0), "static", 1.0
+        return (0.0, 0.0), "blindspot", 0.0
+
+    steps = []
+    for k in range(len(visible_idx) - 1):
+        t0, t1 = visible_idx[k], visible_idx[k + 1]
+        dt = float(t1 - t0)
+        c0, c1 = centroids[t0], centroids[t1]
+        vx = (c1[0] - c0[0]) / dt
+        vy = (c1[1] - c0[1]) / dt
+        steps.append((t0, t1, vx, vy, math.hypot(vx, vy)))
+
+    max_step_speed = max(s[4] for s in steps)
+    c_first = centroids[visible_idx[0]]
+    c_last = centroids[visible_idx[-1]]
+    net_disp = math.hypot(c_last[0] - c_first[0], c_last[1] - c_first[1])
+    mean_intensity = float(np.abs(motion_feat).mean()) if motion_feat.size else 0.0
+
+    if max_step_speed < static_tol and net_disp < 1.0 and mean_intensity <= _MOVING_INTENSITY:
+        vis_ratio = len(visible_idx) / float(t_len)
+        return (0.0, 0.0), "static", round(min(1.0, vis_ratio), 4)
+
+    moving_steps = [s for s in steps if s[4] >= static_tol]
+    if not moving_steps:
+        return (0.0, 0.0), "static", round(len(visible_idx) / float(t_len), 4)
+
+    # 检测是否出现明显转向或边界反弹
+    turn_idx = -1
+    for i in range(1, len(moving_steps)):
+        _, _, vx_a, vy_a, sp_a = moving_steps[i - 1]
+        _, _, vx_b, vy_b, sp_b = moving_steps[i]
+        cos_ab = (vx_a * vx_b + vy_a * vy_b) / (sp_a * sp_b)
+        if cos_ab < 0.7:
+            turn_idx = i
+
+    if turn_idx >= 0:
+        # 反弹或转向：取最近一致直线段估计当前瞬时速度
+        seg_steps = moving_steps[turn_idx:]
+        t_start = seg_steps[0][0]
+        t_end = seg_steps[-1][1]
+        vx_est = (centroids[t_end][0] - centroids[t_start][0]) / float(t_end - t_start)
+        vy_est = (centroids[t_end][1] - centroids[t_start][1]) / float(t_end - t_start)
+        mode = "bounce_or_turn"
+        dir_coherence = 0.85
+    else:
+        t_start = visible_idx[0]
+        t_end = visible_idx[-1]
+        vx_est = (centroids[t_end][0] - centroids[t_start][0]) / float(t_end - t_start)
+        vy_est = (centroids[t_end][1] - centroids[t_start][1]) / float(t_end - t_start)
+        mode = "linear"
+        est_norm = math.hypot(vx_est, vy_est)
+        if est_norm > 1e-9:
+            cos_list = [
+                max(0.0, (vx * vx_est + vy * vy_est) / (sp * est_norm))
+                for _, _, vx, vy, sp in moving_steps
+            ]
+            dir_coherence = sum(cos_list) / len(cos_list)
+        else:
+            dir_coherence = 0.0
+
+    vis_ratio = len(visible_idx) / float(t_len)
+    conv_cons, _ = _conv3d_directional_consistency(motion_feat, centroids)
+    conf = 0.5 * dir_coherence + 0.3 * conv_cons + 0.2 * vis_ratio
+    return (round(vx_est, 6), round(vy_est, 6)), mode, round(max(0.0, min(1.0, conf)), 4)
+
+
+def extract_motion_trajectory(frames, *, min_contrast=0.15, static_tol=0.1):
+    """M7：从连续帧 (T, H, W[, C]) 提取前景质心/包围框、3D 卷积能量一致性与速度向量。"""
+    mc = _m7_require_finite(min_contrast, "min_contrast", min_exclusive=0.0)
+    st = _m7_require_finite(static_tol, "static_tol", min_value=0.0)
+    voxel = _m7_validate_frames(frames, "frames", min_frames=2)
+
+    motion_feat = conv3d(voxel, MOTION_KERNEL)
+    centroids, bboxes = _extract_foreground_series(voxel, mc)
+    visible_idx = [i for i, c in enumerate(centroids) if c is not None]
+    velocity, mode, confidence = _classify_and_estimate_velocity(
+        voxel, centroids, visible_idx, motion_feat, st
+    )
+    conv_cons, motion_energy = _conv3d_directional_consistency(motion_feat, centroids)
+
+    last_centroid = centroids[visible_idx[-1]] if visible_idx else None
+    last_bbox = bboxes[visible_idx[-1]] if visible_idx else None
+    if last_bbox is not None:
+        obj_size = (
+            float(last_bbox[2] - last_bbox[0] + 1),
+            float(last_bbox[3] - last_bbox[1] + 1),
+        )
+    else:
+        obj_size = (0.0, 0.0)
+
+    prims, _ = extract_spatiotemporal_primitives(frames)
+    return {
+        "frame_shape": tuple(int(v) for v in voxel.shape),
+        "centroids": [
+            (round(c[0], 4), round(c[1], 4)) if c is not None else None for c in centroids
+        ],
+        "bboxes": bboxes,
+        "visible_indices": visible_idx,
+        "velocity": velocity,
+        "speed": round(math.hypot(velocity[0], velocity[1]), 6),
+        "mode": mode,
+        "confidence": confidence,
+        "conv_directional_consistency": round(conv_cons, 4),
+        "motion_energy": round(motion_energy, 4),
+        "last_centroid": (
+            (round(last_centroid[0], 4), round(last_centroid[1], 4))
+            if last_centroid is not None
+            else None
+        ),
+        "last_bbox": last_bbox,
+        "object_size": obj_size,
+        "primitives": prims,
+    }
+
+
+def _reflect_1d(val, lo, hi, vel):
+    if hi <= lo:
+        return lo, 0.0
+    pos = val
+    cur_v = vel
+    while pos < lo or pos > hi:
+        if pos < lo:
+            pos = lo + (lo - pos)
+            cur_v = -cur_v
+        elif pos > hi:
+            pos = hi - (pos - hi)
+            cur_v = -cur_v
+    return pos, cur_v
+
+
+def _bbox_from_center(cx, cy, obj_w, obj_h, w, h):
+    hw = max(0.0, (obj_w - 1.0) / 2.0)
+    hh = max(0.0, (obj_h - 1.0) / 2.0)
+    x0 = int(round(cx - hw))
+    y0 = int(round(cy - hh))
+    x1 = int(round(cx + hw))
+    y1 = int(round(cy + hh))
+    x0 = min(max(0, x0), w - 1)
+    y0 = min(max(0, y0), h - 1)
+    x1 = min(max(x0, x1), w - 1)
+    y1 = min(max(y0, y1), h - 1)
+    return (x0, y0, x1, y1)
+
+
+def predict_motion_trajectory(
+    frames,
+    horizon=5,
+    *,
+    bounce=False,
+    min_contrast=0.15,
+    static_tol=0.1,
+):
+    """M7：基于连续帧轨迹外推未来 horizon 帧平移/反弹物体位置与像素包围框（零未来泄漏）。"""
+    h_steps = _m7_require_int(horizon, "horizon", min_value=1)
+    if not isinstance(bounce, bool):
+        raise ValueError("bounce 必须是 bool，收到 %r" % (bounce,))
+    traj = extract_motion_trajectory(frames, min_contrast=min_contrast, static_tol=static_tol)
+
+    _, height, width = traj["frame_shape"]
+    last_c = traj["last_centroid"]
+    if traj["mode"] == "blindspot" or last_c is None:
+        return {
+            "horizon": h_steps,
+            "bounce": bounce,
+            "predictable": False,
+            "mode": traj["mode"],
+            "velocity": traj["velocity"],
+            "confidence": traj["confidence"],
+            "trajectory": traj,
+            "predicted_positions": [None] * h_steps,
+            "predicted_bboxes": [None] * h_steps,
+            "naive_baseline_positions": [None] * h_steps,
+        }
+
+    obj_w, obj_h = traj["object_size"]
+    hw = max(0.0, (obj_w - 1.0) / 2.0)
+    hh = max(0.0, (obj_h - 1.0) / 2.0)
+    x_lo, x_hi = hw, max(hw, float(width - 1) - hw)
+    y_lo, y_hi = hh, max(hh, float(height - 1) - hh)
+
+    cx, cy = float(last_c[0]), float(last_c[1])
+    vx, vy = float(traj["velocity"][0]), float(traj["velocity"][1])
+    pred_positions = []
+    pred_bboxes = []
+
+    for _ in range(h_steps):
+        nx = cx + vx
+        ny = cy + vy
+        if bounce:
+            nx, vx = _reflect_1d(nx, x_lo, x_hi, vx)
+            ny, vy = _reflect_1d(ny, y_lo, y_hi, vy)
+        else:
+            if nx < 0.0:
+                nx = 0.0
+            elif nx > float(width - 1):
+                nx = float(width - 1)
+            if ny < 0.0:
+                ny = 0.0
+            elif ny > float(height - 1):
+                ny = float(height - 1)
+        cx, cy = nx, ny
+        pred_positions.append((round(cx, 4), round(cy, 4)))
+        pred_bboxes.append(_bbox_from_center(cx, cy, obj_w, obj_h, width, height))
+
+    naive_pos = [(round(last_c[0], 4), round(last_c[1], 4))] * h_steps
+    return {
+        "horizon": h_steps,
+        "bounce": bounce,
+        "predictable": True,
+        "mode": traj["mode"],
+        "velocity": traj["velocity"],
+        "confidence": traj["confidence"],
+        "trajectory": traj,
+        "predicted_positions": pred_positions,
+        "predicted_bboxes": pred_bboxes,
+        "naive_baseline_positions": naive_pos,
+    }
+
+
+def evaluate_motion_prediction(
+    observed_frames,
+    future_frames,
+    *,
+    bounce=False,
+    min_contrast=0.15,
+    static_tol=0.1,
+):
+    """M7：独立评测未来帧位置预测误差，并与零速静态基线（naive hold-last）对比。"""
+    mc = _m7_require_finite(min_contrast, "min_contrast", min_exclusive=0.0)
+    st = _m7_require_finite(static_tol, "static_tol", min_value=0.0)
+    obs_voxel = _m7_validate_frames(observed_frames, "observed_frames", min_frames=2)
+    fut_voxel = _m7_validate_frames(future_frames, "future_frames", min_frames=1)
+    if obs_voxel.shape[1:] != fut_voxel.shape[1:]:
+        raise ValueError(
+            "observed_frames %s 与 future_frames %s 空间尺寸不一致"
+            % (tuple(obs_voxel.shape[1:]), tuple(fut_voxel.shape[1:]))
+        )
+
+    horizon = int(fut_voxel.shape[0])
+    pred = predict_motion_trajectory(
+        observed_frames,
+        horizon=horizon,
+        bounce=bounce,
+        min_contrast=mc,
+        static_tol=st,
+    )
+    fut_centroids, _ = _extract_foreground_series(fut_voxel, mc)
+
+    per_step_errors = []
+    naive_errors = []
+    for p_pos, n_pos, a_pos in zip(
+        pred["predicted_positions"], pred["naive_baseline_positions"], fut_centroids
+    ):
+        if p_pos is None or a_pos is None:
+            per_step_errors.append(None)
+        else:
+            per_step_errors.append(round(math.hypot(p_pos[0] - a_pos[0], p_pos[1] - a_pos[1]), 6))
+        if n_pos is None or a_pos is None:
+            naive_errors.append(None)
+        else:
+            naive_errors.append(round(math.hypot(n_pos[0] - a_pos[0], n_pos[1] - a_pos[1]), 6))
+
+    valid_errs = [e for e in per_step_errors if e is not None]
+    valid_naive = [e for e in naive_errors if e is not None]
+    mean_err = round(sum(valid_errs) / len(valid_errs), 6) if valid_errs else None
+    max_err = round(max(valid_errs), 6) if valid_errs else None
+    naive_mean = round(sum(valid_naive) / len(valid_naive), 6) if valid_naive else None
+    improvement = (
+        round(naive_mean - mean_err, 6)
+        if (mean_err is not None and naive_mean is not None)
+        else None
+    )
+
+    return {
+        "horizon": horizon,
+        "mode": pred["mode"],
+        "velocity": pred["velocity"],
+        "confidence": pred["confidence"],
+        "predictable": pred["predictable"],
+        "predicted_positions": pred["predicted_positions"],
+        "actual_positions": [
+            (round(c[0], 4), round(c[1], 4)) if c is not None else None for c in fut_centroids
+        ],
+        "per_step_errors": per_step_errors,
+        "mean_pixel_error": mean_err,
+        "max_pixel_error": max_err,
+        "naive_mean_pixel_error": naive_mean,
+        "improvement_over_naive": improvement,
+    }
+
+
+def _pixel_to_voxel_pos(cx, cy, width, height, world_size, y_val):
+    sx = 0.5 + (cx / float(max(1, width - 1))) * float(max(1, world_size - 1))
+    sz = 0.5 + (cy / float(max(1, height - 1))) * float(max(1, world_size - 1))
+    return (round(sx, 4), float(y_val), round(sz, 4))
+
+
+def sync_motion_to_voxel_world(
+    frames,
+    voxel_world,
+    *,
+    horizon=1,
+    label="stcnn_motion",
+    y_level=None,
+    bounce=False,
+    min_contrast=0.15,
+    static_tol=0.1,
+):
+    """M7：把观测帧轨迹与未来预测占位同步写入鸭子类型 VoxelWorld 四维 (x, y, z, t) 时空网格。"""
+    for req_attr in ("spawn_entity", "move_entity", "occupancy_at", "trail", "simulate"):
+        if not callable(getattr(voxel_world, req_attr, None)):
+            raise ValueError("voxel_world 缺少必需方法 %s" % req_attr)
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("label 必须是非空字符串，收到 %r" % (label,))
+    world_size = _m7_require_int(getattr(voxel_world, "size", 0), "voxel_world.size", min_value=2)
+    ground_level = _m7_require_finite(getattr(voxel_world, "ground_level", 1), "voxel_world.ground_level")
+    y_val = (
+        ground_level + 0.5
+        if y_level is None
+        else _m7_require_finite(y_level, "y_level")
+    )
+
+    pred = predict_motion_trajectory(
+        frames,
+        horizon=horizon,
+        bounce=bounce,
+        min_contrast=min_contrast,
+        static_tol=static_tol,
+    )
+    traj = pred["trajectory"]
+    t_len, height, width = traj["frame_shape"]
+
+    if not pred["predictable"]:
+        return {
+            "synced": False,
+            "mode": pred["mode"],
+            "observed_entity_id": None,
+            "predicted_entity_id": None,
+            "observed_ticks": [],
+            "predicted_ticks": [],
+            "prediction": pred,
+        }
+
+    obs_entity_id = None
+    observed_ticks = []
+    centroids = traj["centroids"]
+    for t in range(t_len):
+        c = centroids[t]
+        if t == 0:
+            cur_tick = int(getattr(voxel_world, "_step", 0))
+            if c is not None:
+                vpos = _pixel_to_voxel_pos(c[0], c[1], width, height, world_size, y_val)
+                obs_entity_id = voxel_world.spawn_entity(label, vpos, velocity=(0.0, 0.0, 0.0))
+                observed_ticks.append(cur_tick)
+            continue
+        if obs_entity_id is None:
+            voxel_world.simulate(1)
+            cur_tick = int(getattr(voxel_world, "_step", t))
+            if c is not None:
+                vpos = _pixel_to_voxel_pos(c[0], c[1], width, height, world_size, y_val)
+                obs_entity_id = voxel_world.spawn_entity(label, vpos, velocity=(0.0, 0.0, 0.0))
+                observed_ticks.append(cur_tick)
+        else:
+            if c is not None:
+                vpos = _pixel_to_voxel_pos(c[0], c[1], width, height, world_size, y_val)
+                voxel_world.move_entity(obs_entity_id, vpos, record=False)
+            voxel_world.simulate(1)
+            cur_tick = int(getattr(voxel_world, "_step", t))
+            if c is not None:
+                observed_ticks.append(cur_tick)
+
+    last_c = traj["last_centroid"]
+    last_vpos = _pixel_to_voxel_pos(last_c[0], last_c[1], width, height, world_size, y_val)
+    pred_entity_id = voxel_world.spawn_entity(
+        "%s_predicted" % label, last_vpos, velocity=(0.0, 0.0, 0.0)
+    )
+    predicted_ticks = []
+    for p_pos in pred["predicted_positions"]:
+        if p_pos is not None:
+            pv = _pixel_to_voxel_pos(p_pos[0], p_pos[1], width, height, world_size, y_val)
+            voxel_world.move_entity(pred_entity_id, pv, record=False)
+        voxel_world.simulate(1)
+        cur_tick = int(getattr(voxel_world, "_step", 0))
+        if p_pos is not None:
+            predicted_ticks.append(cur_tick)
+
+    return {
+        "synced": True,
+        "mode": pred["mode"],
+        "observed_entity_id": obs_entity_id,
+        "predicted_entity_id": pred_entity_id,
+        "observed_ticks": observed_ticks,
+        "predicted_ticks": predicted_ticks,
+        "prediction": pred,
+    }
+
+
+def synth_moving_object(
+    frames=12,
+    size=32,
+    start=(3, 14),
+    velocity=(2, 0),
+    box_size=3,
+    *,
+    bounce=False,
+    noise_std=0.0,
+    seed=42,
+):
+    """M7：确定性合成运动场景（支持任意二维速度、边界反弹与低噪背景）。"""
+    n_frames = _m7_require_int(frames, "frames", min_value=2)
+    img_size = _m7_require_int(size, "size", min_value=4)
+    b_size = _m7_require_int(box_size, "box_size", min_value=1)
+    if b_size >= img_size:
+        raise ValueError("box_size (%d) 必须小于 size (%d)" % (b_size, img_size))
+    if not isinstance(bounce, bool):
+        raise ValueError("bounce 必须是 bool，收到 %r" % (bounce,))
+    ns = _m7_require_finite(noise_std, "noise_std", min_value=0.0)
+    sd = _m7_require_int(seed, "seed", min_value=0)
+
+    if isinstance(start, (str, bytes, dict)) or len(start) != 2:
+        raise ValueError("start 必须是 (x, y) 二元组，收到 %r" % (start,))
+    if isinstance(velocity, (str, bytes, dict)) or len(velocity) != 2:
+        raise ValueError("velocity 必须是 (vx, vy) 二元组，收到 %r" % (velocity,))
+    sx = _m7_require_finite(start[0], "start[0]", min_value=0.0)
+    sy = _m7_require_finite(start[1], "start[1]", min_value=0.0)
+    vx = _m7_require_finite(velocity[0], "velocity[0]")
+    vy = _m7_require_finite(velocity[1], "velocity[1]")
+
+    rng = np.random.default_rng(sd) if ns > 0.0 else None
+    max_origin = float(img_size - b_size)
+    x, y = min(sx, max_origin), min(sy, max_origin)
+    out = []
+    for _ in range(n_frames):
+        frame = np.zeros((img_size, img_size), dtype=np.float32)
+        if rng is not None:
+            frame = np.clip(frame + rng.normal(0.0, ns, size=(img_size, img_size)).astype(np.float32), 0.0, 1.0)
+        ix = int(round(x))
+        iy = int(round(y))
+        ix = min(max(0, ix), img_size - b_size)
+        iy = min(max(0, iy), img_size - b_size)
+        frame[iy:iy + b_size, ix:ix + b_size] = 1.0
+        out.append(frame)
+        nx, ny = x + vx, y + vy
+        if bounce:
+            nx, vx = _reflect_1d(nx, 0.0, max_origin, vx)
+            ny, vy = _reflect_1d(ny, 0.0, max_origin, vy)
+        else:
+            if nx < 0.0:
+                nx = 0.0
+            elif nx > max_origin:
+                nx = max_origin
+            if ny < 0.0:
+                ny = 0.0
+            elif ny > max_origin:
+                ny = max_origin
+        x, y = nx, ny
     return out
 
 
