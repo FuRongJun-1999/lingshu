@@ -24,10 +24,9 @@
     · 缺陷1（已修）：`fit_circular` 相位基准丢了初相（unwrap 起点 ang[0]≡0）⇒ 半径/ω 都对、
       残差却是 2r·sin(Δθ/2)（实测 rms 0.42）。修法：把首个样本的真实极角加回来。判据来源：
       A5 的 rms < 1e-6（修前 4.2e-01）。
-    · 缺陷2（已修）：`jacobi_cn` 的 Landen 递推索引用 `c_i/a_i`，应为 `c_{i+1}/a_{i+1}`；
-      修后 5° 的偏差从 1.5e-03 降到 4.0e-05 rad。**大振幅仍是已知缺陷**：
-      30°/60°/120° 实测 7.0e-03/5.8e-02/5.3e-01 rad ⇒ `pendulum_exact_angle` 按 fail-closed
-      限制在 |θ0| <= 5°，超出显式 raise（A6 断言这个拒绝行为）。
+    · 缺陷2：`jacobi_cn` 的 Landen 递推现用 `c_{i+1}/a_{i+1}`；剩余大角偏差源于摆角闭式
+      漏掉 `dn` 分母。修复后 `theta=2 asin(k*cn/dn)` 在 5°/30°/60°/120° 的多相位点
+      与独立 RK4 一致，最大误差低于 1e-11 rad（A6 覆盖）；可选 tol_deg 仍可显式收紧域。
     · 缺陷3（已修）：`Reflector.apply` 循环里残留 `del tau` ⇒ UnboundLocalError。
 """
 from __future__ import annotations
@@ -115,14 +114,24 @@ def test_A5_circular_fit_phase_and_radius():
     assert f["residual_rms"] < 1e-6
 
 
-def test_A6_pendulum_exact_gated_domain():
-    # 域内：与独立 RK4 一致
-    th0, w = math.radians(5.0), 2.0
-    ref = _rk4(th0, w, 0.5)
-    assert abs(P.pendulum_exact_angle(th0, w, 0.5) - ref) < 1e-4
-    # 域外：必须显式 raise（不把近似当精确）
+def test_A6_pendulum_exact_matches_rk4_across_amplitudes():
+    w = 2.0
+    for degrees in (-179.9, -179.0, -120.0, -60.0, 5.0, 30.0, 60.0, 120.0, 150.0, 170.0, 179.0, 179.9):
+        th0 = math.radians(degrees)
+        assert P.pendulum_exact_angle(th0, w, 0.0) == pytest.approx(th0, abs=1e-12)
+        for t in (0.25, 0.5, 1.0, 2.0):
+            ref = _rk4(th0, w, t)
+            got = P.pendulum_exact_angle(th0, w, t)
+            assert abs(got - ref) < P.PENDULUM_EXACT_MAX_ERR, (
+                "elliptic pendulum mismatch: theta0=%s°, t=%s, got=%r, RK4=%r"
+                % (degrees, t, got, ref))
+
+    # Callers may still deliberately impose a narrower validated amplitude.
     with pytest.raises(P.PhysicsError):
-        P.pendulum_exact_angle(math.radians(30.0), w, 0.5)
+        P.pendulum_exact_angle(math.radians(30.0), w, 0.5, tol_deg=5.0)
+    # The separatrix (k=1) is singular and must remain rejected.
+    with pytest.raises(P.PhysicsError):
+        P.pendulum_exact_angle(math.pi, w, 0.5)
 
 
 def _rk4(th0, w, t_end, dt=1.0 / 16384.0):

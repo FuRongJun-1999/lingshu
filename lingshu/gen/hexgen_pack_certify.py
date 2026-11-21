@@ -22,6 +22,7 @@
     python -X utf8 -m lingshu.gen.hexgen_pack_certify --prompt 303 --r 47 --r 48
 """
 import argparse
+from collections.abc import Mapping
 import json
 import math
 import os
@@ -33,9 +34,160 @@ from . import hexgen_self_source as S          # noqa: E402
 
 SIZE = S.SIZE
 _MESH = {}
+_VALID_CELLS = frozenset(f"r{i}" for i in range(9))
+_ANISOTROPIC_SHAPES = frozenset(("square", "rectangle", "diamond"))
+
+
+def _require_finite_real(val, name):
+    """要求有限实数并拒绝 bool / np.bool_，违者抛 ValueError。"""
+    if isinstance(val, (bool, np.bool_)):
+        raise ValueError(f"{name} must not be bool, got {val!r}")
+    if not isinstance(val, (int, float, np.integer, np.floating)):
+        raise ValueError(f"{name} must be a real number, got {type(val).__name__}")
+    out = float(val)
+    if not math.isfinite(out):
+        raise ValueError(f"{name} must be finite, got {val!r}")
+    return out
+
+
+def _require_pos_finite(val, name):
+    """要求严格正有限实数（> 0），拒绝 bool / 非有限 / <= 0。"""
+    out = _require_finite_real(val, name)
+    if out <= 0.0:
+        raise ValueError(f"{name} must be > 0, got {val!r}")
+    return out
+
+
+def _require_nonneg_finite(val, name):
+    """要求非负有限实数（>= 0），拒绝 bool / 非有限 / < 0。"""
+    out = _require_finite_real(val, name)
+    if out < 0.0:
+        raise ValueError(f"{name} must be >= 0, got {val!r}")
+    return out
+
+
+def _require_int(val, name):
+    """要求整数（拒绝 bool / np.bool_ / float / 非数值）。"""
+    if isinstance(val, (bool, np.bool_)):
+        raise ValueError(f"{name} must not be bool, got {val!r}")
+    if not isinstance(val, (int, np.integer)):
+        raise ValueError(f"{name} must be an integer, got {type(val).__name__}")
+    return int(val)
+
+
+def _require_pos_int(val, name):
+    """要求正整数（>= 1），拒绝 bool / 非整数 / <= 0。"""
+    out = _require_int(val, name)
+    if out <= 0:
+        raise ValueError(f"{name} must be > 0, got {val!r}")
+    return out
+
+
+def _require_n(n):
+    """要求同格件数 n ∈ {2, 3}（拒绝 bool 与越界值）。"""
+    val = _require_int(n, "n")
+    if val not in (2, 3):
+        raise ValueError(f"n must be 2 or 3, got {n!r}")
+    return val
+
+
+def _validate_shape(shape):
+    """校验并归一形状名；未知或非字符串抛 ValueError。"""
+    if not isinstance(shape, str):
+        raise ValueError(f"shape must be a string, got {type(shape).__name__}")
+    norm = S._v3_shape(shape)
+    if norm not in S.EXTENT_FRAC:
+        raise ValueError(f"unknown shape: {shape!r}")
+    return norm
+
+
+def _validate_cells(cells):
+    """校验格集合：非空且元素均为 'r0'..'r8'。"""
+    if cells is None or isinstance(cells, (str, bytes)):
+        raise ValueError(f"cells must be a non-string iterable, got {type(cells).__name__}")
+    try:
+        items = list(cells)
+    except TypeError as exc:
+        raise ValueError(f"cells must be iterable, got {type(cells).__name__}") from exc
+    if not items:
+        raise ValueError("cells must not be empty")
+    for c in items:
+        if not isinstance(c, str) or c not in _VALID_CELLS:
+            raise ValueError(f"invalid cell {c!r}; expected 'r0'..'r8'")
+    return tuple(items)
+
+
+def _validate_zone_calib(zone_calib):
+    """校验方位标定切点（仅 None 或空 Mapping 回落精确三等分；否则要求有限非 bool 且 0<=c0<=c1<=1）。"""
+    if zone_calib is None or (isinstance(zone_calib, Mapping) and not zone_calib):
+        return [1 / 3.0, 2 / 3.0], [1 / 3.0, 2 / 3.0]
+    if not isinstance(zone_calib, Mapping):
+        raise ValueError(f"zone_calib must be a mapping or None, got {type(zone_calib).__name__}")
+    parsed = {}
+    for axis in ("row", "col"):
+        sub = zone_calib.get(axis)
+        if not isinstance(sub, Mapping) or "cuts" not in sub:
+            raise ValueError(f"zone_calib[{axis!r}] must be a mapping containing 'cuts'")
+        raw_cuts = sub["cuts"]
+        if raw_cuts is None or isinstance(raw_cuts, (str, bytes)):
+            raise ValueError(f"zone_calib[{axis!r}]['cuts'] must be a 2-element sequence")
+        try:
+            cuts_list = list(raw_cuts)
+        except TypeError as exc:
+            raise ValueError(f"zone_calib[{axis!r}]['cuts'] must be iterable") from exc
+        if len(cuts_list) != 2:
+            raise ValueError(f"zone_calib[{axis!r}]['cuts'] must have length 2, got {len(cuts_list)}")
+        c0 = _require_finite_real(cuts_list[0], f"zone_calib[{axis!r}]['cuts'][0]")
+        c1 = _require_finite_real(cuts_list[1], f"zone_calib[{axis!r}]['cuts'][1]")
+        if not (0.0 <= c0 <= c1 <= 1.0):
+            raise ValueError(
+                f"zone_calib[{axis!r}]['cuts'] must satisfy 0 <= c0 <= c1 <= 1, got {[c0, c1]!r}"
+            )
+        parsed[axis] = [c0, c1]
+    return parsed["row"], parsed["col"]
+
+
+def _has_bool_elem(val):
+    if isinstance(val, (bool, np.bool_)):
+        return True
+    if isinstance(val, (list, tuple)):
+        return any(_has_bool_elem(x) for x in val)
+    return False
+
+
+def _require_finite_array(val, name):
+    """将标量或数组转为 float64 ndarray，拒绝 bool / np.bool_ 及任何非有限元素。"""
+    if _has_bool_elem(val):
+        raise ValueError(f"{name} must not contain bool")
+    raw = np.asarray(val)
+    if np.issubdtype(raw.dtype, np.bool_):
+        raise ValueError(f"{name} must not have bool dtype")
+    if not (np.issubdtype(raw.dtype, np.integer) or np.issubdtype(raw.dtype, np.floating)):
+        raise ValueError(f"{name} must be real numeric scalar or array, got dtype={raw.dtype}")
+    arr = raw.astype(np.float64, copy=False)
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{name} contains non-finite values")
+    return arr
+
+
+def _validate_mask(mask):
+    """校验合成 mask：2D 布尔或 0/1 有限数组，拒绝 NaN/inf 静默转 True。"""
+    arr = np.asarray(mask)
+    if arr.ndim != 2:
+        raise ValueError(f"mask must be 2D, got ndim={arr.ndim}")
+    if np.issubdtype(arr.dtype, np.bool_):
+        return arr.copy()
+    if np.issubdtype(arr.dtype, np.integer) or np.issubdtype(arr.dtype, np.floating):
+        if np.issubdtype(arr.dtype, np.floating) and not np.all(np.isfinite(arr)):
+            raise ValueError("mask contains non-finite values")
+        if not np.all((arr == 0) | (arr == 1)):
+            raise ValueError("numeric mask must contain only 0/1 values")
+        return arr.astype(bool)
+    raise ValueError(f"mask must be boolean or 0/1 numeric array, got dtype={arr.dtype}")
 
 
 def _mesh(size=SIZE):
+    size = _require_pos_int(size, "size")
     if size not in _MESH:
         y, x = np.mgrid[0:size, 0:size]
         _MESH[size] = (x.astype(np.int32), y.astype(np.int32))
@@ -44,17 +196,10 @@ def _mesh(size=SIZE):
 
 def _rank_ok_vec(zone_calib, cells, size=SIZE):
     """逐像素「判决格 ∈ 允许集合」的布尔掩膜（与 `S._cell_of_pt` 同口径：冻结切点，缺省精确三等分）。"""
+    size = _require_pos_int(size, "size")
+    cells = _validate_cells(cells)
+    rc, cc = _validate_zone_calib(zone_calib)
     x, y = _mesh(size)
-    if zone_calib:
-        rc = list(zone_calib["row"]["cuts"])
-        cc = list(zone_calib["col"]["cuts"])
-    else:
-        #   缺省切点必须是**归一化分数**：`fy/fx` 是归一化坐标（下行），而 `S._cell_of_pt` 的无标定
-        #   分支也是 `int(y / size * 3)`（归一化，见 `hexgen_self_source.py:849-851`）。原先写像素值
-        #   （`size/3`）⇒ `fy < rc[0]` 恒真（`fy∈[0,1)`）⇒ 行/列恒为 0 ⇒ 掩膜退化成「全图都是 r0」。
-        #   判据来源：本文件 :48 docstring「与 `S._cell_of_pt` 同口径：冻结切点，缺省精确三等分」。
-        rc = [1 / 3.0, 2 / 3.0]
-        cc = [1 / 3.0, 2 / 3.0]
     fy = y / float(size)
     fx = x / float(size)
     row = np.where(fy < rc[0], 0, np.where(fy < rc[1], 1, 2))
@@ -68,6 +213,11 @@ def _rank_ok_vec(zone_calib, cells, size=SIZE):
 
 def legal_mask(cells, shape, r, zone_calib, size=SIZE):
     """**合法区域**：实物整体在画布内 ∧ 质心的判决格 ∈ 允许集合（＝生产 `fits` 的同一谓词）。"""
+    cells = _validate_cells(cells)
+    shape = _validate_shape(shape)
+    r = _require_pos_finite(r, "r")
+    size = _require_pos_int(size, "size")
+    _validate_zone_calib(zone_calib)
     e = S.paint_extent(shape, r) + 2.0
     x, y = _mesh(size)
     m = (x >= e) & (x <= size - e) & (y >= e) & (y <= size - e)
@@ -84,29 +234,45 @@ def support_vec(shape, r, dx, dy, dist):
     不健全（证书 41 而生产 57.57，slack 判错号）。同模块 legal_mask 在
     paint_extent 前已有归一——支撑侧一张归一、一张不归一，模块内自相矛盾。
     """
-    shape = S._v3_shape(shape)
-    ax = np.abs(dx) / dist
-    ay = np.abs(dy) / dist
-    if shape == "square":
-        return r * (ax + ay) + 1.0
-    if shape == "rectangle":
-        return 1.35 * r * ax + 0.62 * r * ay + 1.0
-    if shape == "diamond":
+    shape = _validate_shape(shape)
+    r = _require_pos_finite(r, "r")
+    dx_arr = _require_finite_array(dx, "dx")
+    dy_arr = _require_finite_array(dy, "dy")
+    dist_arr = _require_finite_array(dist, "dist")
+    if np.any(dist_arr < 0.0):
+        raise ValueError("dist must be >= 0")
+    if shape in _ANISOTROPIC_SHAPES:
+        if np.any(dist_arr <= 0.0):
+            raise ValueError(f"dist must be > 0 for anisotropic shape {shape!r}")
+        ax = np.abs(dx_arr) / dist_arr
+        ay = np.abs(dy_arr) / dist_arr
+        if shape == "square":
+            return r * (ax + ay) + 1.0
+        if shape == "rectangle":
+            return 1.35 * r * ax + 0.62 * r * ay + 1.0
         return 1.15 * r * np.maximum(ax, ay) + 1.0
     if shape == "circle":
-        return np.zeros_like(dist) + (r + 1.0)
-    return np.full_like(dist, S.paint_extent(shape, r))
+        return np.zeros_like(dist_arr, dtype=np.float64) + (r + 1.0)
+    return np.full_like(dist_arr, S.paint_extent(shape, r), dtype=np.float64)
 
 
 def slack_vec(shape, r, dx, dy,
               sep=S.SEP_GAP, pad=2.0):
     """`|δ| − need(δ)` 的向量化版本；`δ = 0` 处置 `-inf`（同一位置不算一对）。"""
-    dist = np.hypot(dx, dy)
+    shape = _validate_shape(shape)
+    r = _require_pos_finite(r, "r")
+    sep = _require_nonneg_finite(sep, "sep")
+    pad = _require_nonneg_finite(pad, "pad")
+    dx_arr = _require_finite_array(dx, "dx")
+    dy_arr = _require_finite_array(dy, "dy")
+    dx_arr, dy_arr = np.broadcast_arrays(dx_arr, dy_arr)
+    dist = np.hypot(dx_arr, dy_arr)
     out = np.full(dist.shape, -np.inf, dtype=np.float64)
     nz = dist > 0
-    d = dist[nz]
-    need = (support_vec(shape, r, dx[nz], dy[nz], d) * 2.0 + sep + pad)
-    out[nz] = d - need
+    if np.any(nz):
+        d = dist[nz]
+        need = (support_vec(shape, r, dx_arr[nz], dy_arr[nz], d) * 2.0 + sep + pad)
+        out[nz] = d - need
     return out
 
 
@@ -142,6 +308,17 @@ def _cert_p1_core(x1, y1, L, n, shape, r, size):
     return (float(np.max(cand)) if cand.size else float("-inf")), int(S1.sum())
 
 
+def _validate_cert_inputs(cells, n, shape, r, zone_calib, size):
+    """统一校验证书入口共用参数（cells / n / shape / r / zone_calib / size）。"""
+    n_val = _require_n(n)
+    cells_val = _validate_cells(cells)
+    shape_val = _validate_shape(shape)
+    r_val = _require_pos_finite(r, "r")
+    size_val = _require_pos_int(size, "size")
+    _validate_zone_calib(zone_calib)
+    return cells_val, n_val, shape_val, r_val, size_val
+
+
 def certify_radius(cells, n, shape, r, zone_calib, size=SIZE, verbose=False, max_p1=None, mask=None):
     """**穷举证书**：返回 dict(`feasible`, `max_slack`, `best_p1`, `n_p1`, `per_p1`)。
 
@@ -151,8 +328,12 @@ def certify_radius(cells, n, shape, r, zone_calib, size=SIZE, verbose=False, max
     `-inf` 表示「每个 p1 都找不到两个与自己相容的位置」＝更强的结构性结论。
     `n ∈ {2, 3}`（同格 k 件；R313 只服务残余的 k=3，k=2 走直判路径）。
     `mask` 只供**守门**用：用小合成合法掩膜把本机制与暴力穷举对拍。"""
-    assert n in (2, 3), n
-    L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else np.array(mask, bool)
+    cells, n, shape, r, size = _validate_cert_inputs(cells, n, shape, r, zone_calib, size)
+    if not isinstance(verbose, (bool, np.bool_)):
+        raise ValueError(f"verbose must be bool, got {type(verbose).__name__}")
+    if max_p1 is not None:
+        max_p1 = _require_pos_int(max_p1, "max_p1")
+    L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else _validate_mask(mask)
     if not L.any():
         #   合法区域为空 ⇒ 该半径下不存在任何合法 p1 ⇒ **判「无解」**（`feasible=False`）而不是让
         #   `ys.min()` 抛 ValueError。判据来源：本文件 :12 证书语义「若全部 p1 的最优余量 < 0
@@ -209,7 +390,10 @@ def certify_radius(cells, n, shape, r, zone_calib, size=SIZE, verbose=False, max
 
 def certify_p1(x1, y1, cells, n, shape, r, zone_calib, size=SIZE, mask=None):
     """**单个 p1** 的最优余量（＝`certify_radius` 的内层；供守门抽样复算与诊断）。"""
-    L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else np.array(mask, bool)
+    x1 = _require_int(x1, "x1")
+    y1 = _require_int(y1, "y1")
+    cells, n, shape, r, size = _validate_cert_inputs(cells, n, shape, r, zone_calib, size)
+    L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else _validate_mask(mask)
     return _cert_p1_core(x1, y1, L, n, shape, r, size)
 
 
@@ -217,7 +401,8 @@ def witness_at(cells, n, shape, r, zone_calib, size=SIZE, mask=None):
     """在半径 r 上**取出一组可行摆位**（证书内层：p1 遍历 + 差集找 δ + 回找 p2）——返回 pts 或 None。
 
     ⚠ 只在证书判定**可行**时有意义；用途是「把最优摆位的结构看出来」与作为记录证据。"""
-    L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else np.array(mask, bool)
+    cells, n, shape, r, size = _validate_cert_inputs(cells, n, shape, r, zone_calib, size)
+    L = legal_mask(cells, shape, r, zone_calib, size) if mask is None else _validate_mask(mask)
     if not L.any():
         #   合法区域为空 ⇒ 无可行摆位 ⇒ 返回 None（本函数语义：pts 或 None），不让 `ys.min()` 抛。
         #   判据来源：本文件 :197 docstring「返回 pts 或 None」+ :12 证书语义（空合法区域 ⇒ 无解）。
@@ -268,9 +453,32 @@ def witness_at(cells, n, shape, r, zone_calib, size=SIZE, mask=None):
 
 def check_witness(pts, cells, n, shape, r, zone_calib, size=SIZE):
     """**用判据面直接校验一组摆位**（正对照）：返回 (合法, 最小余量)。"""
+    cells, n, shape, r, size = _validate_cert_inputs(cells, n, shape, r, zone_calib, size)
+    if pts is None or isinstance(pts, (str, bytes)):
+        raise ValueError(f"pts must be a sequence of {n} points")
+    try:
+        pts_raw = list(pts)
+    except TypeError as exc:
+        raise ValueError(f"pts must be iterable, got {type(pts).__name__}") from exc
+    if len(pts_raw) != n:
+        raise ValueError(f"pts length must match n={n}, got {len(pts_raw)}")
+    pts_valid = []
+    for idx, pt in enumerate(pts_raw):
+        if pt is None or isinstance(pt, (str, bytes)):
+            raise ValueError(f"pts[{idx}] must be a (x, y) pair")
+        try:
+            xy = list(pt)
+        except TypeError as exc:
+            raise ValueError(f"pts[{idx}] must be a (x, y) pair") from exc
+        if len(xy) != 2:
+            raise ValueError(f"pts[{idx}] must have length 2, got {len(xy)}")
+        pts_valid.append((
+            _require_finite_real(xy[0], f"pts[{idx}][0]"),
+            _require_finite_real(xy[1], f"pts[{idx}][1]"),
+        ))
     e = S.paint_extent(shape, r) + 2.0
     ok = True
-    for x, y in pts:
+    for x, y in pts_valid:
         if not (e <= x <= size - e and e <= y <= size - e):
             ok = False
         if S._cell_of_pt(int(x), int(y), size, zone_calib) not in cells:
@@ -278,8 +486,8 @@ def check_witness(pts, cells, n, shape, r, zone_calib, size=SIZE):
     sl = math.inf
     for i in range(n):
         for j in range(i + 1, n):
-            dx = pts[i][0] - pts[j][0]
-            dy = pts[i][1] - pts[j][1]
+            dx = pts_valid[i][0] - pts_valid[j][0]
+            dy = pts_valid[i][1] - pts_valid[j][1]
             sl = min(sl, math.hypot(dx, dy) - S._need_between(shape, r, dx, dy))
     return ok, sl
 

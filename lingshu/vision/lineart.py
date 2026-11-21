@@ -12,9 +12,8 @@
 画面一换（线条密度变）就失真。mean + std 只跟响应的统计量走，细线也能留下来
 ——这是本模块选它的唯一原因。
 
-输出口径
---------
-灰度 L 图：背景 255（白）、线条 0（黑）。white_bg=False 时反相。
+输入透明度在白底上合成后再检测；输出灰度 L 图：背景 255（白）、线条 0（黑）。
+white_bg=False 时反相。
 
 对外接口
 --------
@@ -34,7 +33,7 @@ _THR_FLOOR = 40.0
 
 
 def _luma(arr: np.ndarray) -> np.ndarray:
-    """RGB(A) → 亮度；已是二维灰度则原样返回。"""
+    """RGB → 亮度；已是二维灰度则原样返回。"""
     if arr.ndim == 2:
         return arr.astype(np.float64)
     rgb = arr[..., :3].astype(np.float64)
@@ -51,7 +50,14 @@ def darkline(img: Image.Image, thr_mult: float = 1.5, white_bg: bool = True) -> 
     · 阈值随图走：thr = max(_THR_FLOOR, mag.mean() + mag.std()*thr_mult)。
     · 纯二值输出：像素只可能是 0 或 255——线稿要能直接描摹。
     """
-    a = np.asarray(img.convert("RGB"))
+    if img.mode in ("RGBA", "RGBa", "LA", "La", "PA") or "transparency" in img.info:
+        source = img.convert("LA") if img.mode == "La" else img
+        rgba = source.convert("RGBA")
+        white = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        visible = Image.alpha_composite(white, rgba).convert("RGB")
+    else:
+        visible = img.convert("RGB")
+    a = np.asarray(visible)
     gray = _luma(a)
     h, w = gray.shape
 
