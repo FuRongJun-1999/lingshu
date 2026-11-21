@@ -165,23 +165,37 @@ def mat3_from_euler_xyz(e):
 
 
 def mat3_to_quat(m):
-    """3×3（正交）→ [w,x,y,z]，与 `mathutils.Matrix.to_quaternion()` 同约定。
+    """3×3 真旋转矩阵（SO(3)：正交且 det = +1）→ [w,x,y,z]，与 `mathutils.Matrix.to_quaternion()` 同约定。
 
     用 Shepperd 分支法，取 w ≥ 0 的那一支（180° 附近 ±q 同解，比较时按旋转等价处理）。
-    生效条件：m 为 3×3 且近似正交；否则 raise（含缩放的矩阵没有唯一四元数表示）。
+    生效条件：m 为 3×3 有限数值矩阵、近似正交（MᵀM = I）且为真旋转（det(M) = +1）；
+    否则 raise（含缩放或镜像反射 det = −1 的矩阵没有对应的单位旋转四元数）。
     """
-    m = tuple(tuple(float(x) for x in row) for row in m)
-    if len(m) != 3 or any(len(r) != 3 for r in m):
-        raise GeomError("mat3_to_quat 需要 3×3：%r" % (m,))
-    for i in range(3):
-        for j in range(3):
-            if not math.isfinite(m[i][j]):
-                raise GeomError("mat3_to_quat 收到非有限值：%r" % (m,))
+    try:
+        raw = tuple(tuple(row) for row in m)
+    except TypeError as exc:
+        raise GeomError("mat3_to_quat 需要 3×3：%r" % (m,)) from exc
+    if len(raw) != 3 or any(len(r) != 3 for r in raw):
+        raise GeomError("mat3_to_quat 需要 3×3：%r" % (raw,))
+    rows = []
+    for r in raw:
+        row_f = []
+        for x in r:
+            if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+                raise GeomError("mat3_to_quat 收到非有限数值：%r" % (raw,))
+            row_f.append(float(x))
+        rows.append(tuple(row_f))
+    m = tuple(rows)
     tr = m[0][0] + m[1][1] + m[2][2]
     for i in range(3):
         for j in range(3):
             if abs(sum(m[k][i] * m[k][j] for k in range(3)) - (1.0 if i == j else 0.0)) > 1e-6:
                 raise GeomError("mat3_to_quat 的输入不是正交矩阵（含缩放？）：%r" % (m,))
+    det = mat3_det(m)
+    if abs(det - 1.0) > 1e-6:
+        raise GeomError(
+            "mat3_to_quat 的输入不是真旋转矩阵（镜像反射 det=%.6f≠+1）：%r" % (det, m)
+        )
     if tr > 0.0:
         s = math.sqrt(tr + 1.0) * 2.0
         w = 0.25 * s
