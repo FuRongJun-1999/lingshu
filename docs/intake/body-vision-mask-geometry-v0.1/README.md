@@ -23,5 +23,5 @@
 python -m pytest tests/test_vision_mask_geometry.py tests/test_vision_lineart.py tests/test_doc_module_counts_guard.py tests/test_issue79_architecture_layers_guard.py tests/test_issue455_subprocess_encoding.py tests/test_issue80_intake_rerun_executable_guard.py tests/test_issue156_component_discovery.py tests/test_gate_python_floor_and_matrix.py tests/test_manifest_integrity.py -q --no-header
 # 97 passed
 python -X utf8 tools/intake_smoke_min.py --quiet
-# import ok=90 fail=0 constructive=ok
+# import ok=91 fail=0 constructive=ok（2026-11-21 合入当前主线后）
 ```

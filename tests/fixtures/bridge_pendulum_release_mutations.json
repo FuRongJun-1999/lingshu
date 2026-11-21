@@ -1,0 +1,98 @@
+{
+  "guard": "tests/test_bridge_pendulum_release_solution.py",
+  "total": 8,
+  "sources": [
+    "bridges/blender/wm_bridge/__init__.py",
+    "bridges/blender/wm_bridge/factory/anim/eval.py",
+    "bridges/blender/wm_bridge/factory/geo/spec.py"
+  ],
+  "baseline_failures": [
+    "test_exact_motion_eval_matches_independent_rk4",
+    "test_small_amplitude_exact_motion_uses_release_formula",
+    "test_near_separatrix_motion_validates_and_keeps_quarter_phase",
+    "test_near_separatrix_motion_matches_frozen_80_digit_reference",
+    "test_exact_motion_input_errors_remain_anim_errors",
+    "test_exact_motion_preserves_input_offset_and_length_path",
+    "test_bridge_exact_motion_imports_without_optional_dependencies"
+  ],
+  "mutations": [
+    {
+      "name": "drop_release_dn_factor",
+      "test": "test_small_amplitude_exact_motion_uses_release_formula",
+      "assertion": "bridge release formula must include the dn factor",
+      "changes": [
+        {
+          "file": "bridges/blender/wm_bridge/factory/anim/eval.py",
+          "method": "pendulum_exact_angle",
+          "old": "return direction * 2.0 * math.atan2(k * sn, math.hypot(complementary, k * cn))",
+          "new": "return 2.0 * math.asin(k * _jacobi_cn(u, k))"
+        }
+      ]
+    },
+    {
+      "name": "restore_five_degree_gate",
+      "test": "test_near_separatrix_motion_validates_and_keeps_quarter_phase",
+      "assertion": "bridge near-separatrix motion must validate",
+      "changes": [
+        {
+          "file": "bridges/blender/wm_bridge/factory/anim/eval.py",
+          "method": "pendulum_exact_angle",
+          "old": "if abs(theta0) >= math.pi:",
+          "new": "if abs(theta0) > math.radians(5.0):"
+        }
+      ]
+    },
+    {
+      "name": "reconstruct_complement_from_rounded_k",
+      "test": "test_near_separatrix_motion_validates_and_keeps_quarter_phase",
+      "assertion": "bridge complementary modulus must retain quarter phase",
+      "changes": [
+        {
+          "file": "bridges/blender/wm_bridge/factory/anim/eval.py",
+          "method": "pendulum_exact_angle",
+          "old": "complementary = math.cos(0.5 * theta0)",
+          "new": "complementary = math.sqrt(max(0.0, 1.0 - k * k))"
+        }
+      ]
+    },
+    {
+      "name": "unstable_amplitude_descent",
+      "test": "test_near_separatrix_motion_matches_frozen_80_digit_reference",
+      "assertion": "bridge stable descent must match high-precision reference",
+      "changes": [
+        {
+          "file": "bridges/blender/wm_bridge/factory/anim/eval.py",
+          "method": "pendulum_exact_angle",
+          "old": "stable=True",
+          "new": "stable=False"
+        }
+      ]
+    },
+    {
+      "name": "rounded_k_truth_period",
+      "test": "test_near_separatrix_motion_validates_and_keeps_quarter_phase",
+      "assertion": "bridge near-separatrix motion must validate",
+      "changes": [
+        {
+          "file": "bridges/blender/wm_bridge/factory/anim/eval.py",
+          "method": "pendulum_truth",
+          "old": "if abs(theta0) < math.pi:",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "name": "accept_damped_exact_motion",
+      "test": "test_exact_motion_still_rejects_damping",
+      "assertion": "DID NOT RAISE",
+      "changes": [
+        {
+          "file": "bridges/blender/wm_bridge/factory/anim/eval.py",
+          "method": "_scalar_of",
+          "old": "if z != 0.0:",
+          "new": "if False:"
+        }
+      ]
+    }
+  ]
+}

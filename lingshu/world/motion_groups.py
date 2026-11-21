@@ -39,6 +39,7 @@ actual 恒为 False，不写回观测历史。高度取已观测锚点的 y 加�
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 
 
@@ -74,9 +75,20 @@ def _frames(records) -> dict:
 
 
 def _group_id(members: list) -> str:
-    """组标识只由成员集合决定，与观测顺序、窗口无关。"""
-    digest = hashlib.sha1("|".join(members).encode("utf-8")).hexdigest()
-    return "mg_" + digest[:12]
+    """组标识只由成员集合决定，与观测顺序、窗口无关。
+
+    普通名称保留已有标识；名称含分隔符时用 JSON 数组编码与独立 v2 前缀，
+    避免不同成员划分或旧格式名称恰好拼成 JSON 时产生确定性别名。
+    这不是鉴权标识，也不承诺截断哈希不存在一般碰撞。
+    """
+    if any("|" in eid for eid in members):
+        encoded = json.dumps(members, ensure_ascii=True, separators=(",", ":"))
+        prefix = "mg_v2_"
+    else:
+        encoded = "|".join(members)
+        prefix = "mg_"
+    digest = hashlib.sha1(encoded.encode("utf-8")).hexdigest()
+    return prefix + digest[:12]
 
 
 def _pair_evidence(frames, ticks, a, b, tol_pos, min_samples, min_speed):

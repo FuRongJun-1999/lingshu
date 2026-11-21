@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from importlib import import_module
 
-__all__ = ["darkline", "linework", "analyze_binary_components"]
+__all__ = ['darkline', 'linework', 'analyze_binary_components', 'analyze_image_pixels']
 
 
 def __getattr__(name):
@@ -12,6 +12,8 @@ def __getattr__(name):
         return getattr(import_module(".lineart", __name__), name)
     if name == "analyze_binary_components":
         return getattr(import_module(".mask_geometry", __name__), name)
+    if name == "analyze_image_pixels":
+        return getattr(import_module(".image_stats", __name__), name)
     raise AttributeError("module %r has no attribute %r" % (__name__, name))
 
 
