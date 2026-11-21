@@ -1,0 +1,51 @@
+{
+  "guard": "tests/test_circular_time_residual_guard.py",
+  "sources": ["lingshu/world/physics.py"],
+  "total": 6,
+  "baseline_failures": [
+    "test_shifted_helix_is_anchored_at_first_sample",
+    "test_epoch_angular_and_vertical_fits_remain_nonsingular",
+    "test_irregular_time_translation_preserves_parameters",
+    "test_vertical_fit_residual_matches_centered_regression_oracle",
+    "test_planar_noise_uses_same_three_coordinate_rms",
+    "test_classification_scores_vertical_mismatch_before_selecting_circular"
+  ],
+  "mutations": [
+    {
+      "name": "absolute_angle_time",
+      "test": "test_epoch_angular_and_vertical_fits_remain_nonsingular",
+      "assertion": "epoch helix must remain nonsingular",
+      "changes": [{"file": "lingshu/world/physics.py", "method": "fit_circular", "old": "cw = polyfit(tau, ang, 1)", "new": "cw = polyfit(ts, ang, 1)"}]
+    },
+    {
+      "name": "absolute_vertical_time",
+      "test": "test_shifted_helix_is_anchored_at_first_sample",
+      "assertion": "helix center must be at t_ref",
+      "changes": [{"file": "lingshu/world/physics.py", "method": "fit_circular", "old": "cu = polyfit(tau, ys, 1)", "new": "cu = polyfit(ts, ys, 1)"}]
+    },
+    {
+      "name": "omit_vertical_residual",
+      "test": "test_vertical_fit_residual_matches_centered_regression_oracle",
+      "assertion": "vertical residual must contribute to 3D coordinate RMS",
+      "changes": [{"file": "lingshu/world/physics.py", "method": "fit_circular", "old": "resid += (cu[0] + cu[1] * t - y) ** 2", "new": "resid += 0.0"}]
+    },
+    {
+      "name": "horizontal_only_denominator",
+      "test": "test_planar_noise_uses_same_three_coordinate_rms",
+      "assertion": "all fits must use three-coordinate normalization",
+      "changes": [{"file": "lingshu/world/physics.py", "method": "fit_circular", "old": "math.sqrt(resid / (3.0 * n))", "new": "math.sqrt(resid / (2.0 * n))"}]
+    },
+    {
+      "name": "lost_reference_time",
+      "test": "test_epoch_angular_and_vertical_fits_remain_nonsingular",
+      "assertion": "epoch helix position drifted",
+      "changes": [{"file": "lingshu/world/physics.py", "method": "fit_circular", "old": "\"v_up\": cu[1], \"t_ref\": ts[0]", "new": "\"v_up\": cu[1], \"t_ref\": 0.0"}]
+    },
+    {
+      "name": "prediction_uses_absolute_angle",
+      "test": "test_planar_noise_uses_same_three_coordinate_rms",
+      "assertion": "all fits must use three-coordinate normalization",
+      "changes": [{"file": "lingshu/world/physics.py", "method": "fit_circular", "old": "th = ang0 + cw[1] * t", "new": "th = cw[1] * t"}]
+    }
+  ]
+}

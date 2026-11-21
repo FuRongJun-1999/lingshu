@@ -24,11 +24,10 @@
     故权限继承语义改用**跨平台可判**的观测量具取证：把 `os.chmod` / `os.replace`
     打桩记录、把 `os.stat(target).st_mode` 伪造成 `0o600`（A3/B3/C3、A4/B4/C4）
     —— 抽掉修复即红，Windows 上同样有判别力。
-  · **符号链接面**：Windows 上 `os.symlink` 抛 `OSError(22, '客户端没有所需的
-    特权')`（非开发者模式 / 无 SeCreateSymbolicLinkPrivilege）⇒ 符链面在本机
-    **不可端到端复现**。故 A6/B6/C6 标 `posix` SKIP（显式理由）；「穿透链接」
-    语义改由 A4/B4/C4 用带 `..` 的路径做**跨平台**取证（`realpath` 会规范化掉
-    `..`，缺陷态的原串不会）。
+  · **符号链接面**：A6/B6/C6 在各自测试目录实际创建文件符号链接，成功就验证
+    落盘后链接保留、真实件更新。仅 Windows 报缺少创建链接权限（WinError 1314）
+    时跳过这三项中的对应测试；A4/B4/C4 仍通过带 `..` 的路径验证 `realpath`
+    规范化，其他创建链接错误照常使测试失败。
   · **正对照**（P0/P1）：证明上面两条 SKIP 是**平台限制**、不是量具失效——
     P0 断言本平台确实能读写 `0o444`（posix 上再加 `0o600`）；P1 断言 symlink
     在本平台要么成功、要么以特权错失败（两种结局都断言 ⇒ 必然为正）。
@@ -38,7 +37,8 @@
   A1/A2 反向腿：export_all 目标不存在 / 普通目标 ⇒ 行为与改前逐字一致
   A3     export_all 继承旧档权限位（打桩：`chmod(tmp, 0o600)` 确实发生）
   A4     export_all 落盘目标取 realpath（带 `..` 的路径被规范化掉）
-  A5/A6  [posix] export_all 真权限面 0600 保持 / 符号链接保持且真实件已更新
+  A5     [posix] export_all 真权限面 0600 保持
+  A6     [需文件符号链接能力] export_all 保留链接且更新真实件
   A7     换入失败 ⇒ 旧档不动且**不留残件**（跨平台；钉住「chmod 后删不掉」反向腿）
   B1..B7 save_consolidated 同构
   C1..C7 flush_payloads 同构
@@ -69,11 +69,6 @@ SKIP_PERM = pytest.mark.skipif(
     not POSIX,
     reason="本机 %s：`os.chmod(0o600)` 后 st_mode 仍为 0o666（Windows 只表达只读位）"
            "⇒ 0600 权限面不可端到端复现；该语义由 A3/B3/C3 打桩取证" % sys.platform)
-SKIP_LINK = pytest.mark.skipif(
-    not POSIX,
-    reason="本机 %s：`os.symlink` 抛 OSError(22, '客户端没有所需的特权')"
-           "（非开发者模式/无 SeCreateSymbolicLinkPrivilege）⇒ 符链面不可端到端复现；"
-           "该语义由 A4/B4/C4 用 `..` 路径跨平台取证" % sys.platform)
 
 
 # ==================== 量具 ====================
@@ -136,6 +131,30 @@ def _same_path(a, b):
     return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
+def _try_file_symlink(target, link):
+    """创建并验证真实链接；仅 Windows 缺创建链接权限时返回 False。"""
+    try:
+        os.symlink(target, link)
+    except OSError as exc:
+        winerror = getattr(exc, "winerror", None)
+        privilege_error = (
+            winerror == 1314
+            or (winerror is None and exc.errno == 22
+                and ("privilege" in str(exc).lower() or "特权" in str(exc)))
+        )
+        if sys.platform == "win32" and privilege_error:
+            return False
+        raise
+    assert os.path.islink(link), "os.symlink 返回成功却未创建链接"
+    assert os.path.samefile(target, link), "创建的链接未指向测试目标"
+    return True
+
+
+def _require_file_symlink(target, link):
+    if not _try_file_symlink(target, link):
+        pytest.skip("Windows 当前用户没有创建文件符号链接的权限")
+
+
 # ==================== 三个被测落盘入口 ====================
 
 def _engine():
@@ -183,23 +202,31 @@ def test_p0_权限量具在本平台有效():
             "SKIP_PERM 的理由需重核" % (sys.platform, oct(got)))
 
 
-def test_p1_符号链接量具能力探测():
-    """P1：证明 SKIP_LINK 是平台限制而非量具失效——symlink 要么成功要么以特权错失败。"""
-    td = tempfile.mkdtemp(prefix="b498_p1_")
-    real = _sentinel(os.path.join(td, "real.txt"))
-    link = os.path.join(td, "link.txt")
-    try:
-        os.symlink(real, link)
-    except OSError as e:
-        assert not POSIX, "P1 posix 上 symlink 竟失败：%r" % (e,)
-        assert getattr(e, "winerror", None) in (1314, None), (
-            "P1 本机 symlink 失败的成因不是「缺特权」，SKIP_LINK 的理由需重核：%r" % (e,))
-        assert "特权" in str(e) or "privilege" in str(e).lower() or e.errno == 22, (
-            "P1 symlink 失败成因不明（errno=%r winerror=%r）：%r"
-            % (e.errno, getattr(e, "winerror", None), e))
-    else:
-        assert os.path.islink(link), "P1 symlink 建了却不是链接——量具失效"
-        assert POSIX, "P1 非 posix 上 symlink 竟成功（开发者模式？）——SKIP_LINK 可重核"
+def test_p1_符号链接量具能力探测(tmp_path):
+    """P1：在真实临时目录接受有效链接或已知的 Windows 权限不足。"""
+    real = _sentinel(tmp_path / "real.txt")
+    _try_file_symlink(real, tmp_path / "link.txt")
+
+
+def test_p1_仅已知Windows权限错误可跳过(monkeypatch, tmp_path):
+    """未知错误不能被当成平台能力缺失而隐藏。"""
+    target = tmp_path / "real.txt"
+    _sentinel(target)
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    denied = OSError("symbolic link privilege required")
+    denied.winerror = 1314
+    monkeypatch.setattr(os, "symlink", lambda *_args: (_ for _ in ()).throw(denied))
+    assert _try_file_symlink(target, tmp_path / "denied.txt") is False
+
+    legacy_denied = OSError(22, "客户端没有所需的特权")
+    monkeypatch.setattr(os, "symlink", lambda *_args: (_ for _ in ()).throw(legacy_denied))
+    assert _try_file_symlink(target, tmp_path / "legacy-denied.txt") is False
+
+    unexpected = OSError("unexpected link creation failure")
+    monkeypatch.setattr(os, "symlink", lambda *_args: (_ for _ in ()).throw(unexpected))
+    with pytest.raises(OSError, match="unexpected link creation failure"):
+        _try_file_symlink(target, tmp_path / "unexpected.txt")
 
 
 def test_p2_权限继承机制链在本平台可端到端观测():
@@ -339,15 +366,14 @@ def test_a5_posix_0600目标写后仍0600():
         % (oct(after), oct(before)))
 
 
-@SKIP_LINK
-def test_a6_posix_符号链接目标保持且真实件更新():
-    """A6 [posix]：目标是符号链接 ⇒ 写后仍是链接，且链接指向的真实件被更新。"""
-    td = tempfile.mkdtemp(prefix="b498_a6_")
+def test_a6_符号链接目标保持且真实件更新(tmp_path):
+    """A6：目标是符号链接 ⇒ 写后仍是链接，且链接指向的真实件被更新。"""
+    td = str(tmp_path)
     real_dir = os.path.join(td, "offsite")
     os.makedirs(real_dir)
     real = _sentinel(os.path.join(real_dir, "latest.json"))
     link = os.path.join(td, "backup_link.json")
-    os.symlink(real, link)
+    _require_file_symlink(real, link)
 
     _do_export_all(link)
 
@@ -463,15 +489,14 @@ def test_b5_posix_0600目标写后仍0600():
     assert after == 0o600, "#498 save_consolidated 把 0600 放宽成 %s" % oct(after)
 
 
-@SKIP_LINK
-def test_b6_posix_符号链接目标保持且真实件更新():
-    """B6 [posix]：符号链接目标 ⇒ 写后仍是链接且真实件已更新。"""
-    td = tempfile.mkdtemp(prefix="b498_b6_")
+def test_b6_符号链接目标保持且真实件更新(tmp_path):
+    """B6：符号链接目标 ⇒ 写后仍是链接且真实件已更新。"""
+    td = str(tmp_path)
     real_dir = os.path.join(td, "offsite")
     os.makedirs(real_dir)
     real = _sentinel(os.path.join(real_dir, "kern.json"))
     link = os.path.join(td, "kern_link.json")
-    os.symlink(real, link)
+    _require_file_symlink(real, link)
 
     _do_save_consolidated(link)
 
@@ -577,15 +602,14 @@ def test_c5_posix_0600目标写后仍0600():
     assert after == 0o600, "#498 flush_payloads 把 0600 放宽成 %s" % oct(after)
 
 
-@SKIP_LINK
-def test_c6_posix_符号链接目标保持且真实件更新():
-    """C6 [posix]：符号链接目标 ⇒ 写后仍是链接且真实件已更新。"""
-    td = tempfile.mkdtemp(prefix="b498_c6_")
+def test_c6_符号链接目标保持且真实件更新(tmp_path):
+    """C6：符号链接目标 ⇒ 写后仍是链接且真实件已更新。"""
+    td = str(tmp_path)
     real_dir = os.path.join(td, "offsite")
     os.makedirs(real_dir)
     real = _sentinel(os.path.join(real_dir, "out.md"), body="OLD\n")
     link = os.path.join(td, "out_link.md")
-    os.symlink(real, link)
+    _require_file_symlink(real, link)
 
     _do_flush_payloads(link)
 
