@@ -332,7 +332,7 @@ class DepthBuffer:
                 if xa[k] > xb[k]:
                     continue
                 lo = max(minx, int(math.ceil(xa[k] - 0.5)))
-                hi = min(maxx, int(math.floor(xb[k] + 0.5)))
+                hi = min(maxx, int(math.floor(xb[k] - 0.5)))
                 if hi < lo:
                     continue
                 xs = _np.arange(lo, hi + 1, dtype=_np.float64) + 0.5
@@ -353,7 +353,7 @@ class DepthBuffer:
                 if xa is None or xa > xb:
                     continue
                 lo = max(minx, int(math.ceil(xa - 0.5)))
-                hi = min(maxx, int(math.floor(xb + 0.5)))
+                hi = min(maxx, int(math.floor(xb - 0.5)))
                 if hi < lo:
                     continue
                 denom = xb - xa
