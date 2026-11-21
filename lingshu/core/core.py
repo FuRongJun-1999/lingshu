@@ -9561,6 +9561,36 @@ class SpacetimeMemoryEngine:
             # 视觉实现已迁 AEIS 身体库：缺失按能力不可用降级（契约 status）
             return {"status": "vision_unavailable", "error": str(e)}
 
+    def perceive_audio(self, audio_path, importance: float = 0.4,
+                       window_ms: int = 100, silence_dbfs: float = -45.0,
+                       max_duration_s: float = 300.0, ffmpeg: str = "ffmpeg",
+                       timeout_s: float = 90.0) -> dict:
+        """分析 WAV 与可选 FFmpeg 支持的压缩音频，并写入 audio 模态摘要。
+
+        WAV/bytes-like WAV 不需要 FFmpeg；常见压缩格式使用可选 FFmpeg，未安装时明确报错。
+        只保存声学摘要，不保留路径、原始音频或转写文本。解码限制输入大小、输出时长和超时。
+        参数/解码错误发生在写记忆之前，不产生半截副作用。
+        """
+        from ..vision.audio import perceive_audio_file
+        return perceive_audio_file(self, audio_path, importance=importance, ffmpeg=ffmpeg,
+                                   window_ms=window_ms, silence_dbfs=silence_dbfs,
+                                   max_duration_s=max_duration_s, timeout_s=timeout_s)
+
+    def perceive_audio_file(self, audio_source, importance: float = 0.4,
+                            ffmpeg: str = "ffmpeg", window_ms: int = 100,
+                            silence_dbfs: float = -45.0,
+                            max_duration_s: float = 300.0,
+                            timeout_s: float = 90.0) -> dict:
+        """分析 WAV 或可选 FFmpeg 支持的压缩音频，并只写入声学摘要。
+
+        压缩格式需本机 FFmpeg；未安装时明确抛 AudioCodecUnavailable。
+        bytes-like 和本地路径均可用；不联网、不保存或上传原始音频。
+        """
+        from ..vision.audio import perceive_audio_file
+        return perceive_audio_file(self, audio_source, importance=importance, ffmpeg=ffmpeg,
+                                   window_ms=window_ms, silence_dbfs=silence_dbfs,
+                                   max_duration_s=max_duration_s, timeout_s=timeout_s)
+
     def get_body_capabilities(self) -> dict:
         """v1.13 身体能力声明（第 4 项：工具/模态作为自我的一部分）"""
         # 惰性视觉：未装配时显示 "lazy"（首次调用加载），不阻塞能力查询
@@ -9572,6 +9602,8 @@ class SpacetimeMemoryEngine:
             vision_ok = self._vision_provider.available()
             provider_name = self._vision_provider.name
             vision_note = self._vision_error or None
+        from ..vision.audio import ffmpeg_available as _ffmpeg_available
+        compressed_audio_available = _ffmpeg_available()
         devices = []
         devices_available = []
         try:
@@ -9582,13 +9614,19 @@ class SpacetimeMemoryEngine:
         except Exception:
             _log.debug("core.py silent-except：旁路异常", exc_info=True)
             pass
+        from ..vision.audio import ffmpeg_available
+        compressed_audio_available = ffmpeg_available()
         return {
             "modalities": {
                 "text": True,
                 "image": vision_ok,
-                "audio": False,
+                "audio": True,  # WAV 标准库；常见压缩格式可选 FFmpeg 解码
                 "video": False,
             },
+            "audio": {"provider": "wav-pcm+ffmpeg-optional", "available": True,
+                      "compressed_decode": "ffmpeg-optional",
+                      "ffmpeg_available": compressed_audio_available,
+                      "transcription": False, "raw_audio_persisted": False},
             "vision": {"provider": provider_name,
                        "available": vision_ok,
                        "error": vision_note},
@@ -9596,9 +9634,10 @@ class SpacetimeMemoryEngine:
             "devices": devices,           # BODY-REV1：外部设备清单
             "devices_available": devices_available,
             "tools": ["search", "recall", "distill", "calibrate", "cognition",
-                      "lifecycle", "mcp", "device_call", "body_devices"],
-            "note": "身体 = 感知（视觉/文本/屏幕）+ 运动（工具/设备/进程）+ 记忆（灵枢）；"
-                    "设备输出带 provenance 隔离（BODY-REV1）",
+                      "lifecycle", "mcp", "device_call", "body_devices",
+                      "perceive_audio", "perceive_audio_file"],
+            "note": "身体 = 感知（视觉/音频/文本/屏幕）+ 运动（工具/设备/进程）+ 记忆（灵枢）；"
+                    "WAV 只保存声学摘要，不保存原音频（BODY-AUDIO-REV1）；设备输出带 provenance 隔离（BODY-REV1）",
         }
 
     def body_devices(self) -> dict:
