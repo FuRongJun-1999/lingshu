@@ -50,7 +50,8 @@ def _samples(fn, n, dt, t0=0.0):
 def rk4_pendulum(theta0, omega0, t_end, dt=1.0 / 4096):
     """独立参考：`θ'' = -ω0² sin θ` 的 RK4（**只在门里用**，不在产品路径上）。"""
     th, om = float(theta0), 0.0
-    n = max(1, int(round(t_end / dt)))
+    n = max(1, int(math.ceil(abs(t_end) / dt)))
+    dt = t_end / n
     for _ in range(n):
         def f(t_, o_):
             return -omega0 * omega0 * math.sin(t_)
@@ -150,7 +151,7 @@ def main():
           "弹簧：4 支 ζ∈{0,0.25,1,2.5} 全部满足 env(0)=1 且 env'(0)=0（最大偏差 %.2e）；"
           "ζ=0.25 的过零点间距核验阻尼周期差 %.2e s" % (worst_ic, d_period))
 
-    # ---------------- P4 单摆：小角 vs 精确椭圆周期 + 椭圆波形的实测有效域
+    # ---------------- P4 单摆：小角 vs 精确椭圆周期 + 释放初速为零的精确波形
     rows4 = []
     worst_rk4 = 0.0
     worst_period = 0.0
@@ -184,17 +185,23 @@ def main():
         rows4.append(row)
     gated = [r for r in rows4 if r["theta0_deg"] > P.PENDULUM_EXACT_MAX_DEG]
     ok_gate = all(r["exact_raised"] for r in gated)
-    ok_domain = worst_rk4 < 1e-4
+    for th0 in (-math.pi, math.pi):
+        try:
+            P.pendulum_exact_angle(th0, 2.0, 1.0)
+            ok_gate = False
+        except P.PhysicsError:
+            pass
+    ok_domain = worst_rk4 < P.PENDULUM_EXACT_MAX_ERR
     raw["P4"] = {"rows": rows4, "worst_rk4_rad": worst_rk4, "worst_period": worst_period,
                  "exact_max_deg": P.PENDULUM_EXACT_MAX_DEG,
                  "exact_max_err_rad": P.PENDULUM_EXACT_MAX_ERR,
                  "gate_enforced": ok_gate,
-                 "known_defect": ("jacobi_cn(Landen) 在 θ0>5° 与 RK4 偏离：30°→7.0e-03、"
-                                  "60°→5.8e-02、120°→5.3e-01 rad —— 已按 fail-closed 拒绝该路径")}
+                 "release_formula": "2*asin(k*cn(u,k)/dn(u,k)); u=omega0*t",
+                 "reference": "RK4 ends at each exact requested t; threshold covers these samples only"}
     check("P4", ok_domain and worst_period < 1e-12 and ok_gate,
           "单摆：精确**周期**（AGM 椭圆）与闭式复算差 %.2e（小角近似在 60° 时低估 %.2f%%）；"
           "椭圆**波形**在有效域 |θ0|<=%.0f° 内与独立 RK4(1/8192s) 最大偏差 %.2e rad，"
-          "超出即显式 raise（%d/%d 条已拒）—— 已知缺陷，见 raw.P4.known_defect"
+          "物理边界 ±π 显式拒绝；调用者仍可用 tol_deg 收紧域（%d/%d 条域外样本已拒）"
           % (worst_period, [r for r in rows4 if r["theta0_deg"] == 60][0]["small_angle_error_pct"],
              P.PENDULUM_EXACT_MAX_DEG, worst_rk4,
              sum(1 for r in gated if r["exact_raised"]), len(gated)))

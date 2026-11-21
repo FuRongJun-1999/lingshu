@@ -10,7 +10,7 @@
 |---|---|---|
 | **灵** | 智能论 · 共同信任协议（理论层） | [CommonTrustProtocol](https://github.com/FuRongJun-1999/CommonTrustProtocol) |
 | **脑** | 认知图引擎：条件化记忆 · 检索 · 演化 · 睡眠与自迭代 | [dsh-memory](https://github.com/FuRongJun-1999/dsh-memory) |
-| **身** | 感知与执行：世界模型七层 · 视觉生成与读回 · 语义时空图 | **本仓 `lingshu` 包**（core · world · nn · gen） |
+| **身** | 感知与执行：世界模型七层 · 视觉生成与读回 · 语义时空图 | **本仓 `lingshu` 包**（core · world · nn · gen · vision） |
 
 > **「身」已不再是外部私有库。** 其理论、代码与测试均已模块化入本仓（见下文「理论地基」「代码主体」）——本文所说的「身」，指的就是这个仓里的 `lingshu` 包，不需要另找私有源。
 
@@ -47,11 +47,12 @@
 ## 代码主体
 
 身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 15 件 ·
-world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿与视频帧统计 2 件）：
+world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿与视频帧统计 3 件（含图像像素统计））：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
 pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规路径）
+# vision 图像像素统计亦用 Pillow，但导入入口保持惰性
 ```
 
 本地视频灰度帧变化统计（可选 FFmpeg、有限帧数和时长）见
