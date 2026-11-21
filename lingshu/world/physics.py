@@ -425,6 +425,7 @@ def fit_circular(samples, up=1):
 
     水平：(x, z) 用 **Kåsa 代数圆拟合**（对 `x²+z² + D x + E z + F = 0` 做 LS）；
     沿 up：一次多项式（匀速漂移）。角速度由**累积转角 / 时间**给出（unwrap，不用 atan2 差值）。
+    两项时间拟合均以首样本为基准；残差按三维坐标 RMS 计，与其他候选模型同口径。
     """
     ts = _check_samples(samples, 3)
     up = _axis_of(up)
@@ -459,20 +460,23 @@ def fit_circular(samples, up=1):
             acc += dth
         prev = th
         ang.append(acc)
-    cw = polyfit(ts, ang, 1)
-    cu = polyfit(ts, [float(s[1][up]) for s in samples], 1)
+    tau = [t - ts[0] for t in ts]
+    ys = [float(s[1][up]) for s in samples]
+    cw = polyfit(tau, ang, 1)
+    cu = polyfit(tau, ys, 1)
     # ⚠ 相位基准：`ang[0]` 恒为 0（unwrap 的起点），必须把**首个样本的真实极角**加回来；
     #    否则预测圆整体转了一个初相 ⇒ 半径/ω 都对，残差却是 2r·sin(Δθ/2)（实测 rms 0.42）。
     ang0 = math.atan2(zs[0] - cz, xs[0] - cx)
     resid = 0.0
-    for t, x, z, _an in zip(ts, xs, zs, ang):
-        th = ang0 + cw[1] * (t - ts[0])
+    for t, x, z, y in zip(tau, xs, zs, ys):
+        th = ang0 + cw[1] * t
         resid += (cx + r * math.cos(th) - x) ** 2 + (cz + r * math.sin(th) - z) ** 2
+        resid += (cu[0] + cu[1] * t - y) ** 2
     return {"schema": PHYSICS_SCHEMA, "kind": "circular", "up": up,
             "center": _unhv((cx, cz), cu[0], up), "radius": r,
             "omega": cw[1], "theta0": ang0,
             "v_up": cu[1], "t_ref": ts[0],
-            "residual_rms": math.sqrt(resid / (2.0 * n)), "n_samples": n}
+            "residual_rms": math.sqrt(resid / (3.0 * n)), "n_samples": n}
 
 
 _FITTERS = {
