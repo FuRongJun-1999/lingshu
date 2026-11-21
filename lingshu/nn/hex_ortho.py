@@ -51,9 +51,28 @@ KERNEL_NAMES: List[str] = (["edge_d%d" % d for d in range(6)]
                            + ["noise_k%d" % i for i in range(8)])
 
 
+def _validate_tol(tol: float) -> float:
+    """校验正交判据阈值 tol 为非负有限实数（拒绝 bool / NaN / ±inf / 负值 / 非数值）。"""
+    if isinstance(tol, (bool, np.bool_)):
+        raise ValueError("tol 不得为 bool，收到 %r" % (tol,))
+    if not isinstance(tol, (int, float, np.integer, np.floating)):
+        raise TypeError("tol 必须是实数，收到 %s" % type(tol).__name__)
+    val = float(tol)
+    if not math.isfinite(val) or val < 0.0:
+        raise ValueError("tol 必须是非负有限实数，收到 %r" % (tol,))
+    return val
+
+
 def kname(i: int, names: Optional[Sequence[str]] = None) -> str:
+    if isinstance(i, (bool, np.bool_)):
+        raise ValueError("核下标 i 不得为 bool，收到 %r" % (i,))
+    if not isinstance(i, (int, np.integer)):
+        raise TypeError("核下标 i 必须是整数，收到 %s" % type(i).__name__)
+    idx = int(i)
+    if idx < 0:
+        raise ValueError("核下标 i 必须非负，收到 %r" % (i,))
     nm = names if names else KERNEL_NAMES
-    return nm[i] if i < len(nm) else f"k{i}"
+    return nm[idx] if idx < len(nm) else f"k{idx}"
 
 
 # ==================== ① 正交性约束(核族去重) ====================
@@ -68,6 +87,7 @@ def gram_schmidt_kernels(kernels: Sequence[np.ndarray],
       ≈0 → 该核完全可由已保留核线性表达(重复解释,剔除)。
     返回每核报告(idx/name/norm/new_info_ratio/redundant/explained_by)。
     """
+    tol_val = _validate_tol(tol)
     kept: List[np.ndarray] = []          # 已保留的正交化向量
     kept_idx: List[int] = []
     report: List[Dict] = []
@@ -76,7 +96,7 @@ def gram_schmidt_kernels(kernels: Sequence[np.ndarray],
         n0 = float(np.linalg.norm(v))
         explainers: List[int] = []
         for j, u in zip(kept_idx, kept):
-            if n0 < 1e-12:
+            if n0 < 1e-12 or not math.isfinite(n0):
                 break
             proj = float(v @ u)
             if abs(proj) > 1e-9:
@@ -91,8 +111,8 @@ def gram_schmidt_kernels(kernels: Sequence[np.ndarray],
             ratio = None
         else:
             ratio = n1 / n0 if n0 > 1e-12 else 0.0
-        redundant = ratio is not None and ratio < tol
-        if not redundant:
+        redundant = ratio is not None and ratio < tol_val
+        if not redundant and ratio is not None:
             kept.append(v / (n1 + 1e-12))
             kept_idx.append(i)
         report.append({"idx": i, "name": kname(i, names),
@@ -109,7 +129,8 @@ def orthogonal_pool(kernels: Sequence[np.ndarray], tol: float = ORTHO_TOL,
                     ) -> Tuple[List[int], List[Dict]]:
     """正交候选池:返回 (保留核下标, 全量报告)。剔除的核=重复解释,不参与金字塔。"""
     report = gram_schmidt_kernels(kernels, tol, names)
-    keep = [r["idx"] for r in report if not r["redundant"]]
+    keep = [r["idx"] for r in report
+            if not r["redundant"] and r["new_info_ratio"] is not None]
     return keep, report
 
 
@@ -156,18 +177,25 @@ def residual_pyramid(lattice: np.ndarray, kernels: Sequence[np.ndarray],
     # 永不触发（本该在 residual 0.0847 停第 1 层，实际剥到 0.0 并**改标**
     # orthogonal_exhausted——停因读数是错的）。
     for _n, _v in (("dead_zone", dead_zone), ("tol", tol)):
-        if not (isinstance(_v, (int, float)) and not isinstance(_v, bool)
-                and math.isfinite(float(_v)) and float(_v) >= 0.0):
+        if (isinstance(_v, (bool, np.bool_))
+                or not isinstance(_v, (int, float, np.integer, np.floating))
+                or not math.isfinite(float(_v)) or float(_v) < 0.0):
             return {"algo": ALGO, "layers": [], "depth": 0,
                     "stop_reason": "invalid_input", "energy_spectrum": [],
                     "orthogonality_audit": {}, "residual_share": None,
                     "error": "%s=%r 非有限或为负——判据不可判（#2521）" % (_n, _v)}
-    if (isinstance(max_layers, bool) or not isinstance(max_layers, (int, np.integer))
+    if (isinstance(max_layers, (bool, np.bool_))
+            or not isinstance(max_layers, (int, np.integer))
             or int(max_layers) < 1):
         return {"algo": ALGO, "layers": [], "depth": 0,
                 "stop_reason": "invalid_input", "energy_spectrum": [],
                 "orthogonality_audit": {}, "residual_share": None,
                 "error": "max_layers=%r 须为正整数（#2521）" % (max_layers,)}
+    if not isinstance(use_orthogonal_pool, (bool, np.bool_)):
+        return {"algo": ALGO, "layers": [], "depth": 0,
+                "stop_reason": "invalid_input", "energy_spectrum": [],
+                "orthogonality_audit": {}, "residual_share": None,
+                "error": "use_orthogonal_pool=%r 须为 bool（#196）" % (use_orthogonal_pool,)}
     keep, ortho_report = (orthogonal_pool(kernels, tol, names)
                           if use_orthogonal_pool
                           else (list(range(len(kernels))), []))
