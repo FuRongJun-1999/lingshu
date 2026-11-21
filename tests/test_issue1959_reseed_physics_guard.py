@@ -93,8 +93,9 @@ def test_rolling_not_degraded_after_reseed():
     必须跨 ≥2 个 tick：丢参发生在 step(1) 的 `_reseed_physics`，后果要到**下一个**
     tick 才显形（真实读数：step(1) 仍 rolling，step(2) 起 slope_friction）。
 
-    注意**不**断言"有箱/无箱轨迹一致"——重播种 p0/v0 是该函数的设计目的（闭式解不能
-    从旧初值再穿一次），两组轨迹本就应当不同；本用例只管参数未被丢弃这条契约。
+    本用例只管参数未被丢弃；真实碰撞修正后重播种可防止从旧初值再穿一次。
+    无接触时的闭式轨迹与瞬时末速度另由 test_scene_collision_freeflight_velocity 覆盖，
+    不能把"登记碰撞箱"本身视为改变自由运动轨迹的理由。
     """
     sim, a = _build(True)
     for tick in (1, 2, 3):
