@@ -721,6 +721,20 @@ class SimulationLoop:
             schema = state["schema"]
             if schema not in ("lingshu.world-prior.v1", "lingshu.world-prior.v2"):
                 raise ValueError("不支持的世界模型经验格式")
+            # 先验的预测边界必须与要继续推进的物理场景一致。恢复只替换模型
+            # 表征，不重建/缩放 SceneSimulator；尺寸不一致就不能安全发布候选。
+            prior_size = state.get("size")
+            if (isinstance(prior_size, bool) or not isinstance(prior_size, int)
+                    or prior_size <= 0):
+                raise ValueError("世界模型经验 size 必须是正整数，收到 %r" % (prior_size,))
+            model_size = self.wm.size
+            model_world_size = self.wm.world.world.size
+            scene_size = self.scene.world.size
+            if not (prior_size == model_size == model_world_size == scene_size):
+                raise ValueError(
+                    "世界模型经验 size 与当前模型/物理世界不一致："
+                    "prior=%r model=%r model_world=%r scene=%r"
+                    % (prior_size, model_size, model_world_size, scene_size))
             selected = list(state["nodes"].items())[:max(0, limit)]
             # 先构建独立候选；后段字段或历史投影失败时，活动模型必须仍可继续使用。
             candidate = copy(self.wm)
