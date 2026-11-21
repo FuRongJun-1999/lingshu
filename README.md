@@ -47,12 +47,12 @@
 ## 代码主体
 
 身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 15 件 ·
-world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉/音频感知 3 件（含图像像素统计））：
+world 世界模型 45 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉/音频感知 4 件（含图像像素统计与掩码几何））：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
 pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规路径）
-# vision 图像像素统计亦用 Pillow，但导入入口保持惰性
+# vision 掩码几何不需重依赖；图像像素统计与线稿在调用时按需加载 Pillow/NumPy
 ```
 
 `lingshu.vision.analyze_image_pixels(image)` 可选地对已解码 Pillow 图像做有界像素统计（RGB 颜色分布、亮度与 alpha），不做语义识别或记忆写入；导入 `lingshu.vision` 本身不加载 Pillow/NumPy。
