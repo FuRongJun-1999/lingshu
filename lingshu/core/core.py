@@ -118,6 +118,129 @@ _MAIN_DIVERGENCE_REASON = {"negation": "polarity", "numeric": "number"}
 # =============================================================================
 
 _DEDUP_CAND = _namedtuple("_DedupCand", ["id", "content", "tags", "condition_space"])
+_DEDUP_POLARITY_TAGS = frozenset({"success", "failure"})
+
+
+def _dedup_bigrams(s: str) -> frozenset:
+    """与 LayeredStore.char_bigram_jaccard 逐字同式的字符二元组集合（空串返回空集）。"""
+    if not s:
+        return frozenset()
+    compact = "".join(s.split())
+    if len(compact) <= 1:
+        return frozenset((compact,))
+    return frozenset(compact[i:i + 2] for i in range(len(compact) - 1))
+
+
+def _dedup_bisect_left(keys: list, target) -> int:
+    """纯标准库二分查找（不引入 bisect 裸名，兼容 #156 白名单）。"""
+    lo, hi = 0, len(keys)
+    while lo < hi:
+        mid = (lo + hi) >> 1
+        if keys[mid] < target:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+class _DedupIndexEntry:
+    """M5 去重索引条目（#661）：预解析判同四列、排序键与字符二元组集合。"""
+
+    __slots__ = (
+        "cand", "sort_key", "polarity",
+        "cs_pos", "cs_tool", "cs_ec", "cs_t0", "cs_t1",
+        "bigrams",
+    )
+
+    def __init__(self, cand, sort_key, norm_content: str):
+        self.cand = cand
+        self.sort_key = sort_key
+        self.polarity = frozenset(cand.tags or ()) & _DEDUP_POLARITY_TAGS
+        cs = cand.condition_space
+        self.cs_pos = cs.observation_position
+        self.cs_tool = cs.observation_tool
+        self.cs_ec = cs.existence_constraint
+        self.cs_t0, self.cs_t1 = cs.time_window
+        self.bigrams = _dedup_bigrams(norm_content)
+
+    def matches_cs(self, pos: str, tool: str, ec: str, t0: float, t1: float) -> bool:
+        if self.cs_pos != pos or self.cs_tool != tool or self.cs_ec != ec:
+            return False
+        hi = self.cs_t1 if self.cs_t1 < t1 else t1
+        lo = self.cs_t0 if self.cs_t0 > t0 else t0
+        return hi >= lo
+
+
+class _DedupModalityIndex:
+    """单模态 M5 去重倒排索引＋有序键（按 importance DESC, last_access DESC, rowid ASC）。"""
+
+    __slots__ = (
+        "modality", "conn_seq", "total_changes", "data_version",
+        "sorted_keys", "entries", "inv", "skipped",
+    )
+
+    def __init__(self, modality: str, conn_seq: int, total_changes: int, data_version: int):
+        self.modality = modality
+        self.conn_seq = conn_seq
+        self.total_changes = total_changes
+        self.data_version = data_version
+        self.sorted_keys: list = []
+        self.entries: Dict[str, _DedupIndexEntry] = {}
+        self.inv: Dict[str, set] = {}
+        self.skipped: List[str] = []
+
+    def remove(self, nid: str) -> None:
+        old = self.entries.pop(nid, None)
+        if old is None:
+            return
+        pos = _dedup_bisect_left(self.sorted_keys, old.sort_key)
+        if pos < len(self.sorted_keys) and self.sorted_keys[pos] == old.sort_key:
+            self.sorted_keys.pop(pos)
+        inv = self.inv
+        for g in old.bigrams:
+            bucket = inv.get(g)
+            if bucket is not None:
+                bucket.discard(nid)
+                if not bucket:
+                    del inv[g]
+
+    def upsert(self, nid: str, importance: float, last_access: float, rowid: int,
+               cand, norm_content: str) -> None:
+        if nid in self.entries:
+            self.remove(nid)
+        la = float(last_access) if last_access is not None else float("-inf")
+        sort_key = (-float(importance), -la, int(rowid), nid)
+        entry = _DedupIndexEntry(cand, sort_key, norm_content)
+        pos = _dedup_bisect_left(self.sorted_keys, sort_key)
+        self.sorted_keys.insert(pos, sort_key)
+        self.entries[nid] = entry
+        inv = self.inv
+        for g in entry.bigrams:
+            bucket = inv.get(g)
+            if bucket is None:
+                inv[g] = {nid}
+            else:
+                bucket.add(nid)
+
+    def update_tags(self, nid: str, new_tags: list) -> None:
+        old = self.entries.get(nid)
+        if old is None:
+            return
+        old.cand = _DEDUP_CAND(nid, old.cand.content, new_tags, old.cand.condition_space)
+        old.polarity = frozenset(new_tags or ()) & _DEDUP_POLARITY_TAGS
+
+    def update_sort_key(self, nid: str, new_importance: float, new_last_access: float) -> None:
+        old = self.entries.get(nid)
+        if old is None:
+            return
+        pos = _dedup_bisect_left(self.sorted_keys, old.sort_key)
+        if pos < len(self.sorted_keys) and self.sorted_keys[pos] == old.sort_key:
+            self.sorted_keys.pop(pos)
+        la = float(new_last_access) if new_last_access is not None else float("-inf")
+        new_key = (-float(new_importance), -la, old.sort_key[2], nid)
+        old.sort_key = new_key
+        new_pos = _dedup_bisect_left(self.sorted_keys, new_key)
+        self.sorted_keys.insert(new_pos, new_key)
 
 
 @dataclass
@@ -1304,11 +1427,12 @@ class _ThreadConn:
 
     # `__weakref__` 必须显式列出：定义 `__slots__` 后类默认不再带弱引用槽，
     # 而登记表 `_conns` 是 WeakSet（按槽做弱引用）。
-    __slots__ = ("conn", "_closed", "__weakref__")
+    __slots__ = ("conn", "_closed", "_conn_seq", "__weakref__")
 
     def __init__(self, conn):
         self.conn = conn
         self._closed = False
+        self._conn_seq = 0
 
     def close(self):
         """关闭连接（幂等）：关闭会回滚悬挂事务，从而释放写锁。"""
@@ -1583,6 +1707,8 @@ class LayeredStore:
         # 一条连接存活**才不消失（旧注释「保活」即此意）。旧实现靠 _conns 的强引用
         # 列表顺带保活；改弱引用后必须显式留一条，否则创建线程一旦退出、本线程连接
         # 被回收，内存库即整体消失，PR #202 的「:memory: 跨线程可见」随之失效。
+        self._dedup_indices: Dict[str, _DedupModalityIndex] = {}
+        self._dedup_conn_seq_counter: int = 0
         self._anchor = self._connect(self._memory_dsn or db_path)
         # v1.16 图架构增强：WAL 模式（读写不互锁，MCP 长事务不再阻塞其他连接）
         # + busy_timeout（锁等待而非立即报错）
@@ -1691,6 +1817,8 @@ class LayeredStore:
         # 取向相反——故本句独立执行，异常原样抛出（sqlite3 恒支持该 PRAGMA）。
         c.execute("PRAGMA foreign_keys=ON")
         slot = _ThreadConn(c)
+        self._dedup_conn_seq_counter += 1
+        slot._conn_seq = self._dedup_conn_seq_counter
         self._local.slot = slot
         self._conns.add(slot)
         return slot
@@ -1843,6 +1971,8 @@ class LayeredStore:
             else:
                 conn.commit()
         except BaseException:
+            if getattr(self, "_dedup_indices", None):
+                self._dedup_indices.clear()
             try:
                 if nested:
                     conn.execute("ROLLBACK TO SAVEPOINT %s" % savepoint)
@@ -2269,11 +2399,13 @@ class LayeredStore:
                 # ② 受保护节点被改写 ⇒ 落审计（不再静默）。
                 overwrite_protected = existing
         with self._lock:
+            can_patch = self._dedup_can_patch_locked()
             c = self.conn.cursor()
             c.execute('''
                 INSERT OR REPLACE INTO nodes
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ''', node.to_row())
+            inserted_rowid = c.lastrowid
             # #448：同 id 覆盖写的是**新内容版本**——入参不带 `archived` 时同步清
             # 归档区登记，维持「有登记行 ⇔ 当前处于归档态」的不变量。
             if "archived" not in (node.tags or []):
@@ -2289,6 +2421,10 @@ class LayeredStore:
                              "protections_row": node.id in set(self.get_protected_nodes()),
                              "old_tags": list(overwrite_protected.tags or [])})
             self._commit_locked()
+            if can_patch and inserted_rowid:
+                self._dedup_patch_add_node_locked(node, existing, inserted_rowid)
+            elif self._dedup_indices:
+                self._dedup_indices.clear()
         # #797：FTS 索引同步写入——`LINGSHU_FTS=1` 时节点写路径不再把索引更新
         # 拖到「下一次检索」（旧实现在 add_node 落库后只靠触发器入脏队列，由
         # `candidates()` 检索前排空 ⇒ 写入与检索之间 `nodes_fts` 恒 0 行，外部
@@ -2311,6 +2447,9 @@ class LayeredStore:
                     "#797 FTS 写路径同步失败（已提交的节点不受影响，索引留待下次"
                     "检索前增量补齐）：%s: %s" % (type(exc).__name__, exc),
                     RuntimeWarning, stacklevel=2)
+        if self._dedup_indices:
+            with self._lock:
+                self._dedup_refresh_versions_locked()
         return node.id
 
     # ---- 引擎元数据（engine_meta key-value，跨进程持久化） ----
@@ -3129,9 +3268,14 @@ class LayeredStore:
             if old is not None:
                 self._assert_edge_role(old)
         with self._lock:
+            can_patch = self._dedup_can_patch_locked()
             c = self.conn.cursor()
             c.execute('INSERT OR REPLACE INTO edges VALUES (?,?,?,?,?,?,?,?,?,?,?)', edge.to_row())
             self._commit_locked()
+            if can_patch:
+                self._dedup_refresh_versions_locked()
+            elif self._dedup_indices:
+                self._dedup_indices.clear()
         return edge.id
 
     def get_edge(self, edge_id: str) -> Optional[STEdge]:
@@ -3400,6 +3544,107 @@ class LayeredStore:
                 skipped.append(row[0])
         self.last_skipped_rows = skipped
         return out
+
+    def _dedup_state_locked(self) -> Tuple[int, int, int]:
+        """当前连接的 (conn_seq, total_changes, data_version) 三元组（在 _lock 内调用）。"""
+        conn = self.conn
+        slot = getattr(self._local, "slot", None)
+        conn_seq = getattr(slot, "_conn_seq", 0)
+        dv = conn.execute("PRAGMA data_version").fetchone()[0]
+        return conn_seq, conn.total_changes, dv
+
+    def _dedup_can_patch_locked(self) -> bool:
+        """仅当缓存非空、处于最外层自有事务且未受外部 SQL 污染时允许增量更新。"""
+        if not self._dedup_indices:
+            return False
+        if self._tx_depth > 1 or not getattr(self, "_tx_owns_txn", True):
+            return False
+        conn_seq, tc, dv = self._dedup_state_locked()
+        return all(
+            idx.conn_seq == conn_seq and idx.total_changes == tc and idx.data_version == dv
+            for idx in self._dedup_indices.values()
+        )
+
+    def _dedup_refresh_versions_locked(self) -> None:
+        conn_seq, tc, dv = self._dedup_state_locked()
+        for idx in self._dedup_indices.values():
+            idx.conn_seq = conn_seq
+            idx.total_changes = tc
+            idx.data_version = dv
+
+    def _dedup_patch_add_node_locked(self, node: STNode, existing: Optional[STNode],
+                                     rowid: int) -> None:
+        if existing is not None:
+            old_idx = self._dedup_indices.get(existing.modality)
+            if old_idx is not None:
+                old_idx.remove(node.id)
+        idx = self._dedup_indices.get(node.modality)
+        if idx is None:
+            return
+        if node.layer == MemoryLayer.KNOWLEDGE and node.importance >= 0.0:
+            cs_src = node.condition_space
+            tw = cs_src.time_window
+            cs_copy = ConditionSpace(
+                observation_position=cs_src.observation_position,
+                observation_tool=cs_src.observation_tool,
+                time_window=(float(tw[0]), float(tw[1])),
+                existence_constraint=cs_src.existence_constraint,
+            )
+            tags_copy = list(node.tags) if node.tags is not None else None
+            cand = _DEDUP_CAND(id=node.id, content=node.content, tags=tags_copy,
+                               condition_space=cs_copy)
+            norm_c = SpacetimeMemoryEngine._strip_zero_width(node.content)
+            idx.upsert(node.id, node.importance, node.last_access, rowid, cand, norm_c)
+        else:
+            idx.remove(node.id)
+
+    def _dedup_index_for(self, modality: str, strip_fn) -> _DedupModalityIndex:
+        """获取或重建指定模态的 M5 去重倒排索引（#661，与 _dedup_candidates 逐位等价）。"""
+        with self._lock:
+            conn_seq, tc, dv = self._dedup_state_locked()
+            idx = self._dedup_indices.get(modality)
+            if (idx is not None and idx.conn_seq == conn_seq
+                    and idx.total_changes == tc and idx.data_version == dv):
+                self.last_skipped_rows = list(idx.skipped)
+                return idx
+            c = self.conn.cursor()
+            c.execute(
+                "SELECT id, content, tags, condition_space, importance, last_access, rowid"
+                " FROM nodes WHERE layer=? AND modality=? AND importance>=?"
+                " ORDER BY importance DESC, last_access DESC",
+                (MemoryLayer.KNOWLEDGE.value, modality, 0.0),
+            )
+            idx = _DedupModalityIndex(modality, conn_seq, tc, dv)
+            cs_cache: Dict[str, ConditionSpace] = {}
+            for row in c.fetchall():
+                try:
+                    raw_cs = row[3]
+                    cs_obj = cs_cache.get(raw_cs) if isinstance(raw_cs, str) else None
+                    if cs_obj is None:
+                        cs_obj = ConditionSpace.from_json(raw_cs)
+                        if isinstance(raw_cs, str):
+                            cs_cache[raw_cs] = cs_obj
+                    else:
+                        cs_obj = ConditionSpace(
+                            cs_obj.observation_position,
+                            cs_obj.observation_tool,
+                            cs_obj.time_window,
+                            cs_obj.existence_constraint,
+                        )
+                    cand = _DEDUP_CAND(
+                        id=row[0],
+                        content=row[1],
+                        tags=json.loads(row[2]),
+                        condition_space=cs_obj,
+                    )
+                    norm_c = strip_fn(row[1]) if isinstance(row[1], str) else ""
+                except (IndexError, ValueError, TypeError, KeyError):
+                    idx.skipped.append(row[0])
+                    continue
+                idx.upsert(row[0], row[4], row[5], row[6], cand, norm_c)
+            self.last_skipped_rows = list(idx.skipped)
+            self._dedup_indices[modality] = idx
+            return idx
 
     def query_nodes_by_time(self, start_ts: float = None, end_ts: float = None,
                             limit: int = None) -> List[STNode]:
@@ -4958,22 +5203,33 @@ class LayeredStore:
         node = self.get_node(node_id)
         added = False
         if node and tag not in node.tags:
-            node.tags.append(tag)
-            c = self.conn.cursor()
-            c.execute("UPDATE nodes SET tags=? WHERE id=?", (_dumps_tags(node.tags), node_id))
-            added = True
-        # #781：只对 `no_forget` 落审计（幂等：重复打标不重复留痕——`added` 为真
-        # 才记，避免同一事实被反复刷进审计面）。
-        if added and tag == "no_forget":
-            self.log_action(
-                "no_forget_tagged",
-                f"节点 {node_id} 被打上 no_forget 标签（#781）：该标签是遗忘保护的"
-                f"第二个真源（protections 行之外），豁免 decay_cycle 与 "
-                f"forget_advisor 两条遗忘路径；撤销入口见 untag_node（#448）",
-                node_ids=[node_id],
-                outcome={"layer": node.layer.value, "role": self.role.value,
-                         "tag": tag})
-        if own_tx:
+            with self._lock:
+                can_patch = self._dedup_can_patch_locked()
+                node.tags.append(tag)
+                c = self.conn.cursor()
+                c.execute("UPDATE nodes SET tags=? WHERE id=?", (_dumps_tags(node.tags), node_id))
+                added = True
+                # #781：只对 `no_forget` 落审计（幂等：重复打标不重复留痕——`added` 为真
+                # 才记，避免同一事实被反复刷进审计面）。
+                if added and tag == "no_forget":
+                    self.log_action(
+                        "no_forget_tagged",
+                        f"节点 {node_id} 被打上 no_forget 标签（#781）：该标签是遗忘保护的"
+                        f"第二个真源（protections 行之外），豁免 decay_cycle 与 "
+                        f"forget_advisor 两条遗忘路径；撤销入口见 untag_node（#448）",
+                        node_ids=[node_id],
+                        outcome={"layer": node.layer.value, "role": self.role.value,
+                                 "tag": tag})
+                if own_tx:
+                    self._commit_locked()
+                if can_patch:
+                    idx = self._dedup_indices.get(node.modality)
+                    if idx is not None:
+                        idx.update_tags(node_id, list(node.tags))
+                    self._dedup_refresh_versions_locked()
+                elif self._dedup_indices:
+                    self._dedup_indices.clear()
+        elif own_tx:
             self._commit_locked()
 
     @_transactional
@@ -6072,10 +6328,20 @@ class LayeredStore:
             raise TypeError("update_node_importance 的 delta 必须是有限实数，收到 %r" % (delta,))
         delta = _finite_or(delta, 0.0)
         self.assert_node_writable_by_role(node_id, action="改写共享层节点的 importance")
-        c = self.conn.cursor()
-        c.execute("UPDATE nodes SET importance = MIN(1.0, MAX(0.0, importance + ?)) WHERE id=?",
-                  (delta, node_id))
-        self._commit_locked()
+        with self._lock:
+            can_patch = self._dedup_can_patch_locked()
+            c = self.conn.cursor()
+            c.execute("UPDATE nodes SET importance = MIN(1.0, MAX(0.0, importance + ?)) WHERE id=?",
+                      (delta, node_id))
+            self._commit_locked()
+            if can_patch:
+                c.execute("SELECT modality, importance, last_access FROM nodes WHERE id=?", (node_id,))
+                row = c.fetchone()
+                if row is not None and row[0] in self._dedup_indices:
+                    self._dedup_indices[row[0]].update_sort_key(node_id, row[1], row[2])
+                self._dedup_refresh_versions_locked()
+            elif self._dedup_indices:
+                self._dedup_indices.clear()
 
     def recalc_structural_importance(self, dry_run: bool = True,
                                      boost_cap: float = 0.15,
@@ -6995,15 +7261,21 @@ class LayeredStore:
         与 `SpacetimeMemoryEngine._note_action` 的分工：后者委托可选组件
         自我认知引擎（未装配即静默 no-op），**不构成可靠留痕**；本方法直接
         写库，作为治理动作的持久审计兜底（跨进程、可查）。"""
-        c = self.conn.cursor()
-        c.execute("INSERT INTO action_logs"
-                  " (ts, action_type, summary, node_ids, outcome, context)"
-                  " VALUES (?,?,?,?,?,?)",
-                  (time.time(), action_type, summary,
-                   json.dumps(node_ids or [], ensure_ascii=False),
-                   json.dumps(outcome or {}, ensure_ascii=False),
-                   json.dumps(context or {}, ensure_ascii=False)))
-        self._commit_locked()
+        with self._lock:
+            can_patch = self._dedup_can_patch_locked()
+            c = self.conn.cursor()
+            c.execute("INSERT INTO action_logs"
+                      " (ts, action_type, summary, node_ids, outcome, context)"
+                      " VALUES (?,?,?,?,?,?)",
+                      (time.time(), action_type, summary,
+                       json.dumps(node_ids or [], ensure_ascii=False),
+                       json.dumps(outcome or {}, ensure_ascii=False),
+                       json.dumps(context or {}, ensure_ascii=False)))
+            self._commit_locked()
+            if can_patch:
+                self._dedup_refresh_versions_locked()
+            elif self._dedup_indices:
+                self._dedup_indices.clear()
 
     @_transactional
     def prune_action_logs(self, keep_rows: int = None) -> int:
@@ -8002,7 +8274,6 @@ class SpacetimeMemoryEngine:
                 # 同 WHERE/ORDER/LIMIT 语义 ⇒ 判同结果逐位不变），免掉全列
                 # `STNode.from_row` 的三处 JSON 解析；命中后合并面仍走
                 # `get_node(best.id)` 回捞完整节点（见下），窄行不逃出判同循环。
-                candidates = self.store._dedup_candidates(modality)
                 best, best_sim = None, 0.0
                 # #225：极性闸——**成败极性不同的节点不得合并**。旧实现只比正文二元组，
                 # 而 `record_action_sequence` 把成败写成正文前缀（`成功：`/`失败：`，且
@@ -8023,24 +8294,37 @@ class SpacetimeMemoryEngine:
                 # 「保留末尾退出码」是另一条独立面）；③极性不同的两条写入**不**自动建
                 # `OPPOSITE` 边/落冲突（issue 建议 4 的 fail-loud 属策略取舍，本件只做
                 # 「不合并」这一最小面）。
-                new_polarity = set(tags or []) & self._POLARITY_TAGS
+                new_polarity = frozenset(tags or ()) & self._POLARITY_TAGS
                 # #803：判同键先剥零宽字符——零宽变体（ZWJ/ZWNJ/ZWSP/BOM/WJ）视觉相同
                 # 但字节不同，旧键直接比原始 content ⇒ 变体绕过 M5 去重各自成节点。
                 # 比对两侧都剥除：新写入侧与候选（库中既存节点）侧。
                 norm_new = self._strip_zero_width(content)
-                for n in candidates:
-                    if (set(n.tags or []) & self._POLARITY_TAGS) != new_polarity:
-                        continue
-                    # #268：条件空间也是判同键——条件不同即不同知识（见 docstring）
-                    if not self._conditions_mergeable(cs, n.condition_space):
-                        continue
-                    sim = LayeredStore.char_bigram_jaccard(
-                        norm_new, self._strip_zero_width(n.content))
-                    self._dedup_history.append(sim)
-                    if len(self._dedup_history) > self._dedup_window:
-                        self._dedup_history = self._dedup_history[-self._dedup_window:]
-                    if sim > best_sim:
-                        best_sim, best = sim, n
+                use_fast_dedup = (
+                    isinstance(self.store, LayeredStore)
+                    and type(self.store)._dedup_candidates is LayeredStore._dedup_candidates
+                    and "_dedup_candidates" not in self.store.__dict__
+                    and type(self)._conditions_mergeable is SpacetimeMemoryEngine._conditions_mergeable
+                    and "_conditions_mergeable" not in self.__dict__
+                    and threshold > 0.0
+                )
+                if use_fast_dedup:
+                    best, best_sim = self._dedup_search_fast(
+                        modality, norm_new, new_polarity, cs, threshold)
+                else:
+                    candidates = self.store._dedup_candidates(modality)
+                    for n in candidates:
+                        if (set(n.tags or []) & self._POLARITY_TAGS) != new_polarity:
+                            continue
+                        # #268：条件空间也是判同键——条件不同即不同知识（见 docstring）
+                        if not self._conditions_mergeable(cs, n.condition_space):
+                            continue
+                        sim = LayeredStore.char_bigram_jaccard(
+                            norm_new, self._strip_zero_width(n.content))
+                        self._dedup_history.append(sim)
+                        if len(self._dedup_history) > self._dedup_window:
+                            self._dedup_history = self._dedup_history[-self._dedup_window:]
+                        if sim > best_sim:
+                            best_sim, best = sim, n
                 if best and best_sim >= threshold:
                     # #803：分歧/矛盾判据同口径（两侧剥零宽）。
                     norm_best = self._strip_zero_width(best.content)
@@ -9120,6 +9404,102 @@ class SpacetimeMemoryEngine:
         var = sum((x - mean) ** 2 for x in self._dedup_history) / len(self._dedup_history)
         sigma = math.sqrt(var)
         return min(0.95, max(self._dedup_static, 3.0 * sigma))
+
+    def _dedup_search_fast(self, modality: str, norm_new: str,
+                           new_polarity: frozenset, cs: ConditionSpace,
+                           threshold: float):
+        """#661 等价加速路径：鸽巢前缀倒排召回 + 尾部 W 窗口历史同步。
+
+        数学保证（零漏检、与全层扫描逐位等价）：
+          1. 若 J(A, B) >= T (>0) 且 |A|=m>0，则 |A∩B| >= ceil(T*m - 1e-12) = r，
+             且 r <= |B| <= floor(m/T + 1e-12)；由鸽巢原理，从 A 中任取
+             m - r + 1 个最短倒排链二元组并集必覆盖全部 J(A,B) >= T 的候选，
+             同分按 sort_key=(-importance, -last_access, rowid, id) 取最前者。
+          2. `_dedup_history` 仅保留通过 (极性, 条件空间) 闸的**最后 _dedup_window**
+             条相似度，故沿 sorted_keys 逆序收满 W 条即可逐位还原滑窗状态。
+        """
+        idx = self.store._dedup_index_for(modality, self._strip_zero_width)
+        entries = idx.entries
+        cs_pos = cs.observation_position
+        cs_tool = cs.observation_tool
+        cs_ec = cs.existence_constraint
+        cs_t0, cs_t1 = cs.time_window
+        cs_t0, cs_t1 = float(cs_t0), float(cs_t1)
+
+        A = _dedup_bigrams(norm_new)
+        m = len(A)
+        best_entry = None
+        best_sim = 0.0
+
+        if m > 0 and entries:
+            min_inter = math.ceil(threshold * m - 1e-12)
+            if min_inter < 1:
+                min_inter = 1
+            if min_inter <= m:
+                max_b = math.floor(m / threshold + 1e-12)
+                prefix_len = m - min_inter + 1
+                inv = idx.inv
+                if prefix_len == 1:
+                    probe_grams = (min(A, key=lambda g: len(inv.get(g, ()))),)
+                elif prefix_len >= m:
+                    probe_grams = A
+                else:
+                    probe_grams = sorted(A, key=lambda g: len(inv.get(g, ())))[:prefix_len]
+                hit_ids = set()
+                for g in probe_grams:
+                    postings = inv.get(g)
+                    if postings:
+                        hit_ids.update(postings)
+                for nid in hit_ids:
+                    entry = entries.get(nid)
+                    if entry is None:
+                        continue
+                    eb = entry.bigrams
+                    lb = len(eb)
+                    if lb < min_inter or lb > max_b:
+                        continue
+                    if entry.polarity != new_polarity:
+                        continue
+                    if not entry.matches_cs(cs_pos, cs_tool, cs_ec, cs_t0, cs_t1):
+                        continue
+                    inter = len(A & eb)
+                    if inter < min_inter:
+                        continue
+                    sim = inter / (m + lb - inter)
+                    if (sim > best_sim
+                            or (sim == best_sim and best_entry is not None
+                                and entry.sort_key < best_entry.sort_key)):
+                        best_sim = sim
+                        best_entry = entry
+
+        # 精确还原 _dedup_history 末 W 条（与全扫末态逐位一致）
+        w = self._dedup_window
+        tail_sims = []
+        for sort_key in reversed(idx.sorted_keys):
+            entry = entries[sort_key[3]]
+            if entry.polarity != new_polarity:
+                continue
+            if not entry.matches_cs(cs_pos, cs_tool, cs_ec, cs_t0, cs_t1):
+                continue
+            eb = entry.bigrams
+            if m == 0 or not eb:
+                sim = 0.0
+            else:
+                inter = len(A & eb)
+                sim = inter / (m + len(eb) - inter)
+            tail_sims.append(sim)
+            if len(tail_sims) >= w:
+                break
+        if tail_sims:
+            tail_sims.reverse()
+            if len(tail_sims) >= w:
+                self._dedup_history = tail_sims[-w:]
+            else:
+                self._dedup_history = (self._dedup_history + tail_sims)[-w:]
+
+        if best_entry is not None and best_sim >= threshold:
+            return best_entry.cand, best_sim
+        return None, 0.0
 
     def register_conflict(self, a_id: str, b_id: str) -> Optional[STEdge]:
         return self.store.register_conflict(a_id, b_id)
