@@ -89,6 +89,8 @@ STDLIB_ALLOWED = frozenset({
     "json", "base64", "hashlib", "hmac",
     # 容器 / 迭代 / 类型 / 数据类 / 枚举
     "collections", "itertools", "typing", "dataclasses", "enum",
+    # Real-number validation for the bounded depth sample API.
+    "numbers",
     # 世界经验恢复的候选状态使用浅复制；只登记标准库分类，未知名判据不变。
     "copy",
     # 运行时 / 导入 / 告警（weakref/functools/contextlib：2026-10-09 连接槽生命周期
