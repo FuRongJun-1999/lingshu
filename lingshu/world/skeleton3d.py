@@ -221,8 +221,8 @@ class Skeleton3D:
             if sp is not None:
                 screen[n] = sp
 
-        # 骨骼线段（画家顺序：由深到浅）
-        ordered = sorted(self.bones(), key=lambda b: -self._bone_depth(world, b))
+        # 骨骼线段（画家顺序：由深到浅；按相机前向深度排序，与 cam.project / 关节半径同口径）
+        ordered = sorted(self.bones(), key=lambda b: -self._bone_depth(world, b, cam))
         for parent, child in ordered:
             if parent in screen and child in screen:
                 draw.line([screen[parent], screen[child]], fill=self._bone_color, width=2)
@@ -242,9 +242,14 @@ class Skeleton3D:
             draw.ellipse([sp[0] - r, sp[1] - r, sp[0] + r, sp[1] + r], fill=self._joint_color)
         return img
 
-    def _bone_depth(self, world: Dict[str, Tuple], bone: Tuple[str, str]) -> float:
+    def _bone_depth(self, world: Dict[str, Tuple], bone: Tuple[str, str],
+                    camera: Optional[Camera3D] = None) -> float:
         pa, pb = bone
-        return (world.get(pa, (0, 0, 0))[2] + world.get(pb, (0, 0, 0))[2]) / 2
+        wa = world.get(pa, (0, 0, 0))
+        wb = world.get(pb, (0, 0, 0))
+        if camera is not None:
+            return (camera.depth_of(wa) + camera.depth_of(wb)) / 2
+        return (wa[2] + wb[2]) / 2
 
 
 # ---------------------------------------------------------------------------
