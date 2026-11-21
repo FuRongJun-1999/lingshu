@@ -466,8 +466,9 @@ class Camera3D:
         f = self.focal(screen_w)
         x_cam = (px - screen_w / 2) * depth / f
         y_cam = (screen_h / 2 - py) * depth / f
-        # 逆 roll（与 to_camera 同轴反向）——保住「project∘unproject == id」的可回代性
-        if self.roll:
+        # Explicit basis already includes the complete camera orientation; project()
+        # ignores roll on this path, so unproject must do the same.
+        if self.basis is None and self.roll:
             cos_r, sin_r = math.cos(self.roll), math.sin(self.roll)
             x_cam, y_cam = (x_cam * cos_r + y_cam * sin_r,
                             -x_cam * sin_r + y_cam * cos_r)
