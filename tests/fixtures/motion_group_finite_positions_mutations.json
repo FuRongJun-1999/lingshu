@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "guard": "tests/test_motion_group_finite_positions.py",
+  "source": "lingshu/world/motion_groups.py",
+  "mutants": [
+    {
+      "name": "remove_non_finite_coordinate_rejection",
+      "change": {
+        "old": "if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):",
+        "new": "if False:"
+      },
+      "required_failure": "MOTION_GROUP_ACCEPTED_NAN_BASELINE",
+      "claim": "A NaN first relative offset must not disable later drift threshold comparisons.",
+      "scenario": "nan_baseline"
+    },
+    {
+      "name": "remove_non_finite_anchor_rejection",
+      "scenario": "nan_anchor",
+      "change": {
+        "old": "_finite_position(observed[eid], eid, \"observed\")",
+        "new": "observed[eid]"
+      },
+      "required_failure": "MOTION_GROUP_PREDICTED_NAN_ANCHOR",
+      "claim": "A visible anchor with a NaN coordinate must not produce a member position."
+    }
+  ]
+}
