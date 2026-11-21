@@ -10,7 +10,7 @@
 |---|---|---|
 | **灵** | 智能论 · 共同信任协议（理论层） | [CommonTrustProtocol](https://github.com/FuRongJun-1999/CommonTrustProtocol) |
 | **脑** | 认知图引擎：条件化记忆 · 检索 · 演化 · 睡眠与自迭代 | [dsh-memory](https://github.com/FuRongJun-1999/dsh-memory) |
-| **身** | 感知与执行：世界模型七层 · 视觉生成与读回 · 语义时空图 | **本仓 `lingshu` 包**（core · world · nn · gen · vision） |
+| **身** | 感知与执行：世界模型七层 · 视觉/音频感知 · 生成与读回 · 语义时空图 | **本仓 `lingshu` 包**（core · world · nn · gen · vision） |
 
 > **「身」已不再是外部私有库。** 其理论、代码与测试均已模块化入本仓（见下文「理论地基」「代码主体」）——本文所说的「身」，指的就是这个仓里的 `lingshu` 包，不需要另找私有源。
 
@@ -47,7 +47,7 @@
 ## 代码主体
 
 身体侧模块化导出 v0.1 已入仓——**`lingshu` Python 包**（core 存算一体 15 件 ·
-world 世界模型 46 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉线稿 2 件（含图像像素统计））：
+world 世界模型 46 件 · nn 自研神经网络 14 件 · gen 图像生成 7 件 · vision 视觉/音频感知 3 件（含图像像素统计））：
 
 ```bash
 pip install -e .             # 轻核：core 纯标准库，零依赖可跑
@@ -64,6 +64,9 @@ pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规�
 
 **已测版本矩阵**（2026-10-08 实测，供选版参考）：Python 3.12.x · numpy 2.3.5 / 2.4.2 / 2.5.3 ·
 Pillow 12.3.0——`pyproject.toml` 中 extras 的版本区间由此收敛，**区间外未测不承诺**。
+
+身体音频感知（WAV 标准库 + 可选 FFmpeg 压缩格式、RMS 活动周期估计与事件分段；支持内存 bytes）用法和边界见
+[身体音频感知](docs/world_audio_perception.md)：压缩解码需本机可选 FFmpeg；周期仅基于稳定 RMS 活动前沿与充分时间分辨率，只做声学测量，不转写语音、不推断语义、不保存原始音频或路径。
 
 > 曾登记为「已知红」的 `tests/test_hex_text.py` 两处断言（`test_spatial_detect_finds_single_object`
 > 6/16、`test_multimodal_check_clean_vs_corrupt` 7/12）**已随根因修复转绿**：`9bc4985`
