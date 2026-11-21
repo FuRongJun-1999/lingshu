@@ -548,8 +548,19 @@ def project_with_distortion(k: Dict[str, float], rvec: Sequence[float],
 
 
 def _pose_from_homography(h: Sequence[Sequence[float]],
-                          k: Dict[str, float]) -> Tuple[List[float], List[float]]:
-    """由单应分解出位姿初值：`H = K⁻¹·[r1 r2 t]`（棋盘 Z=0）。"""
+                          k: Dict[str, float],
+                          ref_xy: Tuple[float, float] = (0.0, 0.0)
+                          ) -> Tuple[List[float], List[float]]:
+    """由单应分解出位姿初值：`K⁻¹·H ~ [r1 r2 t]`（棋盘 Z=0）。
+
+    要点：
+      1. 射影手性对齐（cheirality）：DLT 单应 `±H` 射影等价，参考点 `ref_xy`
+         （默认原点，标定链传入棋盘中心）在相机坐标系下必须满足 `z_ref > 0`；
+         若 `z_ref < 0` 则对 `(r1, r2, t3)` 整体取反（`r3 = r1×r2` 仍右手系）。
+      2. 严格 `SO(3)` 正交归一：噪声/畸变下 `n1 != n2` 时 `lam·r1` 非单位长，
+         先单位化 `r1`，再 `r3 = normalize(r1 × r2)`、`r2 = r3 × r1`，保证
+         `RᵀR = I, det(R) = +1`；`t3` 保持均值尺度 `lam = 2/(n1+n2)`。
+    """
     kinv = _mat_inv3([[k["fx"], k["skew"], k["cx"]],
                       [0.0, k["fy"], k["cy"]],
                       [0.0, 0.0, 1.0]])
@@ -565,7 +576,15 @@ def _pose_from_homography(h: Sequence[Sequence[float]],
     r1 = [x * lam for x in r1]
     r2 = [x * lam for x in r2]
     t3 = [x * lam for x in t3]
-    # 正交化（噪声下 r1/r2 不严格正交）
+    # 射影手性对齐：参考点须在相机前方（z_ref > 0）
+    z_ref = r1[2] * float(ref_xy[0]) + r2[2] * float(ref_xy[1]) + t3[2]
+    if z_ref < 0.0:
+        r1 = [-x for x in r1]
+        r2 = [-x for x in r2]
+        t3 = [-x for x in t3]
+    # 先单位化 r1 再正交化，保证严格 SO(3)（RᵀR = I, det(R) = +1）
+    n1_u = math.sqrt(sum(x * x for x in r1))
+    r1 = [x / n1_u for x in r1]
     r3 = [r1[1] * r2[2] - r1[2] * r2[1],
           r1[2] * r2[0] - r1[0] * r2[2],
           r1[0] * r2[1] - r1[1] * r2[0]]
@@ -677,8 +696,10 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
     params: List[float] = [kb["fx"], kb["fy"], kb["cx"], kb["cy"], 0.0, 0.0]
     if tangential:
         params.extend([0.0, 0.0])          # p1, p2 初值 0
+    ref_xy = (sum(p[0] for p in obj) / len(obj),
+              sum(p[1] for p in obj) / len(obj))
     for i, h in enumerate(base["homographies"]):
-        rvec, tvec = _pose_from_homography(h, kb)
+        rvec, tvec = _pose_from_homography(h, kb, ref_xy=ref_xy)
         params.extend(rvec)
         params.extend(tvec)
 
