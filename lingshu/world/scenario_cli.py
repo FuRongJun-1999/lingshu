@@ -7,17 +7,83 @@ JSON 写 stdout，错误写 stderr；资格为 DEFER/BLINDSPOT 的成功消费�
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
 import sqlite3
 import sys
 
-from .scenario import MODES, ScenarioContext
+from .scenario import CONDITION_FIELDS, MODES, ScenarioContext, _node
+
+# LayeredStore SQLite 只读反序列化契约（与 core.MemoryLayer / EdgeType / ConditionSpace 同口径；
+# world 层不反向导入 core，issue #434）。
+_MEMORY_LAYERS = frozenset({"anchor", "structure", "knowledge", "context", "self"})
+_EDGE_TYPES = frozenset({
+    "causal", "sequential", "correlational", "cyclic", "hierarchical",
+    "spatial_adjacent", "spatial_contains", "spatial_connected",
+    "similar", "opposite", "applies_to",
+})
+
+
+def _parse_condition_space(raw):
+    """兼容 core.ConditionSpace.from_json 的纯标准库反序列化。"""
+    if not isinstance(raw, str):
+        raise ValueError("condition_space must be a JSON string")
+    parsed = json.loads(raw)
+    cs = {k: v for k, v in parsed.items() if k in CONDITION_FIELDS} if isinstance(parsed, dict) else {}
+    cs.setdefault("observation_position", "外部观测位")
+    cs.setdefault("observation_tool", "文本语义分析")
+    cs.setdefault("existence_constraint", "（未声明）")
+    if "time_window" not in cs:
+        cs["time_window"] = (0.0, 0.0)
+    elif not isinstance(cs["time_window"], (tuple, list)):
+        cs["time_window"] = (cs["time_window"], cs["time_window"])
+    tw = tuple(cs["time_window"])
+    if not all(v is None for v in tw):
+        if (len(tw) != 2
+                or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in tw)):
+            tw = (0.0, 0.0)
+    cs["time_window"] = tw
+    return cs
+
+
+def _parse_json_field(raw, name, default=None):
+    if raw is None:
+        if default is not None:
+            return default()
+        raise ValueError(f"{name} must be a JSON string")
+    if not isinstance(raw, str):
+        raise ValueError(f"{name} must be a JSON string")
+    return json.loads(raw)
+
+
+@dataclass
+class _ReadOnlyNode:
+    """只读 SQLite 节点轻量载体（避免反向导入 core.STNode）。"""
+    id: str
+    content: str
+    tags: list
+    layer: str
+    condition_space: dict
+    spatial_coordinates: dict
+    state_attributes: dict
+
+
+@dataclass
+class _ReadOnlyEdge:
+    """只读 SQLite 边轻量载体（避免反向导入 core.STEdge）。"""
+    id: str
+    source_id: str
+    target_id: str
+    relation_type: str
+    condition_space: dict
+    verified: bool
+    source_evidence: str
 
 
 class _ReadOnlyStore:
-    """消费已有 LayeredStore schema，不调用会建表/迁移的构造器。"""
+    """消费已有 LayeredStore schema，不调用会建表/迁移的构造器，也不反向依赖 core。"""
 
     def __init__(self, path):
         path = Path(path).resolve()
@@ -32,14 +98,55 @@ class _ReadOnlyStore:
             raise
 
     def get_node(self, node_id):
-        from ..core.core import STNode
-        row = self.conn.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone()
-        return STNode.from_row(row) if row is not None else None
+        cur = self.conn.execute("SELECT * FROM nodes WHERE id=?", (node_id,))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = [desc[0] for desc in cur.description]
+        rec = dict(zip(cols, row))
+        required = {"id", "content", "spatial_coordinates", "condition_space", "layer", "tags"}
+        if not required.issubset(rec):
+            raise ValueError("incompatible nodes table schema")
+        layer = rec["layer"]
+        if layer not in _MEMORY_LAYERS:
+            raise ValueError(f"invalid memory layer: {layer!r}")
+        raw_state = rec.get("state_attributes")
+        state_attributes = _parse_json_field(raw_state, "state_attributes", dict) if raw_state else {}
+        return _ReadOnlyNode(
+            id=rec["id"],
+            content=rec["content"],
+            tags=_parse_json_field(rec["tags"], "tags"),
+            layer=layer,
+            condition_space=_parse_condition_space(rec["condition_space"]),
+            spatial_coordinates=_parse_json_field(rec["spatial_coordinates"], "spatial_coordinates"),
+            state_attributes=state_attributes,
+        )
 
     def get_outgoing_edges(self, node_id):
-        from ..core.core import STEdge
-        rows = self.conn.execute("SELECT * FROM edges WHERE source_id=?", (node_id,)).fetchall()
-        return [STEdge.from_row(row) for row in rows]
+        cur = self.conn.execute("SELECT * FROM edges WHERE source_id=?", (node_id,))
+        rows = cur.fetchall()
+        if not rows:
+            return []
+        cols = [desc[0] for desc in cur.description]
+        required = {"id", "source_id", "target_id", "relation_type", "condition_space", "verified"}
+        if not required.issubset(cols):
+            raise ValueError("incompatible edges table schema")
+        edges = []
+        for row in rows:
+            rec = dict(zip(cols, row))
+            rel_type = rec["relation_type"]
+            if rel_type not in _EDGE_TYPES:
+                raise ValueError(f"invalid edge relation_type: {rel_type!r}")
+            edges.append(_ReadOnlyEdge(
+                id=rec["id"],
+                source_id=rec["source_id"],
+                target_id=rec["target_id"],
+                relation_type=rel_type,
+                condition_space=_parse_condition_space(rec["condition_space"]),
+                verified=bool(rec["verified"]),
+                source_evidence=rec["source_evidence"] if "source_evidence" in rec else "extracted",
+            ))
+        return edges
 
     def close(self):
         self.conn.close()
@@ -47,40 +154,60 @@ class _ReadOnlyStore:
 
 def _demo_context(**scope):
     """只在内存构造合成灯塔图；八条因果边、其他角色和其他会话用于验收。"""
-    from ..core.core import ConditionSpace, EdgeType, LayeredStore, STNode, STEdge
+    nodes, edges = [], []
 
-    store = LayeredStore(":memory:")
-    ids = []
-    try:
-        def add(nid, text, tags, when=100, pos=None, state=None):
-            cs = ConditionSpace("合成灯塔观察位", "离线验收", (when, when + 20), "合成灯塔场景")
-            store.add_node(STNode(nid, text, "text", pos or {}, when, cs,
-                tags=["fixture", *tags], state_attributes={"state": state} if state else {}))
-            ids.append(nid)
+    def add(nid, text, tags, when=100, pos=None, state=None):
+        cs = {
+            "observation_position": "合成灯塔观察位",
+            "observation_tool": "离线验收",
+            "time_window": (when, when + 20),
+            "existence_constraint": "合成灯塔场景",
+        }
+        nodes.append(_node({
+            "id": nid,
+            "content": text,
+            "frontmatter": {
+                "tags": ["fixture", *tags],
+                "layer": "knowledge",
+                "condition_space": cs,
+                "spatial": {"coords3d": pos or {}},
+                "state_attributes": {"state": state} if state else {},
+            },
+        }))
 
-        add("keeper", "守灯人 Alice", ["roleplay", "role:alice", "roleplay:role"])
-        add("rule", "本角色世界的灯塔以晶石供能", ["role:alice", "sub-knowledge"])
-        add("memory", "前任守灯人留下操作手册", ["role:alice", "roleplay:memory"])
-        add("anchor", "守护灯塔", ["role:alice", "roleplay:anchors"])
-        add("value", "如实报告未知状态", ["role:alice", "roleplay:values"])
-        add("turn", "准备启动晶石", ["role:alice", "session:demo", "turn:user"])
-        add("other-role", "Bob 的星球有两颗太阳", ["role:bob", "sub-knowledge"])
-        add("other-session", "另一个会话的转录", ["role:alice", "session:other", "turn:user"])
-        add("catalogue", "油灯目录（合成待核史料，无真实史实声明）", ["vref:synthetic-catalogue"])
-        chain = ["action", *(f"stage-{i}" for i in range(1, 8)), "result"]
-        for i, nid in enumerate(chain):
-            add(nid, "启动晶石" if i == 0 else "灯塔亮起" if i == 8 else f"供能步骤 {i}",
-                ["role:alice", "event", *(["ent:灯塔", "cat:house"] if i == 8 else [])],
-                when=200 if i == 0 else 100 + i * 10,
-                pos={"x": 0, "y": 1, "z": 18} if i == 8 else None,
-                state="on" if i == 8 else None)
-        for i in range(8):
-            store.add_edge(STEdge(f"path-{i}", chain[i], chain[i + 1], EdgeType.CAUSAL,
-                ConditionSpace("合成灯塔观察位", "离线验收", (100, 300), "合成灯塔场景"),
-                source_evidence="inferred"))
-        return ScenarioContext.from_store(store, ids, **scope)
-    finally:
-        store.conn.close()
+    add("keeper", "守灯人 Alice", ["roleplay", "role:alice", "roleplay:role"])
+    add("rule", "本角色世界的灯塔以晶石供能", ["role:alice", "sub-knowledge"])
+    add("memory", "前任守灯人留下操作手册", ["role:alice", "roleplay:memory"])
+    add("anchor", "守护灯塔", ["role:alice", "roleplay:anchors"])
+    add("value", "如实报告未知状态", ["role:alice", "roleplay:values"])
+    add("turn", "准备启动晶石", ["role:alice", "session:demo", "turn:user"])
+    add("other-role", "Bob 的星球有两颗太阳", ["role:bob", "sub-knowledge"])
+    add("other-session", "另一个会话的转录", ["role:alice", "session:other", "turn:user"])
+    add("catalogue", "油灯目录（合成待核史料，无真实史实声明）", ["vref:synthetic-catalogue"])
+    chain = ["action", *(f"stage-{i}" for i in range(1, 8)), "result"]
+    for i, nid in enumerate(chain):
+        add(nid, "启动晶石" if i == 0 else "灯塔亮起" if i == 8 else f"供能步骤 {i}",
+            ["role:alice", "event", *(["ent:灯塔", "cat:house"] if i == 8 else [])],
+            when=200 if i == 0 else 100 + i * 10,
+            pos={"x": 0, "y": 1, "z": 18} if i == 8 else None,
+            state="on" if i == 8 else None)
+    edge_cs = {
+        "observation_position": "合成灯塔观察位",
+        "observation_tool": "离线验收",
+        "time_window": (100, 300),
+        "existence_constraint": "合成灯塔场景",
+    }
+    for i in range(8):
+        edges.append({
+            "id": f"path-{i}",
+            "source_id": chain[i],
+            "target_id": chain[i + 1],
+            "relation_type": "causal",
+            "conditions": edge_cs,
+            "verified": False,
+            "source_evidence": "inferred",
+        })
+    return ScenarioContext(nodes, edges, origin="selected", **scope)
 
 
 def _brain_env_file(path):
