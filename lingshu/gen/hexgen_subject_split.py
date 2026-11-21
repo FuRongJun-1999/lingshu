@@ -72,6 +72,7 @@ dof / subject_priority）统一阻塞在「主体/部件求解器」上——它
 import math
 import os
 import sys
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -638,3 +639,403 @@ def match_instances(insts, refs):
         used_j.add(j)
         out.append((i, j, v))
     return out, sorted(set(range(len(insts))) - used_i), sorted(set(range(len(refs))) - used_j)
+
+
+# ==================== R322 · 逐主体 8 域白箱求解器 (#11 阻塞收口) ====================
+
+DOMAINS_8 = (
+    "count", "composition", "pose", "view_dir",
+    "view_distance", "occlusion", "dof", "subject_priority",
+)
+
+_SHOT_CLOSE_RAD_FRAC = 0.25
+_SHOT_MEDIUM_RAD_FRAC = 0.10
+
+
+def _validate_finite_float(val, name: str, min_val: float = None,
+                           max_val: float = None, strict_gt: float = None) -> float:
+    if isinstance(val, bool) or not isinstance(val, (int, float, np.number)):
+        raise ValueError(f"{name} 须为有限实数（禁 bool），实得 {val!r}")
+    fv = float(val)
+    if not math.isfinite(fv):
+        raise ValueError(f"{name} 须为有限实数，实得 {val!r}")
+    if strict_gt is not None and fv <= strict_gt:
+        raise ValueError(f"{name} 须 > {strict_gt}，实得 {fv}")
+    if min_val is not None and fv < min_val:
+        raise ValueError(f"{name} 须 >= {min_val}，实得 {fv}")
+    if max_val is not None and fv > max_val:
+        raise ValueError(f"{name} 须 <= {max_val}，实得 {fv}")
+    return fv
+
+
+def _validate_pos_int(val, name: str, min_val: int = 1) -> int:
+    if isinstance(val, bool) or not isinstance(val, (int, np.integer)):
+        raise ValueError(f"{name} 须为整数（禁 bool），实得 {val!r}")
+    iv = int(val)
+    if iv < min_val:
+        raise ValueError(f"{name} 须 >= {min_val}，实得 {iv}")
+    return iv
+
+
+def _validate_rgb_image(img) -> np.ndarray:
+    if img is None or isinstance(img, bool):
+        raise ValueError(f"img 须为非空 H×W×3 图像数组，实得 {img!r}")
+    arr = np.asarray(img)
+    if arr.dtype == np.bool_ or not np.issubdtype(arr.dtype, np.number):
+        raise ValueError(f"img 须为数值型数组，实得 dtype={arr.dtype}")
+    if arr.ndim != 3 or arr.shape[0] < 8 or arr.shape[1] < 8 or arr.shape[2] != 3:
+        raise ValueError(f"img 须为 H×W×3（H,W >= 8）RGB 数组，实得 shape={arr.shape}")
+    arr_f = arr.astype(np.float64)
+    if not np.isfinite(arr_f).all():
+        raise ValueError("img 含 NaN/Inf，拒绝静默求解")
+    return arr_f
+
+
+def _moment_pose(mask: np.ndarray, iso_ecc_tol: float) -> Tuple[float, Optional[float], str, str]:
+    """二阶中心矩主轴朝向与偏心率（近似各向同性诚实标 BLINDSPOT）。"""
+    ys, xs = np.nonzero(mask)
+    if len(ys) < 2:
+        return 0.0, None, "BLINDSPOT", "像素数不足，主轴朝向不可判"
+    dx = xs.astype(np.float64) - float(xs.mean())
+    dy = ys.astype(np.float64) - float(ys.mean())
+    mu20 = float((dx * dx).mean())
+    mu02 = float((dy * dy).mean())
+    mu11 = float((dx * dy).mean())
+    tr = mu20 + mu02
+    disc = math.sqrt(max(0.0, (mu20 - mu02) ** 2 + 4.0 * mu11 ** 2))
+    lam1 = 0.5 * (tr + disc)
+    lam2 = max(0.0, 0.5 * (tr - disc))
+    ecc = math.sqrt(max(0.0, 1.0 - lam2 / lam1)) if lam1 > 1e-9 else 0.0
+    if ecc < iso_ecc_tol:
+        return ecc, None, "BLINDSPOT", "掩膜近似各向同性（eccentricity < iso_ecc_tol），朝向角数学退化不可判"
+    theta = 0.5 * math.atan2(2.0 * mu11, mu20 - mu02)
+    deg = math.degrees(theta) % 180.0
+    return ecc, round(deg, 2), "ACCEPT", "主轴特征值分离明确"
+
+
+def _boundary_sharpness(gray: np.ndarray, mask: np.ndarray) -> float:
+    """实例边缘梯度均值（用于客观核验是否存在景深散焦分化）。"""
+    b = C.boundary(mask)
+    if not b.any():
+        return 0.0
+    gx = np.zeros_like(gray)
+    gy = np.zeros_like(gray)
+    gx[:, :-1] = np.abs(gray[:, 1:] - gray[:, :-1])
+    gy[:-1, :] = np.abs(gray[1:, :] - gray[:-1, :])
+    gmag = gx + gy
+    return float(gmag[b].mean())
+
+
+def analyze_subject_domains(
+    img,
+    tol: float = C.TOL,
+    d: int = 6,
+    min_px: int = C.MIN_PX,
+    iso_ecc_tol: float = 0.25,
+    priority_tie_margin: float = 0.08,
+    edge_clip_tol: float = 0.05,
+    dof_grad_ratio_tol: float = 1.6,
+) -> Dict:
+    """逐主体 8 域白箱求解器（#11：`count`/`composition`/`pose`/`view_dir`/
+    `view_distance`/`occlusion`/`dof`/`subject_priority`）。
+
+    源端可测域给出定量读数与 `ACCEPT`/`DEFER`/`BLINDSPOT` 判定；
+    各向同性朝向退化与 2D 平面不可观域（`view_dir` / 无散焦分化时的 `dof`）
+    显式标定 `BLINDSPOT` 与缺料原因，绝不编造虚假读数。
+    """
+    arr = _validate_rgb_image(img)
+    tol_f = _validate_finite_float(tol, "tol", strict_gt=0.0)
+    d_i = _validate_pos_int(d, "d", min_val=1)
+    min_px_i = _validate_pos_int(min_px, "min_px", min_val=1)
+    ecc_tol = _validate_finite_float(iso_ecc_tol, "iso_ecc_tol", min_val=0.0)
+    if ecc_tol >= 1.0:
+        raise ValueError(f"iso_ecc_tol 须 < 1.0，实得 {ecc_tol}")
+    tie_margin = _validate_finite_float(priority_tie_margin, "priority_tie_margin", 0.0, 1.0)
+    clip_tol = _validate_finite_float(edge_clip_tol, "edge_clip_tol", 0.0, 1.0)
+    dof_tol = _validate_finite_float(dof_grad_ratio_tol, "dof_grad_ratio_tol", strict_gt=1.0)
+
+    split_res = split_subjects(arr, tol=tol_f, d=d_i, min_px=min_px_i)
+    instances = split_res["instances"]
+    diag = split_res["diag"]
+    n_inst = len(instances)
+
+    H, W = arr.shape[:2]
+    frame_area = float(H * W)
+    half_min_dim = 0.5 * float(min(H, W))
+    max_center_dist = math.hypot(0.5, 0.5)
+    thirds_pts = [(ty, tx) for ty in (1.0 / 3.0, 2.0 / 3.0) for tx in (1.0 / 3.0, 2.0 / 3.0)]
+    thirds_norm = math.hypot(1.0 / 3.0, 1.0 / 3.0)
+
+    bg_rgb = C.bg_color(arr)
+    bg_lab = C.rgb_to_lab(bg_rgb)
+    gray = 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
+
+    # 预先计算膨胀带以评估实例间接触（尺度无关）
+    band = max(2, int(round(0.01 * min(H, W))))
+    dil_masks = [C._dilate(m, band) for m, _ in instances]
+    areas = [float(inst["area"]) for _, inst in instances]
+    max_area = max(areas) if areas else 1.0
+
+    subjects: List[Dict] = []
+    for idx, (mask, inst) in enumerate(instances):
+        area = float(inst["area"])
+        area_frac = area / frame_area
+        equiv_rad_frac = math.sqrt(area / math.pi) / half_min_dim
+        cy, cx = inst["centroid"]
+        cy_norm, cx_norm = cy / float(H), cx / float(W)
+        qy = min(2, max(0, int(cy_norm * 3)))
+        qx = min(2, max(0, int(cx_norm * 3)))
+        thirds_dist = min(math.hypot(cy_norm - ty, cx_norm - tx) for ty, tx in thirds_pts)
+        thirds_align = max(0.0, 1.0 - thirds_dist / thirds_norm)
+
+        ecc, orient_deg, pose_verdict, pose_reason = _moment_pose(mask, ecc_tol)
+
+        if equiv_rad_frac >= _SHOT_CLOSE_RAD_FRAC:
+            shot_size = "close"
+        elif equiv_rad_frac >= _SHOT_MEDIUM_RAD_FRAC:
+            shot_size = "medium"
+        else:
+            shot_size = "far"
+
+        perim_px = max(1, int(C.boundary(mask).sum()))
+        border_px = int(mask[0, :].sum() + mask[-1, :].sum()
+                        + mask[1:-1, 0].sum() + mask[1:-1, -1].sum())
+        edge_clip_ratio = float(border_px) / float(perim_px)
+
+        contact_px = 0
+        contact_peers = []
+        for j, dm in enumerate(dil_masks):
+            if j == idx:
+                continue
+            ov = int((mask & dm).sum())
+            if ov > 0:
+                contact_px += ov
+                contact_peers.append(j)
+        contact_ratio = float(contact_px) / float(perim_px)
+        ha = float(C.hull_area(mask))
+        solidity = float(area / ha) if ha > 0.0 else 0.0
+        occluded_flag = bool(edge_clip_ratio >= clip_tol or contact_ratio > 0.0)
+
+        b_sharpness = _boundary_sharpness(gray, mask)
+        delta_e_bg = float(np.linalg.norm(inst["lab"] - bg_lab))
+        center_dist = math.hypot(cy_norm - 0.5, cx_norm - 0.5)
+        center_prox = max(0.0, 1.0 - center_dist / max_center_dist)
+        area_norm = area / max_area
+        contrast_norm = min(1.0, delta_e_bg / 100.0)
+        prio_score = 0.45 * area_norm + 0.35 * center_prox + 0.20 * contrast_norm
+
+        subjects.append({
+            "index": idx,
+            "area": int(area),
+            "area_frac": round(area_frac, 6),
+            "equiv_rad_frac": round(equiv_rad_frac, 6),
+            "bbox": inst["bbox"],
+            "centroid_px": (round(cy, 2), round(cx, 2)),
+            "centroid_norm": (round(cy_norm, 4), round(cx_norm, 4)),
+            "quadrant": f"r{qy * 3 + qx}",
+            "thirds_align": round(thirds_align, 4),
+            "eccentricity": round(ecc, 4),
+            "orientation_deg": orient_deg,
+            "pose_verdict": pose_verdict,
+            "pose_reason": pose_reason,
+            "shot_size": shot_size,
+            "edge_clip_ratio": round(edge_clip_ratio, 4),
+            "contact_ratio": round(contact_ratio, 4),
+            "contact_peers": contact_peers,
+            "solidity": round(solidity, 4),
+            "occlusion_suspected": occluded_flag,
+            "boundary_sharpness": round(b_sharpness, 4),
+            "delta_e_bg": round(delta_e_bg, 4),
+            "priority_score": round(prio_score, 4),
+        })
+
+    # 按显著度降序赋排名
+    ranked = sorted(subjects, key=lambda s: (-s["priority_score"], -s["area"], s["index"]))
+    for rank, s in enumerate(ranked, start=1):
+        s["priority_rank"] = rank
+
+    # ---- 8 域汇总 ----
+    # 1. count
+    count_unambig = (diag["n_clusters"] == n_inst == diag["n_proposed"]
+                     and diag["n_split_events"] == 0 and diag["n_merge_events"] == 0)
+    dom_count = {
+        "verdict": "ACCEPT" if count_unambig else "DEFER",
+        "measurable": True,
+        "n_instances": n_inst,
+        "band": (diag["n_clusters"], n_inst, diag["n_proposed"]),
+        "n_split_events": diag["n_split_events"],
+        "n_merge_events": diag["n_merge_events"],
+    }
+
+    # 2. composition
+    if n_inst == 0:
+        dom_composition = {
+            "verdict": "BLINDSPOT", "measurable": False,
+            "reason": "未检出前景主体实例，构图平衡不可判",
+        }
+    else:
+        tot_area = sum(areas)
+        wy = sum(s["area"] * s["centroid_norm"][0] for s in subjects) / tot_area
+        wx = sum(s["area"] * s["centroid_norm"][1] for s in subjects) / tot_area
+        mid_x = W // 2
+        left_a = sum(int(m[:, :mid_x].sum()) for m, _ in instances)
+        right_a = sum(int(m[:, mid_x:].sum()) for m, _ in instances)
+        lr_balance = 1.0 - abs(left_a - right_a) / max(1.0, float(left_a + right_a))
+        dom_composition = {
+            "verdict": "ACCEPT",
+            "measurable": True,
+            "visual_mass_center_norm": (round(wy, 4), round(wx, 4)),
+            "center_offset": round(math.hypot(wy - 0.5, wx - 0.5), 4),
+            "lr_balance": round(lr_balance, 4),
+            "mean_thirds_align": round(sum(s["thirds_align"] for s in subjects) / n_inst, 4),
+            "quadrants": [s["quadrant"] for s in subjects],
+        }
+
+    # 3. pose
+    if n_inst == 0:
+        dom_pose = {
+            "verdict": "BLINDSPOT", "measurable": False,
+            "reason": "未检出前景主体实例，姿态朝向不可判",
+            "per_subject": [],
+        }
+    else:
+        p_verdicts = [s["pose_verdict"] for s in subjects]
+        if all(v == "BLINDSPOT" for v in p_verdicts):
+            pv = "BLINDSPOT"
+        elif all(v == "ACCEPT" for v in p_verdicts):
+            pv = "ACCEPT"
+        else:
+            pv = "DEFER"
+        dom_pose = {
+            "verdict": pv,
+            "measurable": pv != "BLINDSPOT",
+            "iso_ecc_tol": ecc_tol,
+            "per_subject": [
+                {
+                    "index": s["index"],
+                    "eccentricity": s["eccentricity"],
+                    "orientation_deg": s["orientation_deg"],
+                    "verdict": s["pose_verdict"],
+                    "reason": s["pose_reason"],
+                }
+                for s in subjects
+            ],
+        }
+
+    # 4. view_dir (2D planar unidentifiable)
+    dom_view_dir = {
+        "verdict": "BLINDSPOT",
+        "measurable": False,
+        "value": None,
+        "reason": "单帧 2D 平面合成输入缺乏多视角/深度法向证据，三维视角朝向不可判",
+    }
+
+    # 5. view_distance
+    if n_inst == 0:
+        dom_view_distance = {
+            "verdict": "BLINDSPOT", "measurable": False,
+            "shot_size": None, "reason": "未检出前景主体实例，景别不可判",
+        }
+    else:
+        primary_s = ranked[0]
+        dom_view_distance = {
+            "verdict": "ACCEPT",
+            "measurable": True,
+            "shot_size": primary_s["shot_size"],
+            "primary_equiv_rad_frac": primary_s["equiv_rad_frac"],
+            "primary_area_frac": primary_s["area_frac"],
+            "per_subject": [
+                {"index": s["index"], "shot_size": s["shot_size"],
+                 "equiv_rad_frac": s["equiv_rad_frac"]}
+                for s in subjects
+            ],
+        }
+
+    # 6. occlusion
+    if n_inst == 0:
+        dom_occlusion = {
+            "verdict": "BLINDSPOT", "measurable": False,
+            "reason": "未检出前景主体实例，遮挡关系不可判",
+        }
+    else:
+        any_occ = any(s["occlusion_suspected"] for s in subjects)
+        dom_occlusion = {
+            "verdict": "DEFER" if any_occ else "ACCEPT",
+            "measurable": True,
+            "occluded_suspected": any_occ,
+            "clipped_indices": [s["index"] for s in subjects if s["edge_clip_ratio"] >= clip_tol],
+            "contacting_indices": [s["index"] for s in subjects if s["contact_ratio"] > 0.0],
+            "max_edge_clip_ratio": round(max(s["edge_clip_ratio"] for s in subjects), 4),
+            "max_contact_ratio": round(max(s["contact_ratio"] for s in subjects), 4),
+        }
+
+    # 7. dof (2D synthetic planar -> BLINDSPOT unless genuine multi-instance edge blur gradient)
+    if n_inst < 2:
+        dom_dof = {
+            "verdict": "BLINDSPOT",
+            "measurable": False,
+            "sharpness_ratio": None,
+            "reason": "2D 平面合成图缺乏前后景光学散焦梯度（单/零实例无法形成景深对照）",
+        }
+    else:
+        sharps = [s["boundary_sharpness"] for s in subjects]
+        min_sh = max(1e-6, min(sharps))
+        sharp_ratio = max(sharps) / min_sh
+        if sharp_ratio >= dof_tol:
+            dom_dof = {
+                "verdict": "DEFER",
+                "measurable": True,
+                "sharpness_ratio": round(sharp_ratio, 4),
+                "reason": "检测到多主体边缘锐度分化，给出相对锐度比（仍缺真实镜头光圈/深度标定）",
+            }
+        else:
+            dom_dof = {
+                "verdict": "BLINDSPOT",
+                "measurable": False,
+                "sharpness_ratio": round(sharp_ratio, 4),
+                "reason": "2D 平面各实例边缘梯度锐度一致（无光学景深散焦分化），景深不可判",
+            }
+
+    # 8. subject_priority
+    if n_inst == 0:
+        dom_priority = {
+            "verdict": "BLINDSPOT", "measurable": False,
+            "ranking": [], "reason": "未检出前景主体实例，主次优先级不可判",
+        }
+    elif n_inst == 1:
+        dom_priority = {
+            "verdict": "ACCEPT",
+            "measurable": True,
+            "primary_index": ranked[0]["index"],
+            "top_margin": ranked[0]["priority_score"],
+            "ranking": [{"index": ranked[0]["index"], "score": ranked[0]["priority_score"], "rank": 1}],
+        }
+    else:
+        top_margin = round(ranked[0]["priority_score"] - ranked[1]["priority_score"], 4)
+        dom_priority = {
+            "verdict": "ACCEPT" if top_margin >= tie_margin else "DEFER",
+            "measurable": True,
+            "primary_index": ranked[0]["index"],
+            "top_margin": top_margin,
+            "ranking": [
+                {"index": s["index"], "score": s["priority_score"], "rank": s["priority_rank"]}
+                for s in ranked
+            ],
+        }
+
+    return {
+        "n_instances": n_inst,
+        "image_shape": (H, W, 3),
+        "diag": diag,
+        "subjects": subjects,
+        "domains": {
+            "count": dom_count,
+            "composition": dom_composition,
+            "pose": dom_pose,
+            "view_dir": dom_view_dir,
+            "view_distance": dom_view_distance,
+            "occlusion": dom_occlusion,
+            "dof": dom_dof,
+            "subject_priority": dom_priority,
+        },
+    }
