@@ -689,6 +689,7 @@ class SimulationLoop:
         """认知图 contextual 层（tags 含 wm_simloop 的节点）→ 世界图实体先验。
 
         诚实边界：v1 只重建位置+类别先验（行为不重建，落 wander 缺省）。
+        世界尺寸必须与目标循环的模型及物理场景一致；此 API 不重建或缩放 SceneSimulator。
 
         #247（成立）：两处口径错误——
           · 根来源：`os.environ.get("MDCG_ROOT", mdcg_root or "")` 让**环境变量
