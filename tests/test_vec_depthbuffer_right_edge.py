@@ -38,10 +38,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
+BRIDGE_ROOT = REPO / "bridges" / "blender"
+if str(BRIDGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(BRIDGE_ROOT))
 
-from bridges.blender.wm_bridge.factory.vec import geom2d as G  # noqa: E402
+from wm_bridge.factory.vec import geom2d as G  # noqa: E402
 
 _ORIG_HAVE_NUMPY = bool(G.HAVE_NUMPY)
 
