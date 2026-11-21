@@ -38,11 +38,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
-if str(_REPO) not in sys.path:
-    sys.path.insert(0, str(_REPO))
+_BRIDGE_ROOT = str(_REPO / "bridges" / "blender")
+if _BRIDGE_ROOT not in sys.path:
+    sys.path.insert(0, _BRIDGE_ROOT)
 
-from bridges.blender.wm_bridge.factory.vec import raster as RA  # noqa: E402
-from bridges.blender.wm_bridge.factory.vec import svg as SVG_DOC  # noqa: E402
+from wm_bridge.factory.vec import raster as RA  # noqa: E402
+from wm_bridge.factory.vec import svg as SVG_DOC  # noqa: E402
 
 _CHECKS = []
 FAILS = []
@@ -461,9 +462,9 @@ def _check_b09_svg_doc_and_anim_roundtrip():
     assert int((img[..., 3] > 0).sum()) == 32 * 32 - 16 * 16
     assert int(img[20, 20, 3]) == 0
 
-    from bridges.blender.wm_bridge.factory.vec import bpy_vec as BV
-    from bridges.blender.wm_bridge.factory.vec import geom2d as G
-    from bridges.blender.wm_bridge.factory.vec import prims as P
+    from wm_bridge.factory.vec import bpy_vec as BV
+    from wm_bridge.factory.vec import geom2d as G
+    from wm_bridge.factory.vec import prims as P
 
     obj = BV.DrawObject("cube", P.box((1.0, 1.0, 1.0)))
     with tempfile.TemporaryDirectory(prefix="vec_raster_path_") as td:
