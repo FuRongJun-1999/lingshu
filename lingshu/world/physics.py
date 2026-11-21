@@ -1230,6 +1230,8 @@ def fit_drag2(samples, up=1, gravity=DEFAULT_G, beta=None, mass=None, drag_c=Non
     ts = _check_samples(samples, 3)
     up = _axis_of(up)
     g = _positive_num(gravity, "gravity")
+    t0 = ts[0]
+    tau = [t - t0 for t in ts]
     if beta is None and mass is not None and drag_c is not None:
         beta = _positive_num(drag_c, "drag_c") / _positive_num(mass, "mass")
     if beta is not None:
@@ -1238,8 +1240,6 @@ def fit_drag2(samples, up=1, gravity=DEFAULT_G, beta=None, mass=None, drag_c=Non
             raise PhysicsError("fit_drag2：须 0 < beta_min < beta_max")
         # 固定 beta：只扫 u0
         ys = [-float(s[1][up]) for s in samples]      # 下落坐标（正=向下）
-        t0 = ts[0]
-        tau = [t - t0 for t in ts]
         vt = math.sqrt(g / beta)
 
         def cost(u0):
@@ -1269,12 +1269,12 @@ def fit_drag2(samples, up=1, gravity=DEFAULT_G, beta=None, mass=None, drag_c=Non
     v_up = -vt * math.tanh(u0)                    # up 轴口径（向上为正）⇒ 下落为负
     p0 = [float(samples[0][1][i]) for i in range(3)]
     p0[up] = -y0                                  # y0 是下落坐标 ⇒ up 轴取负
-    # 横向：匀速漂移（无阻力；docstring 已声明边界）
+    # 横向：匀速漂移（无阻力；须用相对时间 tau 锚在 t_ref=ts[0]，避免非零起始平移）
     drift = [0.0, 0.0, 0.0]
     idx = [i for i in range(3) if i != up]
     for i in idx:
         xs = [float(s[1][i]) for s in samples]
-        c = polyfit(ts, xs, 1)
+        c = polyfit(tau, xs, 1)
         drift[i] = c[1]
         p0[i] = c[0]
     v0 = [0.0, 0.0, 0.0]
