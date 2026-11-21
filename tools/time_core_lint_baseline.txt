@@ -13,10 +13,14 @@
 # 其余 21 条不变；条目总数保持 23 → 23，没有新增或删除 lint 豁免。
 # #607 形态守卫仍保持 physics R3=11 / R1=9。
 
-# ── 2026-11-21 圆拟合与当前 main 合成行号同步 ──
-# 保留 main 全部 23 项既有登记；逐条验证原语句和规则完全不变。
-# physics.py 圆拟合净增四行，单摆修复的 +23 行已在 main，两项同时保留。
-# 新增违规 0、过时条目 0；不是新增豁免、不是放宽判据。
+# ── 2026-11-21 OBB/SAT 与主线单摆修复合并 ──
+# 保留主线单摆实现与 SAT 面法线修复；后段 6 条已登记物理形态仅行号后移 7 行。
+# 逐条核对主线与合并后对应代码内容一致；条目总数 23 → 23，没有新增豁免。
+
+# ── 2026-11-21 圆拟合与 OBB/SAT 主线整合行号同步 ──
+# 以本工作树合并后的 physics.py 对 23 个已登记项机械重算；既有违规文本/规则不变。
+# OBB/SAT 与单摆更新在主线中已同步；圆拟合合入后仅按当前物理源码行号重新定位。
+# 条目数仍为 23，无新增或过时豁免；#607 形态守卫 R3=11 / R1=9 保持不变。
 
 lingshu/core/activation.py:355:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:379:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
@@ -33,11 +37,11 @@ lingshu/world/physics.py:603:R3    # 既有：由 --update-baseline 机械登记
 lingshu/world/physics.py:604:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:606:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/physics.py:1015:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2558:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2561:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2563:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2579:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2701:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
-lingshu/world/physics.py:2743:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2565:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2568:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2570:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2586:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2708:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
+lingshu/world/physics.py:2750:R3    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/shade_paint.py:215:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核
 lingshu/world/stable_lease.py:302:R1    # 既有：由 --update-baseline 机械登记，性质待人工复核

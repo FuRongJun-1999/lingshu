@@ -1694,6 +1694,9 @@ def _box_frame(box):
         if n <= _EPS:
             raise PhysicsError("box['rot'] 出现零行（不是基），得到 %r" % (r,))
         axes.append(vscale(v, 1.0 / n))          # 归一化后再投影（对非正交矩阵也自洽）
+    volume = abs(vdot(axes[0], vcross(axes[1], axes[2])))
+    if volume <= _SAT_DEGENERATE:
+        raise PhysicsError("box['rot'] 三行须线性无关，组成三维箱体基")
     return center, half, tuple(axes)
 
 
@@ -1796,7 +1799,7 @@ def obb_of(points=None, *, aabb=None, rot=None):
     """点集（或已有 AABB）+ 旋转 ⇒ OBB `{"center","half","rot"}`。
 
     `rot=None` ⇒ 轴对齐（等价 AABB）。`rot` 为 3x3 行主序矩阵（行 = 箱体局部轴）。
-    ⚠ 边界：SAT 对**凸**体成立；行不要求严格正交，但会**归一化**后使用（见 `_box_frame`）。
+    ⚠ 边界：SAT 对**凸**体成立；行不要求严格正交，但须线性无关、张成三维，再归一化使用。
     """
     if aabb is None:
         if points is None:
@@ -1817,12 +1820,16 @@ def obb_of(points=None, *, aabb=None, rot=None):
 
 
 def _sat_axes(A, B):
-    """SAT 候选轴：A 的 3 轴 + B 的 3 轴 + 9 条叉积轴（退化轴跳过），全部单位化。"""
+    """SAT 候选轴：两箱各 3 个面法线 + 9 条边叉积轴，全部单位化。"""
     _ca, _ha, ax = A
     _cb, _hb, bx = B
     out = []
-    for v in list(ax) + list(bx):
-        out.append(v)                                   # 已是单位轴
+    for edges in (ax, bx):
+        for i, j in ((1, 2), (2, 0), (0, 1)):
+            normal = vcross(edges[i], edges[j])
+            length = vlen(normal)
+            if length > _SAT_DEGENERATE:
+                out.append(vscale(normal, 1.0 / length))
     for u in ax:
         for v in bx:
             c = vcross(u, v)
@@ -1857,7 +1864,7 @@ def _sat_report(a, b):
 
 
 def obb_overlap(a, b):
-    """OBB 相交判定：**SAT 15 轴**（A 的 3 / B 的 3 / 9 条叉积轴；叉积退化跳过）。
+    """凸平行六面体相交判定：**SAT 15 轴**（每箱 3 个面法线 + 9 条边叉积轴）。
 
     ⚠ 凸体才有分离轴定理；OBB 是凸的 ⇒ 成立。**贴着不算重叠**（`sep >= 0` ⇒ 不相交）。
     """
