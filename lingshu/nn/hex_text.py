@@ -181,37 +181,61 @@ def corrupt_description(desc: str, rng: np.random.Generator,
 
 # ==================== 象限级子物体检测(图像路空间拆分) ====================
 
-def spatial_detect(net: HexHierNet, lat: np.ndarray,
-                   exist_mult: float = 1.15) -> List[List[Dict]]:
-    """每样本:3×3 象限独立走 L1→L2→L3 → 子物体清单(拆分)。
-    检测规则(白箱显式):能量最高象限必选(主导区),
-    其余象限份额 > 均匀基线(1/9)×exist_mult 才追加(防噪声虚警)。"""
+def _quadrant_crops(net, lat, exist_mult):
+    """Yield selected region ids, energy shares and matching views per sample."""
     B, r, c, _ = lat.shape
+    if r == 0 or c == 0:
+        for _ in range(B):
+            yield []
+        return
     energy, _ = net.l1(lat)
     w = np.abs(energy).sum(axis=-1)                       # (B,r,c)
-    r3, c3 = r // 3, c // 3
-    out = []
+    # Scale each boundary before flooring: a repeated floor(r/3) width drops
+    # the final r%3 rows (and c%3 columns) from both energy and classification.
+    row_edges = [i * r // 3 for i in range(4)]
+    col_edges = [i * c // 3 for i in range(4)]
+    area_shares = [((row_edges[q // 3 + 1] - row_edges[q // 3])
+                    * (col_edges[q % 3 + 1] - col_edges[q % 3])) / (r * c)
+                   for q in range(9)]
+    nonempty = [q for q in range(9) if area_shares[q] > 0.0]
     for b in range(B):
         shares = np.zeros(9)
         for q in range(9):
             qy, qx = divmod(q, 3)
-            shares[q] = w[b, qy * r3:(qy + 1) * r3,
-                          qx * c3:(qx + 1) * c3].sum()
+            shares[q] = w[b, row_edges[qy]:row_edges[qy + 1],
+                          col_edges[qx]:col_edges[qx + 1]].sum()
         shares = shares / (shares.sum() + 1e-9)
-        keep_q = {int(shares.argmax())}
+        keep_q = {max(nonempty, key=lambda q: shares[q])}
         for q in range(9):
-            if shares[q] > (1.0 / 9.0) * exist_mult:
+            if shares[q] > area_shares[q] * exist_mult:
                 keep_q.add(q)
-        found = []
+        regions = []
         for q in sorted(keep_q):
             qy, qx = divmod(q, 3)
-            sub = lat[b:b + 1, qy * r3:(qy + 1) * r3, qx * c3:(qx + 1) * c3]
+            sub = lat[b:b + 1, row_edges[qy]:row_edges[qy + 1],
+                      col_edges[qx]:col_edges[qx + 1]]
+            if sub.shape[1] == 0 or sub.shape[2] == 0:
+                continue
+            regions.append((q, float(shares[q]), sub))
+        yield regions
+
+
+def spatial_detect(net: HexHierNet, lat: np.ndarray,
+                   exist_mult: float = 1.15) -> List[List[Dict]]:
+    """每样本:3×3 象限独立走 L1→L2→L3 → 子物体清单(拆分)。
+    检测规则(白箱显式):能量最高象限必选(主导区),
+    其余象限份额 > 该象限面积份额×exist_mult 才追加(防噪声虚警)。
+    象限边界按每轴的三等分取整，覆盖所有行列；不足三格的轴跳过空象限。"""
+    out = []
+    for regions in _quadrant_crops(net, lat, exist_mult):
+        found = []
+        for q, share, sub in regions:
             sf, cf = net.l2_features(sub)
             logits = net.l3_logits(sf, cf)[0]
             p = softmax(logits[None])[0]
             found.append({"pos": POS[q], "obj": OBJ[int(logits.argmax())],
                           "conf": round(float(p.max()), 3),
-                          "share": round(float(shares[q]), 3)})
+                          "share": round(share, 3)})
         found.sort(key=lambda d: -d["share"])
         out.append(found)
     return out
@@ -496,25 +520,11 @@ def extract_perception_cards(net: HexHierNet, lat: np.ndarray,
     p_thr_base = _validate_finite_num(p_threshold, "p_threshold", 0.0, 1.0)
     m_thr = _validate_finite_num(min_margin, "min_margin", 0.0, 1.0)
 
-    B, r, c, _ = lat4d.shape
-    energy, _ = net.l1(lat4d)
-    w = np.abs(energy).sum(axis=-1)
-    r3, c3 = r // 3, c // 3
     out: List[List[Dict]] = []
-    for b in range(B):
-        shares = np.zeros(9, dtype=np.float64)
-        for q in range(9):
-            qy, qx = divmod(q, 3)
-            shares[q] = w[b, qy * r3:(qy + 1) * r3, qx * c3:(qx + 1) * c3].sum()
-        shares = shares / (shares.sum() + 1e-9)
-        keep_q = {int(shares.argmax())}
-        for q in range(9):
-            if shares[q] > (1.0 / 9.0) * em:
-                keep_q.add(q)
+    for regions in _quadrant_crops(net, lat4d, em):
         cards: List[Dict] = []
-        for q in sorted(keep_q):
+        for q, share, sub in regions:
             qy, qx = divmod(q, 3)
-            sub = lat4d[b:b + 1, qy * r3:(qy + 1) * r3, qx * c3:(qx + 1) * c3]
             sf, cf = net.l2_features(sub)
             logits = net.l3_logits(sf, cf)[0]
             probs = softmax(logits[None])[0]
@@ -549,7 +559,7 @@ def extract_perception_cards(net: HexHierNet, lat: np.ndarray,
                 "conf": round(conf, 4),
                 "margin": round(margin, 4),
                 "logit_margin": round(logit_margin, 4),
-                "share": round(float(shares[q]), 4),
+                "share": round(share, 4),
                 "p_threshold": round(eff_p_thr, 4),
                 "min_margin": round(m_thr, 4),
                 "card_verdict": card_verdict,

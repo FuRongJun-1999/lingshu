@@ -51,6 +51,8 @@ class LongTermMemoryGate:
         # 全库核心词表缓存（lingshu #389）：按 (节点数, max rowid) 签名失效。
         self._known_cache = None
         self._known_sig = None
+        # 追加增量判定：旧 rowid 的正文摘要；用于识别「原地改写 + 同期追加」。
+        self._known_row_digests = None
         # #770②：正文总长另存一份——签名第三项已改为**内容指纹**，而增量分支的
         # 第三条门槛仍是「正文总长增加」（口径同改前的 `SUM(LENGTH(content))`，
         # 只对 str 正文计数），故长度单独保留。
@@ -217,9 +219,9 @@ class LongTermMemoryGate:
         """按库签名缓存全库核心词表，返回 (union, counts, per_node, sig)。
 
         签名 = (节点数, max(rowid), 正文内容指纹)。签名未变 → 直接复用；
-        **仅追加**（旧行逐行摘要逐位不变、且新增行 rowid 全大于旧 max）→ 只切
-        新增行并增量并入（#389 的实际工作负载是「每条外部输入都写一个节点」，
-        全量重建会让缓存形同虚设）；其余情形（删除/改写/清空）→ 全量重建。
+        **仅追加**（旧 rowid 的摘要逐位不变、新增行 rowid 全大于旧 max，且计数/旧 id
+        证明成立）→ 只切新增行并增量并入（#389 的实际工作负载是「每条外部输入都写
+        一个节点」，全量重建会让缓存形同虚设）；其余情形（删除/改写/清空）→ 全量重建。
 
         #770②：签名第三项由 `SUM(LENGTH(content))` 改为**正文内容指纹**
         （逐行 `(rowid, 摘要)` 折叠成 8 字节整数）——长度对**等长原地改写**不
@@ -228,23 +230,19 @@ class LongTermMemoryGate:
         `(int, int, int)` 三元组（调用方与既有测试按三元组解包，形制不变）。
         #770② 把「签名相等」的有效性判据换成了内容指纹；增量分支的三条「更多」
         门槛（节点数增 ∧ max(rowid) 增 ∧ 正文总长增，总长另存于
-        `_known_total_len`）逐字保留。
+        `_known_total_len`）逐字保留。另比对缓存的旧 rowid 摘要；有任一变化即完整重建，
+        不会在旧行原地改写后又追加节点时复用陈旧 gram。
 
         #462（增量分支补「无删除」证明）：三条门槛只证明总量变大，**不证明没有
         删除**——删 1 增 2 时三项全增，旧实现直接增量并入，被删节点的 core grams
         永远留在参考集 ⇒ 被遗忘内容再出现时 `_novelty` 算 1.0→0.0、`evaluate`
-        从 knowledge 掉到 context。现要求两道证明同时成立才增量：
+        从 knowledge 掉到 context。现要求三道证明同时成立才增量：
           ① 计数平衡：`old_cnt + len(rowid > old_max 的行) == 现节点数`。同 id
              覆盖写（INSERT OR REPLACE 换 rowid）也会使该式不成立 ⇒ 全量重建；
           ② 旧 id 一个不少：`per_node` 的键集合 ⊆ 本次扫描的存活 id 集合。删除
              最大 rowid 的行后 SQLite 会复用该 rowid，①可被误判通过，②兜住。
+          ③ 旧 rowid 的摘要逐位不变。原地改写虽保留 rowid，但摘要变化会阻止增量复用。
         任一不成立 ⇒ 落到下方全量重建（缓存被整条替换，不留陈旧 gram）。
-
-        已知残留（如实标注 · 未覆盖面）：**等长/变长的原地新增式改写 ∧ 同期追加
-        节点**（`UPDATE nodes SET content=...` 保持同 rowid，同时插入新行把三项
-        门槛抬高）——①计数平衡与②id 存在性都成立，仍会走增量、复用被改写行的
-        陈旧 gram。检测它需要逐行比对旧行摘要（旧缓存未存每行摘要），属另一次
-        改动面；本件不夹带。
         代价（如实标注）：判缓存有效性需逐行读 `rowid, id, content`（游标**惰性
         迭代**，不 fetchall）并逐行取摘要 —— 相比旧实现的一条聚合 SQL，每次
         调用多一趟 O(全库正文) 顺序读 + 摘要；省下的是 `_core_grams` 的正则切分
@@ -259,6 +257,7 @@ class LongTermMemoryGate:
         # #462：同趟顺带收集存活 id 集合——增量分支用它证明「旧节点一个没少」
         # （见下方 ②）。不额外扫表，不改变签名口径。
         live_ids = set()
+        row_digests = {}
         for rid, nid, content in self.engine.store.conn.execute(
                 "SELECT rowid, id, content FROM nodes ORDER BY rowid"):
             rid = int(rid)
@@ -266,7 +265,9 @@ class LongTermMemoryGate:
             max_rid = rid
             live_ids.add(str(nid))
             total_len += len(content) if isinstance(content, str) else 0
-            h.update(b"%d:%d;" % (rid, self._row_digest(content)))
+            digest = self._row_digest(content)
+            row_digests[rid] = digest
+            h.update(b"%d:%d;" % (rid, digest))
         sig = (cnt, max_rid, int.from_bytes(h.digest(), "big"))
         cache = self._known_cache
         if cache is not None and self._known_sig == sig:
@@ -277,18 +278,26 @@ class LongTermMemoryGate:
             old_cnt, old_max = self._known_sig[0], self._known_sig[1]
             old_len = self._known_total_len
             if sig[0] > old_cnt and sig[1] > old_max and total_len > old_len:
+                old_row_digests = self._known_row_digests or {}
+                unchanged_old_rows = all(
+                    row_digests.get(rid) == digest
+                    for rid, digest in old_row_digests.items()
+                )
                 rows = self.engine.store.conn.execute(
                     "SELECT id, content FROM nodes WHERE rowid > ?", (old_max,)
                 ).fetchall()
                 # #462：三项「更多」只证明总量变大，**不证明没有删除**——删 1 增 ≥2
                 # 时节点数照样增加，被删节点不在 `rowid > old_max` 的新行里，增量
                 # 并入会把它的核心词永久留在参考集（新奇度算 0，写入层级掉档）。
-                # 两道证明都通过才允许增量：
+                # 三道证明都通过才允许增量：
                 #   ① 计数平衡：旧节点数 + 新增行数 == 现节点数。同 id 覆盖写
                 #      （INSERT OR REPLACE 换 rowid）会使该式不成立 ⇒ 全量重建；
                 #   ② 旧 id 一个不少：`per_node` 的键集合 ⊆ 现存 id。删除最大
                 #      rowid 的行后，SQLite 会复用该 rowid，①会误判通过，②兜住。
-                if (old_cnt + len(rows) == sig[0]
+                #   ③ 每个旧 rowid 的摘要逐位不变；否则「原地改写 + 同期追加」会把
+                #      改写前的 gram 留在缓存、漏掉改写后的 gram（#770 残留形态）。
+                if (unchanged_old_rows
+                        and old_cnt + len(rows) == sig[0]
                         and set(cache["per_node"]) <= live_ids):
                     union, counts, per_node = (cache["union"], cache["counts"],
                                                cache["per_node"])
@@ -300,6 +309,7 @@ class LongTermMemoryGate:
                             counts[g] = counts.get(g, 0) + 1
                     self._known_sig = sig
                     self._known_total_len = total_len
+                    self._known_row_digests = row_digests
                     return union, counts, per_node, sig
         rows = self.engine.store.conn.execute(
             "SELECT id, content FROM nodes").fetchall()
@@ -313,6 +323,7 @@ class LongTermMemoryGate:
         self._known_cache = {"union": union, "counts": counts, "per_node": per_node}
         self._known_sig = sig
         self._known_total_len = total_len
+        self._known_row_digests = row_digests
         return union, counts, per_node, sig
 
     @staticmethod

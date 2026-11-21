@@ -1,0 +1,148 @@
+{
+  "guard": "tests/test_spatial_detect_complete_partition.py",
+  "total": 70,
+  "sources": [
+    "lingshu/nn/hex_text.py"
+  ],
+  "baseline_failures": [
+    "test_batched_samples_partition_independently",
+    "test_dark_tiny_lattice_does_not_classify_empty_quadrants[1-1]",
+    "test_dark_tiny_lattice_does_not_classify_empty_quadrants[1-5]",
+    "test_dark_tiny_lattice_does_not_classify_empty_quadrants[2-2]",
+    "test_dark_tiny_lattice_does_not_classify_empty_quadrants[5-2]",
+    "test_empty_spatial_extent_has_no_regions[0-0]",
+    "test_empty_spatial_extent_has_no_regions[0-5]",
+    "test_empty_spatial_extent_has_no_regions[5-0]",
+    "test_energy_and_classification_use_the_same_uneven_crops",
+    "test_last_cell_energy_and_color_reach_bottom_right[18-16]",
+    "test_last_cell_energy_and_color_reach_bottom_right[19-17]",
+    "test_last_cell_energy_and_color_reach_bottom_right[4-4]",
+    "test_last_cell_energy_and_color_reach_bottom_right[6-7]",
+    "test_last_cell_energy_and_color_reach_bottom_right[7-6]",
+    "test_quadrant_crops_cover_each_cell_exactly_once",
+    "test_real_image_final_column_reaches_multimodal_check[16]",
+    "test_real_image_final_column_reaches_multimodal_check[17]",
+    "test_real_image_final_column_reaches_multimodal_check[19]",
+    "test_real_image_final_column_reaches_multimodal_check[23]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.0-1-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.0-1-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.0-2-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.0-2-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-1-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-1-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-18-16]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-2-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-2-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-4-4]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-5-5]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-0.25-8-8]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-1-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-1-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-18-16]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-2-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-2-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-4-4]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-5-5]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[default-1.0-8-8]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.0-1-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.0-1-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.0-2-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.0-2-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-1-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-1-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-18-16]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-2-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-2-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-4-4]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-5-5]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-0.25-8-8]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-1-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-1-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-18-16]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-2-1]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-2-2]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-4-4]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-5-5]",
+    "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-8-8]"
+  ],
+  "mutations": [
+    {
+      "name": "drop_remainder_rows",
+      "test": "test_last_cell_energy_and_color_reach_bottom_right[7-6]",
+      "assertion": "last-cell evidence was lost",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_text.py",
+          "method": "_quadrant_crops",
+          "old": "row_edges = [i * r // 3 for i in range(4)]",
+          "new": "row_edges = [i * (r // 3) for i in range(4)]"
+        }
+      ]
+    },
+    {
+      "name": "drop_remainder_columns",
+      "test": "test_last_cell_energy_and_color_reach_bottom_right[6-7]",
+      "assertion": "last-cell evidence was lost",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_text.py",
+          "method": "_quadrant_crops",
+          "old": "col_edges = [i * c // 3 for i in range(4)]",
+          "new": "col_edges = [i * (c // 3) for i in range(4)]"
+        }
+      ]
+    },
+    {
+      "name": "energy_uses_truncated_partition",
+      "test": "test_last_cell_energy_and_color_reach_bottom_right[4-4]",
+      "assertion": "last-cell evidence was lost",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_text.py",
+          "method": "_quadrant_crops",
+          "old": "shares[q] = w[b, row_edges[qy]:row_edges[qy + 1],\n                          col_edges[qx]:col_edges[qx + 1]].sum()",
+          "new": "shares[q] = w[b, qy * (r // 3):(qy + 1) * (r // 3),\n                          qx * (c // 3):(qx + 1) * (c // 3)].sum()"
+        }
+      ]
+    },
+    {
+      "name": "classification_uses_truncated_partition",
+      "test": "test_last_cell_energy_and_color_reach_bottom_right[4-4]",
+      "assertion": "last-cell evidence was lost",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_text.py",
+          "method": "_quadrant_crops",
+          "old": "sub = lat[b:b + 1, row_edges[qy]:row_edges[qy + 1],\n                      col_edges[qx]:col_edges[qx + 1]]",
+          "new": "sub = lat[b:b + 1, qy * (r // 3):(qy + 1) * (r // 3),\n                      qx * (c // 3):(qx + 1) * (c // 3)]"
+        }
+      ]
+    },
+    {
+      "name": "allow_empty_dominant_region",
+      "test": "test_dark_tiny_lattice_does_not_classify_empty_quadrants[1-1]",
+      "assertion": "nonempty dominant region disappeared",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_text.py",
+          "method": "_quadrant_crops",
+          "old": "keep_q = {max(nonempty, key=lambda q: shares[q])}",
+          "new": "keep_q = {int(shares.argmax())}"
+        }
+      ]
+    },
+    {
+      "name": "fixed_one_ninth_area_baseline",
+      "test": "test_uniform_real_network_does_not_mistake_area_for_extra_evidence[transparent-1.0-5-5]",
+      "assertion": "uniform field produced extra detections from unequal quadrant areas",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_text.py",
+          "method": "_quadrant_crops",
+          "old": "if shares[q] > area_shares[q] * exist_mult:",
+          "new": "if shares[q] > (1.0 / 9.0) * exist_mult:"
+        }
+      ]
+    }
+  ]
+}

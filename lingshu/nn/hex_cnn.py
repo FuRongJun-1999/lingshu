@@ -70,16 +70,25 @@ class HexGrid:
         return (x, y)
 
     def pixel_to_cell(self, x: float, y: float) -> Tuple[int, int]:
-        """像素 → 最近 cell（axial round：立方坐标四舍五入）。"""
+        """像素 → 最近 cell（axial 用立方坐标舍入；odd-r 比较相邻两行的中心距离）。"""
         ox, oy = self.origin
         x_ = x - ox
         y_ = y - oy
         if self.mode == "odd_r_offset":
-            # 奇偶错行逆变换：先定行 r（y 与 q 无关），再按该行错位回解 q
+            # y 最近行未必是离点最近的格心：相邻错行的水平偏移能抵消一部分
+            # 竖直距离。只需比较 y 对应的下/上相邻行，并在每行取最近的 q。
             rf = (2.0 / 3.0 * y_) / self.size
-            r = int(round(rf))
-            qf = (x_ / (self.size * math.sqrt(3))) - 0.5 * (r % 2)
-            return self._axial_round(qf, float(r))
+            row_lo = math.floor(rf)
+            row_hi = math.ceil(rf)
+            candidates = []
+            for r in sorted({row_lo, row_hi}):
+                qf = (x_ / (self.size * math.sqrt(3))) - 0.5 * (r % 2)
+                q = int(round(qf))
+                cx, cy = self.center_px(q, r)
+                dist2 = (cx - x) ** 2 + (cy - y) ** 2
+                candidates.append((dist2, r, q))
+            _, r, q = min(candidates)
+            return (q, r)
         # 逆变换到轴向浮点
         qf = (math.sqrt(3) / 3 * x_ - y_ / 3.0) / self.size
         rf = (2.0 / 3.0 * y_) / self.size
@@ -96,6 +105,11 @@ class HexGrid:
         return (q, r)
 
     def neighbors(self, q: int, r: int) -> List[Tuple[int, int]]:
+        if self.mode == "odd_r_offset":
+            # offset 列 = axial q + floor(r/2)；沿 axial 六方向后转回列号。
+            row_offset = r // 2
+            return [(q + dq + (r + dr) // 2 - row_offset, r + dr)
+                    for dq, dr in HEX_DIRS]
         return [(q + dq, r + dr) for dq, dr in HEX_DIRS]
 
     def in_bounds(self, q: int, r: int) -> bool:

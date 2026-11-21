@@ -1,0 +1,26 @@
+{
+  "guard": "tests/test_search_skills_limit_semantics.py",
+  "total": 1,
+  "sources": [
+    "lingshu/core/core.py"
+  ],
+  "baseline_failures": [
+    "test_search_and_recall_skill_normalize_negative_limits"
+  ],
+  "mutations": [
+    {
+      "name": "restore_negative_slice",
+      "test": "test_search_and_recall_skill_normalize_negative_limits",
+      "assertion": "negative limit must mean all hits",
+      "changes": [
+        {
+          "file": "lingshu/core/core.py",
+          "class": "LayeredStore",
+          "method": "search_skills",
+          "old": "limit = _normalize_limit(limit)",
+          "new": "limit = limit"
+        }
+      ]
+    }
+  ]
+}
