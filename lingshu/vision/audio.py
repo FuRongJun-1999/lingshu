@@ -237,7 +237,17 @@ def _compressed_demuxer_from_path(path: str) -> str:
 
 
 def _compressed_demuxer_from_bytes(data: bytes) -> str:
-    if data.startswith(b"ID3") or (len(data) >= 2 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0):
+    if data.startswith(b"ADIF") or (
+        len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xF6) == 0xF0
+    ):
+        return "aac"
+    if data.startswith(b"ID3") or (
+        len(data) >= 2
+        and data[0] == 0xFF
+        and (data[1] & 0xE0) == 0xE0
+        and (data[1] & 0x18) != 0x08
+        and (data[1] & 0x06) != 0
+    ):
         return "mp3"
     if data.startswith(b"fLaC"):
         return "flac"
@@ -251,8 +261,6 @@ def _compressed_demuxer_from_bytes(data: bytes) -> str:
         return "matroska"
     if data.startswith(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11"):
         return "asf"
-    if data.startswith(b"ADIF") or (len(data) >= 2 and data[0] == 0xFF and data[1] & 0xF6 == 0xF0):
-        return "aac"
     raise AudioPerceptionError("无法从音频 bytes 识别受支持的压缩格式")
 
 
