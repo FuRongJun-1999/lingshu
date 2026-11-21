@@ -231,9 +231,10 @@ def test_basis_and_roll_coexist_follows_to_camera():
 
     为什么这样判：`Camera3D.basis` 字段注释「给了它就**不用** yaw/pitch/roll」，
     而 `project` 走 `to_camera`，其 basis 分支确实忽略 roll ⇒ 射线要与 `project`
-    互逆就必须同样忽略。实测反证：此形态下 `world3d.unproject` 会先应用逆 roll，
-    致 `project ∘ unproject` 回代误差 0.8775 m（它那一侧不自洽）；跟随 `to_camera`
-    则射线仍精确过投影点（垂距 ~1e-15）。
+    互逆就必须同样忽略。实测反证（修复前）：彼时此形态下 `world3d.unproject`
+    曾先应用逆 roll，致 `project ∘ unproject` 回代误差 0.8775 m（它那一侧不自
+    洽）；跟随 `to_camera` 则射线仍精确过投影点（垂距 ~1e-15）。修复后（#1465）
+    此形态 `unproject` 与 `project` 同口径忽略 roll，回代误差 ~4.4e-16。
     """
     ident = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
     cams = [("basis=I,roll=0", Camera3D(cx=EYE[0], cy=EYE[1], cz=EYE[2], basis=ident)),

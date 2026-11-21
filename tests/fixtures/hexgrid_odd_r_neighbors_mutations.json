@@ -1,0 +1,92 @@
+{
+  "guard": "tests/test_hexgrid_odd_r_neighbors.py",
+  "total": 30,
+  "sources": ["lingshu/nn/hex_cnn.py"],
+  "baseline_failures": [
+    "test_odd_r_neighbors_keep_direction_order[even]",
+    "test_odd_r_neighbors_keep_direction_order[odd]",
+    "test_odd_r_neighbors_keep_direction_order[negative_col_even]",
+    "test_odd_r_neighbors_keep_direction_order[negative_col_odd]",
+    "test_odd_r_neighbors_keep_direction_order[negative_even]",
+    "test_odd_r_neighbors_keep_direction_order[negative_odd]",
+    "test_odd_r_neighbors_keep_direction_order[both_negative_even]",
+    "test_odd_r_neighbors_keep_direction_order[both_negative_odd]",
+    "test_neighbors_match_independent_cartesian_oracle[odd_r_offset-small]",
+    "test_neighbors_match_independent_cartesian_oracle[odd_r_offset-translated]",
+    "test_neighbors_match_independent_cartesian_oracle[odd_r_offset-large_origin]",
+    "test_neighbors_match_independent_cartesian_oracle[odd_r_offset-large_size]",
+    "test_neighbors_remain_unclipped_at_shape_boundaries[odd_r_offset-single]",
+    "test_neighbors_remain_unclipped_at_shape_boundaries[odd_r_offset-one_row]",
+    "test_neighbors_remain_unclipped_at_shape_boundaries[odd_r_offset-one_column]",
+    "test_neighbors_remain_unclipped_at_shape_boundaries[odd_r_offset-rectangle]",
+    "test_image_to_grid_exposes_correct_odd_r_neighbors[square]",
+    "test_image_to_grid_exposes_correct_odd_r_neighbors[landscape]",
+    "test_image_to_grid_exposes_correct_odd_r_neighbors[portrait]"
+  ],
+  "mutations": [
+    {
+      "name": "ignore_offset_mode",
+      "test": "test_odd_r_neighbors_keep_direction_order[even]",
+      "assertion": "odd-r neighbors must follow E, NE, NW, W, SW, SE",
+      "changes": [{
+        "file": "lingshu/nn/hex_cnn.py", "class": "HexGrid", "method": "neighbors",
+        "old": "if self.mode == \"odd_r_offset\":", "new": "if False:"
+      }]
+    },
+    {
+      "name": "reverse_offset_correction",
+      "test": "test_odd_r_neighbors_keep_direction_order[even]",
+      "assertion": "odd-r neighbors must follow E, NE, NW, W, SW, SE",
+      "changes": [{
+        "file": "lingshu/nn/hex_cnn.py", "class": "HexGrid", "method": "neighbors",
+        "old": "q + dq + (r + dr) // 2 - row_offset",
+        "new": "q + dq - (r + dr) // 2 + row_offset"
+      }]
+    },
+    {
+      "name": "truncate_negative_rows",
+      "test": "test_odd_r_neighbors_keep_direction_order[negative_even]",
+      "assertion": "odd-r neighbors must follow E, NE, NW, W, SW, SE",
+      "changes": [
+        {
+          "file": "lingshu/nn/hex_cnn.py", "class": "HexGrid", "method": "neighbors",
+          "old": "row_offset = r // 2", "new": "row_offset = int(r / 2)"
+        },
+        {
+          "file": "lingshu/nn/hex_cnn.py", "class": "HexGrid", "method": "neighbors",
+          "old": "(r + dr) // 2", "new": "int((r + dr) / 2)"
+        }
+      ]
+    },
+    {
+      "name": "reverse_direction_order",
+      "test": "test_odd_r_neighbors_keep_direction_order[odd]",
+      "assertion": "odd-r neighbors must follow E, NE, NW, W, SW, SE",
+      "changes": [{
+        "file": "lingshu/nn/hex_cnn.py", "class": "HexGrid", "method": "neighbors",
+        "old": "for dq, dr in HEX_DIRS]\n        return",
+        "new": "for dq, dr in reversed(HEX_DIRS)]\n        return"
+      }]
+    },
+    {
+      "name": "clip_offset_neighbors_to_shape",
+      "test": "test_neighbors_remain_unclipped_at_shape_boundaries[odd_r_offset-single]",
+      "assertion": "neighbors must return six cells before in_bounds filtering",
+      "changes": [{
+        "file": "lingshu/nn/hex_cnn.py", "class": "HexGrid", "method": "neighbors",
+        "old": "for dq, dr in HEX_DIRS]\n        return",
+        "new": "for dq, dr in HEX_DIRS if self.in_bounds(q + dq + (r + dr) // 2 - row_offset, r + dr)]\n        return"
+      }]
+    },
+    {
+      "name": "apply_offset_correction_to_axial",
+      "test": "test_axial_neighbor_list_and_order_are_unchanged[default]",
+      "assertion": "axial neighbor list and direction order must remain unchanged",
+      "changes": [{
+        "file": "lingshu/nn/hex_cnn.py", "class": "HexGrid", "method": "neighbors",
+        "old": "if self.mode == \"odd_r_offset\":",
+        "new": "if self.mode in (\"odd_r_offset\", \"axial\"):"
+      }]
+    }
+  ]
+}
