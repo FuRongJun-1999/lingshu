@@ -72,8 +72,8 @@
 `lingshu/core/core.py` 一个文件**，`longterm_gate.py` 不在其扫描面内 ⇒ 本件不扩该
 扫描面（扩面会让全包 20 个未挂装饰器的方法当场转红，属另一笔）。`promote_from_context`
 的同类读改写**不在本件范围**。`_known_snapshot` 的删除误判（#462）已由后续修复
-处理（见 G3 反转）；剩余未覆盖面＝「同 rowid 原地 UPDATE ∧ 同期追加节点」的混合
-形态（旧缓存未存逐行摘要，检测它属另一次改动面，见该函数 docstring 的已知残留）。
+处理（见 G3 反转）。同 rowid 原地更新后再追加节点的混合形态另由
+`tests/test_longterm_gate_mixed_in_place_update.py` 守卫覆盖，确认旧行摘要变化会触发完整重建。
 
 运行（仓根）：python -X utf8 -m pytest tests/test_issue770_snapshot_atomicity_and_signature_guard.py -q --no-header
 """
