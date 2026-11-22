@@ -1236,7 +1236,7 @@ class ActivationEngine:
                         self._graph_cache_sig = sig_after
                     else:
                         self._graph_cache_sig = None
-            except Exception:
+            except (sqlite3.Error, OSError):
                 self._graph_cache_sig = None
 
         with self._transaction(_on_commit=_after_commit) as con:
