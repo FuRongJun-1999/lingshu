@@ -42,10 +42,12 @@
 """
 from __future__ import annotations
 from contextlib import contextmanager
+import hashlib
 import json
 import math
 import os
 import sqlite3
+import struct
 import time
 import uuid
 import warnings
@@ -206,6 +208,7 @@ class ActivationEngine:
         self._inh_meta = None       # (src_idx, dst_idx, |decay|) 抑制边列表（单向）
         self._adj_inh_unv = None    # 低置信(<0.5)抑制邻接（双向补充，issue #521）
         self._inh_unv_meta = None   # (src_idx, dst_idx, |decay|×confidence) 低置信边列表
+        self._reset_graph_cache()
 
     # ---------------- 表结构(独立激活表,与内容记忆分离) ----------------
     def _ensure_tables(self):
@@ -229,7 +232,7 @@ class ActivationEngine:
         return sqlite3.connect(self.db_path, timeout=30)
 
     @contextmanager
-    def _transaction(self):
+    def _transaction(self, _on_commit=None):
         """Write atomically without committing a borrowed caller transaction.
 
         Initialization participates in the same boundary. If its first schema
@@ -239,6 +242,7 @@ class ActivationEngine:
         con = self._con()
         nested = con.in_transaction
         savepoint = "activation_%s" % uuid.uuid4().hex
+        committed = False
         try:
             if nested:
                 con.execute("SAVEPOINT %s" % savepoint)
@@ -250,6 +254,7 @@ class ActivationEngine:
                     con.execute("RELEASE SAVEPOINT %s" % savepoint)
                 else:
                     con.commit()
+                committed = True
             except BaseException as error:
                 try:
                     if con.in_transaction:
@@ -262,7 +267,11 @@ class ActivationEngine:
                     error.add_note("Activation rollback failed: %s" % rollback_error)
                 raise
         finally:
-            con.close()
+            try:
+                if committed and _on_commit is not None:
+                    _on_commit(con, nested)
+            finally:
+                con.close()
 
     def _warn_if_content_tables_absent(self):
         """#714：构造期给出一条明确 warning——`nodes` 表缺席时激活面是**空工作态**。
@@ -301,60 +310,51 @@ class ActivationEngine:
         既有的空工作态返回路径（`status=ok, size=0`），而不是整轮抛穿。
         两条腿分开 catch：缺 `edges` 而 `nodes` 在场时仍保留节点域。
         """
-        con = self._con()
-        cur = con.cursor()
-        try:
-            cur.execute("SELECT id, condition_space FROM nodes")
-            node_rows = cur.fetchall()
-        except sqlite3.OperationalError:  # #714:无内容表 ⇒ 空图
-            node_rows = []
+        node_rows, edges, cache_sig, node_hays = self._fetch_graph_rows()
         node_ids = [r[0] for r in node_rows]
-        # issue #521：抑制幅度要按边的 confidence 缩放（未复核 0.3 的 opposite
-        # 边不得满额否决）。旧 schema 可能没有 confidence 列——用 PRAGMA 探测，
-        # 缺列时按 0.3 兜底，避免把「列不存在」误判成「无内容表」而清空整图。
-        try:
-            _edge_cols = {r[1] for r in cur.execute("PRAGMA table_info(edges)")}
-        except sqlite3.OperationalError:
-            _edge_cols = set()
-        _conf_expr = "confidence" if "confidence" in _edge_cols else "0.3 AS confidence"
-        try:
-            cur.execute("SELECT source_id, target_id, relation_type, condition_space, "
-                        + _conf_expr + " FROM edges")
-            edges = cur.fetchall()
-        except sqlite3.OperationalError:  # #714:无内容表 ⇒ 空图
-            edges = []
-        con.close()
         idx = {nid: i for i, nid in enumerate(node_ids)}
         n = len(node_ids)
         cur_cs = {}
+        raw_cs_list = []
+        _cs_json_cache = {}
         for nid, cs_json in node_rows:
-            try:
-                cur_cs[nid] = json.loads(cs_json) if cs_json else {}
-            except (json.JSONDecodeError, TypeError):
+            raw_cs_list.append(cs_json)
+            if not cs_json:
                 cur_cs[nid] = {}
+            elif cs_json in _cs_json_cache:
+                cur_cs[nid] = _cs_json_cache[cs_json]
+            else:
+                try:
+                    parsed = json.loads(cs_json)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = {}
+                _cs_json_cache[cs_json] = parsed
+                cur_cs[nid] = parsed
         rows, cols, decays = [], [], []
         inh_rows, inh_cols, inh_mags = [], [], []
         unv_rows, unv_cols, unv_mags = [], [], []
-        for src, dst, rtype, cs_json, edge_conf in edges:
+        _use_cm_cache, _cm_cache = (cond_match is _ORIG_COND_MATCH), {}
+        for src, dst, rtype, edge_conf in edges:
             si, di = idx.get(src), idx.get(dst)
             if si is None or di is None:
                 continue
-            try:
-                cs_e = json.loads(cs_json) if cs_json else {}
-            except (json.JSONDecodeError, TypeError):
-                cs_e = {}
-            d = EDGE_BASE_DECAY.get(rtype, DEFAULT_DECAY)
-            # #53:节点对级条件衰减修正——decay = base(边类型) × cond_match(两端条件空间)
-            #   （模块 docstring 核心公式 :26）。重合率由两端节点静态决定、与跳数无关，
-            #   故装载期算一次即等价于逐跳算（稀疏与 edge-list 两后端同口径）。
-            # #709：`cond_match` 自身已对非 dict 入参 / 非有限数值 `time_window` 回落中性；
-            #   此处再兜一层——未枚举到的坏条件空间只让**该条边**回落中性衰减，
-            #   不得让一条形状异常记录把整轮 `_load_graph`（进而 `activate()`）抛穿
-            #   （`_load_graph` 每轮全图重读，坏节点是否参与本次查询都无关）。
-            try:
-                d *= cond_match(cur_cs.get(src), cur_cs.get(dst))
-            except (TypeError, ValueError):
-                d = d * COND_MATCH_NEUTRAL
+            base = EDGE_BASE_DECAY.get(rtype, DEFAULT_DECAY)
+            if _use_cm_cache:
+                _pair = (raw_cs_list[si], raw_cs_list[di])
+                _cm = _cm_cache.get(_pair)
+                if _cm is None:
+                    try:
+                        _cm = _ORIG_COND_MATCH(cur_cs.get(src), cur_cs.get(dst))
+                    except (TypeError, ValueError):
+                        _cm = COND_MATCH_NEUTRAL
+                    _cm_cache[_pair] = _cm
+                d = base * _cm
+            else:
+                d = base
+                try:
+                    d *= cond_match(cur_cs.get(src), cur_cs.get(dst))
+                except (TypeError, ValueError):
+                    d = base * COND_MATCH_NEUTRAL
             if d < 0:  # 负记忆同价(第五篇):相反边走独立抑制通路,不进兴奋邻接(issue #229)
                 # issue #521：**低置信**（< 默认 0.5，含 register_conflict 的 0.3）
                 # 的 opposite 边按置信缩放、并进双向补充面（contested）；默认 0.5
@@ -384,8 +384,12 @@ class ActivationEngine:
         else:
             adj_inh = None  # 降级:edge-list 抑制
         if csr_matrix is not None and unv_rows:
-            adj_inh_unv = csr_matrix((np.array(unv_mags, dtype=np.float32),
-                                      (unv_rows, unv_cols)), shape=(n, n))
+            _unv_data = np.array(unv_mags, dtype=np.float32)
+            if _FastTransposeCSR is not None and csr_matrix is _ORIG_CSR_MATRIX:
+                adj_inh_unv = _FastTransposeCSR((_unv_data, (unv_rows, unv_cols)), shape=(n, n))
+                adj_inh_unv._t_csr = csr_matrix((_unv_data, (unv_cols, unv_rows)), shape=(n, n))
+            else:
+                adj_inh_unv = csr_matrix((_unv_data, (unv_rows, unv_cols)), shape=(n, n))
         else:
             adj_inh_unv = None
         self._adj = adj
@@ -398,30 +402,600 @@ class ActivationEngine:
         self._node_ids = node_ids
         # 节点条件空间(节点级 cond_match 用;装载期已消费,留作审计/调试)
         self._node_cond = cur_cs
+        self._node_hays = node_hays
+        self._build_frontier_index(n)
+        self._graph_cache_sig = cache_sig
+        self._graph_cache_env = self._cache_env_key() if cache_sig is not None else None
+        self._graph_load_count += 1
+
+    def _reset_graph_cache(self):
+        """初始化图缓存与稀疏前沿索引状态（零跨实例共享）。"""
+        self._graph_cache_sig = None
+        self._graph_cache_env = None
+        self._graph_load_count = 0
+        self._node_hays = None
+        self._exc_indptr = None
+        self._exc_indices = None
+        self._exc_data = None
+        self._exc_src = None
+        self._exc_wmax = 0.0
+        self._exc_canonical = False
+        self._inh_csr = None
+        self._inh_unv_t_csr = None
+        self._inh_src_arr = None
+        self._inh_dst_mask = None
+        self._rev_exc_csr = None
+        self._inh_dist = None
+        self._inh_dist_max_depth = -1
+        self._inh_bfs_frontier = None
+        self._inh_exc_cache = {}
+        self._last_frontier_stats = {"edges_visited": 0, "edges_pruned": 0, "cache_hit": False}
 
     @staticmethod
-    def _max_plus(adj, act: np.ndarray) -> np.ndarray:
+    def _cache_env_key():
+        return (
+            csr_matrix is not None,
+            cond_match,
+            tuple(sorted(EDGE_BASE_DECAY.items())),
+            DEFAULT_DECAY,
+            COND_MATCH_NEUTRAL,
+        )
+
+    def _conn_sig(self, con, allow_in_tx: bool = False) -> Optional[Tuple]:
+        """Borrowed-connection O(1) version signature.
+
+        Uses PRAGMA data_version (cross-connection commits in WAL/DELETE),
+        PRAGMA schema_version + temp.schema_version (DDL), and con.total_changes
+        (same-connection DML). Refuses caching inside uncommitted caller
+        transactions so a later ROLLBACK can never expose stale state.
+        """
+        if not allow_in_tx and con.in_transaction:
+            return None
+        try:
+            raw_con = con._conn if isinstance(con, _BorrowedConnection) else con
+            dv = int(con.execute("PRAGMA data_version").fetchone()[0])
+            sv = int(con.execute("PRAGMA schema_version").fetchone()[0])
+            tsv = int(con.execute("PRAGMA temp.schema_version").fetchone()[0])
+            return ("conn", id(raw_con), dv, sv, tsv, int(con.total_changes))
+        except sqlite3.Error:
+            return None
+
+    def _file_fast_sig(self, con) -> Optional[Tuple]:
+        """File-backed O(1) sound signature across separate connections.
+
+        - Rollback journal modes: main DB file header bytes 24..27 increment on
+          every commit (verified for DELETE/TRUNCATE/PERSIST/MEMORY/OFF).
+        - WAL mode with live WAL (mxFrame > 0, isInit == 1, duplicated 48-byte
+          WalIndexHdr copies equal): shm header captures iChange, mxFrame,
+          cumulative frame checksum, and 64-bit random WAL salt.
+        - Clean/checkpointed WAL (no -wal/-shm or mxFrame == 0): returns None
+          so callers fall back to exact table content digest (WAL checkpoints
+          do not bump the main DB header change counter).
+        """
+        try:
+            jm = str(con.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+            sv = int(con.execute("PRAGMA schema_version").fetchone()[0])
+            st = os.stat(self.db_path)
+            with open(self.db_path, "rb", buffering=0) as f:
+                hdr = f.read(100)
+            if len(hdr) < 100:
+                return None
+            main_part = (st.st_dev, st.st_ino, st.st_size,
+                         hdr[24:32], hdr[40:44], hdr[92:96])
+            if jm == "wal":
+                wal_path = self.db_path + "-wal"
+                shm_path = self.db_path + "-shm"
+                if not os.path.exists(wal_path) or not os.path.exists(shm_path):
+                    return None
+                # Unbuffered 96-byte read avoids overlapping SQLite's Win32
+                # mandatory byte-range lock on -shm at offsets 120..128.
+                with open(shm_path, "rb", buffering=0) as f:
+                    shm = f.read(96)
+                if len(shm) < 96 or shm[:48] != shm[48:96]:
+                    return None
+                is_init = shm[12]
+                mx_frame = struct.unpack("=I", shm[16:20])[0]
+                if is_init != 1 or mx_frame == 0:
+                    return None
+                return ("file-wal", sv, main_part, shm[:48])
+            if jm in ("delete", "truncate", "persist", "memory", "off"):
+                return ("file-rb", jm, sv, main_part)
+            return None
+        except (OSError, sqlite3.Error, struct.error, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _table_content_digest(con) -> Optional[Tuple]:
+        """Exact read-only BLAKE2b digest of nodes & edges (clean-WAL fallback)."""
+        try:
+            sv = int(con.execute("PRAGMA schema_version").fetchone()[0])
+            cur = con.cursor()
+            try:
+                ncols = {r[1] for r in cur.execute("PRAGMA table_info(nodes)")}
+            except sqlite3.OperationalError:
+                ncols = set()
+            if ncols:
+                parts = ["quote(id)",
+                         "quote(condition_space)" if "condition_space" in ncols else "'NULL'"]
+                if "content" in ncols:
+                    parts.append("quote(content)")
+                if "tags" in ncols:
+                    parts.append("quote(tags)")
+                expr = "||','||".join(parts)
+                try:
+                    cnt, blob = cur.execute(
+                        "SELECT COUNT(*), CAST(GROUP_CONCAT(" + expr
+                        + ", char(10)) AS BLOB) FROM nodes").fetchone()
+                    n_dig = (int(cnt), hashlib.blake2b(blob or b"", digest_size=16).digest())
+                except sqlite3.OperationalError:
+                    n_dig = None
+            else:
+                n_dig = None
+            try:
+                ecols = {r[1] for r in cur.execute("PRAGMA table_info(edges)")}
+            except sqlite3.OperationalError:
+                ecols = set()
+            if ecols:
+                conf_q = "quote(confidence)" if "confidence" in ecols else "'0.3'"
+                e_expr = ("quote(source_id)||','||quote(target_id)||','||"
+                          "quote(relation_type)||','||" + conf_q)
+                try:
+                    cnt, blob = cur.execute(
+                        "SELECT COUNT(*), CAST(GROUP_CONCAT(" + e_expr
+                        + ", char(10)) AS BLOB) FROM edges").fetchone()
+                    e_dig = (int(cnt), hashlib.blake2b(blob or b"", digest_size=16).digest())
+                except sqlite3.OperationalError:
+                    e_dig = None
+            else:
+                e_dig = None
+            return ("file-digest", sv, n_dig, e_dig)
+        except sqlite3.Error:
+            return None
+
+    def _is_graph_cache_valid(self) -> bool:
+        """Check whether the cached graph matches the current DB state soundly."""
+        sig = self._graph_cache_sig
+        if sig is None or self._graph_cache_env != self._cache_env_key():
+            return False
+        con = self._con()
+        try:
+            if self._conn is not None:
+                if sig[0] != "conn":
+                    return False
+                return self._conn_sig(con) == sig
+            if sig[0] in ("file-rb", "file-wal"):
+                # Start a brief read snapshot so SQLite syncs WAL-index shm
+                con.execute("BEGIN")
+                try:
+                    con.execute("PRAGMA schema_version").fetchone()
+                    return self._file_fast_sig(con) == sig
+                finally:
+                    if con.in_transaction:
+                        con.rollback()
+            if sig[0] == "file-digest":
+                con.execute("BEGIN")
+                try:
+                    return self._table_content_digest(con) == sig
+                finally:
+                    if con.in_transaction:
+                        con.rollback()
+            return False
+        except sqlite3.Error:
+            return False
+        finally:
+            con.close()
+
+    def _ensure_graph(self) -> bool:
+        """Load graph only on cache miss; returns True on cache hit."""
+        if self._is_graph_cache_valid():
+            self._last_frontier_stats["cache_hit"] = True
+            return True
+        self._load_graph()
+        self._last_frontier_stats["cache_hit"] = False
+        return False
+
+    @staticmethod
+    def _build_hay(content, tags_json) -> str:
+        hay = content or ""
+        if tags_json:
+            if tags_json == "[]":
+                hay += " "
+            else:
+                try:
+                    hay += " " + " ".join(json.loads(tags_json))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return hay
+
+    def _fetch_graph_rows(self):
+        """Read nodes (plus text/tags when present) and edges with a sound snapshot sig."""
+        con = self._con()
+        cache_sig = None
+        started_tx = False
+        try:
+            if self._conn is not None:
+                pre_sig = self._conn_sig(con)
+            else:
+                pre_fast = self._file_fast_sig(con)
+                con.execute("BEGIN")
+                started_tx = True
+            cur = con.cursor()
+            try:
+                _node_cols = {r[1] for r in cur.execute("PRAGMA table_info(nodes)")}
+            except sqlite3.OperationalError:
+                _node_cols = set()
+            has_text = ("content" in _node_cols and "tags" in _node_cols)
+            node_hays = None
+            try:
+                if has_text:
+                    cur.execute("SELECT id, condition_space, content, tags FROM nodes")
+                    raw_nodes = cur.fetchall()
+                    node_rows = [(r[0], r[1]) for r in raw_nodes]
+                    _bh = self._build_hay
+                    node_hays = [_bh(r[2], r[3]) for r in raw_nodes]
+                else:
+                    cur.execute("SELECT id, condition_space FROM nodes")
+                    node_rows = cur.fetchall()
+            except sqlite3.OperationalError:  # #714:无内容表 ⇒ 空图
+                node_rows = []
+                node_hays = []
+            # issue #521：抑制幅度要按边的 confidence 缩放（未复核 0.3 的 opposite
+            # 边不得满额否决）。旧 schema 可能没有 confidence 列——用 PRAGMA 探测，
+            # 缺列时按 0.3 兜底，避免把「列不存在」误判成「无内容表」而清空整图。
+            try:
+                _edge_cols = {r[1] for r in cur.execute("PRAGMA table_info(edges)")}
+            except sqlite3.OperationalError:
+                _edge_cols = set()
+            _conf_expr = "confidence" if "confidence" in _edge_cols else "0.3 AS confidence"
+            try:
+                cur.execute("SELECT source_id, target_id, relation_type, "
+                            + _conf_expr + " FROM edges")
+                edges = cur.fetchall()
+            except sqlite3.OperationalError:  # #714:无内容表 ⇒ 空图
+                edges = []
+            if self._conn is not None:
+                if pre_sig is not None and self._conn_sig(con) == pre_sig:
+                    cache_sig = pre_sig
+            else:
+                if pre_fast is None:
+                    # Clean/checkpointed WAL: digest inside the exact same read snapshot
+                    cache_sig = self._table_content_digest(con)
+                if started_tx and con.in_transaction:
+                    con.rollback()
+                    started_tx = False
+                if pre_fast is not None:
+                    # Seqlock verification: cache only if no commit occurred during load
+                    if self._file_fast_sig(con) == pre_fast:
+                        cache_sig = pre_fast
+            return node_rows, edges, cache_sig, node_hays
+        finally:
+            if started_tx and con.in_transaction:
+                try:
+                    con.rollback()
+                except sqlite3.Error:
+                    pass
+            con.close()
+
+    @staticmethod
+    def _build_numpy_csr(n: int, rows, cols, weights, sort_desc: bool = False):
+        """Build pure-NumPy CSR arrays (works identically with or without SciPy)."""
+        if len(rows) == 0:
+            return (np.zeros(n + 1, dtype=np.intp),
+                    np.empty(0, dtype=np.int32),
+                    np.empty(0, dtype=np.float32),
+                    np.empty(0, dtype=np.int32))
+        s = np.asarray(rows, dtype=np.int32)
+        c = np.asarray(cols, dtype=np.int32)
+        w = np.asarray(weights, dtype=np.float32)
+        mask = w > 0
+        if not mask.all():
+            s, c, w = s[mask], c[mask], w[mask]
+        if s.size == 0:
+            return (np.zeros(n + 1, dtype=np.intp),
+                    np.empty(0, dtype=np.int32),
+                    np.empty(0, dtype=np.float32),
+                    np.empty(0, dtype=np.int32))
+        if sort_desc:
+            order = np.lexsort((-w, s))
+        else:
+            order = np.argsort(s, kind="stable")
+        s_sorted = s[order]
+        c_sorted = c[order]
+        w_sorted = w[order]
+        indptr = np.zeros(n + 1, dtype=np.intp)
+        np.cumsum(np.bincount(s_sorted, minlength=n), out=indptr[1:])
+        return indptr, c_sorted, w_sorted, s_sorted
+
+    def _build_frontier_index(self, n: int):
+        """Build descending-weight excitatory CSR & inhibitory endpoint structures."""
+        if np is None:
+            return
+        # Reset lazy backward-BFS caches for the new graph
+        self._rev_exc_csr = None
+        self._inh_dist = None
+        self._inh_dist_max_depth = -1
+        self._inh_bfs_frontier = None
+        self._inh_exc_cache = {}
+        # 1. Excitatory outgoing CSR sorted by weight descending
+        if self._adj is not None and self._adj.data.size:
+            raw_src = np.repeat(np.arange(n, dtype=np.int32), np.diff(self._adj.indptr))
+            indptr, indices, data, src = self._build_numpy_csr(
+                n, raw_src, self._adj.indices, self._adj.data, sort_desc=True)
+            self._exc_canonical = bool(getattr(self._adj, "has_canonical_format", False))
+        else:
+            rows, cols, decays = self._edge_meta
+            indptr, indices, data, src = self._build_numpy_csr(
+                n, rows, cols, decays, sort_desc=True)
+            self._exc_canonical = False
+        self._exc_indptr = indptr
+        self._exc_indices = indices
+        self._exc_data = data
+        self._exc_src = src
+        self._exc_wmax = float(data.max()) if data.size else 0.0
+        # 2. Edge-list fallback NumPy CSR for inhibitory edges (active-support speed without SciPy)
+        inh_rows, inh_cols, inh_mags = self._inh_meta
+        unv_rows, unv_cols, unv_mags = self._inh_unv_meta
+        if self._adj_inh is None and inh_rows:
+            i_ip, i_idx, i_dat, _ = self._build_numpy_csr(n, inh_rows, inh_cols, inh_mags)
+            self._inh_csr = (i_ip, i_idx, i_dat) if i_dat.size else None
+        else:
+            self._inh_csr = None
+        if self._adj_inh is None and unv_rows:
+            u_ip, u_idx, u_dat, _ = self._build_numpy_csr(n, unv_cols, unv_rows, unv_mags)
+            self._inh_unv_t_csr = (u_ip, u_idx, u_dat) if u_dat.size else None
+        else:
+            self._inh_unv_t_csr = None
+        # 3. Inhibitory source set (I_src) and target mask (I_dst) for exact pruning
+        src_parts = []
+        dst_parts = []
+        if self._adj_inh is not None and self._adj_inh.data.size:
+            pos = self._adj_inh.data > 0
+            if pos.any():
+                raw_is = np.repeat(np.arange(n, dtype=np.int32), np.diff(self._adj_inh.indptr))
+                src_parts.append(raw_is[pos])
+                dst_parts.append(self._adj_inh.indices[pos].astype(np.int32, copy=False))
+        elif inh_rows:
+            im = np.asarray(inh_mags, dtype=np.float32)
+            pos = im > 0
+            if pos.any():
+                src_parts.append(np.asarray(inh_rows, dtype=np.int32)[pos])
+                dst_parts.append(np.asarray(inh_cols, dtype=np.int32)[pos])
+        if self._adj_inh_unv is not None and self._adj_inh_unv.data.size:
+            pos = self._adj_inh_unv.data > 0
+            if pos.any():
+                # Reverse edge di -> si: source is col (di), target is row (si)
+                raw_us = np.repeat(np.arange(n, dtype=np.int32), np.diff(self._adj_inh_unv.indptr))
+                src_parts.append(self._adj_inh_unv.indices[pos].astype(np.int32, copy=False))
+                dst_parts.append(raw_us[pos])
+        elif unv_rows:
+            um = np.asarray(unv_mags, dtype=np.float32)
+            pos = um > 0
+            if pos.any():
+                src_parts.append(np.asarray(unv_cols, dtype=np.int32)[pos])
+                dst_parts.append(np.asarray(unv_rows, dtype=np.int32)[pos])
+        if src_parts:
+            self._inh_src_arr = np.unique(np.concatenate(src_parts))
+            dst_mask = np.zeros(n, dtype=bool)
+            dst_mask[np.concatenate(dst_parts)] = True
+            self._inh_dst_mask = dst_mask
+        else:
+            self._inh_src_arr = None
+            self._inh_dst_mask = None
+
+    def _ensure_inh_dist(self, max_rem: int):
+        """Lazily compute backward shortest excitatory hop distance to I_src up to max_rem."""
+        if self._inh_src_arr is None or max_rem < 0:
+            return None
+        n = len(self._node_ids)
+        if self._inh_dist is None:
+            dist = np.full(n, -1, dtype=np.int32)
+            dist[self._inh_src_arr] = 0
+            self._inh_dist = dist
+            self._inh_dist_max_depth = 0
+            self._inh_bfs_frontier = self._inh_src_arr
+        dist = self._inh_dist
+        if self._inh_dist_max_depth >= max_rem or self._inh_bfs_frontier.size == 0:
+            return dist
+        if self._rev_exc_csr is None:
+            # Build reverse excitatory adjacency once lazily (dst -> src)
+            if self._exc_indices.size:
+                order = np.argsort(self._exc_indices, kind="stable")
+                rev_dst = self._exc_indices[order]
+                rev_src = self._exc_src[order]
+                rev_indptr = np.zeros(n + 1, dtype=np.intp)
+                np.cumsum(np.bincount(rev_dst, minlength=n), out=rev_indptr[1:])
+                self._rev_exc_csr = (rev_indptr, rev_src)
+            else:
+                self._rev_exc_csr = (np.zeros(n + 1, dtype=np.intp), np.empty(0, dtype=np.int32))
+        rev_indptr, rev_src = self._rev_exc_csr
+        while self._inh_dist_max_depth < max_rem and self._inh_bfs_frontier.size > 0:
+            next_d = self._inh_dist_max_depth + 1
+            nxt = []
+            for v in self._inh_bfs_frontier.tolist():
+                s = int(rev_indptr[v])
+                e = int(rev_indptr[v + 1])
+                if s < e:
+                    for u in rev_src[s:e].tolist():
+                        if dist[u] == -1:
+                            dist[u] = next_d
+                            nxt.append(u)
+            self._inh_bfs_frontier = np.array(nxt, dtype=np.int32)
+            self._inh_dist_max_depth = next_d
+        return dist
+
+    def _get_inh_exc_csr(self, rem: int):
+        """Return cached sub-CSR of excitatory edges landing in B_inh(rem), None, or 'ALL'."""
+        if self._inh_src_arr is None or self._exc_data.size == 0:
+            return None
+        cached = self._inh_exc_cache.get(rem, False)
+        if cached is not False:
+            return cached
+        dist = self._ensure_inh_dist(rem)
+        d_dst = dist[self._exc_indices]
+        mask = (d_dst >= 0) & (d_dst <= rem)
+        hit_cnt = int(mask.sum())
+        if hit_cnt == 0:
+            res = None
+        elif hit_cnt * 10 >= mask.size * 9:
+            res = "ALL"
+        else:
+            n = len(self._node_ids)
+            s_b = self._exc_src[mask]
+            c_b = self._exc_indices[mask]
+            w_b = self._exc_data[mask]
+            b_indptr = np.zeros(n + 1, dtype=np.intp)
+            np.cumsum(np.bincount(s_b, minlength=n), out=b_indptr[1:])
+            res = (b_indptr, c_b, w_b)
+        self._inh_exc_cache[rem] = res
+        return res
+
+    @staticmethod
+    def _max_plus_csr_arrays(indptr, indices, data, act: np.ndarray,
+                             active: np.ndarray, out: np.ndarray,
+                             canonical: bool = False) -> np.ndarray:
+        """Active-support sparse frontier max-plus over CSR arrays: O(|S_h| + |E(S_h)|)."""
+        k = active.size
+        if k == 0 or data.size == 0:
+            return out
+        if k <= 64:
+            if canonical:
+                for u in active.tolist():
+                    s = int(indptr[u])
+                    e = int(indptr[u + 1])
+                    if s < e:
+                        dst = indices[s:e]
+                        out[dst] = np.maximum(out[dst], act[u] * data[s:e])
+            else:
+                for u in active.tolist():
+                    s = int(indptr[u])
+                    e = int(indptr[u + 1])
+                    if s < e:
+                        np.maximum.at(out, indices[s:e], act[u] * data[s:e])
+            return out
+        starts = indptr[active]
+        counts = indptr[active + 1] - starts
+        nz = counts > 0
+        if not nz.any():
+            return out
+        act_u = active[nz]
+        s_u = starts[nz].astype(np.intp, copy=False)
+        c_u = counts[nz].astype(np.intp, copy=False)
+        total = int(c_u.sum())
+        offsets = np.cumsum(c_u)
+        base = np.repeat(s_u - (offsets - c_u), c_u)
+        edge_idx = np.arange(total, dtype=np.intp) + base
+        src_act = np.repeat(act[act_u], c_u)
+        np.maximum.at(out, indices[edge_idx], src_act * data[edge_idx])
+        return out
+
+    @staticmethod
+    def _max_plus(adj, act: np.ndarray,
+                  active: Optional[np.ndarray] = None) -> np.ndarray:
         """max-plus 稀疏传播:out[dst] = max over src (act[src]·w[src,dst])。
 
-        scipy 的 `@` 是 Σ 半环(多源/多跳累加),自条件回注下会跨轮指数发散
-        (issue #280);本函数改用 max 半环,与 edge-list 降级路径口径一致。
-        w 非负(抑制边存 |decay| 且走独立通路),故只需最大值,不需处理负权。
-        向量化:把 CSR 的每个非零元展平成 (src, dst, w),一次 `np.maximum.at`
-        按 dst 归约——重复 dst 取最大值,与逐行写法同口径但不随行数循环。
+        Active-support frontier propagation: only visits outgoing edges of active
+        nodes (act[u] > 0), O(|S_h| + |E(S_h)|) instead of O(|V| + |E|).
+        Handles CSC inputs (e.g. csr_matrix.T for #521 bidirectional inhibition)
+        by converting to CSR so row=src, col=dst matches the edge-list backend.
         """
         n = act.shape[0]
         out = np.zeros(n, dtype=np.float32)
+        if adj.data.size == 0:
+            return out
+        if active is None:
+            active = np.nonzero(act > 0)[0]
+        if active.size == 0:
+            return out
         if getattr(adj, "format", "csr") == "csc":
             adj = adj.tocsr()
-        indptr, indices, data = adj.indptr, adj.indices, adj.data
-        if data.size == 0:
-            return out
-        src = np.repeat(np.arange(n, dtype=np.int64), np.diff(indptr))
-        np.maximum.at(out, indices, act[src] * data)
-        return out
+        return ActivationEngine._max_plus_csr_arrays(
+            adj.indptr, adj.indices, adj.data, act, active, out,
+            canonical=bool(getattr(adj, "has_canonical_format", False)))
+
+    def _propagate_excitatory(self, act: np.ndarray, active: np.ndarray,
+                              prune_floor: float, rem: int) -> Tuple[np.ndarray, int, int]:
+        """Exact inhibitory-safe descending-edge early-stopping propagation.
+
+        Prunes an outgoing excitatory edge (u -> v, w) ONLY when:
+          1. self._exc_wmax <= 1.0 (guaranteed non-amplifying downstream),
+          2. float(act[u] * w) < prune_floor <= min(act_floor, M_safe), AND
+          3. v not in B_inh(rem) (cannot reach any inhibitory source within rem hops).
+        """
+        n = act.shape[0]
+        out = np.zeros(n, dtype=np.float32)
+        indptr = self._exc_indptr
+        indices = self._exc_indices
+        data = self._exc_data
+        if active.size == 0 or data is None or data.size == 0:
+            return out, 0, 0
+        total_active_edges = int((indptr[active + 1] - indptr[active]).sum())
+        if total_active_edges == 0:
+            return out, 0, 0
+        if prune_floor <= 0.0:
+            self._max_plus_csr_arrays(
+                indptr, indices, data, act, active, out, canonical=self._exc_canonical)
+            return out, total_active_edges, 0
+        inh_exc = self._get_inh_exc_csr(rem)
+        if inh_exc == "ALL":
+            self._max_plus_csr_arrays(
+                indptr, indices, data, act, active, out, canonical=self._exc_canonical)
+            return out, total_active_edges, 0
+        # Pass 1: descending-weight early stop for edges with act[u] * w >= prune_floor
+        visited = 0
+        strong = active[act[active] >= prune_floor]
+        canonical = self._exc_canonical
+        if strong.size:
+            for u in strong.tolist():
+                s = int(indptr[u])
+                e = int(indptr[u + 1])
+                if s == e:
+                    continue
+                a_u = act[u]
+                if float(a_u * data[s]) < prune_floor:
+                    continue
+                if float(a_u * data[e - 1]) >= prune_floor:
+                    cut = e
+                else:
+                    lo, hi = s + 1, e - 1
+                    while lo < hi:
+                        mid = (lo + hi) >> 1
+                        if float(a_u * data[mid]) >= prune_floor:
+                            lo = mid + 1
+                        else:
+                            hi = mid
+                    cut = lo
+                visited += cut - s
+                if canonical:
+                    dst = indices[s:cut]
+                    out[dst] = np.maximum(out[dst], a_u * data[s:cut])
+                else:
+                    np.maximum.at(out, indices[s:cut], a_u * data[s:cut])
+        # Pass 2: inhibitory-safe tail for edges landing in B_inh(rem)
+        if inh_exc is not None:
+            b_ip, b_idx, b_dat = inh_exc
+            b_cnt = int((b_ip[active + 1] - b_ip[active]).sum())
+            if b_cnt:
+                visited += b_cnt
+                self._max_plus_csr_arrays(
+                    b_ip, b_idx, b_dat, act, active, out, canonical=canonical)
+        pruned = max(0, total_active_edges - visited)
+        return out, visited, pruned
+
+    @staticmethod
+    def _has_activation_triggers(con) -> bool:
+        for master in ("sqlite_master", "sqlite_temp_master"):
+            try:
+                if con.execute(
+                    "SELECT 1 FROM %s WHERE type='trigger' AND tbl_name='activation_nodes' LIMIT 1"
+                    % master).fetchone() is not None:
+                    return True
+            except sqlite3.OperationalError:
+                pass
+        return False
 
     # ---------------- 种子生成(同步询问→投票) ----------------
-    def _seed_by_text(self, query: str, top_k: int = 12) -> List[Tuple[str, float]]:
+    def _seed_by_text(self, query: str, top_k: int = 12,
+                      _graph_ready: bool = False) -> List[Tuple[str, float]]:
         """种子:中文二元组倒排——同步询问全图(所有含查询词元的节点),计数投票。
 
         #161:空查询 / 纯空白查询**无可投票词元**——旧实现下 `toks` 含 `""`(或 `" "`),
@@ -431,25 +1005,36 @@ class ActivationEngine:
         """
         if not (query or "").strip():
             return []
-        toks = {query[i:i + 2] for i in range(len(query) - 1)} | {query}
-        con = self._con()
-        cur = con.cursor()
-        try:
-            cur.execute("SELECT id, content, tags FROM nodes")
-            rows = cur.fetchall()
-        except sqlite3.OperationalError:  # #714:无内容表(独立激活库)⇒ 无可投票词元
-            rows = []
-        con.close()
+        toks = tuple({query[i:i + 2] for i in range(len(query) - 1)} | {query})
+        n_toks = max(1, len(toks))
+        use_cached = (_graph_ready or self._is_graph_cache_valid()) and self._node_hays is not None
         scores = []
-        for nid, content, tags_json in rows:
-            hay = content or ""
+        if use_cached:
+            for nid, hay in zip(self._node_ids, self._node_hays):
+                cnt = 0
+                for t in toks:
+                    if t in hay:
+                        cnt += 1
+                if cnt:
+                    scores.append((nid, cnt / n_toks))
+        else:
+            con = self._con()
+            cur = con.cursor()
             try:
-                hay += " " + " ".join(json.loads(tags_json)) if tags_json else ""
-            except (json.JSONDecodeError, TypeError):
-                pass
-            s = sum(1 for t in toks if t in hay) / max(1, len(toks))
-            if s > 0:
-                scores.append((nid, s))
+                cur.execute("SELECT id, content, tags FROM nodes")
+                rows = cur.fetchall()
+            except sqlite3.OperationalError:  # #714:无内容表(独立激活库)⇒ 无可投票词元
+                rows = []
+            con.close()
+            _bh = self._build_hay
+            for nid, content, tags_json in rows:
+                hay = _bh(content, tags_json)
+                cnt = 0
+                for t in toks:
+                    if t in hay:
+                        cnt += 1
+                if cnt:
+                    scores.append((nid, cnt / n_toks))
         scores.sort(key=lambda x: -x[1])
         return scores[:top_k]
 
@@ -488,9 +1073,9 @@ class ActivationEngine:
                     "error": "ActivationEngine 需要 numpy（pip install 'lingshu[world]'）",
                     "workset": workset, "size": 0, "top": [], "seeds": 0,
                     "hops": hops, "carried": 0, "latency_ms": 0.0}
-        self._load_graph()
+        self._ensure_graph()
         t0 = time.time()
-        seeds = self._seed_by_text(query, top_k)
+        seeds = self._seed_by_text(query, top_k, _graph_ready=True)
         idx = self._node_index
         n = len(self._node_ids)
         act = np.zeros(n, dtype=np.float32)
@@ -534,50 +1119,68 @@ class ActivationEngine:
         # 逐跳扩散(条件衰减)——max-plus 口径(issue #280):
         #   prop[dst] = max over src (act[src]·decay),不跨跳/跨源累加,
         #   故 act 有界(≤ max(种子,上一步先验)),不随跳数/轮数指数发散。
+        total_edges_visited = 0
+        total_edges_pruned = 0
         for hop in range(1, hops + 1):
-            prop = np.zeros(n, dtype=np.float32)
-            if self._adj is not None:
-                # 稀疏图上的 max-plus 传播(scipy matvec 是 Σ 半环,会累加→发散,故不用 @)
-                prop = self._max_plus(self._adj, act)
-            else:  # edge-list 降级
-                rows, cols, decays = self._edge_meta
-                for si, di, d in zip(rows, cols, decays):
-                    if act[si] > 0:
-                        prop[di] = max(prop[di], act[si] * d)
-            # 节点级条件衰减修正(边 base × 节点对条件重合率)——按激活邻域逐点算
-            nz = np.nonzero(prop)[0]
-            for di in nz:
-                pass  # V0:节点对级 cond_match 在稀疏边级计算成本高,以边类型 base 为准(声明局限)
-            act = np.maximum(act, prop)
-            # 抑制通路(负记忆同价,第五篇;issue #229):opposite 边扣减目标激活,
-            #   supp[dst] = max over src (act[src]·|decay|),act[dst] ← max(act[dst]−supp,0)。
-            supp = np.zeros(n, dtype=np.float32)
-            if self._adj_inh is not None:
-                supp = self._max_plus(self._adj_inh, act)
-                # issue #521：**低置信**边（<0.5）额外做反向抑制（双向），
-                # 未复核 0.3 边不得只按存储方向让后写者单方面否决先写者；
-                # 默认 0.5+ 的边保持既有单向（#229）。
-                if self._adj_inh_unv is not None:
-                    supp = np.maximum(supp, self._max_plus(self._adj_inh_unv.T, act))
-            else:  # edge-list 降级（低置信边双向同口径）
-                inh_rows, inh_cols, inh_mags = self._inh_meta
-                for si, di, m in zip(inh_rows, inh_cols, inh_mags):
-                    if act[si] > 0:
-                        supp[di] = max(supp[di], act[si] * m)
-                unv_rows, unv_cols, unv_mags = self._inh_unv_meta
-                for si, di, m in zip(unv_rows, unv_cols, unv_mags):
-                    if act[di] > 0:
-                        supp[si] = max(supp[si], act[di] * m)
-            if supp.any():
-                act = np.maximum(act - supp, 0.0)
-            for i in np.nonzero(act >= act_floor)[0]:
+            active = np.nonzero(act > 0)[0]
+            if active.size:
+                if act_floor > 0.0 and self._exc_wmax <= 1.0:
+                    if self._inh_dst_mask is None:
+                        m_safe = float(act[active].max())
+                    else:
+                        uninh = active[~self._inh_dst_mask[active]]
+                        m_safe = float(act[uninh].max()) if uninh.size else 0.0
+                    prune_floor = min(float(act_floor), m_safe)
+                else:
+                    prune_floor = 0.0
+                prop, vis, pru = self._propagate_excitatory(
+                    act, active, prune_floor, hops - hop)
+                total_edges_visited += vis
+                total_edges_pruned += pru
+                act = np.maximum(act, prop)
+                # 抑制通路(负记忆同价,第五篇;issue #229):opposite 边扣减目标激活,
+                #   supp[dst] = max over src (act[src]·|decay|),act[dst] ← max(act[dst]−supp,0)。
+                supp = np.zeros(n, dtype=np.float32)
+                if self._adj_inh is not None:
+                    supp = self._max_plus(self._adj_inh, act)
+                    # issue #521：**低置信**边（<0.5）额外做反向抑制（双向），
+                    # 未复核 0.3 边不得只按存储方向让后写者单方面否决先写者；
+                    # 默认 0.5+ 的边保持既有单向（#229）。
+                    if self._adj_inh_unv is not None:
+                        supp = np.maximum(supp, self._max_plus(self._adj_inh_unv.T, act))
+                else:  # edge-list 降级（低置信边双向同口径）
+                    if self._inh_csr is not None or self._inh_unv_t_csr is not None:
+                        active_exc = np.nonzero(act > 0)[0]
+                        if self._inh_csr is not None:
+                            self._max_plus_csr_arrays(
+                                self._inh_csr[0], self._inh_csr[1], self._inh_csr[2],
+                                act, active_exc, supp, canonical=False)
+                        if self._inh_unv_t_csr is not None:
+                            self._max_plus_csr_arrays(
+                                self._inh_unv_t_csr[0], self._inh_unv_t_csr[1],
+                                self._inh_unv_t_csr[2], act, active_exc, supp,
+                                canonical=False)
+                    else:
+                        inh_rows, inh_cols, inh_mags = self._inh_meta
+                        for si, di, m in zip(inh_rows, inh_cols, inh_mags):
+                            if act[si] > 0:
+                                supp[di] = max(supp[di], act[si] * m)
+                        unv_rows, unv_cols, unv_mags = self._inh_unv_meta
+                        for si, di, m in zip(unv_rows, unv_cols, unv_mags):
+                            if act[di] > 0:
+                                supp[si] = max(supp[si], act[di] * m)
+                if supp.any():
+                    act = np.maximum(act - supp, 0.0)
+            above = np.nonzero(act >= act_floor)[0]
+            for i in above.tolist():
                 nid = self._node_ids[i]
                 if nid not in first_hop:  # #314:首次进入工作态的跳号
                     first_hop[nid] = hop
-            newly = [self._node_ids[i] for i in np.nonzero(act >= act_floor)[0]]
             path.append({"step": hop, "phase": "propagate",
-                         "activated_count": len(newly),
+                         "activated_count": int(above.size),
                          "max_act": round(float(act.max()), 4) if n else 0.0})
+        self._last_frontier_stats["edges_visited"] = total_edges_visited
+        self._last_frontier_stats["edges_pruned"] = total_edges_pruned
         # 阈值截断→工作态
         keep = np.nonzero(act >= act_floor)[0]
         members = [(self._node_ids[i], round(float(act[i]), 4)) for i in keep]
@@ -613,19 +1216,65 @@ class ActivationEngine:
         查询（旧实现收下即弃、表里也无列可存）。实际查询文本随每个成员行同写
         （同一 workset 的查询相同；按行冗余存储换取无需额外表与 join）。
         """
-        with self._transaction() as con:
+        state = {"track": False, "dv": None, "sv": None, "tsv": None, "mode": None}
+
+        def _after_commit(con, was_nested):
+            if not state["track"] or was_nested:
+                if self._graph_cache_sig is not None and self._graph_cache_sig[0] != "file-digest":
+                    self._graph_cache_sig = None
+                return
+            try:
+                if state["mode"] == "conn":
+                    dv = int(con.execute("PRAGMA data_version").fetchone()[0])
+                    sv = int(con.execute("PRAGMA schema_version").fetchone()[0])
+                    tsv = int(con.execute("PRAGMA temp.schema_version").fetchone()[0])
+                    if (dv == state["dv"] and sv == state["sv"]
+                            and tsv == state["tsv"] and not con.in_transaction):
+                        raw_con = con._conn if isinstance(con, _BorrowedConnection) else con
+                        self._graph_cache_sig = (
+                            "conn", id(raw_con), dv, sv, tsv, int(con.total_changes))
+                    else:
+                        self._graph_cache_sig = None
+                elif state["mode"] in ("file-rb", "file-wal"):
+                    sig_after = self._file_fast_sig(con)
+                    dv = int(con.execute("PRAGMA data_version").fetchone()[0])
+                    sv = int(con.execute("PRAGMA schema_version").fetchone()[0])
+                    if sig_after is not None and dv == state["dv"] and sv == state["sv"]:
+                        self._graph_cache_sig = sig_after
+                    else:
+                        self._graph_cache_sig = None
+            except Exception:
+                self._graph_cache_sig = None
+
+        with self._transaction(_on_commit=_after_commit) as con:
+            sig = self._graph_cache_sig
+            if sig is not None and sig[0] != "file-digest":
+                if not self._has_activation_triggers(con):
+                    if self._conn is not None and sig[0] == "conn":
+                        if self._conn_sig(con, allow_in_tx=True) == sig:
+                            state["track"] = True
+                            state["mode"] = "conn"
+                            state["dv"] = sig[2]
+                            state["sv"] = sig[3]
+                            state["tsv"] = sig[4]
+                    elif self._conn is None and sig[0] in ("file-rb", "file-wal"):
+                        if self._file_fast_sig(con) == sig:
+                            state["track"] = True
+                            state["mode"] = sig[0]
+                            state["dv"] = int(con.execute("PRAGMA data_version").fetchone()[0])
+                            state["sv"] = int(con.execute("PRAGMA schema_version").fetchone()[0])
             con.execute("DELETE FROM activation_nodes WHERE workset=?", (workset,))
             ts = time.time()
             src_map = sources or {}
             hop_map = hops or {}
-            for nid, a in members:
-                con.execute(
+            if members:
+                con.executemany(
                     "INSERT OR REPLACE INTO activation_nodes"
                     " (id, workset, node_id, activation, source, hop, ts, query)"
                     " VALUES (?,?,?,?,?,?,?,?)",
-                    ("act_%s_%d" % (uuid.uuid4().hex[:8], int(ts * 1000)),
-                     workset, nid, a, src_map.get(nid, "propagate"),
-                     hop_map.get(nid, 0), ts, query))
+                    [("act_%s_%d" % (uuid.uuid4().hex[:8], int(ts * 1000)),
+                      workset, nid, a, src_map.get(nid, "propagate"),
+                      hop_map.get(nid, 0), ts, query) for nid, a in members])
 
     def _append_audit(self, audit: Dict):
         os.makedirs(os.path.dirname(self.audit_path) or ".", exist_ok=True)
@@ -740,6 +1389,22 @@ class ActivationEngine:
                              ws, m["node_id"], m["activation"], "restored",
                              m.get("hop", 0), ts, query))
         return {"status": "ok", "workset": ws, "restored": len(members)}
+
+
+_ORIG_COND_MATCH = cond_match
+_ORIG_CSR_MATRIX = csr_matrix
+if csr_matrix is not None:
+    class _FastTransposeCSR(csr_matrix):
+        """csr_matrix holding a precomputed CSR transpose so `.T` is O(1) CSR."""
+
+        _t_csr = None
+
+        def transpose(self, axes=None, copy=False):
+            if axes is None and not copy and self._t_csr is not None:
+                return self._t_csr
+            return super().transpose(axes=axes, copy=copy)
+else:
+    _FastTransposeCSR = None
 
 
 if __name__ == "__main__":
