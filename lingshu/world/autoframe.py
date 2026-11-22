@@ -296,9 +296,10 @@ def frame_mesh(mesh, screen_w: int, screen_h: int, use_verts: bool = True,
                 vstep = max(1, len(vlist) // MAX_FIT_VERTS)
                 pv = [tuple(float(vs[vlist[i]][k]) + _c[k] for k in range(3))
                       for i in range(0, len(vlist), vstep)]
-                #: 拟合集用可见顶点；**初始尺度**仍用全体（避免可见面太少时尺度失真）
-                corners = [(b[0][0] if i & 1 else b[1][0], b[0][1] if i & 2 else b[1][1],
-                            b[0][2] if i & 4 else b[1][2]) for i in range(8)]
+                #: 拟合集用可见顶点；**初始尺度**仍用全体（避免可见面太少时尺度失真）；
+                #: 角点须与 pts/pv 同用世界坐标 lo/hi（已加 _c），否则 center≠0 时初始尺度与中心被原点拉爆
+                corners = [(lo[0] if i & 1 else hi[0], lo[1] if i & 2 else hi[1],
+                            lo[2] if i & 4 else hi[2]) for i in range(8)]
                 return frame_points(corners + pts, screen_w, screen_h, fit_points=pv, **kw)
         except (AttributeError, TypeError, ValueError, ZeroDivisionError):
             pass
