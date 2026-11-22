@@ -506,14 +506,16 @@ class ActivationEngine:
 
     @staticmethod
     def _table_content_digest(con) -> Optional[Tuple]:
-        """Exact read-only BLAKE2b digest of nodes & edges (clean-WAL fallback)."""
+        """Exact read-only BLAKE2b digest of nodes & edges (clean-WAL fallback).
+
+        Fails closed (returns None) on any sqlite3.Error so transient locks or
+        schema errors can never produce two equal sentinel digests. Absent
+        tables (#714) return empty PRAGMA table_info cleanly (n_dig/e_dig=None).
+        """
         try:
             sv = int(con.execute("PRAGMA schema_version").fetchone()[0])
             cur = con.cursor()
-            try:
-                ncols = {r[1] for r in cur.execute("PRAGMA table_info(nodes)")}
-            except sqlite3.OperationalError:
-                ncols = set()
+            ncols = {r[1] for r in cur.execute("PRAGMA table_info(nodes)")}
             if ncols:
                 parts = ["quote(id)",
                          "quote(condition_space)" if "condition_space" in ncols else "'NULL'"]
@@ -522,30 +524,21 @@ class ActivationEngine:
                 if "tags" in ncols:
                     parts.append("quote(tags)")
                 expr = "||','||".join(parts)
-                try:
-                    cnt, blob = cur.execute(
-                        "SELECT COUNT(*), CAST(GROUP_CONCAT(" + expr
-                        + ", char(10)) AS BLOB) FROM nodes").fetchone()
-                    n_dig = (int(cnt), hashlib.blake2b(blob or b"", digest_size=16).digest())
-                except sqlite3.OperationalError:
-                    n_dig = None
+                cnt, blob = cur.execute(
+                    "SELECT COUNT(*), CAST(GROUP_CONCAT(" + expr
+                    + ", char(10)) AS BLOB) FROM nodes").fetchone()
+                n_dig = (int(cnt), hashlib.blake2b(blob or b"", digest_size=16).digest())
             else:
                 n_dig = None
-            try:
-                ecols = {r[1] for r in cur.execute("PRAGMA table_info(edges)")}
-            except sqlite3.OperationalError:
-                ecols = set()
+            ecols = {r[1] for r in cur.execute("PRAGMA table_info(edges)")}
             if ecols:
                 conf_q = "quote(confidence)" if "confidence" in ecols else "'0.3'"
                 e_expr = ("quote(source_id)||','||quote(target_id)||','||"
                           "quote(relation_type)||','||" + conf_q)
-                try:
-                    cnt, blob = cur.execute(
-                        "SELECT COUNT(*), CAST(GROUP_CONCAT(" + e_expr
-                        + ", char(10)) AS BLOB) FROM edges").fetchone()
-                    e_dig = (int(cnt), hashlib.blake2b(blob or b"", digest_size=16).digest())
-                except sqlite3.OperationalError:
-                    e_dig = None
+                cnt, blob = cur.execute(
+                    "SELECT COUNT(*), CAST(GROUP_CONCAT(" + e_expr
+                    + ", char(10)) AS BLOB) FROM edges").fetchone()
+                e_dig = (int(cnt), hashlib.blake2b(blob or b"", digest_size=16).digest())
             else:
                 e_dig = None
             return ("file-digest", sv, n_dig, e_dig)

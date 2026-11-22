@@ -834,3 +834,83 @@ def test_env_monkeypatch_invalidates_graph_cache(monkeypatch, tmp_path):
         assert eng.carry_vector("w") == {"a": 1.0, "b": 0.375}
     finally:
         store.close()
+
+
+def test_table_content_digest_fails_closed_on_operational_error(tmp_path):
+    """_table_content_digest must return None (fail-closed) on OperationalError,
+    never a sentinel ('file-digest', sv, None, ...) that could match a stale cache.
+    """
+    cs = json.dumps({"observation_position": "p", "observation_tool": "t",
+                     "time_window": [10.0, 20.0], "existence_constraint": "c"})
+    # 1. Positive control: genuinely absent content tables (#714) return clean None digests.
+    bare_con = sqlite3.connect(":memory:")
+    try:
+        dig = ActivationEngine._table_content_digest(bare_con)
+        assert dig is not None and dig[0] == "file-digest" and dig[2] is None and dig[3] is None
+    finally:
+        bare_con.close()
+
+    # 2. OperationalError during PRAGMA table_info OR GROUP_CONCAT on existing tables => None!
+    real_con = _create_raw_graph_db(
+        ":memory:",
+        [("a", "锚点甲", "[]", cs), ("b", "目标乙", "[]", cs)],
+        [("e1", "a", "b", "similar", None, 0.5)],
+    )
+    try:
+        for fail_substr in (
+            "PRAGMA table_info(nodes)",
+            "FROM nodes",
+            "PRAGMA table_info(edges)",
+            "FROM edges",
+        ):
+            class _FailingCursor:
+                def __init__(self, inner, needle):
+                    self._inner = inner
+                    self._needle = needle
+
+                def execute(self, sql, *args, **kwargs):
+                    if self._needle in sql:
+                        raise sqlite3.OperationalError("database is locked")
+                    return self._inner.execute(sql, *args, **kwargs)
+
+            class _FailingConn:
+                def __init__(self, inner, needle):
+                    self._inner = inner
+                    self._needle = needle
+
+                def execute(self, sql, *args, **kwargs):
+                    return self._inner.execute(sql, *args, **kwargs)
+
+                def cursor(self):
+                    return _FailingCursor(self._inner.cursor(), self._needle)
+
+            assert ActivationEngine._table_content_digest(
+                _FailingConn(real_con, fail_substr)
+            ) is None, "Digest failed open on OperationalError for %r" % (fail_substr,)
+    finally:
+        real_con.close()
+
+    # 3. End-to-end: malformed edges schema (missing source_id) fails closed on standalone WAL,
+    #    refusing to cache and observing subsequent node mutations without serving stale data.
+    db_path = str(tmp_path / "fail_closed_wal.db")
+    con = sqlite3.connect(db_path)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, content TEXT, tags TEXT, condition_space TEXT)")
+    con.execute("CREATE TABLE edges (id TEXT PRIMARY KEY, bogus TEXT)")
+    con.execute("INSERT INTO nodes VALUES ('a', '初始内容甲', '[]', ?)", (cs,))
+    con.commit()
+    con.close()
+
+    eng = ActivationEngine(db_path=db_path, audit_path=str(tmp_path / "fc.jsonl"))
+    eng.activate("初始内容甲", workset="w", hops=1)
+    assert eng._graph_cache_sig is None, "Must refuse to cache when edges digest hits OperationalError"
+    assert eng.carry_vector("w") == {"a": 1.0}
+
+    ext = sqlite3.connect(db_path)
+    ext.execute("UPDATE nodes SET content='更新内容乙' WHERE id='a'")
+    ext.commit()
+    ext.close()
+
+    eng.activate("更新内容乙", workset="w", hops=1)
+    assert eng._graph_load_count == 2
+    assert eng.carry_vector("w") == {"a": 1.0}
