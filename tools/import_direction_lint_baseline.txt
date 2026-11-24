@@ -23,7 +23,8 @@
 # ── 登记面 · 用户登记（--update-baseline 保留本段逐字）──
 # ── 登记面 · 结束 ──
 
+#   #434：world/prediction.py 的 2 处 stmc_refs 已清零，stmc_refs 基线 4 → 2。
+
 core_to_world	lingshu/core/core.py	28
 stmc_refs	lingshu/core/component_resolver.py	1
 stmc_refs	lingshu/core/core.py	1
-stmc_refs	lingshu/world/prediction.py	2

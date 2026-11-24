@@ -536,6 +536,8 @@ def prepare_triangles(mesh: "MeshGeometry", center, cam, sw: int, sh: int,
     near = NEAR_EPS
     verts = mesh.verts
     normals = mesh.normals if (smooth and mesh.normals) else None
+    n_normals = len(normals) if normals is not None else 0
+    per_vert_normals = normals is not None and n_normals == len(verts)
     cc = [cx, cy, cz]
     tris = []
     n_cull = n_clip = n_off = 0
@@ -575,13 +577,29 @@ def prepare_triangles(mesh: "MeshGeometry", center, cam, sw: int, sh: int,
                 continue
         # 角色（v3）：按 face.mat 分层着色。`_role` 只算一次，两个分支共用。
         _role = role_for_material(face.mat)
+        cosang = _dot(n, view)
+        vn_idx = None
         if normals is not None:
-            inten = []
-            for k in (i0, i1, i2):
-                vn = normals[k]
-                inten.append(shade_intensity(vn, view, shade, _dot(n, view), _role))
+            fvn = face.vn
+            if fvn is not None:
+                if (len(fvn) == 3
+                        and 0 <= fvn[0] < n_normals
+                        and 0 <= fvn[1] < n_normals
+                        and 0 <= fvn[2] < n_normals):
+                    vn_idx = fvn
+            elif per_vert_normals and (
+                    0 <= i0 < n_normals
+                    and 0 <= i1 < n_normals
+                    and 0 <= i2 < n_normals):
+                vn_idx = (i0, i1, i2)
+        if vn_idx is not None:
+            inten = (
+                shade_intensity(normals[vn_idx[0]], view, shade, cosang, _role),
+                shade_intensity(normals[vn_idx[1]], view, shade, cosang, _role),
+                shade_intensity(normals[vn_idx[2]], view, shade, cosang, _role),
+            )
         else:
-            iv = shade_intensity(n, view, shade, _dot(n, view), _role)
+            iv = shade_intensity(n, view, shade, cosang, _role)
             inten = (iv, iv, iv)
         # 投影 + 扇形三角化（近平面裁剪可能产出 4 边形）
         pts = []
