@@ -411,6 +411,8 @@ class ActivationEngine:
         """
         n = act.shape[0]
         out = np.zeros(n, dtype=np.float32)
+        if getattr(adj, "format", "csr") == "csc":
+            adj = adj.tocsr()
         indptr, indices, data = adj.indptr, adj.indices, adj.data
         if data.size == 0:
             return out
