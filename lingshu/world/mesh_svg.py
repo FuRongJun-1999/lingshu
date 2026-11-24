@@ -103,6 +103,62 @@ STYLE: Dict[str, object] = {
 }
 
 
+def _require_finite_range(
+    val,
+    name: str,
+    *,
+    lo: float = None,
+    hi: float = None,
+    lo_open: bool = False,
+    hi_open: bool = False,
+) -> float:
+    """有限数值闸：拒绝 bool / 非数值 / NaN / ±inf / 越界，统一抛 ValueError（#196）。"""
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise ValueError("%s 须为有限数值，收到 %r" % (name, val))
+    try:
+        f = float(val)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("%s 须为有限数值，收到 %r" % (name, val)) from exc
+    if not math.isfinite(f):
+        raise ValueError("%s 须为有限数值，收到 %r" % (name, val))
+    if lo is not None and (f <= lo if lo_open else f < lo):
+        raise ValueError("%s 须 %s %s，收到 %r" % (name, ">" if lo_open else ">=", lo, val))
+    if hi is not None and (f >= hi if hi_open else f > hi):
+        raise ValueError("%s 须 %s %s，收到 %r" % (name, "<" if hi_open else "<=", hi, val))
+    return f
+
+
+def _require_int_ge(val, name: str, minimum: int = 0) -> int:
+    """整数下界闸：拒绝 bool / 非整数 / NaN / ±inf / 小于下界，统一抛 ValueError（#196）。"""
+    if isinstance(val, bool) or not isinstance(val, int) or val < minimum:
+        raise ValueError("%s 须为 >= %d 的整数，收到 %r" % (name, minimum, val))
+    return int(val)
+
+
+def _validate_style(st: Dict) -> None:
+    """校验 render_mesh_svg 样式数值项，阻止 NaN 钳位失真与非有限步长绕过。"""
+    if st.get("fill_tone_k") is not None:
+        _require_finite_range(st["fill_tone_k"], "fill_tone_k", lo=0.0, hi=1.0)
+    if st.get("crease_deg") is not None:
+        _require_finite_range(st["crease_deg"], "crease_deg", lo=0.0, hi=180.0)
+    if st.get("min_edge_px") is not None:
+        _require_finite_range(st["min_edge_px"], "min_edge_px", lo=0.0)
+    if st.get("outline_width") is not None:
+        _require_finite_range(st["outline_width"], "outline_width", lo=0.0)
+    if st.get("crease_width") is not None:
+        _require_finite_range(st["crease_width"], "crease_width", lo=0.0)
+    if st.get("face_stroke") is not None:
+        _require_finite_range(st["face_stroke"], "face_stroke", lo=0.0)
+    if st.get("fov_deg") is not None:
+        _require_finite_range(st["fov_deg"], "fov_deg", lo=0.0, hi=180.0, lo_open=True, hi_open=True)
+    if st.get("margin_frac") is not None:
+        _require_finite_range(st["margin_frac"], "margin_frac", lo=0.0, hi=0.5, hi_open=True)
+    if st.get("azimuth_deg") is not None:
+        _require_finite_range(st["azimuth_deg"], "azimuth_deg")
+    if st.get("elevation_deg") is not None:
+        _require_finite_range(st["elevation_deg"], "elevation_deg")
+
+
 def _tone(rgb, mode, k: float = 0.45):
     """出图色调：**只改颜色，不改几何/顺序**。
 
@@ -110,10 +166,10 @@ def _tone(rgb, mode, k: float = 0.45):
     深灰/墨绿（金属件），在浅底技术插画上会糊成一片黑，"按材质分色"就白做了。
     这是**呈现层**的调整，与"从几何导出"无关，故做成显式开关（默认关）。
     """
+    kf = _require_finite_range(k, "fill_tone_k", lo=0.0, hi=1.0)
     if mode != "lighten":
         return rgb
-    k = max(0.0, min(1.0, float(k)))
-    return tuple(int(round(c + (255 - c) * k)) for c in rgb[:3])
+    return tuple(int(round(c + (255 - c) * kf)) for c in rgb[:3])
 
 
 class LayeredSVGBackend(SVGBackend):
@@ -192,10 +248,12 @@ def adaptive_crease_deg(n_faces: int, base_deg: float = 34.0) -> float:
     上限 `CREASE_MAX_DEG`(72°)。实测：turret 2028 面 ⇒ 34.2°（几乎不变，既有观感不动）；
     hex01 12668 面 ⇒ 34 + 12·log2(6.33) ≈ 66.4° ⇒ 只留真正的硬边。
     """
-    n = max(1, int(n_faces))
+    n_raw = _require_int_ge(n_faces, "n_faces", 0)
+    base = _require_finite_range(base_deg, "base_deg", lo=0.0, hi=180.0)
+    n = max(1, n_raw)
     if n <= CREASE_REF_FACES:
-        return float(base_deg)
-    return min(CREASE_MAX_DEG, float(base_deg) + 12.0 * math.log2(n / float(CREASE_REF_FACES)))
+        return base
+    return min(CREASE_MAX_DEG, base + 12.0 * math.log2(n / float(CREASE_REF_FACES)))
 
 
 def outline_edges(mesh, center, cam, crease_deg: float = 35.0, *,
@@ -211,11 +269,17 @@ def outline_edges(mesh, center, cam, crease_deg: float = 35.0, *,
     返回顺序 = 面序 + 边序（**确定性**：不依赖 set/dict 的哈希序；用 dict 只为去重，
     Python 的 dict 保插入序，故顺序可复现）。
     """
+    crease_deg = _require_finite_range(crease_deg, "crease_deg", lo=0.0, hi=180.0)
+    min_edge_px = _require_finite_range(min_edge_px, "min_edge_px", lo=0.0)
+    screen_w = _require_int_ge(screen_w, "screen_w", 0)
+    screen_h = _require_int_ge(screen_h, "screen_h", 0)
+    if not isinstance(center, (list, tuple)) or len(center) != 3:
+        raise ValueError("center 须为三维坐标，收到 %r" % (center,))
+    cx, cy, cz = (_require_finite_range(center[i], "center[%d]" % i) for i in range(3))
     faces = mesh.faces
     if not faces:
         return []
     eye = (cam.cx, cam.cy, cam.cz)
-    cx, cy, cz = center
     front: List[bool] = []
     fnorm: List[Tuple[float, float, float]] = []
     for fc in faces:
@@ -229,7 +293,7 @@ def outline_edges(mesh, center, cam, crease_deg: float = 35.0, *,
         vx, vy, vz = eye[0] - fx, eye[1] - fy, eye[2] - fz
         front.append((n[0] * vx + n[1] * vy + n[2] * vz) > 0.0)
         fnorm.append(n)
-    cos_thr = math.cos(math.radians(max(0.0, min(179.0, crease_deg))))
+    cos_thr = math.cos(math.radians(min(179.0, crease_deg)))
     edge_faces: Dict[Tuple[int, int], List[int]] = {}
     for fi, fc in enumerate(faces):
         i0, i1, i2 = fc.idx
@@ -320,7 +384,8 @@ def _stream_sorted(stream):
 
 
 def _darken(rgb, k: float = 0.42):
-    return (max(0, int(rgb[0] * k)), max(0, int(rgb[1] * k)), max(0, int(rgb[2] * k)))
+    kf = _require_finite_range(k, "k", lo=0.0, hi=1.0)
+    return (max(0, int(rgb[0] * kf)), max(0, int(rgb[1] * kf)), max(0, int(rgb[2] * kf)))
 
 
 def _lum(rgb) -> float:
@@ -424,6 +489,7 @@ def render_mesh_svg(world, screen_w: int = 800, screen_h: int = 600,
     else:
         st.update(style or {})
     world._check_screen_dim(screen_w, screen_h)
+    _validate_style(st)
     #: ★ 构图修复（本件）：**没给相机就自动取景**，而不是沿用 `world.camera`
     #: —— 手选/沿用相机实测三个真实模型**全部裁切**（turret 底 −1.9、arm 左 −4.2、
     #: hex01 左 −155.6 下 −182.4），且主体压在画面一角（中心 0.23~0.25）。
