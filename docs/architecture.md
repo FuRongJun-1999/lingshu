@@ -213,4 +213,6 @@ lingshu
 
 | 2026-11-19 | **身体音频感知 v0.5（事件画像、内存输入、压缩音频与周期估计）**：`lingshu/vision/audio.py` + `SpacetimeMemoryEngine.perceive_audio` + 合成 WAV 守卫；登记见 `docs/intake/body-audio-v0.1/README.md` | **本仓新件**，身体侧视觉/音频感知；复用 `add_perception` 的 audio 模态 | CLEAN：WAV 纯标准库，FFmpeg 可选且 pipe-only；事件精度/截断/内存流/压缩输入/周期证据边界显式，无原始音频持久化；PR #1460 / intake #2760 | PR #1460（事件画像、压缩解码与周期估计增量） |
 
+| 2026-11-20 | 批量深度样本反投影：`world/depth_samples.py`，委托现有 Camera3D.unproject，显式像素/前向深度批量转世界坐标；intake 见 `docs/intake/body-depth-samples-v0.1/` | 本仓新件 | 最多4096条，预验证有限性/边界/深度，纯委托、不写文件或记忆；回代回归通过 | [PR #1466](https://github.com/FuRongJun-1999/lingshu/pull/1466) |
+
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*

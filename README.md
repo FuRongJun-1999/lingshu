@@ -55,6 +55,8 @@ pip install -e ".[full]"     # 含 numpy / Pillow（world / nn / gen 的常规�
 # vision 图像像素统计亦用 Pillow，但导入入口保持惰性
 ```
 
+`lingshu.world.unproject_depth_samples()` 可将最多4096条显式像素/相机前向深度样本转换为世界坐标，先完整校验再委托已有相机反投影，不读文件或写记忆。详见[批量深度样本](docs/world_depth_samples.md)。
+
 `lingshu.vision.analyze_image_pixels(image)` 可选地对已解码 Pillow 图像做有界像素统计（RGB 颜色分布、亮度与 alpha），不做语义识别或记忆写入；导入 `lingshu.vision` 本身不加载 Pillow/NumPy。
 
 `engine.list_local_visual_frames(entity_id=None, limit=50)` 可只读查询当前实例最多200条视觉引用元数据；不读取引用文件、不执行SQL、不共享原始视觉，关闭后拒绝。详见[实例内视觉缓冲查询](docs/core_local_visual_buffer.md)。
