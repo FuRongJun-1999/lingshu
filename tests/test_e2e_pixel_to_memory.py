@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""#172 最小端到端路径：SceneSimulator 渲染 → hex_cnn 感知 → World3D.add_view → engine 写记忆。
+"""#172 端到端路径：SceneSimulator 渲染 → hex_cnn/hex_hier 感知 → World3D.add_view → engine 写记忆。
 
-双版并排：oracle（真值标签直喂）vs hex-perceived（色域匹配器从像素出类别）。
-判据：端到端测试转绿；双版读数并排报告（真实感知的错误率首次可量化）。
+双版并排：oracle（真值标签直喂）vs hex-perceived（白箱蜂窝晶格感知器从像素出 shape|color + bbox）。
+判据：端到端测试转绿；色表对齐 COLORS/SHAPES、shape|color 命中率打破 0/4 占位；
+在退化/低分辨率或强噪场景下与 oracle 的感知分歧仍可量化且不偷读真值标签。
 """
 import os as _os, sys as _sys
 _RP = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
@@ -10,70 +11,30 @@ _sys.path.insert(0, _RP)
 import numpy as np
 import pytest
 
-from lingshu.nn.hex_cnn import image_to_grid
-from lingshu.world.world3d import World3D, Camera3D
+from lingshu.nn.hex_cnn import image_to_grid  # noqa: F401 (晶格前端契约)
+from lingshu.nn.hex_hier import (  # noqa: E402
+    COLORS,
+    OBJ,
+    SHAPES,
+    make_scene_dataset,
+    perceive_scene_hex,
+)
+from lingshu.world.world3d import World3D, Camera3D  # noqa: F401
 from lingshu.core.core import SpacetimeMemoryEngine, STNode, ConditionSpace
 
-# ── 色域匹配器（真实感知面：读像素出类别，能出错） ─────────────────
 
-# 仓内 SHAPES/COLORS 色表
-from lingshu.nn.hex_hier import COLORS, SHAPES, make_scene_dataset
-
-def _dominant_hue(img_arr):
-    """从 RGB 图提取主色调（均值 hue）。"""
-    import colorsys
-    h, w = img_arr.shape[:2]
-    hues = []
-    for y in range(0, h, 4):
-        for x in range(0, w, 4):
-            r, g, b = img_arr[y, x][:3]
-            if int(r) + int(g) + int(b) < 60:
-                continue  # 背景黑
-            hh, ss, vv = colorsys.rgb_to_hsv(r/255, g/255, b/255)
-            if ss > 0.15 and vv > 0.15:
-                hues.append(hh)
-    return sum(hues) / len(hues) if hues else None
-
-def _hue_to_color(hue):
-    """hue 弧度→最近色名（仓内 COLORS 色表的粗糙匹配——能出错）。"""
-    if hue is None:
+def hex_perceive(img_arr, cells_across=24, net=None):
+    """真实白箱蜂窝感知：经 image_to_grid + hex_conv 从像素出 (category, bbox)——不经 oracle 标签。"""
+    res = perceive_scene_hex(img_arr, cells_across=cells_across, net=net)
+    if res is None:
         return None
-    deg = hue * 360
-    if deg < 30 or deg >= 330:
-        return "红"
-    if deg < 90:
-        return "黄"
-    if deg < 150:
-        return "绿"
-    if deg < 210:
-        return "青"
-    if deg < 270:
-        return "蓝"
-    return "紫"
-
-def _bbox_of(img_arr, thresh=60):
-    """非背景像素的包围框。"""
-    mask = img_arr[:,:,:3].sum(axis=2) > thresh
-    ys, xs = np.where(mask)
-    if len(ys) == 0:
-        return None
-    return (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
-
-def hex_perceive(img_arr):
-    """真实感知：从像素出 (category, bbox)——不经 oracle 标签。"""
-    hue = _dominant_hue(img_arr)
-    color = _hue_to_color(hue)
-    bbox = _bbox_of(img_arr)
-    if color is None or bbox is None:
-        return None
-    category = f"square|{color}"  # 形状全部默认 square（感知局限如实：色准形不准）
-    return (category, bbox)
+    return (res["category"], res["bbox"])
 
 
 # ── 端到端测试 ──────────────────────────────────────────────────
 
 def test_pixel_to_memory_end_to_end():
-    """#172：pixel → hex_cnn 感知 → World3D.add_view → engine 写记忆，端到端转绿。"""
+    """#172 ③：pixel → hex_hier/hex_cnn 感知 → World3D.add_view → engine 写记忆，打破 0/4 占位。"""
     xs, labs = make_scene_dataset(4, 48, seed=7)
     assert xs.shape[0] == 4
 
@@ -82,7 +43,7 @@ def test_pixel_to_memory_end_to_end():
                         time_window=(0.0, 9999999999.0), existence_constraint="端到端实测")
 
     # 双版读数
-    oracle_hits, hex_hits, hex_miss = 0, 0, 0
+    oracle_hits, color_hits, obj_hits, hex_miss = 0, 0, 0, 0
     written_nodes = []
 
     for i in range(4):
@@ -91,54 +52,82 @@ def test_pixel_to_memory_end_to_end():
         oracle_color = labs["color"][i]
 
         # oracle 版（真值直喂）
-        World3D_inst = World3D()
-        World3D_inst.add_view(oracle_obj, (0, 0, 48, 48), 48, 48, confidence=1.0)
+        world_inst = World3D()
+        world_inst.add_view(oracle_obj, (0, 0, 48, 48), 48, 48, confidence=1.0)
+        oracle_hits += 1
 
-        # hex-perceived 版（真实感知）
-        perceived = hex_perceive(img)
-        if perceived is not None:
-            p_cat, p_bbox = perceived
-            # 色对＝命中
-            if oracle_color in p_cat:
-                hex_hits += 1
+        # hex-perceived 版（真实白箱晶格感知）
+        res = perceive_scene_hex(img)
+        if res is not None:
+            p_cat = res["category"]
+            p_bbox = res["bbox"]
+            p_conf = res["confidence"]
+            assert p_cat in OBJ
+            assert res["color"] in COLORS and res["shape"] in SHAPES
+            assert 0.0 < p_conf <= 1.0
+
+            if res["color"] == oracle_color:
+                color_hits += 1
+            if p_cat == oracle_obj:
+                obj_hits += 1
             else:
                 hex_miss += 1
-            oracle_hits += 1
 
             # World3D 观测
-            World3D_inst.add_view(p_cat, p_bbox, 48, 48, confidence=0.6)
+            obs = world_inst.add_view(p_cat, p_bbox, 48, 48, confidence=p_conf)
+            assert obs["category"] == p_cat
 
             # engine 写记忆（CCG 语义由调用方保证）
             node = STNode(
                 id=f"obs_{i}_{p_cat}",
-                content=f"hex感知: {p_cat} bbox={p_bbox} (oracle: {oracle_obj})",
+                content=f"hex感知: {p_cat} bbox={p_bbox} pos={res['pos']} conf={p_conf}",
                 modality="text",
-                spatial_coordinates={},
+                spatial_coordinates={"bbox": list(p_bbox), "pos": res["pos"]},
                 temporal_coordinate=float(i),
                 condition_space=cs,
             )
             nid = engine.store.add_node(node)
-            written_nodes.append(nid)
+            written_nodes.append((nid, p_cat))
+        else:
+            hex_miss += 1
 
-    # 端到端断言
-    assert len(written_nodes) > 0, "至少一条记忆写入成功"
-    for nid in written_nodes:
-        assert engine.store.get_node(nid) is not None, f"节点 {nid} 可读回"
-    assert hex_hits + hex_miss > 0, "hex 感知至少处理了一帧"
+    # 端到端断言（打破旧版 color=0/4、obj=0/4 占位）
+    assert len(written_nodes) == 4, "4 帧记忆均应写入成功"
+    for nid, p_cat in written_nodes:
+        got = engine.store.get_node(nid)
+        assert got is not None, f"节点 {nid} 可读回"
+        found = engine.store.search_content(p_cat)
+        assert any(n.id == nid for n, _score in found), f"节点 {nid} 可按 {p_cat} 检索"
+    assert color_hits == 4, f"颜色识别应全对齐 COLORS（旧版 0/4），实得 {color_hits}/4"
+    assert obj_hits >= 3, f"shape|color 物体识别应打破 0/4，实得 {obj_hits}/4"
 
     # 双版读数并排（报告用）
-    print(f"\n[双版读数] oracle 命中: {oracle_hits}/4 | hex 感知命中: {hex_hits}/4 | 漏检: {hex_miss}/4")
+    print(f"\n[双版读数] oracle 命中: {oracle_hits}/4 | hex 颜色命中: {color_hits}/4 | "
+          f"hex 物体命中: {obj_hits}/4 | 漏检/错类: {hex_miss}/4")
 
 
 def test_oracle_vs_perceived_divergence_measurable():
-    """oracle 与 hex-perceived 的分歧可量化（≠0 即有感知误差，正是 #172 要暴露的）。"""
-    xs, labs = make_scene_dataset(4, 48, seed=3)
-    diverge = 0
+    """oracle 与 hex-perceived 的分歧可量化（干净场景高对齐，强噪/低分辨率场景可测出真实分歧）。"""
+    xs_clean, labs_clean = make_scene_dataset(4, 48, seed=3)
+    clean_diverge = 0
     for i in range(4):
-        oracle_obj = labs["obj"][i]
-        p = hex_perceive(xs[i])
-        if p is None or oracle_obj != p[0]:
-            diverge += 1
-    # 色域匹配器的形状识别局限 ⇒ 必有分歧（否则分类器过于完美不真实）
-    # 不作方向断言（可能碰巧全对），只记录分歧数
-    print(f"\n[分歧读数] oracle vs hex: {diverge}/4 帧分类不同")
+        p = hex_perceive(xs_clean[i])
+        if p is None or labs_clean["obj"][i] != p[0]:
+            clean_diverge += 1
+
+    # 低分辨率/强噪退化场景：不喂真值标签，真实感知必然出现可观测分歧
+    xs_deg, labs_deg = make_scene_dataset(8, 48, seed=3)
+    rng = np.random.default_rng(172)
+    noisy_diverge = 0
+    for i in range(8):
+        noisy = np.clip(
+            xs_deg[i].astype(np.float64) + rng.normal(0.0, 90.0, xs_deg[i].shape),
+            0, 255,
+        ).astype(np.uint8)
+        p = hex_perceive(noisy, cells_across=8)
+        if p is None or labs_deg["obj"][i] != p[0]:
+            noisy_diverge += 1
+
+    assert clean_diverge <= 1, f"干净场景分歧应极低，实得 {clean_diverge}/4"
+    assert noisy_diverge > 0, f"强噪+低分辨率场景下真实感知应有可观测分歧，实得 {noisy_diverge}/8"
+    print(f"\n[分歧读数] clean={clean_diverge}/4 | degraded(sigma=90,cells=8)={noisy_diverge}/8")
