@@ -179,6 +179,27 @@ def _doc(content: str, tags_json: str) -> str:
     return " ".join(grams(text))
 
 
+_SQLITE_MAX_LIMIT = (1 << 62) - 1
+
+
+def _normalize_candidates_k(k: Optional[int]) -> Optional[int]:
+    """校验并归一 ``FTSIndex.candidates`` 的上限参数 ``k``（对齐 #658/#1795/#1474 口径）。
+
+    - ``bool`` 与非整数且非 ``None`` 入参（如 ``True``/``False``/``1.5``/``nan``/``"x"``）
+      → fail-loud ``TypeError``（``bool`` 是 ``int`` 子类，须显式拦截，避免 ``int(True)==1``）；
+    - ``None`` 或负数（如 ``-1``/``-5``）→ 返回 ``None``（表示全量返回，与 SQLite
+      ``LIMIT -1`` 及 ``core._normalize_limit`` 同口径，杜绝负 ``LIMIT`` 全量取回后
+      再遭 Python 负切片 ``rows[:-1]`` 静默丢尾）；
+    - ``0`` → 返回 ``0``（空列表）；
+    - 正整数 → 原样返回。
+    """
+    if k is not None and (isinstance(k, bool) or not isinstance(k, int)):
+        raise TypeError("candidates 的 k 必须是整数或 None，收到 %r" % (k,))
+    if k is None or k < 0:
+        return None
+    return k
+
+
 class FTSIndex:
     """挂在 LayeredStore 上的派生索引；所有方法失败都只让调用方回退原路径。"""
 
@@ -286,8 +307,14 @@ class FTSIndex:
 
     # ---------- 检索 ----------
     def candidates(self, query_terms: Sequence[str], layers=None,
-                   k: int = 100) -> Optional[List[Tuple[tuple, float]]]:
+                   k: Optional[int] = 100) -> Optional[List[Tuple[tuple, float]]]:
         """返回 [(nodes 行, BM25 正分)]，按 BM25 降序；无可用二元组时返回 None（交回原路径）。
+
+        上限 ``k`` 口径（对齐 #658 / #1795 / #1474 与 ``core._normalize_limit``）：
+          - 正整数：最多返回 ``k`` 条候选；
+          - ``0``：返回空列表 ``[]``（若 ``query_terms`` 无可用二元组仍先返回 ``None``）；
+          - ``None`` 或负整数：返回全部命中候选（SQLite ``LIMIT -1``，不做 Python 负切片）；
+          - ``bool`` 或其它非整数类型：fail-loud 抛出 ``TypeError``。
 
         #797：``query_terms`` 收到**裸字符串**（如 ``candidates('full text search')``）时，
         ``str`` 本身是 ``Sequence[str]``——按字符迭代会把查询拆成单字，而索引文档是
@@ -295,6 +322,7 @@ class FTSIndex:
         裸字符串按**一个词条**处理（与 ``candidates(['full text search'])`` 等价，
         ``grams`` 自带空白折叠，跨词二元组同样成立）。内部调用方（``_search_content_fts``
         传词条列表）行为不变。"""
+        want = _normalize_candidates_k(k)
         if isinstance(query_terms, str):
             query_terms = [query_terms]
         toks: List[str] = []
@@ -309,12 +337,18 @@ class FTSIndex:
         toks = toks[:MAX_QUERY_GRAMS]
         epoch = self._tracking_epoch()
         self.sync()
+        if want == 0:
+            self._require_tracking_epoch(epoch)
+            return []
         match = " OR ".join('"' + g + '"' for g in toks)
         # 先在 FTS 内部按 rank 截断（rank 即 bm25，FTS5 对 ORDER BY rank LIMIT 走 top-k 优化），
         # 再回表取节点——若先 JOIN 再排序，高频二元组会让全部命中行回表，50k 时退化到秒级。
         conn = self.store.conn
-        want = int(k)
-        inner = want if not layers else want * 4
+        if want is None:
+            inner = -1
+        else:
+            raw_inner = want if not layers else want * 4
+            inner = -1 if raw_inner > _SQLITE_MAX_LIMIT else raw_inner
         while True:
             sql = ("SELECT n.*, f.b AS _b FROM (SELECT rowid AS rid, rank AS b FROM nodes_fts "
                    "WHERE nodes_fts MATCH ? ORDER BY rank LIMIT ?) f "
@@ -326,7 +360,7 @@ class FTSIndex:
             sql += " ORDER BY f.b, f.rid"  # 同分按 FTS rowid（写入顺序）定序，跨平台确定
             rows = conn.execute(sql, params).fetchall()
             # 层过滤后不足且内层已截满 → 放大内层再取（有界：最多到全部命中）
-            if not layers or len(rows) >= want or inner >= 1 << 20:
+            if want is None or inner < 0 or not layers or len(rows) >= want or inner >= 1 << 20:
                 break
             n_inner = len(conn.execute("SELECT rowid FROM nodes_fts WHERE nodes_fts MATCH ? "
                                        "LIMIT ?", (match, inner + 1)).fetchall())
@@ -334,7 +368,8 @@ class FTSIndex:
                 break
             inner = inner << 2  # 内层放大 4 倍
         self._require_tracking_epoch(epoch)
-        return [(tuple(r)[:-1], -float(r["_b"])) for r in rows[:want]]
+        selected = rows if want is None else rows[:want]
+        return [(tuple(r)[:-1], -float(r["_b"])) for r in selected]
 
     def scores_within(self, query_terms: Sequence[str], nids: Sequence[str]) -> dict:
         """{nid: BM25 正分}：只在给定节点集合内打分（结构锚定的容器内排序）；未命中者不出现。
