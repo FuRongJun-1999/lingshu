@@ -919,19 +919,23 @@ class LongTermMemoryGate:
         try:
             from .core import MemoryLayer, _finite_clamp
             nodes = engine.store.get_layer_nodes(MemoryLayer.CONTEXT)
-            # dsh-bounty #1794（#665 纪律漏网点）：旧实现循环体内裸
-            # `engine.store.conn.commit()`——它不是 `@_transactional` 方法、体内
-            # 无 `_tx` 包装，`_commit_locked()` 在调用方外层事务（depth==1）内
-            # 仍会真提交 ⇒ 调用方「先 promote 再失败回滚」时提升被固化成
-            # 「回滚了但已生效」（假原子性）。修法对齐 `write_snapshot`：整段
-            # 写入包进 `with store._tx():`——独立调用时 depth==1 真提交（行为
-            # 不变）；被外层事务调进来时 depth==2 走 SAVEPOINT，提交权归外层。
-            with engine.store._tx():
-              for node in nodes:
+            # dsh-bounty #1794（#665 纪律漏网点）：逐候选使用嵌套感知事务。
+            # 独立调用时每项成功后提交，后续失败仍可返回已完成项；被外层事务
+            # 调用时则使用 SAVEPOINT，提交权仍归调用方。
+            for candidate in nodes:
                 if len(promoted) >= limit:
                     break
-                ev = self.evaluate(node.content, "promote", node.tags, node.id)
-                if ev["layer"] in ("long_term", "knowledge"):
+                promotion = None
+                with engine.store._tx():
+                    # Candidate enumeration is only a worklist. Re-read after
+                    # acquiring the write lock so concurrent edits/deletes
+                    # cannot be overwritten using the stale snapshot above.
+                    node = engine.store.get_node(candidate.id)
+                    if node is None or node.layer != MemoryLayer.CONTEXT:
+                        continue
+                    ev = self.evaluate(node.content, "promote", node.tags, node.id)
+                    if ev["layer"] not in ("long_term", "knowledge"):
+                        continue
                     import json as _json
                     # #587：本腿同为**裸 SQL**——`ev["importance"]` 经 `evaluate`
                     # 已在 [0,1]，但 `node.importance` 是**库里读回值**，修复前
@@ -941,23 +945,26 @@ class LongTermMemoryGate:
                         max(node.importance, ev["importance"]), 0.0, 1.0,
                         default=ev["importance"])
                     tags_new = list(dict.fromkeys((node.tags or []) + ["promoted"]))
-                    engine.store.conn.execute(
-                        "UPDATE nodes SET importance=?, layer=?, tags=? WHERE id=?",
+                    cursor = engine.store.conn.execute(
+                        "UPDATE nodes SET importance=?, layer=?, tags=?"
+                        " WHERE id=? AND layer=?",
                         (new_imp, MemoryLayer.KNOWLEDGE.value,
-                         _json.dumps(tags_new, ensure_ascii=False), node.id))
-                    # #665/#770①：提交走 `_commit_locked()`（本块已包在 `_tx()`
-                    # 内：嵌套时 no-op、推迟到外层；独立调用时真提交）。
-                    engine.store._commit_locked()
+                         _json.dumps(tags_new, ensure_ascii=False), node.id,
+                         MemoryLayer.CONTEXT.value))
+                    if cursor.rowcount != 1:
+                        continue
                     if ev["layer"] == "long_term":
                         try:
                             engine.protect_node(node.id, "LongTermMemoryGate:promote")
                         except Exception:
                             _log.warning("longterm_gate: 提升后 protect_node 失败（node=%s）", node.id, exc_info=True)
                             pass
-                    promoted.append({"node_id": node.id,
-                                     "importance": ev["importance"],
-                                     "layer": ev["layer"]})
+                    promotion = {"node_id": node.id,
+                                 "importance": ev["importance"],
+                                 "layer": ev["layer"]}
+                if promotion is not None:
+                    promoted.append(promotion)
         except Exception:
-            _log.warning("longterm_gate: promote 批处理中途失败，返回已收集部分", exc_info=True)
+            _log.warning("longterm_gate: promote 批处理中途失败，返回已完成部分", exc_info=True)
             pass
         return promoted
