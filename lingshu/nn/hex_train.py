@@ -21,8 +21,9 @@ from __future__ import annotations
 import threading
 import io
 import json
+import math
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -323,6 +324,312 @@ class HexNet:
         self.K += 1
 
 
+# ==================== 梯度健康度自检与分层轮换采样 ====================
+
+_VALID_SAMPLING_MODES = ("uniform", "stratified")
+
+
+def _validate_int_arg(val, name: str, lo: Optional[int] = None,
+                      hi: Optional[int] = None) -> int:
+    """校验非 bool 整数参数，非法即 fail-loud ValueError。"""
+    if isinstance(val, (bool, np.bool_)) or not isinstance(val, (int, np.integer)):
+        raise ValueError(f"{name} 须为整数（不可为 bool/浮点），实得 {val!r}")
+    iv = int(val)
+    if lo is not None and iv < lo:
+        raise ValueError(f"{name} 须 >= {lo}，实得 {iv}")
+    if hi is not None and iv > hi:
+        raise ValueError(f"{name} 须 <= {hi}，实得 {iv}")
+    return iv
+
+
+def _validate_real_arg(val, name: str, lo: Optional[float] = None,
+                       hi: Optional[float] = None,
+                       strict_lo: bool = False) -> float:
+    """校验有限实数（拒绝 bool/NaN/±inf）及范围边界。"""
+    if (isinstance(val, (bool, np.bool_))
+            or not isinstance(val, (int, float, np.integer, np.floating))):
+        raise ValueError(f"{name} 须为有限实数（不可为 bool/非数值），实得 {val!r}")
+    fv = float(val)
+    if not math.isfinite(fv):
+        raise ValueError(f"{name} 须为有限实数，实得 {val!r}")
+    if lo is not None:
+        if strict_lo and fv <= lo:
+            raise ValueError(f"{name} 须 > {lo}，实得 {fv}")
+        if not strict_lo and fv < lo:
+            raise ValueError(f"{name} 须 >= {lo}，实得 {fv}")
+    if hi is not None and fv > hi:
+        raise ValueError(f"{name} 须 <= {hi}，实得 {fv}")
+    return fv
+
+
+def _validate_trainable_net(net) -> np.ndarray:
+    """校验网络具备 get_vec/set_vec/loss，并返回有限参数向量副本。"""
+    if net is None or any(not callable(getattr(net, m, None))
+                          for m in ("get_vec", "set_vec", "loss")):
+        raise ValueError("net 须提供可调用的 get_vec/set_vec/loss 方法")
+    vec = np.asarray(net.get_vec(), dtype=np.float64)
+    if vec.ndim != 1:
+        raise ValueError(f"net.get_vec() 须返回 1D 向量，实得 shape={vec.shape}")
+    if not np.isfinite(vec).all():
+        raise ValueError("net 参数含 NaN/±inf")
+    return vec.copy()
+
+
+def _infer_param_segments(
+    net,
+    total_params: int,
+    segments: Optional[Sequence[Tuple[str, int, int]]] = None,
+) -> List[Tuple[str, int, int]]:
+    """推断或校验参数分段 [(name, start, end), ...]。
+
+    自动识别 HexNet（conv/mix/fc）或含 conv2/head 的多层鸭子类型网络；
+    若显式传入 segments，则严格校验名称非空且边界不越界。
+    """
+    if segments is not None:
+        if not isinstance(segments, (list, tuple)) or len(segments) == 0:
+            raise ValueError("segments 须为非空 (name, start, end) 序列")
+        out: List[Tuple[str, int, int]] = []
+        for item in segments:
+            if not isinstance(item, (list, tuple)) or len(item) != 3:
+                raise ValueError(f"segments 条目须为三元组 (name, start, end)，实得 {item!r}")
+            sname, start, end = item
+            if not isinstance(sname, str) or not sname.strip():
+                raise ValueError(f"segment 名称须为非空字符串，实得 {sname!r}")
+            s_i = _validate_int_arg(start, f"segment[{sname}].start", lo=0, hi=total_params)
+            e_i = _validate_int_arg(end, f"segment[{sname}].end", lo=s_i, hi=total_params)
+            out.append((sname, s_i, e_i))
+        return out
+
+    detected: List[Tuple[str, int, int]] = []
+    offset = 0
+    for attr in ("conv", "conv2", "mix", "fc", "head"):
+        val = getattr(net, attr, None)
+        if isinstance(val, np.ndarray):
+            sz = int(val.size)
+            if attr == "conv2" and not getattr(net, "stacked", True):
+                continue
+            if offset + sz <= total_params:
+                detected.append((attr, offset, offset + sz))
+                offset += sz
+    if detected and offset == total_params:
+        return detected
+    return [("params", 0, total_params)] if total_params > 0 else []
+
+
+class StratifiedCoordSampler:
+    """分层轮换无放回有限差分坐标采样器（附周期游标）。
+
+    在每个遍历周期内，按各参数段比例以赤字轮转（smooth deficit round-robin）
+    交错排列全量 D 个参数坐标：
+      · 任意一步切片都按比例覆盖各个参数段（小层如 conv 不被大层饥饿）；
+      · 连续 `ceil(D / k)` 步内 100% 无遗漏、无重复覆盖全量 D 个坐标。
+    """
+
+    def __init__(self, segments: Sequence[Tuple[str, int, int]],
+                 seed: int = 7):
+        self._rng = np.random.default_rng(_validate_int_arg(seed, "seed", lo=0))
+        self.segments = [(n, int(s), int(e)) for n, s, e in segments if int(e) > int(s)]
+        self.total_params = sum(e - s for _, s, e in self.segments)
+        self._cycle = self._build_cycle()
+        self._cursor = 0
+
+    def _build_cycle(self) -> np.ndarray:
+        if self.total_params == 0:
+            return np.zeros(0, dtype=np.int64)
+        per_seg = [self._rng.permutation(np.arange(s, e, dtype=np.int64))
+                   for _, s, e in self.segments]
+        lens = [len(arr) for arr in per_seg]
+        ptrs = [0] * len(per_seg)
+        total = self.total_params
+        order = np.empty(total, dtype=np.int64)
+        for t in range(total):
+            best_s = -1
+            best_def = -1e18
+            for si, ln in enumerate(lens):
+                if ptrs[si] >= ln:
+                    continue
+                deficit = (t + 1) * (ln / total) - ptrs[si]
+                if deficit > best_def:
+                    best_def = deficit
+                    best_s = si
+            order[t] = per_seg[best_s][ptrs[best_s]]
+            ptrs[best_s] += 1
+        return order
+
+    def next_batch(self, budget: int) -> np.ndarray:
+        """抽取至多 `budget` 个互异参数坐标（步间连续轮转覆盖全量）。"""
+        b = _validate_int_arg(budget, "budget", lo=1)
+        if self.total_params == 0:
+            return np.zeros(0, dtype=np.int64)
+        k = min(b, self.total_params)
+        end = self._cursor + k
+        if end <= self.total_params:
+            out = self._cycle[self._cursor:end].copy()
+            self._cursor = 0 if end == self.total_params else end
+            if self._cursor == 0:
+                self._cycle = self._build_cycle()
+            return out
+
+        head = self._cycle[self._cursor:].copy()
+        self._cycle = self._build_cycle()
+        need = k - len(head)
+        used = set(head.tolist())
+        tail_list: List[int] = []
+        scan_pos = 0
+        while len(tail_list) < need and scan_pos < len(self._cycle):
+            cand = int(self._cycle[scan_pos])
+            scan_pos += 1
+            if cand not in used:
+                used.add(cand)
+                tail_list.append(cand)
+        self._cursor = scan_pos % self.total_params
+        if self._cursor == 0:
+            self._cycle = self._build_cycle()
+        return np.concatenate([head, np.array(tail_list, dtype=np.int64)])
+
+
+def diagnose_gradient_health(
+    net,
+    xs: np.ndarray,
+    ys: np.ndarray,
+    lr: float = 0.05,
+    eps: float = 1e-3,
+    eps_freeze: float = 1e-6,
+    defer_freeze_ratio: float = 0.5,
+    max_probes_per_segment: Optional[int] = None,
+    segments: Optional[Sequence[Tuple[str, int, int]]] = None,
+    seed: int = 7,
+) -> Dict:
+    """训练前有限差分梯度量级与死区健康度白箱自检（零链式法则）。
+
+    逐段（默认自动识别 conv/conv2/mix/fc/head）探测有限差分梯度 |g| 分布与
+    死区冻结率（`|lr * g| < eps_freeze` 占比），给出四态健康度判定：
+      · BLINDSPOT —— 空样本或零可训参数（无证据可探）；
+      · REJECT    —— 存在整段全部落入死区（`dead_zone_ratio == 1.0`）的死层；
+      · DEFER     —— 总体或局部死区冻结率 ≥ `defer_freeze_ratio`（部分冻结偏高）；
+      · ACCEPT    —— 各层梯度量级健康，可进入符号更新训练。
+    """
+    lr_v = _validate_real_arg(lr, "lr", lo=0.0, strict_lo=True)
+    eps_v = _validate_real_arg(eps, "eps", lo=0.0, strict_lo=True)
+    ef_v = _validate_real_arg(eps_freeze, "eps_freeze", lo=0.0, strict_lo=True)
+    dfr_v = _validate_real_arg(defer_freeze_ratio, "defer_freeze_ratio", lo=0.0, hi=1.0, strict_lo=True)
+    seed_v = _validate_int_arg(seed, "seed", lo=0)
+    max_p = (_validate_int_arg(max_probes_per_segment, "max_probes_per_segment", lo=1)
+             if max_probes_per_segment is not None else None)
+
+    vec = _validate_trainable_net(net)
+    x_arr = np.asarray(xs)
+    y_arr = np.asarray(ys)
+    if x_arr.dtype == bool or not np.issubdtype(x_arr.dtype, np.number):
+        raise ValueError(f"xs 须为数值数组，实得 dtype={x_arr.dtype}")
+    if y_arr.dtype == bool or not np.issubdtype(y_arr.dtype, np.number):
+        raise ValueError(f"ys 须为数值数组，实得 dtype={y_arr.dtype}")
+    if len(x_arr) != len(y_arr):
+        raise ValueError(f"xs 与 ys 样本数须一致，实得 {len(x_arr)} / {len(y_arr)}")
+    if not np.isfinite(x_arr).all() or not np.isfinite(y_arr).all():
+        raise ValueError("xs 或 ys 含 NaN/±inf")
+
+    seg_list = _infer_param_segments(net, len(vec), segments=segments)
+    if len(x_arr) == 0 or len(vec) == 0 or not seg_list:
+        return {
+            "verdict": "BLINDSPOT",
+            "reason": "empty_samples" if len(x_arr) == 0 else "no_trainable_params",
+            "dead_zone_ratio": 1.0 if len(x_arr) == 0 else 0.0,
+            "has_dead_layer": False,
+            "dead_layers": [],
+            "segments": {},
+            "total_params": int(len(vec)),
+            "probed_params": 0,
+        }
+
+    base_loss = float(net.loss(x_arr, y_arr))
+    if not math.isfinite(base_loss):
+        raise ValueError(f"net.loss 返回非有限值 {base_loss!r}")
+
+    rng = np.random.default_rng(seed_v)
+    seg_reports: Dict[str, Dict] = {}
+    dead_layers: List[str] = []
+    total_probed = 0
+    total_frozen = 0
+
+    try:
+        for sname, start, end in seg_list:
+            coords = np.arange(start, end, dtype=np.int64)
+            if len(coords) == 0:
+                seg_reports[sname] = {
+                    "n_params": 0, "probed": 0,
+                    "grad_abs_mean": 0.0, "grad_abs_max": 0.0, "grad_abs_median": 0.0,
+                    "frozen_count": 0, "dead_zone_ratio": 0.0, "is_dead_layer": False,
+                }
+                continue
+            if max_p is not None and len(coords) > max_p:
+                probe_coords = rng.choice(coords, size=max_p, replace=False)
+            else:
+                probe_coords = coords
+
+            grads = np.empty(len(probe_coords), dtype=np.float64)
+            for idx_p, pi in enumerate(probe_coords):
+                vp, vm = vec.copy(), vec.copy()
+                vp[pi] += eps_v
+                vm[pi] -= eps_v
+                net.set_vec(vp)
+                dp = float(net.loss(x_arr, y_arr))
+                net.set_vec(vm)
+                dm = float(net.loss(x_arr, y_arr))
+                net.set_vec(vec)
+                if not (math.isfinite(dp) and math.isfinite(dm)):
+                    raise ValueError(f"有限差分探测在坐标 {int(pi)} 产生非有限损失")
+                grads[idx_p] = abs((dp - dm) / (2.0 * eps_v))
+
+            step_mags = lr_v * grads
+            frozen_cnt = int((step_mags < ef_v).sum())
+            dz_ratio = float(frozen_cnt / len(probe_coords))
+            is_dead = (frozen_cnt == len(probe_coords))
+            if is_dead:
+                dead_layers.append(sname)
+            total_probed += len(probe_coords)
+            total_frozen += frozen_cnt
+            seg_reports[sname] = {
+                "n_params": int(end - start),
+                "probed": int(len(probe_coords)),
+                "grad_abs_mean": float(grads.mean()),
+                "grad_abs_max": float(grads.max()),
+                "grad_abs_median": float(np.median(grads)),
+                "frozen_count": frozen_cnt,
+                "dead_zone_ratio": round(dz_ratio, 6),
+                "is_dead_layer": bool(is_dead),
+            }
+    finally:
+        net.set_vec(vec)
+
+    overall_dz = float(total_frozen / max(1, total_probed))
+    has_high_freeze = (
+        overall_dz >= dfr_v
+        or any(s["probed"] > 0 and s["dead_zone_ratio"] >= dfr_v
+               for s in seg_reports.values())
+    )
+    if dead_layers:
+        verdict = "REJECT"
+        reason = "dead_layer_detected:" + ",".join(dead_layers)
+    elif has_high_freeze:
+        verdict = "DEFER"
+        reason = "high_dead_zone_ratio"
+    else:
+        verdict = "ACCEPT"
+        reason = "healthy"
+
+    return {
+        "verdict": verdict,
+        "reason": reason,
+        "dead_zone_ratio": round(overall_dz, 6),
+        "has_dead_layer": bool(dead_layers),
+        "dead_layers": dead_layers,
+        "segments": seg_reports,
+        "total_params": int(len(vec)),
+        "probed_params": int(total_probed),
+    }
+
+
 # ==================== 信息差门控递归训练 ====================
 
 def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
@@ -332,26 +639,52 @@ def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
                   stall_patience: int = 8, stall_eps: float = 0.005,
                   max_growth: int = 3, max_steps: int = 200,
                   verify_steps: int = 4, retain_gain: float = 0.98,
-                  seed: int = 7, log_every: int = 0, verbose: bool = False) -> Dict:
+                  seed: int = 7, log_every: int = 0, verbose: bool = False,
+                  sampling: str = "uniform") -> Dict:
     """信息差门控递归训练（荣语义的实现 + 教程闭环）。
 
     每步递归：
       ① 前向 → 全局信息差 D（交叉熵）；
       ② D ≤ 全局死区（init_D×ratio）→ 收敛，终止递归；
-      ③ 随机抽 samples_per_step 个支路，有限差分估梯度，
-         取符号做固定步长更新（幅度受 eps 噪声主导，方向才稳健）；
+      ③ 按 `sampling`（默认 `"uniform"` 保持旧行为；`"stratified"` 按参数段
+         分层轮换无放回遍历全量坐标）抽 `samples_per_step` 个支路，有限差分
+         估梯度，取符号做固定步长更新（幅度受 eps 噪声主导，方向才稳健）；
          |g| < branch_resolution 的支路冻结（死区门控：方向信号为零）；
       ④ 停滞检测：连续 stall_patience 步相对下降 < stall_eps 且 D > 死区
          → 寻找遗漏条件（grow_kernel 新增条件分支，≤ max_growth 次）。
          **生长必须验证**：verify_steps 内 D 未降到生长前×retain_gain
          → 撤销新分支（REVERT，不固化——教程§8：不成立则不纳入结构）。
     """
+    if sampling not in _VALID_SAMPLING_MODES:
+        raise ValueError(
+            f"sampling 须为 {_VALID_SAMPLING_MODES!r} 之一，实得 {sampling!r}")
+    lr = _validate_real_arg(lr, "lr", lo=0.0)
+    eps = _validate_real_arg(eps, "eps", lo=0.0, strict_lo=True)
+    samples_per_step = _validate_int_arg(samples_per_step, "samples_per_step", lo=1)
+    batch = _validate_int_arg(batch, "batch", lo=1)
+    dead_zone_ratio = _validate_real_arg(dead_zone_ratio, "dead_zone_ratio", lo=0.0)
+    branch_resolution = _validate_real_arg(branch_resolution, "branch_resolution", lo=0.0)
+    stall_patience = _validate_int_arg(stall_patience, "stall_patience", lo=0)
+    stall_eps = _validate_real_arg(stall_eps, "stall_eps", lo=0.0)
+    max_growth = _validate_int_arg(max_growth, "max_growth", lo=0)
+    max_steps = _validate_int_arg(max_steps, "max_steps")
+    verify_steps = _validate_int_arg(verify_steps, "verify_steps", lo=0)
+    retain_gain = _validate_real_arg(retain_gain, "retain_gain", lo=0.0)
+    seed = _validate_int_arg(seed, "seed", lo=0)
+    log_every = _validate_int_arg(log_every, "log_every", lo=0)
+
     rng = np.random.default_rng(seed)
     history: List[Dict] = []
     d0 = net.loss(x[:batch], y[:batch])
     dead_zone = d0 * dead_zone_ratio
     best_d, stall, growths, reverts, frozen_total = d0, 0, 0, 0, 0
     t0 = time.time()
+    sampler: Optional[StratifiedCoordSampler] = None
+    sampled_coords: set = set()
+    if sampling == "stratified":
+        init_vec = net.get_vec()
+        sampler = StratifiedCoordSampler(
+            _infer_param_segments(net, len(init_vec)), seed=seed + 10007)
 
     for step in range(max_steps):
         idx = rng.permutation(len(x))[:batch]
@@ -362,12 +695,19 @@ def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
                             "verdict": "CONVERGED", "note": "全局信息差落入死区"})
             break
 
-        # ③ 随机支路抽样 + 有限差分（零链式法则）
+        # ③ 支路抽样 + 有限差分（零链式法则）
         #    符号更新：有限差分的幅度受 eps 噪声主导，符号才是稳健估计
         #    （"只信方向"）——每支路固定步长向信息差下降方向调整。
         vec = net.get_vec()
-        sample = rng.choice(len(vec), size=min(samples_per_step, len(vec)),
-                            replace=False)
+        if sampler is not None:
+            if len(vec) != sampler.total_params:
+                sampler = StratifiedCoordSampler(
+                    _infer_param_segments(net, len(vec)), seed=seed + 10007 + step)
+            sample = sampler.next_batch(samples_per_step)
+        else:
+            sample = rng.choice(len(vec), size=min(samples_per_step, len(vec)),
+                                replace=False)
+        sampled_coords.update(int(pi) for pi in sample)
         updates = 0
         for pi in sample:
             vp, vm = vec.copy(), vec.copy()
@@ -448,10 +788,13 @@ def train_infogap(net: HexNet, x: np.ndarray, y: np.ndarray,
     # 模型重测同一口径；`history`（训练过程曲线）语义不动。steps==0 ⇒ 无更新，
     # 仍回落 d0（与既有「零步无训练后读数」表述一致）。
     final_D = round(net.loss(x[:batch], y[:batch]), 5) if history else round(d0, 5)
+    n_p = net.n_params()
     return {"algo": ALGO, "dead_zone": round(dead_zone, 5), "final_D": final_D,
             "steps": len(history), "growths": growths, "reverts": reverts,
-            "final_K": net.K, "n_params": net.n_params(),
+            "final_K": net.K, "n_params": n_p,
             "frozen_total": frozen_total,
+            "sampling": sampling,
+            "coord_coverage": round(len(sampled_coords) / max(1, n_p), 4) if n_p else 0.0,
             "seconds": round(time.time() - t0, 1), "history": history}
 
 

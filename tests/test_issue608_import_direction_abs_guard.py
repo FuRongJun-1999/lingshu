@@ -336,8 +336,7 @@ def test_g4_terminal_criterion_no_longer_literal_grep():
     assert "计数 = 0" in text, "baseline 终局判据未改为工具计数口径"
     entries, errors = I.parse_baseline(text)
     assert errors == []
-    # 数据行不变（口径扩宽只更正注释，不改计数）
+    # 数据行：#434 清零 world/prediction.py 的 2 处 stmc_refs（4 → 2）
     assert entries == {"core_to_world:lingshu/core/core.py": 28,
                        "stmc_refs:lingshu/core/component_resolver.py": 1,
-                       "stmc_refs:lingshu/core/core.py": 1,
-                       "stmc_refs:lingshu/world/prediction.py": 2}, entries
+                       "stmc_refs:lingshu/core/core.py": 1}, entries

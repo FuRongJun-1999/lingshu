@@ -16,21 +16,54 @@ prediction_engine · 预测能力补全（v1.9）
 """
 
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Protocol, runtime_checkable
 
 import logging as _logging
 
 _logger = _logging.getLogger(__name__)
 
-# #40：语义邻近回退（中文二元组 Jaccard）的实现来源。
-# 私域（AEIS）以裸名 `spacetime_memory_core` 命名空间注册**同一** LayeredStore；
-# 本仓形态无该别名——旧实现在此 `return 0.0`，致通道4（语义邻近）在本仓
-# **整体静默失效**（`semantic_neighbors` 恒空）。补仓内回落：
-try:  # 私域别名面（component_resolver 白名单内，勿删）
-    from spacetime_memory_core import LayeredStore as _LayeredStore
-except Exception as _e:  # 本仓形态：回落仓内 core 的同名实现（char_bigram_jaccard 逐字同式）
-    _logging.getLogger(__name__).debug("#170 私域别名缺省，回落仓内 core 的 LayeredStore：%s", _e)
-    from ..core.core import LayeredStore as _LayeredStore
+
+@runtime_checkable
+class PredictionStoreProtocol(Protocol):
+    """预测引擎所需的最小鸭子类型存储协议（零 core 依赖）。"""
+
+    def get_node(self, node_id: str): ...
+    def query_nodes(self, limit: int = 300) -> List: ...
+    def get_outgoing_edges(self, node_id: str) -> List: ...
+    def get_incoming_edges(self, node_id: str) -> List: ...
+    def verify_edge(self, edge_id: str, new_confidence: float): ...
+
+
+@runtime_checkable
+class PredictionEngineHostProtocol(Protocol):
+    """预测引擎所需的宿主引擎鸭子类型协议。"""
+
+    store: PredictionStoreProtocol
+
+    def list_blindspots(self) -> List[Dict]: ...
+    def search_content(self, query: str, limit: int = 3) -> List: ...
+    def register_rejected_path(self, **kwargs): ...
+    def add_perception(self, **kwargs): ...
+
+
+def _char_bigram_jaccard(a: str, b: str) -> float:
+    """纯标准库中文二元组 Jaccard 相似度（无 core 依赖回退，与存储侧同式）。"""
+    for _n, _v in (("a", a), ("b", b)):
+        if not isinstance(_v, str):
+            raise TypeError("char_bigram_jaccard 的 %s 必须是字符串，收到 %r" % (_n, _v))
+    if not a or not b:
+        return 0.0
+
+    def bigrams(s: str):
+        s = "".join(s.split())
+        if len(s) <= 1:
+            return {s}
+        return {s[i:i + 2] for i in range(len(s) - 1)}
+
+    A, B = bigrams(a), bigrams(b)
+    if not A or not B:
+        return 0.0
+    return len(A & B) / len(A | B)
 
 
 class PredictionEngine:
@@ -89,7 +122,11 @@ class PredictionEngine:
             except Exception as _e:
                 _logger.debug("#170 语义空间相似度缺省，回落 char_bigram_jaccard：%s", _e)
                 pass
-        return _LayeredStore.char_bigram_jaccard(a.content, b.content)
+        store = getattr(self.engine, "store", None)
+        jaccard = getattr(store, "char_bigram_jaccard", None)
+        if callable(jaccard):
+            return jaccard(a.content, b.content)
+        return _char_bigram_jaccard(a.content, b.content)
 
     # ==================== 过滤门（D-002 伪因果防护） ====================
 

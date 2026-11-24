@@ -22,6 +22,8 @@ white_bg=False 时反相。
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from PIL import Image
 
@@ -40,6 +42,26 @@ def _luma(arr: np.ndarray) -> np.ndarray:
     return 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
 
 
+def _validate_image(img: Image.Image) -> None:
+    """校验输入必须是尺寸非空的 PIL.Image.Image（fail-loud）。"""
+    if not isinstance(img, Image.Image):
+        raise TypeError("img 必须是 PIL.Image.Image，收到 %s" % type(img).__name__)
+    if img.width <= 0 or img.height <= 0:
+        raise ValueError("img 宽高必须大于 0，收到 %r" % (img.size,))
+
+
+def _validate_thr_mult(thr_mult: float) -> float:
+    """校验 thr_mult 为非负有限实数（拒绝 bool / NaN / ±inf / 负值 / 非数值）。"""
+    if isinstance(thr_mult, (bool, np.bool_)):
+        raise ValueError("thr_mult 不得为 bool，收到 %r" % (thr_mult,))
+    if not isinstance(thr_mult, (int, float, np.integer, np.floating)):
+        raise TypeError("thr_mult 必须是实数，收到 %s" % type(thr_mult).__name__)
+    val = float(thr_mult)
+    if not math.isfinite(val) or val < 0.0:
+        raise ValueError("thr_mult 必须是非负有限实数，收到 %r" % (thr_mult,))
+    return val
+
+
 def darkline(img: Image.Image, thr_mult: float = 1.5, white_bg: bool = True) -> Image.Image:
     """图像 → 线稿灰度图。
 
@@ -50,6 +72,11 @@ def darkline(img: Image.Image, thr_mult: float = 1.5, white_bg: bool = True) -> 
     · 阈值随图走：thr = max(_THR_FLOOR, mag.mean() + mag.std()*thr_mult)。
     · 纯二值输出：像素只可能是 0 或 255——线稿要能直接描摹。
     """
+    _validate_image(img)
+    mult = _validate_thr_mult(thr_mult)
+    if not isinstance(white_bg, bool):
+        raise TypeError("white_bg 必须是 bool，收到 %s" % type(white_bg).__name__)
+
     if img.mode in ("RGBA", "RGBa", "LA", "La", "PA") or "transparency" in img.info:
         source = img.convert("LA") if img.mode == "La" else img
         rgba = source.convert("RGBA")
@@ -68,7 +95,7 @@ def darkline(img: Image.Image, thr_mult: float = 1.5, white_bg: bool = True) -> 
         gy[1:-1, 1:-1] = gray[2:, 1:-1] - gray[:-2, 1:-1]
     mag = np.sqrt(gx * gx + gy * gy)
 
-    thr = max(_THR_FLOOR, float(mag.mean()) + float(mag.std()) * float(thr_mult))
+    thr = max(_THR_FLOOR, float(mag.mean()) + float(mag.std()) * mult)
     edge = mag > thr
 
     out = np.where(edge, 0, 255).astype(np.uint8)
