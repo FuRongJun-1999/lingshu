@@ -1689,7 +1689,8 @@ def fit_recipe(category: str, target_soup: Soup, grid=None, res: int = 32,
     keys = sorted(grid)
     value_lists = [list(grid[k]) for k in keys]
     t_lo, t_hi = soup_bounds(target)
-    t_masks = {ax: project_mask(target, ax, res) for ax in AXES}
+    t_bnd = (t_lo, t_hi)
+    t_masks = {ax: project_mask(target, ax, res, t_bnd) for ax in AXES}
     best = None
     n = 0
     for combo in _cartesian(value_lists):
@@ -1702,9 +1703,14 @@ def fit_recipe(category: str, target_soup: Soup, grid=None, res: int = 32,
         lo, hi = soup_bounds(soup)
         bnd = (tuple(min(t_lo[k], lo[k]) for k in range(3)),
                tuple(max(t_hi[k], hi[k]) for k in range(3)))
+        # 并集包围盒扩展时，目标与候选须在同一 bnd 下投影再算 IoU；
+        # 仅当 bnd == t_bnd 时复用预投影 t_masks，避免跨坐标系掩码失配。
+        t_cur = t_masks if bnd == t_bnd else {
+            ax: project_mask(target, ax, res, bnd) for ax in AXES
+        }
         score = 0.0
         for ax in AXES:
-            score += mask_iou(project_mask(soup, ax, res, bnd), t_masks[ax])
+            score += mask_iou(project_mask(soup, ax, res, bnd), t_cur[ax])
         score /= 3.0
         if best is None or score > best[0]:
             best = (score, cfg, soup)
