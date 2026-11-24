@@ -50,10 +50,40 @@ PP.install(); wm.physics_env = physics.make_environment(terrain={'slope_deg':20,
 """
 from __future__ import annotations
 
+import math
+
 from . import physics as PH
 
 __all__ = ["PHYSICS_LAYER_SCHEMA", "ENV_ATTRS", "resolve_env", "classify_entity",
            "physics_candidates", "wrap_generate", "install"]
+
+
+def _require_positive_finite(val, name: str) -> float:
+    """正有限数值闸：拒绝 bool / 非数值 / NaN / ±inf / <= 0，统一抛 ValueError（#196）。"""
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise ValueError("%s 须为正有限数值，收到 %r" % (name, val))
+    try:
+        f = float(val)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("%s 须为正有限数值，收到 %r" % (name, val)) from exc
+    if not math.isfinite(f) or f <= 0.0:
+        raise ValueError("%s 须为正有限数值（> 0），收到 %r" % (name, val))
+    return f
+
+
+def _require_positive_int(val, name: str) -> int:
+    """正整数闸：拒绝 bool / 浮点 / NaN / ±inf / <= 0，统一抛 ValueError（#196）。"""
+    if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+        raise ValueError("%s 须为 >= 1 的整数，收到 %r" % (name, val))
+    return int(val)
+
+
+def _validate_predict_opts(up, window) -> None:
+    """校验共用的轴索引与观测窗口参数，拒绝 bool / 非整数。"""
+    if isinstance(up, bool) or not isinstance(up, int) or up not in (0, 1, 2):
+        raise ValueError("up 须为轴索引 0/1/2，收到 %r" % (up,))
+    if window is not None and (isinstance(window, bool) or not isinstance(window, int)):
+        raise ValueError("window 须为整数或 None，收到 %r" % (window,))
 
 #: 本层返回体里诊断段的 schema
 PHYSICS_LAYER_SCHEMA = "lingshu.physics-layer/1"
@@ -109,6 +139,8 @@ def classify_entity(history, eid, window=None, up=1, tick_hz=1.0, env=None):
     （纯位置观测下后两者互相别名，故**必须**给 terrain 才可辨识）；
     **不给 ⇒ 新三类不参与 ⇒ 既有 6 类的判定逐位不变**（硬判据）。
     """
+    hz = _require_positive_finite(tick_hz, "tick_hz")
+    _validate_predict_opts(up, window)
     from . import motion as MO
     pts = MO.observed_positions(history, eid, window)
     if not pts:
@@ -119,13 +151,20 @@ def classify_entity(history, eid, window=None, up=1, tick_hz=1.0, env=None):
         # 有时是裸三元组、有时是 `{"pos": {...}}` 包一层 —— 两种都收（不猜、直接判形）。
         if isinstance(pos, dict) and "pos" in pos:
             pos = pos["pos"]
-        if isinstance(pos, dict):
-            samples.append((float(tick), (float(pos["x"]), float(pos["y"]), float(pos["z"]))))
-        else:
-            samples.append((float(tick), (float(pos[0]), float(pos[1]), float(pos[2]))))
-    hz = float(tick_hz) if tick_hz else 1.0
-    if hz <= 0:
-        raise ValueError("tick_hz 须 > 0")
+        try:
+            coords = (pos["x"], pos["y"], pos["z"]) if isinstance(pos, dict) else (pos[0], pos[1], pos[2])
+        except (KeyError, IndexError, TypeError):
+            return None
+        if any(isinstance(c, bool) for c in coords):
+            return None
+        try:
+            vec = (float(coords[0]), float(coords[1]), float(coords[2]))
+            t_val = float(tick)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if isinstance(tick, bool) or not math.isfinite(t_val) or not all(math.isfinite(c) for c in vec):
+            return None
+        samples.append((t_val, vec))
     samples = [(t / hz, pos) for t, pos in samples]
     if len(samples) < MIN_SAMPLES:
         return None
@@ -152,19 +191,30 @@ def physics_candidates(history, eid, horizon, up=1, window=None, tick_hz=1.0,
         不替调用方静默选步长（`physics._integrate_env` 的 fail-closed 纪律）。
         要给就显式给 `dt`（或让模型实例带 `physics_dt`）。
     """
-    got = classify_entity(history, eid, window=window, up=up, tick_hz=tick_hz, env=env)
+    h = _require_positive_int(horizon, "horizon")
+    hz = _require_positive_finite(tick_hz, "tick_hz")
+    _validate_predict_opts(up, window)
+    if dt is not None:
+        dt = _require_positive_finite(dt, "dt")
+    got = classify_entity(history, eid, window=window, up=up, tick_hz=hz, env=env)
     if got is None or got["kind"] == "static":
         return None
-    if float(got["model"].get("residual_rms", 1e9)) > MAX_RMS:
+    raw_rms = got["model"].get("residual_rms", 1e9)
+    if isinstance(raw_rms, bool):
+        return None
+    try:
+        rms = float(raw_rms)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(rms) or rms > MAX_RMS:
         return None
     ticks = [rec["tick"] for rec in history if (rec.get("entities") or {}).get(eid) is not None]
     if not ticks:
         return None
     last = float(max(ticks))
-    hz = float(tick_hz) if tick_hz else 1.0
     out = []
     sim_last = None
-    for step in range(1, int(horizon) + 1):
+    for step in range(1, h + 1):
         # 拍 → 秒：预测点取第 (last+step) 拍对应的**秒**时刻
         t = (last + step) / hz
         if env is None:
@@ -176,6 +226,8 @@ def physics_candidates(history, eid, horizon, up=1, window=None, tick_hz=1.0,
                 # 闭式不可得且未显式给 dt ⇒ 不接管（不静默选步长；见 docstring）
                 return None
             p = sim_last["pos"]
+        if not all(math.isfinite(float(c)) for c in p):
+            return None
         out.append((int(last) + step, p))
     res = {"kind": got["kind"], "reason": got["reason"], "candidates": out,
            "residuals": got["residuals"]}
@@ -225,12 +277,20 @@ def wrap_generate(inner):
         out = inner(self, horizon, use_patterns)
         preds = out.get("predictions") or {}
         hist = getattr(self, "history", None) or getattr(self, "_history", None) or []
-        hz = float(getattr(self, "tick_hz", 1.0) or 1.0)
-        h = max(1, int(out.get("horizon") or horizon or 1))
+        raw_hz = getattr(self, "tick_hz", 1.0)
+        hz = 1.0 if raw_hz is None else _require_positive_finite(raw_hz, "tick_hz")
+        raw_h = out.get("horizon")
+        if raw_h is None:
+            raw_h = 1 if horizon is None else horizon
+        if isinstance(raw_h, bool) or not isinstance(raw_h, int):
+            raise ValueError("horizon 须为整数，收到 %r" % (raw_h,))
+        h = max(1, raw_h)
         # 环境感知是 **opt-in**：实例上挂了 `physics_env` / `environment` 才启用；
         # 没挂 ⇒ env=None ⇒ 走既有 `predict_at` 同一条路径（逐字段一致，硬判据）。
         env = resolve_env(self)
         dt = getattr(self, "physics_dt", None)
+        if dt is not None:
+            dt = _require_positive_finite(dt, "physics_dt")
         n_take = n_skip = 0
         env_used = None
         for eid, rec in preds.items():
