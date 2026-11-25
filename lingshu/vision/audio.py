@@ -466,6 +466,11 @@ def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.
                                   low=0.00001, high=1.0)
     else:
         window_s = window_ms / 1000.0
+    window_frames = features.get("analysis_window_frames")
+    if frame_count is not None and window_frames is not None:
+        if isinstance(window_frames, bool) or not isinstance(window_frames, int) or window_frames < 1:
+            raise ValueError("features.analysis_window_frames 必须是正整数")
+        window_s = window_frames / sample_rate
     threshold_dbfs = _finite_number("silence_dbfs", silence_dbfs, low=-120.0, high=0.0)
     envelope = features["energy_envelope_dbfs"]
     if not isinstance(envelope, (list, tuple)) or len(envelope) > _MAX_ENVELOPE_POINTS:
@@ -477,7 +482,11 @@ def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.
                 "segment_count": 0, "segments_truncated": False}
     resolution_s = window_s * stride
     # Use precise frame metadata for the envelope count when available.
-    envelope = envelope[:max(1, int(math.ceil(envelope_duration / resolution_s)))]
+    if frame_count is not None and window_frames is not None:
+        retained_points = (frame_count + window_frames * stride - 1) // (window_frames * stride)
+    else:
+        retained_points = max(1, int(math.ceil(envelope_duration / resolution_s)))
+    envelope = envelope[:retained_points]
 
     def boundary(index: int) -> float:
         return min(duration, round(index * resolution_s, 4))

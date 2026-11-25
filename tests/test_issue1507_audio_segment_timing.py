@@ -79,6 +79,28 @@ def test_real_downsampled_envelope_uses_actual_window_grid():
     _assert_ordered_within_duration(profile, features["duration_s"])
 
 
+def test_long_downsampled_envelope_keeps_tail_despite_rounded_window_seconds():
+    # This mapping describes a ~61 MiB WAV within the configurable input budget.
+    rate = 48001
+    window_frames = 480
+    frame_count = 63612 * window_frames + 1
+    features = {
+        "duration_s": round(frame_count / rate, 4),
+        "sample_rate_hz": rate,
+        "frames": frame_count,
+        "window_ms": 10,
+        "analysis_window_frames": window_frames,
+        "analysis_window_s": round(window_frames / rate, 9),
+        "energy_envelope_stride_windows": 54,
+        "energy_envelope_dbfs": [-120.0] * 1178 + [-10.0],
+    }
+    profile = segment_audio_events(features)
+    assert [s["kind"] for s in profile["segments"]] == ["silence", "activity"]
+    assert profile["segments"][-1]["start_s"] == min(
+        features["duration_s"], round(63612 * window_frames / rate, 4))
+    _assert_ordered_within_duration(profile, features["duration_s"])
+
+
 def test_legacy_features_keep_nominal_window_and_bound_every_endpoint():
     features = {
         "duration_s": 0.01506,
