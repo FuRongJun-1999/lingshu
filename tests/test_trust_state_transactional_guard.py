@@ -1,9 +1,16 @@
 """Trust input validation is atomic and rejects overflowing integers."""
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from lingshu.core.core import SpacetimeMemoryEngine, _require_finite
+
+
+def _persisted_self_model(engine):
+    metadata = engine.store.get_meta(engine.SELF_MODEL_META_KEY)
+    return json.loads(metadata[engine.SELF_MODEL_META_KEY])
 
 
 def test_require_finite_translates_float_conversion_overflow():
@@ -24,6 +31,7 @@ def test_rejected_optional_trust_field_does_not_partially_update(field):
         engine.update_trust_state(0.2, 1, p_trust=0.25, p_gap=0.75)
         before_state = dict(engine.self_model.trust_state)
         before_history = list(engine.self_model.trust_history)
+        before_snapshot = _persisted_self_model(engine)
 
         with pytest.raises(ValueError):
             kwargs = {"p_trust": 0.9, "p_gap": 0.1}
@@ -36,11 +44,11 @@ def test_rejected_optional_trust_field_does_not_partially_update(field):
             "SELECT COUNT(*) FROM nodes WHERE layer='self'"
         ).fetchone()[0] == 1
 
-        # A later valid write must not persist values from the rejected call.
-        engine.update_trust_state(0.3, 3, p_trust=0.35, p_gap=0.65)
-        assert engine.self_model.trust_state["t_total"] == 0.3
-        assert engine.self_model.trust_state["p_trust"] == 0.35
-        assert engine.self_model.trust_state["p_gap"] == 0.65
+        # An unrelated save must not publish any partial values from rejection.
+        engine.update_self({"current_goal": "unrelated successful save"})
+        after_snapshot = _persisted_self_model(engine)
+        assert after_snapshot["trust_state"] == before_snapshot["trust_state"]
+        assert after_snapshot["trust_history"] == before_snapshot["trust_history"]
     finally:
         engine.close()
 
