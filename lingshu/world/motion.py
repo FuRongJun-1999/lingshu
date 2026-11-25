@@ -50,18 +50,42 @@ def interval_limit(window) -> int:
 
 
 def _finite_pos(pos) -> bool:
-    """观测坐标是否**三轴有限**（#418-F3：NaN/±Inf 一律不算可用证据）。
+    """观测坐标是否**三轴有限**（#418-F3：NaN/±Inf/bool 一律不算可用证据）。
 
     为何在这里挡：非有限坐标会经 `math.hypot` 传染成 NaN/Inf 速度，并被下游
     `learn()` 原样写进 `per_entity["speed_est"]` 与 `_motion_estimates`；
     本笔新增的 `confidence` / `max_obs_dt` 读数同样不能把它报成合法读数。
-    非法/不可解包的输入 ⇒ False（**拒绝**，不是静默放过）。
+    非法/不可解包/布尔输入 ⇒ False（**拒绝**，不是静默放过）。
     """
+    if isinstance(pos, (str, bytes, bytearray)):
+        return False
     try:
         values = list(pos)
-        return len(values) == 3 and all(math.isfinite(float(v)) for v in values)
+        return (
+            len(values) == 3
+            and all(not isinstance(v, bool) and math.isfinite(float(v)) for v in values)
+        )
     except (TypeError, ValueError, IndexError, OverflowError):
         return False
+
+
+def _safe_delta_2d(x1, z1, x0, z0) -> Tuple[float, float, float]:
+    """Compute 2D (dx, dz, hypot) without finite-endpoint subtraction overflow.
+
+    For normal finite coordinates, returns exact ``(x1 - x0, z1 - z0, hypot)``.
+    When subtraction or ``math.hypot`` overflows to ``inf`` (e.g. ``-1e308 -> +1e308``
+    or diagonal extreme finite coordinates), rescales both endpoints by exact
+    power-of-two ``0.25`` so difference and norm remain finite with exact direction.
+    """
+    fx1, fz1, fx0, fz0 = float(x1), float(z1), float(x0), float(z0)
+    dx = fx1 - fx0
+    dz = fz1 - fz0
+    length = math.hypot(dx, dz)
+    if not (math.isfinite(dx) and math.isfinite(dz) and math.isfinite(length)):
+        dx = 0.25 * fx1 - 0.25 * fx0
+        dz = 0.25 * fz1 - 0.25 * fz0
+        length = math.hypot(dx, dz)
+    return dx, dz, length
 
 
 def _nonfinite_points(points) -> int:
@@ -289,13 +313,20 @@ class ObservationWindow:
         if need <= 0:
             return points, 0
         kept = []
+        raw_kept = []
         for index in range(self.start - 1, -1, -1):
             if len(kept) >= need:
                 break
             cur = self.history[index]['entities'].get(eid)
             if cur is not None:
-                kept.append((self.history[index]['tick'],
-                             cur['pos'] if self.nested else cur))
+                entry = (self.history[index]['tick'],
+                         cur['pos'] if self.nested else cur)
+                raw_kept.append(entry)
+                if _finite_pos(entry[1]):
+                    kept.append(entry)
+        if len(kept) + n_finite < 2 and raw_kept:
+            fallback = raw_kept[:need]
+            return fallback[::-1] + list(points), len(fallback)
         return kept[::-1] + list(points), len(kept)
 
     def _motion_estimate(self, eid):
@@ -392,37 +423,44 @@ class ObservationWindow:
         if not common:
             return 0.0, 0, 0
         if (a, b) not in self._pairs:
-            previous = None
-            if self.start and common != (1 << len(self.frames)) - 1:
-                for index in range(self.start - 1, -1, -1):
-                    entities = self.history[index]['entities']
-                    if a in entities and b in entities:
-                        previous = ((entities[a]['pos'], entities[b]['pos']) if self.nested
-                                    else (entities[a], entities[b]))
-                        break
-            scores_a, scores_b, intervals = [], [], 0
+            valid_frames = []
             for index, frame in enumerate(self.frames):
                 if not (common & (1 << index)):
                     continue
                 pa, pb = frame[a], frame[b]
+                # #1115：每一对坐标先过 `_finite_pos`（含首帧），非有限/不可解包/
+                # bool/超大 int 一律跳过，既不成为 `previous` 锚点，也不计 intervals
+                # 或进 scores（与「缺观测不计」一致：后续有限对仍以此前最后有限帧为参照）。
+                if not (_finite_pos(pa) and _finite_pos(pb)):
+                    continue
+                valid_frames.append((pa, pb))
+            if not valid_frames:
+                self._pairs[(a, b)] = self._pairs[(b, a)] = (0.0, 0, 0)
+                return 0.0, 0, 0
+            previous = None
+            if self.start and len(valid_frames) < len(self.frames):
+                for index in range(self.start - 1, -1, -1):
+                    entities = self.history[index]['entities']
+                    if a in entities and b in entities:
+                        cand_a, cand_b = (
+                            (entities[a]['pos'], entities[b]['pos'])
+                            if self.nested
+                            else (entities[a], entities[b])
+                        )
+                        if _finite_pos(cand_a) and _finite_pos(cand_b):
+                            previous = (cand_a, cand_b)
+                            break
+            scores_a, scores_b, intervals = [], [], 0
+            for pa, pb in valid_frames:
                 if previous is not None:
-                    # #1115：每一对坐标先过 `_finite_pos`（与 `_motion_rows`
-                    # 同口径——非有限/不可解包/**超出 float 的超大 int** 一律
-                    # 拒绝；裸 `math.isfinite(v)` 对 10**400 会自己抛
-                    # OverflowError）——不计 intervals、不进 scores，且**不
-                    # 更新链**（与「缺观测不计」一致：后续有限对的位移仍以
-                    # 上一有限帧为参照，NaN 不污染整条链）。
-                    if not (_finite_pos(pa) and _finite_pos(pb)):
-                        continue
                     intervals += 1
-                    tx, tz = pb[0] - pa[0], pb[2] - pa[2]
-                    length = math.hypot(tx, tz)
+                    tx, tz, length = _safe_delta_2d(pb[0], pb[2], pa[0], pa[2])
                     if length > 1e-6:
                         for pos, old, dx_target, dz_target, scores in (
                                 (pa, previous[0], tx, tz, scores_a),
                                 (pb, previous[1], -tx, -tz, scores_b)):
-                            dx, dz = pos[0] - old[0], pos[2] - old[2]
-                            movement = math.hypot(dx, dz)
+                            dx, dz, movement = _safe_delta_2d(
+                                pos[0], pos[2], old[0], old[2])
                             if movement > 1e-6:
                                 # #1128（#1115 残留面）：坐标全有限但量级大
                                 # （≥1e154）时 `dx*dx_target + dz*dz_target`
@@ -430,17 +468,18 @@ class ObservationWindow:
                                 # `abs(nan) > abs(best)` 恒 False ⇒ best=None
                                 # ⇒ 已学关系被**静默移除**（违反 world_model
                                 # 「Only measured zero motion is stop
-                                # evidence」）。非有限时改用单位向量点乘
-                                # （参照同文件 `_motion_rows` 的「先除真实
-                                # 间隔再相减」同款手法）。
+                                # evidence」）。非有限时改用单位向量点乘，差值本身
+                                # 溢出时由 `_safe_delta_2d` 缩放到有限量级。
                                 dot = dx * dx_target + dz * dz_target
                                 denom = movement * length
                                 if math.isfinite(dot) and math.isfinite(denom):
-                                    scores.append(dot / denom)
+                                    score = dot / denom
                                 else:
-                                    scores.append(
+                                    score = (
                                         (dx / movement) * (dx_target / length)
                                         + (dz / movement) * (dz_target / length))
+                                if math.isfinite(score):
+                                    scores.append(score)
                 previous = pa, pb
             for key, scores in (((a, b), scores_a), ((b, a), scores_b)):
                 mean = round(sum(scores) / len(scores), 3) if scores else 0.0
