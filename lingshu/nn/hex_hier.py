@@ -37,7 +37,8 @@ _VEC_RMW_LOCK = threading.Lock()
 ALGO = "hex_hier-0.1"
 
 from .hex_cnn import (DEFAULT_KERNELS, extended_prior_family,
-                          hex_conv, kernel_smooth)
+                          hex_conv, image_to_grid, kernel_center_surround,
+                          kernel_laplacian, kernel_smooth)
 from .hex_train import (HexNet, _cos, hex_conv_batch, hex_conv_batch_multi,
                             train_infogap)
 
@@ -472,3 +473,209 @@ def save_report(report: Dict, path: str) -> str:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=1, default=str)
     return path
+
+
+# ==================== 白箱蜂窝场景感知器 (#172 ③) ====================
+
+def _validate_perceive_inputs(img_arr, cells_across: int, min_contrast: float,
+                              net: Optional[HexHierNet]) -> np.ndarray:
+    """校验感知入参（空数组/坏维度/非数值/NaN/Inf/bool 一律 fail-loud ValueError）。"""
+    if isinstance(cells_across, bool) or not isinstance(cells_across, int) or cells_across < 4:
+        raise ValueError(f"cells_across 须为 >=4 的整数，实得 {cells_across!r}")
+    if (isinstance(min_contrast, bool)
+            or not isinstance(min_contrast, (int, float))
+            or not np.isfinite(float(min_contrast))
+            or float(min_contrast) < 0.0):
+        raise ValueError(f"min_contrast 须为有限非负数，实得 {min_contrast!r}")
+    if net is not None and not isinstance(net, HexHierNet):
+        raise ValueError(f"net 须为 HexHierNet 或 None，实得 {type(net).__name__}")
+    if img_arr is None or isinstance(img_arr, bool):
+        raise ValueError(f"img_arr 须为三维图像数组，实得 {img_arr!r}")
+    arr = np.asarray(img_arr)
+    if arr.dtype == np.bool_ or not np.issubdtype(arr.dtype, np.number):
+        raise ValueError(f"img_arr 须为数值型数组，实得 dtype={arr.dtype}")
+    if arr.ndim != 3 or arr.shape[0] <= 0 or arr.shape[1] <= 0 or arr.shape[2] < 3:
+        raise ValueError(f"img_arr 须为非空 (H,W,>=3) 数组，实得 shape={arr.shape}")
+    rgb = arr[..., :3].astype(np.float64)
+    if not np.isfinite(rgb).all():
+        raise ValueError("img_arr 含 NaN/Inf，拒绝静默感知")
+    return rgb
+
+
+def _extract_fg_bbox(rgb_shape: Tuple[int, int, int], px_mag: np.ndarray,
+                     px_peak: float, fg_cells: np.ndarray, grid,
+                     min_contrast: float) -> Tuple[int, int, int, int]:
+    """由前景晶格 cell 反推画幅 ROI，再在其内提取像素级前景 bbox。"""
+    H, W = rgb_shape[:2]
+    rc_coords = np.argwhere(fg_cells)
+    centers = [grid.center_px(int(q), int(r)) for r, q in rc_coords]
+    cxs = [c[0] for c in centers]
+    cys = [c[1] for c in centers]
+    pad = max(2.0, grid.size * 2.0)
+    rx0 = max(0, int(np.floor(min(cxs) - pad)))
+    ry0 = max(0, int(np.floor(min(cys) - pad)))
+    rx1 = min(W, int(np.ceil(max(cxs) + pad)) + 1)
+    ry1 = min(H, int(np.ceil(max(cys) + pad)) + 1)
+    px_thresh = max(float(min_contrast), 0.40 * px_peak)
+    ys, xs_px = np.where(px_mag[ry0:ry1, rx0:rx1] > px_thresh)
+    if len(ys) > 0:
+        return (rx0 + int(xs_px.min()), ry0 + int(ys.min()),
+                rx0 + int(xs_px.max()), ry0 + int(ys.max()))
+    return (rx0, ry0, max(rx0, rx1 - 1), max(ry0, ry1 - 1))
+
+
+def _hex_lattice_shape_features(diff: np.ndarray, mag: np.ndarray,
+                                lat_peak: float, px_peak: float,
+                                fg_cells: np.ndarray) -> Dict[str, float]:
+    """在蜂窝晶格上计算六方向边缘、各向同性 Laplacian/Center-Surround 与几何特征。"""
+    d_norm = diff / 255.0
+    fam = extended_prior_family(6)
+    dir_energies = [float(np.abs(hex_conv(d_norm, fam[d])).sum()) for d in range(6)]
+    lap_sum = float(np.abs(hex_conv(d_norm, kernel_laplacian())).sum())
+    cs_sum = float(np.abs(hex_conv(d_norm, kernel_center_surround())).sum())
+    smooth_energy = float(np.abs(hex_conv(d_norm, kernel_smooth())).sum())
+    mass_sum = float(d_norm.sum()) + 1e-6
+
+    ys, _ = np.where(fg_cells)
+    w = mag[fg_cells]
+    ymid = 0.5 * float(ys.min() + ys.max())
+    cy_w = float((ys * w).sum() / (w.sum() + 1e-9))
+    h_span = max(1.0, float(ys.max() - ys.min()))
+
+    return {
+        "solidity": float(lat_peak / (px_peak + 1e-6)),
+        "lap_ratio": float(lap_sum / mass_sum),
+        "cs_ratio": float(cs_sum / mass_sum),
+        "smooth_energy": smooth_energy,
+        "area_frac": float(fg_cells.sum()) / float(fg_cells.size),
+        "e_aniso": float(dir_energies[0] / (0.5 * (dir_energies[1] + dir_energies[2]) + 1e-6)),
+        "c_asym": float((cy_w - ymid) / h_span),
+        "dir_energies": dir_energies,
+        "fg_cells": int(fg_cells.sum()),
+        "lat_peak": float(lat_peak),
+        "px_peak": float(px_peak),
+    }
+
+
+def _score_hex_shapes(feat: Dict[str, float]) -> Dict[str, float]:
+    """基于蜂窝晶格响应的白箱形状打分（对应 circle / triangle / stripe）。"""
+    solidity = feat["solidity"]
+    lap_ratio = feat["lap_ratio"]
+    area_frac = feat["area_frac"]
+    e_aniso = feat["e_aniso"]
+    c_asym = feat["c_asym"]
+
+    # 条纹：亚晶格采样稀释（solidity 低）或粗条纹的 E-W 方向边缘强各向异性
+    s_stripe_sub = max(0.0, (0.72 - solidity) / 0.35)
+    s_stripe_aniso = max(0.0, (e_aniso - 1.12) / 0.25)
+    score_stripe = max(s_stripe_sub, s_stripe_aniso)
+    if solidity > 0.75 and e_aniso < 1.12:
+        score_stripe = 0.0
+
+    # 三角：高边缘/质量比（lap_ratio）、紧凑小面积、纵向能量质心不对称
+    s_tri_lap = float(np.clip((lap_ratio - 0.38) / 0.16, 0.0, 1.5))
+    s_tri_area = float(np.clip((0.032 - area_frac) / 0.018, 0.0, 1.5))
+    s_tri_asym = float(np.clip((abs(c_asym) - 0.06) / 0.12, 0.0, 1.5))
+    solid_gate = 1.0 if solidity >= 0.65 else 0.25
+    score_triangle = solid_gate * (0.45 * s_tri_lap + 0.35 * s_tri_area + 0.20 * s_tri_asym)
+
+    # 圆：高实心度、低边缘/质量比、纵向对称、较大前景占比
+    s_cir_solid = float(np.clip((solidity - 0.65) / 0.30, 0.0, 1.2))
+    s_cir_lap = float(np.clip((0.46 - lap_ratio) / 0.14, 0.0, 1.2))
+    s_cir_sym = float(np.clip((0.14 - abs(c_asym)) / 0.12, 0.0, 1.0))
+    s_cir_area = float(np.clip((area_frac - 0.022) / 0.025, 0.0, 1.0))
+    score_circle = (0.30 * s_cir_solid + 0.35 * s_cir_lap
+                    + 0.15 * s_cir_sym + 0.20 * s_cir_area)
+
+    return {
+        "circle": float(score_circle),
+        "triangle": float(score_triangle),
+        "stripe": float(score_stripe),
+    }
+
+
+def _extract_fg_color(lat: np.ndarray, fg_cells: np.ndarray,
+                      mag: np.ndarray) -> Tuple[str, float]:
+    """从前景蜂窝晶格加权 RGB 提取对齐 COLORS 的颜色名与置信度。"""
+    w = mag[fg_cells]
+    fg_rgb = (lat[fg_cells].astype(np.float64) * w[:, None]).sum(axis=0) / (w.sum() + 1e-9)
+    c_scores = fg_rgb - fg_rgb.min()
+    color_idx = int(np.argmax(c_scores))
+    c_sorted = np.sort(c_scores)
+    margin = (c_sorted[-1] - c_sorted[-2]) / (c_sorted[-1] + 1e-6)
+    return COLORS[color_idx], float(np.clip(margin, 0.05, 0.99))
+
+
+def perceive_scene_hex(img_arr: np.ndarray, cells_across: int = 24,
+                       net: Optional[HexHierNet] = None,
+                       min_contrast: float = 20.0) -> Optional[Dict]:
+    """端到端白箱蜂窝场景感知：RGB 图像 → image_to_grid → hex_conv 特征 → 形状/颜色/bbox/位置。
+
+    当 ``net`` 为 ``None`` 时使用零训练确定性白箱晶格感知器；
+    传入 ``HexHierNet`` 时使用其 L2/L3 头给出类别与概率，同时保留晶格特征审计读数。
+    无显著前景目标时返回 ``None``；非法输入 fail-loud 抛 ``ValueError``。
+    """
+    rgb = _validate_perceive_inputs(img_arr, cells_across, min_contrast, net)
+    lat, grid = image_to_grid(rgb, cells_across=cells_across)
+
+    bg_rgb = np.median(lat, axis=(0, 1))
+    diff = np.abs(lat.astype(np.float64) - bg_rgb[None, None, :])
+    mag = np.linalg.norm(diff, axis=-1)
+    lat_peak = float(mag.max())
+    if lat_peak < float(min_contrast):
+        return None
+
+    fg_cells = mag > max(float(min_contrast) * 0.8, 0.42 * lat_peak)
+    if not fg_cells.any():
+        return None
+
+    px_diff = np.abs(rgb - bg_rgb[None, None, :])
+    px_mag = np.linalg.norm(px_diff, axis=-1)
+    k_top = max(3, px_mag.size // 200)
+    px_peak = float(np.partition(px_mag.ravel(), -k_top)[-k_top:].mean())
+    bbox = _extract_fg_bbox(rgb.shape, px_mag, px_peak, fg_cells, grid, min_contrast)
+
+    feat = _hex_lattice_shape_features(diff, mag, lat_peak, px_peak, fg_cells)
+
+    # L4 能量质心象限（r0..r8）
+    ys, xs_c = np.where(fg_cells)
+    w = mag[fg_cells]
+    cy_lat = float((ys * w).sum() / (w.sum() + 1e-9))
+    cx_lat = float((xs_c * w).sum() / (w.sum() + 1e-9))
+    qy = int(np.clip(int(cy_lat / lat.shape[0] * 3), 0, 2))
+    qx = int(np.clip(int(cx_lat / lat.shape[1] * 3), 0, 2))
+    pos = POS[qy * 3 + qx]
+
+    if net is not None:
+        lat01 = lat.astype(np.float64) / 255.0
+        lat_norm = ((lat01 - lat01.mean()) / (lat01.std() + 1e-8))[None, ...]
+        sf, cf = net.l2_features(lat_norm)
+        probs = softmax(net.l3_logits(sf, cf))[0]
+        obj_idx = int(np.argmax(probs))
+        category = OBJ[obj_idx]
+        shape, color = category.split("|")
+        shape_conf = color_conf = confidence = float(probs[obj_idx])
+        shape_scores = {o: round(float(probs[i]), 4) for i, o in enumerate(OBJ)}
+    else:
+        shape_scores = _score_hex_shapes(feat)
+        score_vec = np.array([shape_scores[s] for s in SHAPES], dtype=np.float64)
+        s_probs = softmax(score_vec * 3.0)
+        shape_idx = int(np.argmax(score_vec))
+        shape = SHAPES[shape_idx]
+        shape_conf = float(s_probs[shape_idx])
+        color, color_conf = _extract_fg_color(lat, fg_cells, mag)
+        category = f"{shape}|{color}"
+        confidence = float(shape_conf * color_conf)
+
+    return {
+        "category": category,
+        "shape": shape,
+        "color": color,
+        "bbox": bbox,
+        "pos": pos,
+        "confidence": round(confidence, 4),
+        "shape_confidence": round(shape_conf, 4),
+        "color_confidence": round(color_conf, 4),
+        "shape_scores": shape_scores,
+        "features": feat,
+    }

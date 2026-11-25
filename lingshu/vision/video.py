@@ -409,4 +409,3 @@ def analyze_video_frames(
         "truncated_by_frame_limit": truncated,
         "decoded_frame_byte_count": frame_count * _FRAME_BYTES,
     }
-
