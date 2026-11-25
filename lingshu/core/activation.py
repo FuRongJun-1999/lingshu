@@ -373,21 +373,9 @@ class ActivationEngine:
                     inh_rows.append(si); inh_cols.append(di); inh_mags.append(-d)
             else:
                 rows.append(si); cols.append(di); decays.append(d)
-        if csr_matrix is not None and rows:
-            adj = csr_matrix((np.array(decays, dtype=np.float32), (rows, cols)),
-                             shape=(n, n))
-        else:
-            adj = None  # 降级:edge-list 传播
-        if csr_matrix is not None and inh_rows:
-            adj_inh = csr_matrix((np.array(inh_mags, dtype=np.float32), (inh_rows, inh_cols)),
-                                 shape=(n, n))
-        else:
-            adj_inh = None  # 降级:edge-list 抑制
-        if csr_matrix is not None and unv_rows:
-            adj_inh_unv = csr_matrix((np.array(unv_mags, dtype=np.float32),
-                                      (unv_rows, unv_cols)), shape=(n, n))
-        else:
-            adj_inh_unv = None
+        adj = self._build_max_csr(rows, cols, decays, n)
+        adj_inh = self._build_max_csr(inh_rows, inh_cols, inh_mags, n)
+        adj_inh_unv = self._build_max_csr(unv_rows, unv_cols, unv_mags, n)
         self._adj = adj
         self._adj_inh = adj_inh
         self._adj_inh_unv = adj_inh_unv
@@ -398,6 +386,22 @@ class ActivationEngine:
         self._node_ids = node_ids
         # 节点条件空间(节点级 cond_match 用;装载期已消费,留作审计/调试)
         self._node_cond = cur_cs
+
+    @staticmethod
+    def _build_max_csr(rows: List[int], cols: List[int],
+                       weights: List[float], n: int):
+        """Build CSR after aggregating parallel edges by maximum weight."""
+        if csr_matrix is None or np is None or not rows:
+            return None
+        best: Dict[Tuple[int, int], float] = {}
+        for src, dst, weight in zip(rows, cols, weights):
+            key = (src, dst)
+            if key not in best or weight > best[key]:
+                best[key] = weight
+        out_rows = [key[0] for key in best]
+        out_cols = [key[1] for key in best]
+        values = np.fromiter(best.values(), dtype=np.float32, count=len(best))
+        return csr_matrix((values, (out_rows, out_cols)), shape=(n, n))
 
     @staticmethod
     def _max_plus(adj, act: np.ndarray) -> np.ndarray:
@@ -411,6 +415,8 @@ class ActivationEngine:
         """
         n = act.shape[0]
         out = np.zeros(n, dtype=np.float32)
+        if getattr(adj, "format", "csr") == "csc":
+            adj = adj.tocsr()
         indptr, indices, data = adj.indptr, adj.indices, adj.data
         if data.size == 0:
             return out

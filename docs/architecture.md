@@ -37,9 +37,9 @@ lingshu
 └── world  世界模型：推演循环与物理沙盒（重载可选）
 ```
 
-- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **93** 个 `.py`
-  （**87** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 46 / vision 4 / 包根 1；
-  import 冒烟 **93/93**（2026-11-24 合并候选逐模块 `import` 实跑读数；守卫只核该行的分子
+- **当前计数**（本仓实读，随聚合动作更新）：`lingshu` 包 **94** 个 `.py`
+  （**88** 个非 `__init__` 模块）——core 15 / nn 14 / gen 7 / world 47 / vision 4 / 包根 1；
+  import 冒烟 **94/94**（2026-11-25 合并候选逐模块 `import` 实跑读数；守卫只核该行的分子
   分母相等且等于实读 `.py` 总数，见 `tests/test_doc_module_counts_guard.py`）。
   下表 §七 各行是**逐次聚合动作的快照**（计数为该次引入时的读数），当前计数以本行为准。
 - **轻核承诺**：`core` 不因本仓的「完整」而增重——可单独安装、单独运行；
@@ -215,5 +215,6 @@ lingshu
 | 2026-11-19 | **身体音频感知 v0.5（事件画像、内存输入、压缩音频与周期估计）**：`lingshu/vision/audio.py` + `SpacetimeMemoryEngine.perceive_audio` + 合成 WAV 守卫；登记见 `docs/intake/body-audio-v0.1/README.md` | **本仓新件**，身体侧视觉/音频感知；复用 `add_perception` 的 audio 模态 | CLEAN：WAV 纯标准库，FFmpeg 可选且 pipe-only；事件精度/截断/内存流/压缩输入/周期证据边界显式，无原始音频持久化；PR #1460 / intake #2760 | PR #1460（事件画像、压缩解码与周期估计增量） |
 
 | 2026-11-20 | 有界二值掩码几何：`vision/mask_geometry.py`；4/8 邻接面积、半开 bbox、像素中心质心及边界摘要；intake 见 `docs/intake/body-vision-mask-geometry-v0.1/` | 本仓新件 | 262,144 像素预算、最多 128 区域；标准库计算，不写文件或记忆；合成回归通过 | PR #1463 |
+| 2026-11-20 | 批量深度样本反投影：`world/depth_samples.py`，委托现有 Camera3D.unproject，显式像素/前向深度批量转世界坐标；intake 见 `docs/intake/body-depth-samples-v0.1/` | 本仓新件 | 最多4096条，预验证有限性/边界/深度，纯委托、不写文件或记忆；回代回归通过 | [PR #1466](https://github.com/FuRongJun-1999/lingshu/pull/1466) |
 
 *登记纪律：每次聚合动作在本表追加一行（件名 / 来源 / 日期 / 双清单结论 / 提交号）。*

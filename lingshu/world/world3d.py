@@ -1010,10 +1010,11 @@ class World3D:
             if b:
                 lo, hi = b
         if lo is None:
-            c = obj.center
+            # 局部坐标半尺寸（与 mesh.bounds() 同口径：下方再统一加 cx/cz 得到世界足迹，
+            # 不得在此预加 obj.center，否则非网格图元接触阴影会双重叠加偏移到 2*center）。
             sz = getattr(obj, "size", (1.0, 1.0, 1.0))
-            lo = tuple(c[k] - sz[k] / 2.0 for k in range(3))
-            hi = tuple(c[k] + sz[k] / 2.0 for k in range(3))
+            lo = tuple(-sz[k] / 2.0 for k in range(3))
+            hi = tuple(sz[k] / 2.0 for k in range(3))
         cx, cz = obj.center[0], obj.center[2]
         gy = float(getattr(self, "ground_y", 0.0))
         #: 水平足迹（世界）⇒ 贴到地面高度
