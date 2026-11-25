@@ -686,7 +686,8 @@ class ActivationEngine:
         finally:
             try:
                 if owns_read_tx and con.in_transaction:
-                    con.rollback()  # 只结束本方法创建的只读事务。
+                    # 与显式 BEGIN 配对；autocommit=True 时 rollback() 是空操作。
+                    con.execute("ROLLBACK")  # 只结束本方法创建的只读事务。
             finally:
                 con.close()  # 借用连接的 close() 为空操作。
 

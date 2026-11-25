@@ -189,6 +189,26 @@ def test_read_error_ends_only_its_own_transaction(pair, source):
     assert store.get_node("old").content == "pending content"
 
 
+@pytest.mark.parametrize("source", ["store", "conn"])
+def test_autocommit_connection_ends_explicit_read_snapshot(pair, source):
+    store, writer, _ = pair
+    writer.import_workset(_snapshot("old query", ["old"]))
+    reader = _reader(pair, source)
+    if not hasattr(store.conn, "autocommit"):
+        pytest.skip("sqlite3 autocommit requires Python 3.12+")
+    # Initialize first: this guard isolates workset_state's read transaction.
+    store.conn.autocommit = True
+
+    assert reader.workset_state("session")["query"] == "old query"
+    assert not store.conn.in_transaction
+    writer.import_workset(_snapshot("new query", ["new"]))
+    assert reader.workset_state("session")["query"] == "new query"
+    assert not store.conn.in_transaction
+    with pytest.raises(sqlite3.ProgrammingError):
+        reader.workset_state("session", limit=object())
+    assert not store.conn.in_transaction
+
+
 @pytest.mark.parametrize("rollback_fails", [False, True])
 def test_owned_connection_closes_after_sql_or_rollback_failure(pair, monkeypatch,
                                                               rollback_fails):
@@ -203,10 +223,10 @@ def test_owned_connection_closes_after_sql_or_rollback_failure(pair, monkeypatch
         def __getattr__(self, name):
             return getattr(raw, name)
 
-        def rollback(self):
-            if rollback_fails:
+        def execute(self, sql, *args, **kwargs):
+            if rollback_fails and sql == "ROLLBACK":
                 raise RuntimeError("simulated rollback failure")
-            raw.rollback()
+            return raw.execute(sql, *args, **kwargs)
 
         def close(self):
             closed.append(True)
