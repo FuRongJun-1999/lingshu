@@ -107,6 +107,35 @@ def _normalize3(v: Sequence[float]) -> Vec3:
     return (v[0] / n, v[1] / n, v[2] / n)
 
 
+def _require_finite_num(v, name: str, ctx: str) -> float:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError("%s：%s 须为有限数值，收到 %r" % (ctx, name, v))
+    fv = float(v)
+    if not math.isfinite(fv):
+        raise ValueError("%s：%s 须为有限数值，收到 %r" % (ctx, name, v))
+    return fv
+
+
+def _require_vec3(v, name: str, ctx: str) -> Vec3:
+    try:
+        seq = tuple(v)
+    except TypeError:
+        raise ValueError("%s：%s 须为 3 元有限数值，收到 %r" % (ctx, name, v))
+    if len(seq) != 3:
+        raise ValueError("%s：%s 须为 3 元有限数值，收到 %r" % (ctx, name, v))
+    return (
+        _require_finite_num(seq[0], name, ctx),
+        _require_finite_num(seq[1], name, ctx),
+        _require_finite_num(seq[2], name, ctx),
+    )
+
+
+def _require_pos_int(v, name: str, ctx: str) -> int:
+    if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+        raise ValueError("%s：%s 须为正整数，收到 %r" % (ctx, name, v))
+    return v
+
+
 def _rot_mat(rot: Optional[Sequence[float]]):
     """欧拉 XYZ（弧度）→ 3x3 行主序矩阵；全零/None ⇒ None（省算）。
 
@@ -115,7 +144,7 @@ def _rot_mat(rot: Optional[Sequence[float]]):
     """
     if not rot:
         return None
-    rx, ry, rz = rot
+    rx, ry, rz = _require_vec3(rot, "rot", "_rot_mat")
     if not (rx or ry or rz):
         return None
     cx, sx = math.cos(rx), math.sin(rx)
@@ -195,14 +224,17 @@ class MeshGeometry:
 
         结果按 `rot` 缓存（同一网格被多个物体实例复用时只算一次）。
         """
-        key = None if not rot else tuple(round(float(v), 12) for v in rot)
+        if not rot:
+            return self
+        rv = _require_vec3(rot, "rot", "MeshGeometry.rotated")
+        key = tuple(round(v, 12) for v in rv)
         cache = self.__dict__.setdefault("_rot_cache", {})
-        if key is None or key == (0.0, 0.0, 0.0):
+        if key == (0.0, 0.0, 0.0):
             return self
         hit = cache.get(key)
         if hit is not None:
             return hit
-        m = _rot_mat(rot)
+        m = _rot_mat(rv)
         verts = [_mat_apply(m, v) for v in self.verts]
         normals = [_mat_apply(m, n) for n in self.normals]
         faces = []
@@ -249,7 +281,12 @@ MESH_LIBRARY: Dict[str, MeshGeometry] = {}
 
 def _srgb(u):
     """线性 0..1 → sRGB 0..255（MTL 的 Kd 是线性空间）。"""
-    u = max(0.0, min(1.0, float(u)))
+    if isinstance(u, bool):
+        raise ValueError("_srgb：线性色值不得为 bool，收到 %r" % (u,))
+    fu = float(u)
+    if not math.isfinite(fu):
+        raise ValueError("_srgb：线性色值须为有限数，收到 %r" % (u,))
+    u = max(0.0, min(1.0, fu))
     v = 12.92 * u if u <= 0.0031308 else 1.055 * (u ** (1 / 2.4)) - 0.055
     return int(round(v * 255))
 
@@ -287,10 +324,14 @@ def _obj_index(tok: str, n_vert: int, n_norm: int):
     """
     parts = tok.split("/")
     i = int(parts[0])
+    if i == 0:
+        raise ValueError("OBJ 顶点索引不得为 0：%r" % (tok,))
     vi = i - 1 if i > 0 else n_vert + i
     vn = None
     if len(parts) >= 3 and parts[2]:
         j = int(parts[2])
+        if j == 0:
+            raise ValueError("OBJ 法线索引不得为 0：%r" % (tok,))
         vn = j - 1 if j > 0 else n_norm + j
     return vi, vn
 
@@ -368,6 +409,10 @@ def parse_obj(lines, path: str = "", mtl_colors: Dict[str, RGB] = None,
         raise ValueError("OBJ 头部没有 normalize 注释，无法反归一化（拒绝用硬编码兜底）：%s" % path)
     if scale == 0:
         raise ValueError("OBJ 头部 scale=0 非法")
+    if not math.isfinite(scale):
+        raise ValueError("OBJ 头部 scale 非有限：%r" % (scale,))
+    if len(center) != 3 or not all(math.isfinite(v) for v in center):
+        raise ValueError("OBJ 头部 center 非法：%r" % (center,))
     n_raw = len(verts_raw)
     verts: List[Vec3] = []
     for (x, y, z) in verts_raw:
@@ -379,6 +424,8 @@ def parse_obj(lines, path: str = "", mtl_colors: Dict[str, RGB] = None,
         verts.append((x, y, z))
     norms: List[Vec3] = []
     for (x, y, z) in norms_raw:
+        if not all(math.isfinite(v) for v in (x, y, z)):
+            raise ValueError("法线非有限：%r" % ((x, y, z),))
         if axis_swap:
             x, y, z = x, z, -y
         norms.append(_normalize3((x, y, z)))
@@ -402,7 +449,9 @@ def parse_obj(lines, path: str = "", mtl_colors: Dict[str, RGB] = None,
         nx = uy * vz - uz * vy
         ny = uz * vx - ux * vz
         nz = ux * vy - uy * vx
-        area2 = math.sqrt(nx * nx + ny * ny + nz * nz)
+        area2 = math.hypot(nx, ny, nz)
+        if not math.isfinite(area2):
+            raise ValueError("三角面法线溢出（非有限）：%r" % (idx,))
         if area2 <= 1e-14:                # 零面积面：丢弃但计数（会占不到一个像素）
             stats["degenerate_dropped"] += 1
             continue
@@ -527,7 +576,9 @@ def prepare_triangles(mesh: "MeshGeometry", center, cam, sw: int, sh: int,
     """
     if mesh is None:
         return [], {"culled": 0, "clipped": 0, "offscreen": 0, "kept": 0}
-    cx, cy, cz = center
+    cx, cy, cz = _require_vec3(center, "center", "prepare_triangles")
+    sw = _require_pos_int(sw, "sw", "prepare_triangles")
+    sh = _require_pos_int(sh, "sh", "prepare_triangles")
     eye = (cam.cx, cam.cy, cam.cz)
     to_cam = cam.to_camera
     f = cam.focal(sw)
@@ -819,8 +870,8 @@ class ZBuffer:
     __slots__ = ("w", "h", "depth", "color", "_invz", "_rgb", "stats", "_untouched")
 
     def __init__(self, w: int, h: int, background=(20, 24, 40)):
-        self.w = int(w)
-        self.h = int(h)
+        self.w = _require_pos_int(w, "w", "ZBuffer")
+        self.h = _require_pos_int(h, "h", "ZBuffer")
         n = self.w * self.h
         self.depth = array("f", [-1.0]) * n        # -1 = 尚未写入任何几何
         self.color = bytearray(n * 3)
@@ -836,10 +887,15 @@ class ZBuffer:
     # ---- 与 ImageDraw 同形的绘图原语 ----
 
     def set_depth(self, inv_z: float, *a, **k) -> None:
-        try:
-            self._invz = float(inv_z)
-        except (TypeError, ValueError):
+        if isinstance(inv_z, bool):
             self._invz = 0.0
+            return
+        try:
+            val = float(inv_z)
+        except (TypeError, ValueError, OverflowError):
+            self._invz = 0.0
+            return
+        self._invz = val if math.isfinite(val) else 0.0
 
     def polygon(self, xy, fill=None, outline=None) -> None:
         pts = _coerce_points(xy)
