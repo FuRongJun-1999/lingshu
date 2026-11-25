@@ -221,11 +221,32 @@ class Skeleton3D:
             if sp is not None:
                 screen[n] = sp
 
-        # 骨骼线段（画家顺序：由深到浅；按相机前向深度排序，与 cam.project / 关节半径同口径）
-        ordered = sorted(self.bones(), key=lambda b: -self._bone_depth(world, b, cam))
+        # #1507 LS-05：骨段一端不可投影时，只裁掉近平面后方部分。
+        # 在相机坐标中裁剪与投影，避免把交点转回世界坐标后的舍入再次判为不可见。
+        segments = {}
+        for bone in self.bones():
+            a, b = (cam.to_camera(world[n]) for n in bone)
+            near = 0.1  # 与 Camera3D.project / World3D 近平面同口径
+            if a[2] <= near and b[2] <= near:
+                continue
+            if a[2] <= near or b[2] <= near:
+                t = (near - a[2]) / (b[2] - a[2])
+                cut = (a[0] + t * (b[0] - a[0]),
+                       a[1] + t * (b[1] - a[1]), near)
+                if a[2] <= near:
+                    a = cut
+                else:
+                    b = cut
+            segments[bone] = (a, b)
+
+        # 画家顺序：按裁剪后可见骨段的相机前向深度，由深到浅。
+        ordered = sorted(segments, key=lambda b: -(segments[b][0][2] + segments[b][1][2]) / 2)
+        f = cam.focal(screen_w)
         for parent, child in ordered:
-            if parent in screen and child in screen:
-                draw.line([screen[parent], screen[child]], fill=self._bone_color, width=2)
+            points = [(screen_w / 2 + f * p[0] / p[2],
+                       screen_h / 2 - f * p[1] / p[2])
+                      for p in segments[(parent, child)]]
+            draw.line(points, fill=self._bone_color, width=2)
 
         # 关节点
         for n, sp in screen.items():

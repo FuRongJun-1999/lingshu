@@ -308,8 +308,8 @@ def _mutate() -> int:
     mutants = [
         (
             "M1-render-drop-cam",
-            "ordered = sorted(self.bones(), key=lambda b: -self._bone_depth(world, b, cam))",
-            "ordered = sorted(self.bones(), key=lambda b: -self._bone_depth(world, b))",
+            "ordered = sorted(segments, key=lambda b: -(segments[b][0][2] + segments[b][1][2]) / 2)",
+            "ordered = sorted(segments, key=lambda b: -self._bone_depth(world, b))",
         ),
         (
             "M2-bone-depth-world-z",
