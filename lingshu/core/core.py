@@ -355,10 +355,10 @@ def _json_tags(value) -> list:
 # =============================================================================
 
 def _finite_or(x, default: float) -> float:
-    """有限则返回 `float(x)`，否则（非数 / NaN / ±inf）返回 `default`。见 #185。"""
+    """有限且可转为 float 时返回数值，否则（含溢出）返回 `default`。见 #185。"""
     try:
         v = float(x)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
     return v if math.isfinite(v) else default
 
