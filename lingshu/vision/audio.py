@@ -433,6 +433,8 @@ def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.
     retained window grid rather than sample-exact transitions. The returned
     resolution and approximate flag make that limitation explicit. This is
     an amplitude-profile segmenter, not speech or semantic event recognition.
+    Boundaries use the frame-aligned analysis window when available; older
+    feature mappings fall back to window_ms. All endpoints are duration-bounded.
     """
     if not isinstance(features, dict):
         raise TypeError("features 必须是 analyze_wav 返回的映射")
@@ -442,12 +444,28 @@ def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.
         raise ValueError("features 缺少字段：%s" % ", ".join(missing))
     duration = _finite_number("features.duration_s", features["duration_s"],
                               low=0.001, high=_MAX_DURATION_SECONDS)
+    envelope_duration = duration
+    frame_count = features.get("frames")
+    sample_rate = features.get("sample_rate_hz")
+    if frame_count is not None or sample_rate is not None:
+        if (isinstance(frame_count, bool) or not isinstance(frame_count, int) or frame_count < 1
+                or isinstance(sample_rate, bool) or not isinstance(sample_rate, int) or sample_rate < 1):
+            raise ValueError("features.frames 与 features.sample_rate_hz 必须是正整数")
+        measured_duration = frame_count / sample_rate
+        if round(measured_duration, 4) != duration:
+            raise ValueError("features.duration_s 与 frames/sample_rate_hz 不一致")
+        envelope_duration = measured_duration
     window_ms = features["window_ms"]
     if isinstance(window_ms, bool) or not isinstance(window_ms, int) or not 10 <= window_ms <= 1000:
         raise ValueError("features.window_ms 超出有效范围")
     stride = features["energy_envelope_stride_windows"]
     if isinstance(stride, bool) or not isinstance(stride, int) or stride < 1:
         raise ValueError("features.energy_envelope_stride_windows 必须是正整数")
+    if "analysis_window_s" in features:
+        window_s = _finite_number("features.analysis_window_s", features["analysis_window_s"],
+                                  low=0.00001, high=1.0)
+    else:
+        window_s = window_ms / 1000.0
     threshold_dbfs = _finite_number("silence_dbfs", silence_dbfs, low=-120.0, high=0.0)
     envelope = features["energy_envelope_dbfs"]
     if not isinstance(envelope, (list, tuple)) or len(envelope) > _MAX_ENVELOPE_POINTS:
@@ -457,8 +475,13 @@ def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.
     if not envelope:
         return {"segments": [], "resolution_s": 0.0, "approximate": False,
                 "segment_count": 0, "segments_truncated": False}
-    window_s = window_ms / 1000.0
     resolution_s = window_s * stride
+    # Use precise frame metadata for the envelope count when available.
+    envelope = envelope[:max(1, int(math.ceil(envelope_duration / resolution_s)))]
+
+    def boundary(index: int) -> float:
+        return min(duration, round(index * resolution_s, 4))
+
     segments = []
     start = 0
     total_segments = 0
@@ -469,18 +492,18 @@ def segment_audio_events(features: Dict[str, Any], *, silence_dbfs: float = -45.
             total_segments += 1
             if len(segments) < _MAX_SILENCE_INTERVALS * 2:
                 segments.append({"kind": "activity" if current_active else "silence",
-                                 "start_s": round(start * resolution_s, 4),
-                                 "end_s": round(index * resolution_s, 4),
+                                 "start_s": boundary(start),
+                                 "end_s": boundary(index),
                                  "mean_dbfs": round(sum(envelope[start:index]) / (index - start), 2)})
             start = index
             current_active = active
     total_segments += 1
     if len(segments) < _MAX_SILENCE_INTERVALS * 2:
         segments.append({"kind": "activity" if current_active else "silence",
-                         "start_s": round(start * resolution_s, 4),
-                         "end_s": round(min(features["duration_s"], len(envelope) * resolution_s), 4),
+                         "start_s": boundary(start),
+                         "end_s": boundary(len(envelope)),
                          "mean_dbfs": round(sum(envelope[start:]) / (len(envelope) - start), 2)})
-    return {"segments": segments, "resolution_s": round(resolution_s, 4),
+    return {"segments": segments, "resolution_s": round(resolution_s, 9),
             "approximate": stride > 1, "segment_count": total_segments,
             "segments_truncated": total_segments > len(segments)}
 
