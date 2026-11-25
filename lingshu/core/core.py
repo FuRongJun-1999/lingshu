@@ -14352,9 +14352,8 @@ class SpacetimeMemoryEngine:
                     # （`_finite_clamp(v, 0.0, 1.0, default=0.5)`，与 `add_node`
                     # 写入侧归一、`_shared_field_key` 判同口径一致）。
                     # 判据来源：公开 issue #690（P1-b，复核确认成立）＋ 同处 #574 先例。
-                    # 边界（如实标注）：本闸只补 `nodes` 表的 `confidence`；
-                    # `edges` 表的 `confidence`/`weight` 在 `import_all` 同样未钳
-                    # （不在本件范围，已在报告中点名）。
+                    # 本段只管 nodes；edges 的同义务归一在值形状过滤后执行，
+                    # 保留 #721 容器值跳行与 #652 缺列上报语义。
                     if "confidence" in r:
                         r["confidence"] = _finite_clamp(
                             r.get("confidence"), 0.0, 1.0, default=0.5)
@@ -14393,6 +14392,13 @@ class SpacetimeMemoryEngine:
                 if _skip_row:
                     skipped_rows[table] = skipped_rows.get(table, 0) + 1
                     continue
+                if table == "edges":
+                    # #690 已披露的后续边界 / #1503：复用 STEdge.to_row 的数值
+                    # 契约；先过 #721 形状闸，仅归一显式字段，不补缺失的旧备份列。
+                    if "confidence" in r:
+                        r["confidence"] = _finite_clamp(r["confidence"], 0.0, 1.0)
+                    if "weight" in r:
+                        r["weight"] = _finite_clamp(r["weight"], 0.0, 1.0, default=1.0)
                 # #125 增量复现：`escalation_points` 用 `INSERT OR IGNORE`——上方预筛
                 # 已把「库内既有 id」的行摘掉并计数，此处 OR IGNORE 只作**备份自身
                 # 含重复 id** 时的兜底（取首条），使本表上**不再存在任何整行替换
