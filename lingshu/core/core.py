@@ -381,10 +381,22 @@ def _require_finite(name: str, x) -> float:
     """
     try:
         v = float(x)
-    except (TypeError, ValueError):
-        raise ValueError(f"{name} 必须是实数，收到 {type(x).__name__}: {x!r}")
+    except (TypeError, ValueError, OverflowError):
+        try:
+            detail = repr(x)
+        except (ValueError, OverflowError):
+            # Python 3.11+ limits decimal conversion in ``int.__repr__``;
+            # do not let rendering a diagnostic hide the validation error.
+            detail = f"<{type(x).__name__} repr unavailable>"
+        raise ValueError(
+            f"{name} 必须是实数，收到 {type(x).__name__}: {detail}")
     if not math.isfinite(v):
-        raise ValueError(f"{name} 必须是有限实数（拒绝 NaN/±inf），收到 {x!r}")
+        try:
+            detail = repr(x)
+        except (ValueError, OverflowError):
+            detail = f"<{type(x).__name__} repr unavailable>"
+        raise ValueError(
+            f"{name} 必须是有限实数（拒绝 NaN/±inf），收到 {detail}")
     return v
 
 
@@ -1173,11 +1185,15 @@ class SelfModel:
             raise ValueError(
                 "#206 t_total 须为归一信任值 [0,1]，收到 %r"
                 % (t_total,))
+        validated_p_trust = (
+            None if p_trust is None else _require_finite("p_trust", p_trust))
+        validated_p_gap = (
+            None if p_gap is None else _require_finite("p_gap", p_gap))
         self.trust_state["t_total"] = t_total
-        if p_trust is not None:
-            self.trust_state["p_trust"] = _require_finite("p_trust", p_trust)
-        if p_gap is not None:
-            self.trust_state["p_gap"] = _require_finite("p_gap", p_gap)
+        if validated_p_trust is not None:
+            self.trust_state["p_trust"] = validated_p_trust
+        if validated_p_gap is not None:
+            self.trust_state["p_gap"] = validated_p_gap
         self.trust_history.append({"round": round_no, "t_total": t_total, "at": time.time()})
         if len(self.trust_history) > self.TRUST_HISTORY_MAX:
             self.trust_history = self.trust_history[-self.TRUST_HISTORY_MAX:]
