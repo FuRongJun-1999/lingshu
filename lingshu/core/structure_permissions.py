@@ -85,7 +85,10 @@ def check_protected_directory(root, files=()):
         raise PermissionError("service storage must be a directory")
     checked = [root]
     for filename in files:
-        path = Path(filename).resolve()
+        raw_path = Path(filename)
+        if raw_path.is_symlink():
+            raise PermissionError("protected target must not be a symlink")
+        path = raw_path.resolve()
         if not path.is_relative_to(root):
             raise PermissionError("protected files must stay inside service storage")
         if path.exists():

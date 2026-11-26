@@ -245,10 +245,14 @@ def load_service(config_file, *, bind_and_activate=True):
     files = {}
     for name in ("database", "certificate", "key", "ca"):
         raw = config.get(name)
-        if not isinstance(raw, str) or not raw.strip():
+        if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
             raise WriteError(f"service configuration {name} must be a nonempty path string")
-        target = (root / raw).resolve()
-        if target == root or target.is_dir():
+        try:
+            target = (root / raw).resolve()
+            is_dir = target.is_dir()
+        except (ValueError, OSError) as exc:
+            raise WriteError(f"service configuration {name} path is invalid") from exc
+        if target == root or is_dir:
             raise WriteError(f"service configuration {name} must name a file, not a directory")
         files[name] = root / raw
     extra = [Path(str(files["database"]) + suffix) for suffix in ("-wal", "-shm", "-journal")]

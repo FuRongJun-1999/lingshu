@@ -187,7 +187,51 @@ def test_client_call_rejects_malformed_envelope():
             client.call("current", aggregate_key="k")
 
 
+def test_permissions_rejects_intra_root_symlink_and_service_rejects_nul_path(tmp_path):
+    from lingshu.core import structure_permissions as sp
+    from lingshu.core import structure_service as ss
+    from lingshu.core.structure_writer import WriteError
+
+    key_file = tmp_path / "key.pem"
+    key_file.write_text("secret-key", encoding="utf-8")
+    link_db = tmp_path / "db.sqlite"
+    with mock.patch.object(Path, "is_symlink", autospec=True,
+                           side_effect=lambda self: self.name == "db.sqlite"):
+        with pytest.raises(PermissionError, match="symlink"):
+            sp.check_protected_directory(tmp_path, [link_db])
+
+    # Real symlink check when OS permits symlink creation
+    try:
+        os.symlink(key_file, link_db)
+    except OSError:
+        pass
+    else:
+        with pytest.raises(PermissionError, match="symlink"):
+            sp.check_protected_directory(tmp_path, [link_db])
+
+    cfg = tmp_path / "svc_nul.json"
+    cfg.write_text(
+        json.dumps({
+            "database": "bad\u0000.db",
+            "certificate": "c.pem",
+            "key": "k.pem",
+            "ca": "ca.pem",
+            "principals": [],
+        }),
+        encoding="utf-8",
+    )
+    with mock.patch.object(ss, "check_protected_directory", return_value=tmp_path.resolve()):
+        with pytest.raises(WriteError, match="nonempty path string"):
+            ss.load_service(cfg, bind_and_activate=False)
+
+
 _MUTATION_ARMS = {
+    "M0_symlink_gate": (
+        "lingshu/core/structure_permissions.py",
+        'if raw_path.is_symlink():\n            raise PermissionError("protected target must not be a symlink")',
+        'if False:\n            raise PermissionError("protected target must not be a symlink")',
+        "test_permissions_rejects_intra_root_symlink_and_service_rejects_nul_path",
+    ),
     "M1_hardlink_gate": (
         "lingshu/core/structure_permissions.py",
         'if fstat.st_nlink > 1:\n                raise PermissionError("protected file must not have hardlink aliases")',
