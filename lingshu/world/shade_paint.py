@@ -430,6 +430,8 @@ def env_tint(base: Sequence[int], ny: float, role: Optional[str] = None,
     if isinstance(ny, bool) or not isinstance(ny, (int, float)):
         raise ValueError(f"ny must be a number, got {ny!r}")
     ny_f = float(ny)
+    if not hasattr(base, "__len__") or len(base) < 3:
+        raise ValueError(f"base must have at least 3 channels, got {base!r}")
     b0 = _finite_float(base[0], "base[0]")
     b1 = _finite_float(base[1], "base[1]")
     b2 = _finite_float(base[2], "base[2]")

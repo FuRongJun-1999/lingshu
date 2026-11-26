@@ -123,10 +123,19 @@ def test_mesh_svg_project_depth_color_and_style_guards():
         with pytest.raises(ValueError):
             mesh_svg._tone(bad_rgb, "lighten", 0.5)
 
-    # render_mesh_svg rejects non-dict/str style with ValueError (not naked TypeError)
+    # render_mesh_svg rejects non-dict/str style and non-finite background/ground_color with ValueError
     w = world3d.World3D()
     with pytest.raises(ValueError):
         mesh_svg.render_mesh_svg(w, style=123)
+    with pytest.raises(ValueError):
+        mesh_svg.render_mesh_svg(w, 100, 80, background=(float("nan"), 0, 0))
+    with pytest.raises(ValueError):
+        mesh_svg.render_mesh_svg(w, 100, 80, ground_color=(float("inf"), 0, 0))
+    with pytest.raises(ValueError):
+        mesh_svg.render_mesh_svg(w, 100, 80, style={"ground_color": (float("inf"), 0, 0)})
+    from lingshu.world import shade_paint
+    with pytest.raises(ValueError):
+        shade_paint.env_tint((100, 100), 0.5)
 
 
 _MUTATION_ARMS = {
@@ -158,6 +167,12 @@ _MUTATION_ARMS = {
         "lingshu/world/mesh_svg.py",
         "    if not (all(math.isfinite(float(v)) for v in c) and math.isfinite(x) and math.isfinite(y) and math.isfinite(invz)):\n        return None",
         "    if False:\n        return None",
+        "test_mesh_svg_project_depth_color_and_style_guards",
+    ),
+    "M6_mesh_svg_ground_color_rgb": (
+        "lingshu/world/mesh_svg.py",
+        '    if ground_color is not None:\n        _require_rgb3(ground_color, "ground_color")',
+        "    if False:\n        pass",
         "test_mesh_svg_project_depth_color_and_style_guards",
     ),
 }

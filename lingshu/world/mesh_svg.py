@@ -540,6 +540,10 @@ def render_mesh_svg(world, screen_w: int = 800, screen_h: int = 600,
         cam = camera or world.camera
     background = st.get("background", background)
     ground_color = st.get("ground_color", ground_color)
+    if background is not None:
+        _require_rgb3(background, "background")
+    if ground_color is not None:
+        _require_rgb3(ground_color, "ground_color")
     backend = SVGBackend(screen_w, screen_h, background=background)
     horizon_px = screen_h * 0.45
     layers = bool(st.get("layers", True))
