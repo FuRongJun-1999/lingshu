@@ -72,6 +72,8 @@ def _finite_or_none(v):
     if isinstance(v, (list, tuple)):
         # `time_window` 是 `(start, end)` 二元组：逐元素归一，保留形状。
         return type(v)(_finite_or_none(x) for x in v)
+    if isinstance(v, dict):
+        return {k: _finite_or_none(val) for k, val in v.items()}
     return v
 
 
@@ -145,7 +147,10 @@ class ScenarioContext:
         ids = list(dict.fromkeys(node_ids))
         if any(not isinstance(nid, str) or not nid for nid in ids):
             raise ValueError("node_ids must contain nonempty strings")
-        if len(ids) > kwargs.get("max_nodes", 256):
+        max_nodes = kwargs.get("max_nodes", 256)
+        if not isinstance(max_nodes, int) or isinstance(max_nodes, bool) or max_nodes < 1:
+            raise ValueError("max_nodes must be a positive integer")
+        if len(ids) > max_nodes:
             raise ValueError("selected nodes exceed max_nodes")
         nodes, edges, gaps = [], [], []
         for nid in ids:
@@ -161,14 +166,18 @@ class ScenarioContext:
             for e in store.get_outgoing_edges(nid):
                 edges.append({"id": e.id, "source_id": e.source_id,
                               "target_id": e.target_id, "relation_type": _enum_value(e.relation_type),
-                              "conditions": _condition_dict(e.condition_space), "verified": e.verified,
+                              "conditions": _finite_or_none(_condition_dict(e.condition_space)),
+                              "verified": e.verified,
                               "source_evidence": e.source_evidence})
         return cls(nodes, edges, gaps=gaps, origin="selected", **kwargs)
 
     @classmethod
     def from_brain(cls, client, query, *, k=64, **kwargs):
         """使用现有 MCPClient；候选集是有界召回，不声称全库或完整世界。"""
-        if not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= kwargs.get("max_nodes", 256):
+        max_nodes = kwargs.get("max_nodes", 256)
+        if not isinstance(max_nodes, int) or isinstance(max_nodes, bool) or max_nodes < 1:
+            raise ValueError("max_nodes must be a positive integer")
+        if not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= max_nodes:
             raise ValueError("k must be an integer in [1, max_nodes]")
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query must be a nonempty string")
@@ -191,7 +200,7 @@ class ScenarioContext:
                 edges.append({"id": str(edge.get("id") or f"{n['id']}:edge:{index}"),
                               "source_id": n["id"], "target_id": str(edge.get("target") or ""),
                               "relation_type": edge.get("relation_type"),
-                              "conditions": edge.get("condition_space") or {},
+                              "conditions": _finite_or_none(edge.get("condition_space") or {}),
                               "verified": edge.get("verified") is True,
                               "source_evidence": edge.get("source_evidence", "ambiguous")})
         gaps = ["recall_limit_reached"] if len(nodes) >= k else []
@@ -205,7 +214,7 @@ class ScenarioContext:
             state_response = client.call("stg", {"op": "state_chain", "limit": 500})
             if not isinstance(state_response.get("items"), list):
                 raise RuntimeError("brain state_chain response has no items list")
-            if len(state_response["items"]) >= 500:
+            if state_response.get("truncated") or len(state_response["items"]) >= 500:
                 gaps.append("state_projection_limit_reached")
             states = {}
             for event in state_response["items"]:

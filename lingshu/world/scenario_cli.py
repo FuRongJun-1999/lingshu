@@ -314,6 +314,10 @@ def main(argv=None):
                 if _raw.startswith("//") or _raw.startswith("\\\\"):
                     raise ValueError(
                         "render output must not use a UNC/device path")
+                _raw_root = str(args.root)
+                if _raw_root.startswith("//") or _raw_root.startswith("\\\\"):
+                    raise ValueError(
+                        "brain root must not use a UNC/device path")
                 if render.is_relative_to(Path(args.root).resolve()):
                     raise ValueError(
                         "render output must be outside the brain root")
