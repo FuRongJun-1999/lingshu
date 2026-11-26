@@ -291,6 +291,15 @@ def _dot(a: Sequence[float], b: Sequence[float]) -> float:
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 
+def _finite_float(val, name: str) -> float:
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise ValueError(f"{name} must be a finite number, got {val!r}")
+    fv = float(val)
+    if not math.isfinite(fv):
+        raise ValueError(f"{name} must be a finite number, got {val!r}")
+    return fv
+
+
 def shade_studio(normal: Sequence[float], view: Sequence[float],
                  role: Optional[str] = None, rim_scale: float = 1.0) -> float:
     """**studio** 光学模型：半球环境（双基座）+ 主光（裸/半 Lambert 混合）+ 对侧补光
@@ -309,8 +318,9 @@ def shade_studio(normal: Sequence[float], view: Sequence[float],
     p = role_palette(role)
     if p["unlit"]:
         return EMISSIVE_GAIN
+    rs = _finite_float(rim_scale, "rim_scale")
     nx, ny, nz = normal[0], normal[1], normal[2]
-    nl = math.sqrt(nx * nx + ny * ny + nz * nz)
+    nl = math.hypot(nx, ny, nz)
     if nl > 1e-15:
         nx, ny, nz = nx / nl, ny / nl, nz / nl
     n = (nx, ny, nz)
@@ -326,7 +336,7 @@ def shade_studio(normal: Sequence[float], view: Sequence[float],
     dh = _dot(n, view)
     head = HEADLIGHT_GAIN_STUDIO * (dh if dh > 0.0 else 0.0)
     grazing = 1.0 - (dh if dh > 0.0 else 0.0)
-    rim = RIM_GAIN * p["rim"] * float(rim_scale) * (grazing ** RIM_POW)
+    rim = RIM_GAIN * p["rim"] * rs * (grazing ** RIM_POW)
     return sky + key + fill + head + rim
 
 
@@ -363,9 +373,12 @@ def shade_intensity_mode(normal: Sequence[float], view: Sequence[float],
         return i if i >= 0.12 else 0.12
     i = look_curve(shade_studio(normal, view, role))
     if mode in ("toon", "toon_studio"):
-        b = int(bands or TOON_BANDS)
-        if b < 2:
-            b = 2
+        if bands is None:
+            b = TOON_BANDS
+        else:
+            if isinstance(bands, bool) or not isinstance(bands, int):
+                raise ValueError(f"bands must be an integer, got {bands!r}")
+            b = bands if bands >= 2 else (TOON_BANDS if bands == 0 else 2)
         # 非有限强度必须挡在 `math.floor` 之前：NaN 会让 `math.floor` 抛
         # `ValueError: cannot convert float NaN to integer` ⇒ toon 档位**整帧崩溃**
         # 而非降级（退化三角面/零面积面产出 NaN 法线 ⇒ shade_studio → look_curve 一路 NaN）。
@@ -413,10 +426,21 @@ def env_tint(base: Sequence[int], ny: float, role: Optional[str] = None,
     `ny` = 面法线的 y 分量；`role` 决定混合强度（金属最强）。`gain=0` ⇒ 原样返回
     （便于"抽掉即红"的对照与逐字节回归）。
     """
-    k = ENV_ROLE_STRENGTH.get(role, ENV_DEFAULT_STRENGTH) * float(gain)
-    if k <= 0.0:
-        return (int(base[0]), int(base[1]), int(base[2]))
-    t = 0.5 + 0.5 * (ny if -1.0 <= ny <= 1.0 else (1.0 if ny > 1.0 else -1.0))
+    g = _finite_float(gain, "gain")
+    if isinstance(ny, bool) or not isinstance(ny, (int, float)):
+        raise ValueError(f"ny must be a number, got {ny!r}")
+    ny_f = float(ny)
+    b0 = _finite_float(base[0], "base[0]")
+    b1 = _finite_float(base[1], "base[1]")
+    b2 = _finite_float(base[2], "base[2]")
+    k = ENV_ROLE_STRENGTH.get(role, ENV_DEFAULT_STRENGTH) * g
+    if k <= 0.0 or not math.isfinite(ny_f):
+        return (max(0, min(255, int(b0))),
+                max(0, min(255, int(b1))),
+                max(0, min(255, int(b2))))
+    if k > 1.0:
+        k = 1.0
+    t = 0.5 + 0.5 * (ny_f if -1.0 <= ny_f <= 1.0 else (1.0 if ny_f > 1.0 else -1.0))
     #: ⚠ 插值一律写成 `a + (b − a)·t` 而**不是** `a·t + b·(1−t)`。
     #: 为什么（不是风格偏好）：本仓 `time_core_lint` 的 **R2/EX4** 把 `x·t + y·(1−t)`
     #: 这类**互补权重**写法判为"衰减/插值"违规形态 —— 本函数第一版正是这么写的，
@@ -425,9 +449,9 @@ def env_tint(base: Sequence[int], ny: float, role: Optional[str] = None,
     er = ENV_BOT_RGB[0] + (ENV_TOP_RGB[0] - ENV_BOT_RGB[0]) * t
     eg = ENV_BOT_RGB[1] + (ENV_TOP_RGB[1] - ENV_BOT_RGB[1]) * t
     eb = ENV_BOT_RGB[2] + (ENV_TOP_RGB[2] - ENV_BOT_RGB[2]) * t
-    return (int(base[0] + (er - base[0]) * k),
-            int(base[1] + (eg - base[1]) * k),
-            int(base[2] + (eb - base[2]) * k))
+    return (max(0, min(255, int(b0 + (er - b0) * k))),
+            max(0, min(255, int(b1 + (eg - b1) * k))),
+            max(0, min(255, int(b2 + (eb - b2) * k))))
 
 
 def shade_rgb(base: Sequence[float], intensity: float, *, look: bool = False) -> RGB:
@@ -446,24 +470,42 @@ def shade_rgb(base: Sequence[float], intensity: float, *, look: bool = False) ->
     out = []
     for k in range(3):
         c = base[k] if k < len(base) else 0.0
-        if not (c == c):
-            c = 0.0
-        ci = int(c) if c >= 0 else 0
-        if ci > 255:
+        if not (c == c) or c <= 0.0:
+            ci = 0
+        elif not math.isfinite(c) or c >= 255.0:
             ci = 255
-        v = _S2L[ci] * i
+        else:
+            ci = int(c)
+        lin = _S2L[ci]
+        if not math.isfinite(i):
+            v = 0.0 if lin == 0.0 else 1.0
+        else:
+            v = lin * i
+            if not math.isfinite(v):
+                v = 0.0
         out.append(_srgb255_from_linear(v))
     return (out[0], out[1], out[2])
 
 
 def shade_rgb_legacy(base: Sequence[float], intensity: float) -> RGB:
     """**冻结**的旧口径 `int(base × i)`（sRGB 空间直接乘）。仅供对照与回退复现。"""
-    r = int(base[0] * intensity)
-    g = int(base[1] * intensity)
-    b = int(base[2] * intensity)
-    return (0 if r < 0 else (255 if r > 255 else r),
-            0 if g < 0 else (255 if g > 255 else g),
-            0 if b < 0 else (255 if b > 255 else b))
+    iv = float(intensity)
+    if not (iv == iv) or iv <= 0.0:
+        return (0, 0, 0)
+    out = []
+    for k in range(3):
+        c = float(base[k])
+        if not (c == c) or c <= 0.0:
+            out.append(0)
+            continue
+        prod = c * iv
+        if not (prod == prod) or prod <= 0.0:
+            out.append(0)
+        elif not math.isfinite(prod) or prod >= 255.0:
+            out.append(255)
+        else:
+            out.append(int(prod))
+    return (out[0], out[1], out[2])
 
 
 # ─────────────────────────────────────────────────────────── 色板 / 能力清单

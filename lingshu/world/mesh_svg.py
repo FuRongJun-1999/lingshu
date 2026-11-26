@@ -159,6 +159,16 @@ def _validate_style(st: Dict) -> None:
         _require_finite_range(st["elevation_deg"], "elevation_deg")
 
 
+def _require_rgb3(rgb, name: str = "rgb") -> Tuple[float, float, float]:
+    if not isinstance(rgb, (tuple, list)) or len(rgb) < 3:
+        raise ValueError("%s 须为至少 3 元的数值序列，收到 %r" % (name, rgb))
+    return (
+        _require_finite_range(rgb[0], f"{name}[0]"),
+        _require_finite_range(rgb[1], f"{name}[1]"),
+        _require_finite_range(rgb[2], f"{name}[2]"),
+    )
+
+
 def _tone(rgb, mode, k: float = 0.45):
     """出图色调：**只改颜色，不改几何/顺序**。
 
@@ -166,6 +176,7 @@ def _tone(rgb, mode, k: float = 0.45):
     深灰/墨绿（金属件），在浅底技术插画上会糊成一片黑，"按材质分色"就白做了。
     这是**呈现层**的调整，与"从几何导出"无关，故做成显式开关（默认关）。
     """
+    _require_rgb3(rgb, "rgb")
     kf = _require_finite_range(k, "fill_tone_k", lo=0.0, hi=1.0)
     if mode != "lighten":
         return rgb
@@ -193,10 +204,11 @@ class LayeredSVGBackend(SVGBackend):
         self._ghost = False
 
     def set_depth(self, inv_z: float) -> None:                 # noqa: D102
+        z = _require_finite_range(inv_z, "inv_z")
         if self._ghost:
             self.end_group()
         self.begin_group("step-%03d" % self._steps, label="绘制步",
-                         **{"data-layer": "step", "data-z": "%.6f" % float(inv_z)})
+                         **{"data-layer": "step", "data-z": "%.6f" % z})
         self._steps += 1
         self._ghost = True
 
@@ -217,13 +229,22 @@ def project_point(p_world, cam, screen_w: int, screen_h: int = None):
     `sw/2`、`sh/2` 与同一个 `invz`）——守卫 `test_f_*` 用"与内核三角形顶点逐点重合
     到 1e-9"钉死这件事，防止两条实现悄悄走偏。
     """
+    sw = _require_int_ge(screen_w, "screen_w", 1)
+    sh = _require_int_ge(screen_h, "screen_h", 1) if screen_h is not None else sw
+    if not isinstance(p_world, (tuple, list)) or len(p_world) != 3:
+        return None
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in p_world):
+        return None
     c = cam.to_camera(p_world)
     if c[2] <= mesh3d.NEAR_EPS:
         return None
     invz = 1.0 / c[2]
-    f = cam.focal(screen_w)
-    sh = screen_h if screen_h is not None else screen_w
-    return (screen_w / 2.0 + f * c[0] * invz, sh / 2.0 - f * c[1] * invz, invz)
+    f = cam.focal(sw)
+    x = sw / 2.0 + f * c[0] * invz
+    y = sh / 2.0 - f * c[1] * invz
+    if not (all(math.isfinite(float(v)) for v in c) and math.isfinite(x) and math.isfinite(y) and math.isfinite(invz)):
+        return None
+    return (x, y, invz)
 
 
 def _project(p_world, cam, sw: int, sh: int):
@@ -348,6 +369,8 @@ def _project_edge(p0, p1, center, cam, sw: int, sh: int, near: float):
     a = (p0[0] + cx, p0[1] + cy, p0[2] + cz)
     b = (p1[0] + cx, p1[1] + cy, p1[2] + cz)
     ca, cb = cam.to_camera(a), cam.to_camera(b)
+    if not (all(math.isfinite(v) for v in ca) and all(math.isfinite(v) for v in cb)):
+        return None
     if ca[2] < near and cb[2] < near:
         return None
     poly = (ca, cb)
@@ -384,8 +407,11 @@ def _stream_sorted(stream):
 
 
 def _darken(rgb, k: float = 0.42):
+    r, g, b = _require_rgb3(rgb, "rgb")
     kf = _require_finite_range(k, "k", lo=0.0, hi=1.0)
-    return (max(0, int(rgb[0] * kf)), max(0, int(rgb[1] * kf)), max(0, int(rgb[2] * kf)))
+    return (max(0, min(255, int(r * kf))),
+            max(0, min(255, int(g * kf))),
+            max(0, min(255, int(b * kf))))
 
 
 def _lum(rgb) -> float:
@@ -412,9 +438,10 @@ def _darkest_face_color(faces, default=(40, 44, 52)):
 
 
 def _hex(rgb) -> str:
-    return "#%02x%02x%02x" % (max(0, min(255, int(rgb[0]))),
-                              max(0, min(255, int(rgb[1]))),
-                              max(0, min(255, int(rgb[2]))))
+    r, g, b = _require_rgb3(rgb, "rgb")
+    return "#%02x%02x%02x" % (max(0, min(255, int(r))),
+                              max(0, min(255, int(g))),
+                              max(0, min(255, int(b))))
 
 
 def _scale_of(sw: int, sh: int, base: float = 800.0) -> float:
@@ -480,14 +507,18 @@ def render_mesh_svg(world, screen_w: int = 800, screen_h: int = 600,
     守卫 `test_e_*` 用"多边形序列逐点相同"钉死这一点。
     """
     st = dict(STYLE)
-    if isinstance(style, str):
+    if style is None:
+        pass
+    elif isinstance(style, str):
         preset = STYLE_PRESETS.get(style)
         if preset is None:
             raise ValueError("未知出图预设 %r；可选：%s"
                              % (style, ", ".join(sorted(STYLE_PRESETS))))
         st.update(preset)
+    elif isinstance(style, dict):
+        st.update(style)
     else:
-        st.update(style or {})
+        raise ValueError("style 须为预设名 str、dict 或 None，收到 %r" % (style,))
     world._check_screen_dim(screen_w, screen_h)
     _validate_style(st)
     #: ★ 构图修复（本件）：**没给相机就自动取景**，而不是沿用 `world.camera`
@@ -644,7 +675,9 @@ def _emit_mesh(backend, world, obj, mesh, cam, sw, sh, st, scale, counts, layers
                                     p0[2] + obj.center[2])), \
                 cam.to_camera((p1[0] + obj.center[0], p1[1] + obj.center[1],
                                p1[2] + obj.center[2]))
-            key = 0.5 * (1.0 / max(ca[2], 1e-9) + 1.0 / max(cb[2], 1e-9))
+            za = ca[2] if math.isfinite(ca[2]) and ca[2] > 1e-9 else 1e-9
+            zb = cb[2] if math.isfinite(cb[2]) and cb[2] > 1e-9 else 1e-9
+            key = 0.5 * (1.0 / za + 1.0 / zb)
             stream.append((key, 1, ("line", ocol,
                                     max(1, int(round(w))), pts)))
     stream = _stream_sorted(stream)               # 远→近；同深度先色块后线
