@@ -77,6 +77,8 @@ def _send(connection, value):
         payload = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
     except RecursionError as exc:
         raise WriteError("response is too deeply nested") from exc
+    except (ValueError, TypeError) as exc:
+        raise WriteError("response cannot be encoded as strict JSON") from exc
     if len(payload) > MAX_MESSAGE:
         raise WriteError("response exceeds the service limit; request a smaller page")
     connection.sendall(struct.pack("!I", len(payload)) + payload)
@@ -182,6 +184,8 @@ class StructureServer(socketserver.ThreadingTCPServer):
     def __init__(self, address, writer, tls, principals, *, max_connections=16, bind_and_activate=True):
         if tls.verify_mode != ssl.CERT_REQUIRED:
             raise PermissionError("mutual TLS client authentication is required")
+        if isinstance(max_connections, bool) or not isinstance(max_connections, int) or max_connections < 1:
+            raise WriteError("max_connections must be a positive integer")
         self.writer, self.tls, self.principals = writer, tls, dict(principals)
         self._capacity = threading.BoundedSemaphore(max_connections)
         super().__init__(address, _Handler, bind_and_activate=bind_and_activate)
@@ -216,9 +220,15 @@ class StructureClient:
             with self.tls.wrap_socket(raw, server_hostname=self.server_name) as connection:
                 _send(connection, {"command": command, "arguments": arguments})
                 response = _receive(connection)
+        if not isinstance(response, dict) or not isinstance(response.get("ok"), bool):
+            raise WriteError("service returned an invalid response envelope")
         if not response["ok"]:
             errors = {"PermissionDenied": PermissionDenied, "Conflict": Conflict}
-            raise errors.get(response["error"], WriteError)(response["message"])
+            err_name = response.get("error") if isinstance(response.get("error"), str) else "WriteError"
+            err_msg = response.get("message") if isinstance(response.get("message"), str) else "service error"
+            raise errors.get(err_name, WriteError)(err_msg)
+        if "result" not in response:
+            raise WriteError("service response is missing result")
         return response["result"]
 
 
@@ -226,16 +236,38 @@ def load_service(config_file, *, bind_and_activate=True):
     """Trusted startup: check permissions once and pin certificate grants."""
     config_file = Path(config_file).resolve(strict=True)
     root = check_protected_directory(config_file.parent, (config_file,))
-    config = json.loads(config_file.read_text(encoding="utf-8"))
-    files = {name: root / config[name] for name in ("database", "certificate", "key", "ca")}
+    try:
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise WriteError("service configuration is not valid JSON") from exc
+    if not isinstance(config, dict):
+        raise WriteError("service configuration must be a JSON object")
+    files = {}
+    for name in ("database", "certificate", "key", "ca"):
+        raw = config.get(name)
+        if not isinstance(raw, str) or not raw.strip():
+            raise WriteError(f"service configuration {name} must be a nonempty path string")
+        target = (root / raw).resolve()
+        if target == root or target.is_dir():
+            raise WriteError(f"service configuration {name} must name a file, not a directory")
+        files[name] = root / raw
     extra = [Path(str(files["database"]) + suffix) for suffix in ("-wal", "-shm", "-journal")]
     check_protected_directory(root, [*files.values(), *extra])
+    raw_principals = config.get("principals")
+    if not isinstance(raw_principals, list):
+        raise WriteError("service configuration principals must be a list")
     principals = {}
-    for grant in config["principals"]:
+    for grant in raw_principals:
         identity, actor = _parse_grant(grant)
         if identity in principals:
             raise WriteError("configure a unique certificate identity")
         principals[identity] = actor
+    raw_listen = config.get("listen", ["127.0.0.1", 7443])
+    if (not isinstance(raw_listen, (list, tuple)) or len(raw_listen) != 2
+            or not isinstance(raw_listen[0], str) or not raw_listen[0].strip()
+            or isinstance(raw_listen[1], bool) or not isinstance(raw_listen[1], int)
+            or not 0 <= raw_listen[1] <= 65535):
+        raise WriteError("service configuration listen must be [host, port]")
     tls = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=str(files["ca"]))
     tls.keylog_filename = None
     tls.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -246,7 +278,7 @@ def load_service(config_file, *, bind_and_activate=True):
     try:
         store.migrate_v17_coordinates()
         writer = StructureWriter(store)
-        server = StructureServer(tuple(config.get("listen", ["127.0.0.1", 7443])),
+        server = StructureServer((raw_listen[0], raw_listen[1]),
                                  writer, tls, principals, bind_and_activate=bind_and_activate)
     except BaseException:
         store.close()

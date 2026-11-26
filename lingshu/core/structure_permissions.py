@@ -2,6 +2,9 @@
 import os
 from pathlib import Path
 
+_S_IFMT = 0o170000
+_S_IFREG = 0o100000
+
 
 def _windows_identity_and_acl(path):
     import ctypes
@@ -90,10 +93,27 @@ def check_protected_directory(root, files=()):
     if os.name == "nt":
         for path in checked:
             _windows_identity_and_acl(path)
+        for path in checked[1:]:
+            fstat = path.stat()
+            if (fstat.st_mode & _S_IFMT) != _S_IFREG:
+                raise PermissionError("protected target must be a regular file")
+            if fstat.st_nlink > 1:
+                raise PermissionError("protected file must not have hardlink aliases")
     elif os.name == "posix":
         stat = root.stat()
         if stat.st_uid != os.geteuid() or stat.st_mode & 0o077:
             raise PermissionError("service must own storage with mode 0700")
+        euid = os.geteuid()
+        for path in checked[1:]:
+            fstat = path.stat()
+            if (fstat.st_mode & _S_IFMT) != _S_IFREG:
+                raise PermissionError("protected target must be a regular file")
+            if fstat.st_uid != euid:
+                raise PermissionError("service must own protected files inside storage")
+            if fstat.st_nlink > 1:
+                raise PermissionError("protected file must not have hardlink aliases")
+            if fstat.st_mode & 0o002:
+                raise PermissionError("protected file must not be world-writable")
     else:
         raise PermissionError("unsupported OS permission model")
     return root

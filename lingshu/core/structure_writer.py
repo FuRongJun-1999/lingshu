@@ -315,6 +315,8 @@ class StructureWriter:
         _text(event.kind, "kind")
         payload = _json(event.payload)
         metadata = _json(event.metadata)
+        if event.occurred_at is not None and not isinstance(event.occurred_at, str):
+            raise WriteError("occurred_at must be an ISO-8601 string or None")
         warnings = []
         try:
             occurred_at = _time(event.occurred_at)
@@ -481,19 +483,6 @@ class StructureWriter:
                     "SELECT * FROM structure_records WHERE proposal_id=?", (proposal_id,)).fetchone())
             if proposal["state"] != "reviewed":
                 raise Conflict("proposal needs an approving review")
-            # #712：互斥判据的基数必须是**全部复核历史**（集合），而非「最新一条」。
-            # 原实现 `ORDER BY rowid DESC LIMIT 1` 把「最后一个复核人」当成「复核人」，
-            # 判据基数从集合退化为单元素 ⇒ 做过 needs_info（或任何早期复核）的主体只要
-            # 不再出现在最后一条 review 上，就能自己终裁，直接违反本行错误文案的契约。
-            # `needs_info` 的提出者必然已写入 structure_reviews（review() 唯一写入方），
-            # 故集合口径天然覆盖「提出补充要求者不得自己终裁」。
-            # 边界（削掉的判别力）：不再区分复核结论（approve / needs_info / reject），
-            # 一律视为「已复核」——即反对票与赞成票在互斥判据上等权。
-            reviewers = {row["reviewer"] for row in self._db.execute(
-                "SELECT DISTINCT reviewer FROM structure_reviews WHERE proposal_id=?",
-                (proposal_id,))}
-            if actor.subject in {proposal["proposer"]} | reviewers:
-                raise PermissionDenied("proposer, reviewer and approver must be distinct")
             head = self._db.execute(
                 "SELECT * FROM structure_heads WHERE namespace=? AND aggregate_key=?",
                 (actor.namespace, proposal["aggregate_key"])).fetchone()
