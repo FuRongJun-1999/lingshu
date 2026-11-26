@@ -843,7 +843,8 @@ class BrainStore:
                     st = item.get("state")
                     if st and st not in accept_states:
                         continue                  # 明确否决态不注入世界（缺省踢 REJECT）
-                sp = ((fm.get("spatial") or {}).get("coords3d") or {})
+                raw_spatial = fm.get("spatial")
+                sp = (raw_spatial.get("coords3d") if isinstance(raw_spatial, dict) else None) or {}
                 coords = None
                 if isinstance(sp, dict) and sp:
                     parsed = {}

@@ -81,6 +81,10 @@ def _node(node, qualification="BLINDSPOT"):
     fm = node.get("frontmatter") or {}
     tags = list(fm.get("tags") or [])
     cs = fm.get("condition_space") or {}
+    raw_spatial = fm.get("spatial")
+    raw_coords = raw_spatial.get("coords3d") if isinstance(raw_spatial, dict) else None
+    coords_items = raw_coords.items() if isinstance(raw_coords, dict) else ()
+    raw_attrs = fm.get("state_attributes")
     return {"id": str(node.get("id") or fm.get("id") or ""),
             "content": str(node.get("content") or ""), "tags": tags,
             "layer": fm.get("layer", "knowledge"),
@@ -88,9 +92,8 @@ def _node(node, qualification="BLINDSPOT"):
                            for key in CONDITION_FIELDS},
             "provenance": _provenance(tags),
             "qualification": qualification if qualification in STATES else "BLINDSPOT",
-            "spatial": {k: _finite_or_none(v) for k, v in
-                        ((fm.get("spatial") or {}).get("coords3d") or {}).items()},
-            "attributes": fm.get("state_attributes") or {},
+            "spatial": {k: _finite_or_none(v) for k, v in coords_items},
+            "attributes": _finite_or_none(raw_attrs) if isinstance(raw_attrs, dict) else {},
             "record_role": fm.get("role"),
             "body_window": {key: node.get(key) for key in (
                 "truncated", "content_lines", "content_bytes", "offset", "next_offset")}}

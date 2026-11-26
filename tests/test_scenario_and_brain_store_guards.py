@@ -171,6 +171,32 @@ def test_brain_store_rejects_bool_and_nonfinite_inputs():
         with pytest.raises(ValueError, match="spatial_coordinates"):
             engine.add_perception("x", spatial_coordinates=bad_coords)
 
+    # Non-dict spatial frontmatter must not crash BrainStore.get_nodes_by_tag
+    class _BadSpatialClient:
+        def call(self, tool, args):
+            return {"ok": True, "results": [{"id": "n1", "content": "hi", "frontmatter": {"spatial": "not-a-dict", "tags": ["t1"]}}]}
+    got_nodes = BrainStore(_BadSpatialClient()).get_nodes_by_tag("t1", limit=1)
+    assert len(got_nodes) == 1 and got_nodes[0].spatial_coordinates is None
+
+
+def test_scenario_cli_rejects_unc_without_render_and_mixed_slashes(tmp_path):
+    import contextlib
+    import io
+    from lingshu.world import scenario_cli
+
+    # UNC --root must be rejected even WITHOUT --render, and mixed \/ / /\ prefixes must be blocked
+    for argv in (
+        ["brain", "--root", "//127.0.0.1/share", "--brain-path", str(tmp_path), "--query", "q", "--mode", "world"],
+        ["brain", "--root", r"\/?\C:\Windows", "--brain-path", str(tmp_path), "--query", "q", "--mode", "world"],
+        ["brain", "--root", str(tmp_path), "--brain-path", str(tmp_path),
+         "--render", r"/\?\C:\Windows\out.png", "--query", "q", "--mode", "world"],
+    ):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = scenario_cli.main(argv)
+        assert rc == 1
+        assert "UNC/device" in buf.getvalue(), f"expected UNC/device rejection for {argv}, got {buf.getvalue()!r}"
+
 
 _MUTATION_ARMS = {
     "M1_edge_inf_sanitize": (
@@ -187,9 +213,9 @@ _MUTATION_ARMS = {
     ),
     "M3_unc_brain_root": (
         "lingshu/world/scenario_cli.py",
-        'if _raw_root.startswith("//") or _raw_root.startswith("\\\\\\\\"):',
+        'if args.source == "brain" and _is_unc_or_device(str(args.root)):',
         "if False:",
-        "test_scenario_cli_rejects_unc_brain_root",
+        "test_scenario_cli_rejects_unc_without_render_and_mixed_slashes",
     ),
     "M4_brain_timeout_bool": (
         "lingshu/world/brain_store.py",
