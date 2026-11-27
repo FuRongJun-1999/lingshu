@@ -542,18 +542,17 @@ class WorldLearner:
 
     def learning_curve(self, epochs: int = 5, per_epoch_ticks: int = 15,
                        eval_ticks: int = 12) -> Dict:
-        """增量学习曲线：每轮多学观测 → 评估（held-out）→ 命中率↑ + 距离↓。"""
+        """每轮训练后评估一次，命中率与平均距离来自同一段观测。"""
         curve = []
         for e in range(max(1, int(epochs))):
             self.run(n=per_epoch_ticks)
             self.learn()
             res = self.eval_phase(eval_ticks)
-            loss = self.next_state_loss(eval_ticks)
-            curve.append({"epoch": e + 1, "observations": self.tick,
+            curve.append({"epoch": e + 1, "observations": res["tick"],
                           "learned_rate": res["learned_rate"],
                           "naive_rate": res["naive_rate"],
                           "oracle_rate": res["oracle_rate"],
-                          "mean_distance": loss["mean_distance"]})
+                          "mean_distance": res["mean_distance"]})
         return {"metric_version": 2, "hit_threshold": self.hit_threshold, "curve": curve,
                 "improvement": round(curve[-1]["learned_rate"] - curve[0]["learned_rate"], 4)
                 if curve and curve[-1]["learned_rate"] is not None

@@ -48,3 +48,9 @@ world = load_world_from_brain(agent, limit=300)
 本次将此行为明确写入接口说明；零预算是否代表禁用查询，留待 store 契约统一。
 MCP 参数按操作翻译：read 的候选数是 `k`，state_chain 的条数是 `limit`。
 脑端 read 的预算式读取还使用 `limit` 表示近期事件条数，不能全局改名或直接加别名。
+
+## 学习曲线
+
+每轮推进训练段和一次评估段。命中率与平均距离都取自该次评估，
+`observations` 记录评估结束时的累计观测数。评估步数为零时，命中率和平均距离
+均为 `None`。
