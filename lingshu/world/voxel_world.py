@@ -48,6 +48,13 @@ BLOCK_NAMES = {
 }
 
 
+def _as_float_vector3(name: str, values) -> Tuple[float, float, float]:
+    components = tuple(values)
+    if len(components) != 3:
+        raise ValueError("%s 必须恰好包含 3 个分量" % name)
+    return tuple(float(value) for value in components)
+
+
 @dataclass
 class VoxelEntity:
     """动态实体（体素世界中的物体）：位置 + 速度 + 类别。"""
@@ -153,8 +160,11 @@ class VoxelWorld:
                     velocity: Tuple[float, float, float] = (0, 0, 0),
                     attrs: Optional[Dict] = None) -> str:
         """生成动态实体。返回 entity_id。"""
-        e = VoxelEntity(category=category, pos=tuple(float(v) for v in pos),
-                        velocity=tuple(float(v) for v in velocity), attrs=attrs or {})
+        pos_values = _as_float_vector3("pos", pos)
+        velocity_values = _as_float_vector3("velocity", velocity)
+        e = VoxelEntity(category=category,
+                        pos=pos_values, velocity=velocity_values,
+                        attrs=attrs or {})
         self.entities[e.id] = e
         self._trails[e.id] = [self._trail_point(e)]
         return e.id
@@ -165,7 +175,7 @@ class VoxelWorld:
         e = self.entities.get(entity_id)
         if e is None:
             return None
-        e.pos = tuple(float(v) for v in new_pos)
+        e.pos = _as_float_vector3("new_pos", new_pos)
         if record:
             self._record_trail(entity_id, self._trail_point(e))
         return e

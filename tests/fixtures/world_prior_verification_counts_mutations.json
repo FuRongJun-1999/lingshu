@@ -1,0 +1,63 @@
+{
+  "guard": "tests/test_world_prior_atomic_restore.py",
+  "total": 37,
+  "sources": [
+    "lingshu/world/wm_simloop.py"
+  ],
+  "baseline_failures": [
+    "test_prior_round_trip_preserves_verification_counts[with-total-legacy]",
+    "test_prior_round_trip_preserves_verification_counts[with-total-conservative]",
+    "test_prior_round_trip_preserves_verification_counts[before-total-legacy]",
+    "test_prior_round_trip_preserves_verification_counts[before-total-conservative]",
+    "test_invalid_verification_counts_fail_atomically[bool-total]",
+    "test_invalid_verification_counts_fail_atomically[float-total]",
+    "test_invalid_verification_counts_fail_atomically[negative-total]",
+    "test_invalid_verification_counts_fail_atomically[below-verified-total]",
+    "test_invalid_verification_counts_fail_atomically[invalid-completeness]",
+    "test_invalid_verification_counts_fail_atomically[complete-without-total]"
+  ],
+  "mutations": [
+    {
+      "name": "omit_counts_from_receipt",
+      "test": "test_prior_round_trip_preserves_verification_counts[with-total-legacy]",
+      "assertion": "restored unverified count changed",
+      "changes": [
+        {
+          "file": "lingshu/world/wm_simloop.py",
+          "class": "SimulationLoop",
+          "method": "flush_payloads",
+          "old": "                 \"ticks_stepped\": self.ticks_stepped,\n                 \"step_count_complete\": self._step_count_complete,\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "name": "mark_partial_count_complete_on_resave",
+      "test": "test_prior_round_trip_preserves_verification_counts[before-total-conservative]",
+      "assertion": "resaved completeness changed",
+      "changes": [
+        {
+          "file": "lingshu/world/wm_simloop.py",
+          "class": "SimulationLoop",
+          "method": "flush_payloads",
+          "old": "\"step_count_complete\": self._step_count_complete,",
+          "new": "\"step_count_complete\": True,"
+        }
+      ]
+    },
+    {
+      "name": "publish_model_before_validating_count",
+      "test": "test_invalid_verification_counts_fail_atomically[below-verified-total]",
+      "assertion": "invalid count partially changed the running model",
+      "changes": [
+        {
+          "file": "lingshu/world/wm_simloop.py",
+          "class": "SimulationLoop",
+          "method": "load_priors",
+          "old": "            if type(restored_steps) is not int or restored_steps < verified:",
+          "new": "            self.wm.__dict__.update(candidate.__dict__)\n            if type(restored_steps) is not int or restored_steps < verified:"
+        }
+      ]
+    }
+  ]
+}
