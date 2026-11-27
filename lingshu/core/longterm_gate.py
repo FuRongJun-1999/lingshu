@@ -574,7 +574,7 @@ class LongTermMemoryGate:
             result = self._snapshot_write(content, source, tags, entities,
                                           importance_hint, probe)
         if result.pop("_need_links", False):
-            # 事务外建边（见边界④）；失败与改前同值（`links=0`），不抛出。
+            # 事务外建边（见边界④）；返回实际新建数，部分失败保留已建数，不抛出。
             result["links"] = self._snapshot_link(result.get("node_id"), content)
         divergent_id = result.pop("_divergent_id", None)
         if divergent_id:
@@ -652,23 +652,27 @@ class LongTermMemoryGate:
         return row[0] if row else None
 
     def _snapshot_link(self, node_id, content: str) -> int:
-        """长期层关联边（事务外调用）：与最相似知识节点建 similar 边，返回建边数。
+        """长期层关联边（事务外调用）：与最相似知识节点建 similar 边，返回新建边数。
 
         改前该段内联在 `write_snapshot` 里；#770 把它移出写事务（见 `write_snapshot`
-        边界④）。异常语义与改前同值：整体失败 ⇒ `0`，不抛出。
+        边界④）。只统计本次实际插入的新边；去重命中不是新建。发生部分失败时保留
+        已成功插入的数量，不抛出。
         """
+        created = 0
         try:
             from .core import EdgeType
             links = self.engine.store.search_content(content, limit=3)
             for other, sim in links:
                 if other.id != node_id and sim >= 0.25:
-                    self.engine.add_edge(node_id, other.id,
-                                         relation_type=EdgeType.SIMILAR,
-                                         source_evidence="inferred")
-            return len([x for x in links if x[0].id != node_id])
+                    edge = self.engine.add_edge(
+                        node_id, other.id, relation_type=EdgeType.SIMILAR,
+                        source_evidence="inferred")
+                    if not getattr(edge, "merged", False):
+                        created += 1
         except Exception:
-            _log.debug("longterm_gate: 相似边推断失败，按 0 条继续", exc_info=True)
-            return 0
+            _log.debug("longterm_gate: 相似边推断部分失败，保留已建 %d 条继续",
+                        created, exc_info=True)
+        return created
 
     def _snapshot_write(self, content: str, source: str, tags: list,
                         entities: list, importance_hint: float,
