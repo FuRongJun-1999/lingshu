@@ -17,12 +17,13 @@
     ≥2 个独立外部来源佐证，则不受前提影响（它已被独立证实）。
   - 撤回标记：jsup(c) < REFUTED_BELOW 且 c 未被独立佐证 ⇒ 状态 `undermined`（前提已被推翻），
     并列出推翻它的前提。
-  - 传播：任一节点的证据变化 → 收集其下游闭包 → 以各自 own 为初值做 Gauss-Seidel 迭代至不动点
-    （值域是有限个 own 值的 min/max 组合，至多 |闭包|+1 轮收敛；环可处理）→ 把 belief 写回
+  - 传播：任一节点的证据变化 → 收集其下游闭包 → 单遍最小堆求最大不动点（GFP，
+    与从 own 出发的 Gauss-Seidel 不动点逐位等价；环可处理）→ 把 belief 写回
     nodes.confidence，使既有读路径（recall 的排序、阈值）看到同一个值。
 """
 from __future__ import annotations
 
+import heapq
 import json
 import time
 import uuid
@@ -131,21 +132,69 @@ class TruthMaintenance:
             q.extend(self.dependents_of(n))
         return order
 
-    def _belief(self, n: str, own: Dict[str, Dict], belief: Dict[str, float]) -> float:
-        o = own[n]
-        js = self._just_cache.get(n)
-        if not js or o["status"] == "corroborated":
-            return o["confidence"]
-
-        def b(p):  # 闭包内取本轮迭代值；闭包外取已维护的 nodes.confidence
-            return belief[p] if p in belief else self._external_belief(p)
-
-        jsup = max(min(b(p) for p in j) for j in js)
-        return min(o["confidence"], jsup)
-
     def _external_belief(self, p: str) -> float:
         node = self.store.get_node(p)
         return float(node.confidence) if node is not None else 0.0
+
+    def _solve_beliefs(self, nodes: List[str], own: Dict[str, Dict]) -> Dict[str, float]:
+        """单遍最小堆求最大不动点（GFP），与从 own 出发的 Gauss-Seidel 不动点逐位等价。"""
+        belief: Dict[str, float] = {n: own[n]["confidence"] for n in nodes}
+        heap: List[tuple] = [(v, n) for n, v in belief.items()]
+        alive_count: Dict[str, int] = {}
+        j_concl: List[str] = []
+        j_capped: List[bool] = []
+        prem_to_jids: Dict[str, List[int]] = {}
+        ext_seen: set = set()
+
+        for c in belief:
+            o = own[c]
+            js = self._just_cache.get(c)
+            if not js or o["status"] == "corroborated":
+                continue
+            alive_count[c] = len(js)
+            for j in js:
+                jid = len(j_concl)
+                j_concl.append(c)
+                j_capped.append(False)
+                for p in j:
+                    lst = prem_to_jids.get(p)
+                    if lst is None:
+                        prem_to_jids[p] = [jid]
+                    else:
+                        lst.append(jid)
+                    if p not in belief and p not in ext_seen:
+                        ext_seen.add(p)
+                        heap.append((self._external_belief(p), p))
+
+        heapq.heapify(heap)
+        finalized: set = set()
+        remaining = len(belief)
+        heappop = heapq.heappop
+        heappush = heapq.heappush
+
+        while heap and remaining:
+            v, u = heappop(heap)
+            if u in finalized:
+                continue
+            finalized.add(u)
+            if u in belief:
+                belief[u] = v
+                remaining -= 1
+                if not remaining:
+                    break
+            jids = prem_to_jids.get(u)
+            if not jids:
+                continue
+            for jid in jids:
+                if not j_capped[jid]:
+                    j_capped[jid] = True
+                    c = j_concl[jid]
+                    rem = alive_count[c] - 1
+                    alive_count[c] = rem
+                    if rem == 0 and c not in finalized and v < own[c]["confidence"]:
+                        heappush(heap, (v, c))
+
+        return belief
 
     # ------------------------------------------------------------ 传播
     def propagate(self, roots: Iterable[str]) -> Dict[str, float]:
@@ -162,16 +211,7 @@ class TruthMaintenance:
                     own[n] = {**own[n], "confidence": 0.0}
             self._just_cache = {n: self.justifications_of(n) for n in nodes}
             try:
-                belief = {n: own[n]["confidence"] for n in nodes}
-                for _ in range(len(nodes) + 1):
-                    changed = False
-                    for n in nodes:
-                        b = self._belief(n, own, belief)
-                        if abs(b - belief[n]) > 1e-12:
-                            belief[n] = b
-                            changed = True
-                    if not changed:
-                        break
+                belief = self._solve_beliefs(nodes, own)
                 # #769 ①（先判后写）：写回**整个闭包**之前做一次整体预判——闭包内若含
                 # 共享层行，旧形态下 `executemany` 会连同该行一起改写（且一旦中途抛错，
                 # 前半批已提交）。整体预判 ⇒ 被拒时零落库。

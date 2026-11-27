@@ -95,6 +95,8 @@ STDLIB_ALLOWED = frozenset({
     "numbers",
     # 世界经验恢复的候选状态使用浅复制；只登记标准库分类，未知名判据不变。
     "copy",
+    # TMS 单遍最小堆 GFP 传播（core/tms.py）引入标准库 heapq；只补标准库分类，未知名判据不变。
+    "heapq",
     # 运行时 / 导入 / 告警（weakref/functools/contextlib：2026-10-09 连接槽生命周期
     # 修复时 core.py 引入——标准库；守卫按设计判红「未知裸名」，此处补分类而非放宽判据）
     "sys", "os", "importlib", "warnings", "pathlib",

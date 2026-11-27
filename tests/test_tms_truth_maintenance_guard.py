@@ -182,7 +182,7 @@ def test_t5_input_validation_rejects_bad_justifications(engine):
 
 # ═══════════════════════════════════════════ 定点变异：证明上面真的会红
 def test_t6_mutation_amplify_turns_t1_red(engine, monkeypatch):
-    """把 `_belief` 改成**会放大**（`max` 而非 `min`）⇒ T1 的不放大判据必须转红。"""
+    """把 `_solve_beliefs` 改成**会放大**（`max` 而非 `min`）⇒ T1 的不放大判据必须转红。"""
     tms = engine.enable_tms()
     a, b, c = _node(engine, "前提A"), _node(engine, "前提B"), _node(engine, "结论C")
     tms.add_justification(c, [a, b])
@@ -190,18 +190,21 @@ def test_t6_mutation_amplify_turns_t1_red(engine, monkeypatch):
     _set_conf(engine, b, 0.9)
     _own(tms, {c: 0.1})
 
-    def amplified(self, n, own, belief):
-        o = own[n]
-        js = self._just_cache.get(n)
-        if not js or o["status"] == "corroborated":
-            return o["confidence"]
+    def amplified(self, nodes, own):
+        belief = {n: own[n]["confidence"] for n in nodes}
+        for n in nodes:
+            o = own[n]
+            js = self._just_cache.get(n)
+            if not js or o["status"] == "corroborated":
+                continue
 
-        def bp(p):
-            return belief[p] if p in belief else self._external_belief(p)
-        jsup = max(min(bp(p) for p in j) for j in js)
-        return max(o["confidence"], jsup)                 # ← 变异：放大
+            def bp(p):
+                return belief[p] if p in belief else self._external_belief(p)
+            jsup = max(min(bp(p) for p in j) for j in js)
+            belief[n] = max(o["confidence"], jsup)        # ← 变异：放大
+        return belief
 
-    monkeypatch.setattr(TMS.TruthMaintenance, "_belief", amplified)
+    monkeypatch.setattr(TMS.TruthMaintenance, "_solve_beliefs", amplified)
     got = tms.propagate([c])
     assert got[c] > 0.1 + 1e-9, (
         "变异后结论未被抬高 ⇒ T1 没有判别力（假绿）：%r" % got.get(c))
