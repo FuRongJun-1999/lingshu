@@ -254,10 +254,13 @@ def frames(
         raise TypeError(f"frames(): n 必须是整数，得到 {type(n).__name__}")
     if n < 1:
         raise ValueError(f"frames(): n 必须 >= 1，得到 {n}（不做 0 帧输出）")
-    try:
-        w, h = int(size[0]), int(size[1])
-    except (TypeError, IndexError, ValueError) as exc:
-        raise TypeError(f"frames(): size 必须是 (宽, 高) 二元组，得到 {size!r}") from exc
+    if not isinstance(size, (tuple, list)) or len(size) != 2:
+        raise TypeError(f"frames(): size 必须是 (宽, 高) 二元组，得到 {size!r}")
+    w_raw, h_raw = size
+    if (isinstance(w_raw, bool) or not isinstance(w_raw, int)
+            or isinstance(h_raw, bool) or not isinstance(h_raw, int)):
+        raise TypeError(f"frames(): size 必须是整数二元组 (宽, 高)，得到 {size!r}")
+    w, h = w_raw, h_raw
     if w < 1 or h < 1:
         raise ValueError(f"frames(): size 必须为正，(宽, 高) = {size!r}")
     render = getattr(renderer, "render", None)
@@ -307,6 +310,7 @@ def to_gif(
     duration_ms = _check_duration(duration_ms)
     loop = _check_loop(loop)
 
+    pal = _quantize(seq)
     _ensure_parent(path)
     # 先写同目录的临时文件，回读自校验通过才 os.replace 到目标 ⇒ 目标路径上永不出现坏文件。
     fd, tmp = tempfile.mkstemp(
@@ -314,7 +318,6 @@ def to_gif(
         dir=os.path.dirname(os.path.abspath(path)),
     )
     os.close(fd)
-    pal = _quantize(seq)
     try:
         pal[0].save(
             tmp,
@@ -367,12 +370,14 @@ def to_strip(
     if isinstance(cols, bool) or not isinstance(cols, int) or cols < 1:
         raise ValueError(f"to_strip(): cols 必须是 >= 1 的整数，得到 {cols!r}")
     rows = -(-len(seq) // cols)
-    try:
-        bg = tuple(int(c) for c in background)
-        if len(bg) != 3:
-            raise ValueError
-    except (TypeError, ValueError) as exc:
-        raise TypeError(f"to_strip(): background 必须是 (r, g, b)，得到 {background!r}") from exc
+    if not isinstance(background, (tuple, list)) or len(background) != 3:
+        raise TypeError(f"to_strip(): background 必须是 (r, g, b)，得到 {background!r}")
+    for ch in background:
+        if isinstance(ch, bool) or not isinstance(ch, int):
+            raise TypeError(f"to_strip(): background 通道必须是 0..255 整数，得到 {background!r}")
+        if ch < 0 or ch > 255:
+            raise ValueError(f"to_strip(): background 通道必须在 0..255，得到 {background!r}")
+    bg = (background[0], background[1], background[2])
     sheet = Image.new("RGB", (w * cols, h * rows), bg)
     for i, im in enumerate(seq):
         sheet.paste(im.convert("RGB"), ((i % cols) * w, (i // cols) * h))
@@ -401,11 +406,22 @@ def save_frames(
     if not seq:
         raise ValueError("save_frames(): frames 为空 —— 不做 0 帧输出")
     out_dir = os.fspath(out_dir)
-    ext = str(ext).lstrip(".").lower() or "png"
+    if not isinstance(prefix, str) or not prefix or prefix in (".", ".."):
+        raise ValueError(f"save_frames(): prefix 必须是非空单段文件名，得到 {prefix!r}")
+    if any(sep in prefix for sep in ("/", "\\", ":", "\x00")) or os.path.splitdrive(prefix)[0] or ".." in prefix:
+        raise ValueError(f"save_frames(): prefix 不得含路径分隔符或越界段，得到 {prefix!r}")
+    if not isinstance(ext, str):
+        raise ValueError(f"save_frames(): ext 必须是字符串，得到 {ext!r}")
+    ext = ext.lstrip(".").lower() or "png"
+    if any(sep in ext for sep in ("/", "\\", "\x00", ".")) or not ext.isalnum():
+        raise ValueError(f"save_frames(): ext 必须是纯字母数字扩展名，得到 {ext!r}")
     os.makedirs(out_dir, exist_ok=True)
+    base_real = os.path.realpath(out_dir)
     paths: List[str] = []
     for i, im in enumerate(seq):
         p = os.path.join(out_dir, f"{prefix}_{i:04d}.{ext}")
+        if os.path.dirname(os.path.realpath(p)) != base_real:
+            raise ValueError(f"save_frames(): 输出路径越出 out_dir：{p!r}")
         im.save(p)
         paths.append(p)
     return paths
