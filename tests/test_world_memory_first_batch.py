@@ -115,7 +115,8 @@ def test_experience_real_brain_restart_preserves_predictive_relations(brain_fact
     assert saved['memory_id']
     first.store.client.close()
 
-    resumed = SimulationLoop()
+    # A prior carries its model/world size; restore into a matching physical scene.
+    resumed = SimulationLoop(size=80)
     second = brain_factory()
     restored_scene = load_world_from_brain(second)
     assert {e.eid for e in restored_scene.entities.values()} == {'a', 'b'}
@@ -127,7 +128,7 @@ def test_experience_real_brain_restart_preserves_predictive_relations(brain_fact
     assert not resumed.scene.entities
     assert resumed.wm._conditions['a']['timestamp'] == 105
     assert len(resumed.wm._conditions['a']['calibration_notes']) == 52000
-    exact = SimulationLoop()
+    exact = SimulationLoop(size=80)
     assert exact.load_priors(brain=brain_factory(), memory_id=saved['memory_id'])['seeded'] == 2
     assert resumed.wm.history == wm.history
     assert [e.to_dict() for e in resumed.wm.edges] == [e.to_dict() for e in wm.edges]

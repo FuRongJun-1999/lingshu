@@ -89,12 +89,13 @@ baseline 格式
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 LINT_VERSION = 1
 
@@ -107,6 +108,7 @@ REG_BEGIN = "# ── 登记面 · 用户登记（--update-baseline 保留本段
 REG_END = "# ── 登记面 · 结束 ──"
 
 DIR_CORE_TO_WORLD = "core_to_world"
+DIR_WORLD_TO_CORE = "world_to_core"
 DIR_STMC_REFS = "stmc_refs"
 DIRECTIONS: Tuple[str, ...] = (DIR_CORE_TO_WORLD, DIR_STMC_REFS)
 
@@ -132,8 +134,61 @@ CORE_TO_WORLD_PATTERNS: Tuple[re.Pattern, ...] = (
     RE_CORE_TO_WORLD_ABSOLUTE,
     RE_CORE_TO_WORLD_IMPORTLIB,
 )
+# 反方向（world→core 反向依赖，issue #434）四形态 AST 口径 + SyntaxError 回落正则
+RE_WORLD_TO_CORE_PATTERNS: Tuple[re.Pattern, ...] = (
+    re.compile(r"^\s*(?:from|import)\s+\.\.core\b"),
+    re.compile(r"^\s*from\s+\.\.\s+import\s+(?:.*\b)?core\b"),
+    re.compile(r"^\s*(?:from|import)\s+lingshu\.core\b"),
+    re.compile(r"^\s*from\s+lingshu\s+import\s+(?:.*\b)?core\b"),
+    re.compile(r"import_module\s*\(\s*['\"](?:lingshu\.core|\.\.core)\b"),
+)
 # 反方向旧名
 STMC_TOKEN = "spacetime_memory_core"
+
+
+def _is_core_target(name: str) -> bool:
+    return name == "lingshu.core" or name.startswith("lingshu.core.")
+
+
+def _count_world_to_core(text: str, pkg_depth: int) -> int:
+    """AST 统计 world 模块内导入 core 的行数（覆盖相对/绝对/父包/动态四形态）。"""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return sum(1 for line in text.splitlines()
+                   if any(p.search(line) for p in RE_WORLD_TO_CORE_PATTERNS))
+    lines: Set[int] = set()
+    rel_to_lingshu = pkg_depth + 1
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(_is_core_target(alias.name) for alias in node.names):
+                lines.add(node.lineno)
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if node.level == 0:
+                if _is_core_target(mod) or (
+                    mod == "lingshu" and any(alias.name == "core" for alias in node.names)
+                ):
+                    lines.add(node.lineno)
+            elif node.level == rel_to_lingshu:
+                if mod == "core" or mod.startswith("core.") or (
+                    not mod and any(alias.name == "core" for alias in node.names)
+                ):
+                    lines.add(node.lineno)
+        elif isinstance(node, ast.Call):
+            fn = node.func
+            is_dyn = (
+                (isinstance(fn, ast.Name) and fn.id in {"import_module", "__import__"})
+                or (isinstance(fn, ast.Attribute) and fn.attr == "import_module")
+            )
+            if is_dyn and node.args:
+                arg0 = node.args[0]
+                if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
+                    target = arg0.value
+                    rel_prefix = "." * rel_to_lingshu + "core"
+                    if _is_core_target(target) or target == rel_prefix or target.startswith(rel_prefix + "."):
+                        lines.add(node.lineno)
+    return len(lines)
 
 
 # ---------------------------------------------------------------- 扫描
@@ -150,6 +205,30 @@ def normalize_report_path(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return Path(os.path.abspath(str(path))).as_posix()
+
+
+def scan_world_to_core(root: Path, scan_dir: Path) -> Tuple[Dict[str, int], List[str]]:
+    """扫描 `lingshu/world/**/*.py` 反向导入 core 的行数（issue #434 零反向边守卫）。"""
+    errors: List[str] = []
+    if not scan_dir.is_dir():
+        errors.append("扫描根不存在：%s" % scan_dir)
+        return {}, errors
+    world_dir = scan_dir / "world"
+    if not world_dir.is_dir():
+        return {}, errors
+    out: Dict[str, int] = {}
+    for path in sorted(world_dir.rglob("*.py"), key=lambda q: str(q)):
+        rel = normalize_report_path(path, root)
+        try:
+            text = _read_source(path)
+        except OSError as exc:
+            errors.append("无法读取 %s：%s" % (rel, exc))
+            continue
+        rel_world = path.resolve().relative_to(world_dir.resolve())
+        w = _count_world_to_core(text, len(rel_world.parts))
+        if w:
+            out[rel] = w
+    return out, errors
 
 
 def scan(root: Path, scan_dir: Path) -> Tuple[Dict[str, Dict[str, int]], List[str]]:
@@ -286,6 +365,10 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
                         help="仓库根（默认由 __file__ 推导）")
     parser.add_argument("--scan-dir", metavar="PATH", default=None,
                         help="扫描根（默认 <仓库根>/%s）" % DEFAULT_SCAN_DIR)
+    parser.add_argument("--world-to-core", action="store_true",
+                        help="启用 world→core 零反向边守卫（任意未豁免命中均返回 1）")
+    parser.add_argument("--allow-world-to-core", action="append", default=[], metavar="FILE",
+                        help="仅与 --world-to-core 同用：临时豁免的仓内相对路径")
     args = parser.parse_args(argv)
 
     root = Path(args.repo_root).resolve()
@@ -293,9 +376,37 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
         return 2, "仓库根不存在：%s\n" % root, {"exit_code": 2}
     scan_dir = Path(args.scan_dir) if args.scan_dir else root / DEFAULT_SCAN_DIR
 
+    if args.world_to_core:
+        if args.update_baseline:
+            return 2, "--world-to-core 不能与 --update-baseline 同用\n", {"exit_code": 2}
+        wtc_counts, wtc_errors = scan_world_to_core(root, scan_dir)
+        if wtc_errors:
+            return 2, "\n".join(wtc_errors) + "\n", {"exit_code": 2}
+        allowed = {p.replace("\\", "/") for p in args.allow_world_to_core}
+        violations = {k: v for k, v in sorted(wtc_counts.items()) if k not in allowed}
+        wtc_payload = {
+            "allowed": sorted(allowed),
+            "counts": wtc_counts,
+            "exit_code": 1 if violations else 0,
+            "total": sum(wtc_counts.values()),
+            "version": LINT_VERSION,
+            "violations": violations,
+        }
+        if args.json:
+            return (wtc_payload["exit_code"],
+                    json.dumps(wtc_payload, sort_keys=True, ensure_ascii=False, indent=2) + "\n",
+                    wtc_payload)
+        if violations:
+            msg = "\n".join("[world→core] %s：%d 行" % (k, v) for k, v in violations.items())
+            return 1, msg + "\n退出码 1（存在 world→core 反向依赖）\n", wtc_payload
+        return 0, ("" if args.quiet else "world→core 零反向依赖（共 %d 处）\n" % len(violations)), wtc_payload
+
     counts, errors = scan(root, scan_dir)
     if errors:
         return 2, "\n".join(errors) + "\n", {"exit_code": 2}
+    wtc_counts, wtc_errors = scan_world_to_core(root, scan_dir)
+    if wtc_errors:
+        return 2, "\n".join(wtc_errors) + "\n", {"exit_code": 2}
 
     if args.baseline is None:
         baseline_path = root / DEFAULT_BASELINE_REL
@@ -351,8 +462,11 @@ def run(argv: Optional[Sequence[str]] = None) -> Tuple[int, str, Dict]:
             "core_to_world": actual_total[DIR_CORE_TO_WORLD],
             "new": len(over),
             "stmc_refs": actual_total[DIR_STMC_REFS],
+            "world_to_core": sum(wtc_counts.values()),
         },
         "version": LINT_VERSION,
+        "world_to_core": wtc_counts,
+        "world_to_core_total": sum(wtc_counts.values()),
     }
 
     if args.update_baseline:

@@ -81,28 +81,42 @@ def fit_camera(points, screen_w: int, screen_h: int, *,
     lo = [min(p[k] for p in points) for k in range(3)]
     hi = [max(p[k] for p in points) for k in range(3)]
     target = tuple((lo[k] + hi[k]) / 2.0 for k in range(3))
-    span = max(1e-6, max(hi[k] - lo[k] for k in range(3)))
+    span = max(0.5, max(hi[k] - lo[k] for k in range(3)))
     az, el = math.radians(azimuth_deg), math.radians(elevation_deg)
     ce = math.cos(el)
     d = (ce * math.sin(az), math.sin(el), ce * math.cos(az))
     half = math.radians(fov_deg) / 2.0
     dist = (span * 0.5) / math.tan(half) * (1.0 + 2.0 * margin_frac)
+    near_depth = 0.11
+
+    def minimum_distance(center):
+        forward_extent = max(sum((p[k] - center[k]) * d[k] for k in range(3))
+                             for p in points)
+        return forward_extent + near_depth
+
+    dist = max(dist, minimum_distance(target))
     fit_w = screen_w * (1.0 - 2.0 * margin_frac)
     fit_h = screen_h * (1.0 - 2.0 * margin_frac)
     cam = None
     for _ in range(max(1, int(iters))):
+        dist = max(dist, minimum_distance(target))
         eye = tuple(target[k] + d[k] * dist for k in range(3))
         cam = Camera3D.look_at(eye=eye, target=target, fov_deg=fov_deg)
         sp = [q for q in (cam.project(p, screen_w, screen_h) for p in points)
               if q is not None]
         if len(sp) < 2:
-            dist = dist * 1.4
+            if sp:
+                break
+            dist = max(dist * 1.4, minimum_distance(target))
             continue
         xs = [q[0] for q in sp]
         ys = [q[1] for q in sp]
         bw = max(1e-9, max(xs) - min(xs))
         bh = max(1e-9, max(ys) - min(ys))
+        if bw <= 1e-8 and bh <= 1e-8:
+            break
         dist = dist / min(fit_w / bw, fit_h / bh)
+        dist = max(dist, minimum_distance(target))
         eye = tuple(target[k] + d[k] * dist for k in range(3))
         cam = Camera3D.look_at(eye=eye, target=target, fov_deg=fov_deg)
         sp = [q for q in (cam.project(p, screen_w, screen_h) for p in points)
@@ -115,6 +129,7 @@ def fit_camera(points, screen_w: int, screen_h: int, *,
             break
         target = cam.unproject(cx, cy, max(1e-6, cam.depth_of(target)),
                                screen_w, screen_h)
+        dist = max(dist, minimum_distance(target))
     return cam
 
 
@@ -221,8 +236,8 @@ class Skeleton3D:
             if sp is not None:
                 screen[n] = sp
 
-        # 骨骼线段（画家顺序：由深到浅）
-        ordered = sorted(self.bones(), key=lambda b: -self._bone_depth(world, b))
+        # 骨骼线段（画家顺序：由深到浅；按相机前向深度排序，与 cam.project / 关节半径同口径）
+        ordered = sorted(self.bones(), key=lambda b: -self._bone_depth(world, b, cam))
         for parent, child in ordered:
             if parent in screen and child in screen:
                 draw.line([screen[parent], screen[child]], fill=self._bone_color, width=2)
@@ -242,9 +257,14 @@ class Skeleton3D:
             draw.ellipse([sp[0] - r, sp[1] - r, sp[0] + r, sp[1] + r], fill=self._joint_color)
         return img
 
-    def _bone_depth(self, world: Dict[str, Tuple], bone: Tuple[str, str]) -> float:
+    def _bone_depth(self, world: Dict[str, Tuple], bone: Tuple[str, str],
+                    camera: Optional[Camera3D] = None) -> float:
         pa, pb = bone
-        return (world.get(pa, (0, 0, 0))[2] + world.get(pb, (0, 0, 0))[2]) / 2
+        wa = world.get(pa, (0, 0, 0))
+        wb = world.get(pb, (0, 0, 0))
+        if camera is not None:
+            return (camera.depth_of(wa) + camera.depth_of(wb)) / 2
+        return (wa[2] + wb[2]) / 2
 
 
 # ---------------------------------------------------------------------------

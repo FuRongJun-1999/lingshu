@@ -89,6 +89,8 @@ STDLIB_ALLOWED = frozenset({
     "json", "base64", "hashlib", "hmac",
     # 容器 / 迭代 / 类型 / 数据类 / 枚举
     "collections", "itertools", "typing", "dataclasses", "enum",
+    # Real-number validation for the bounded depth sample API.
+    "numbers",
     # 世界经验恢复的候选状态使用浅复制；只登记标准库分类，未知名判据不变。
     "copy",
     # 运行时 / 导入 / 告警（weakref/functools/contextlib：2026-10-09 连接槽生命周期
@@ -753,8 +755,11 @@ def group_d_whitelist():
        "D0a 标准库白名单 ⊆ sys.stdlib_module_names（解释器权威清单校验）",
        f"非法={sorted(STDLIB_ALLOWED - set(sys.stdlib_module_names))}")
     unknown, all_tops, hits = _classify_report(os.path.join(REPO, "lingshu"))
-    ok(WHITELIST_EXPECTED <= all_tops and hits >= 20,
-       "D1 全仓裸名扫描：已知 15 名全部出现（≥20 处引用）",
+    # #434 已从 lingshu/world/prediction.py 移除旧名 `spacetime_memory_core` 裸导入
+    # （COMPONENT_NAMES 仍保留该历史别名以守卫宿主侧，故 D1 只要求其余 14 个现役裸名出现）。
+    active_expected = WHITELIST_EXPECTED - {"spacetime_memory_core"}
+    ok(active_expected <= all_tops and hits >= 20,
+       "D1 全仓裸名扫描：现役 14 名全部出现（≥20 处引用）",
        f"found={sorted(all_tops)} hits={hits}")
     ok(not unknown,
        "D2 未知裸名 = ∅（出现未知即红：须登记为组件白名单/标准库/已知第三方）",

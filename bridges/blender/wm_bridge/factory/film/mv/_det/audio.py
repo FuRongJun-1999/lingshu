@@ -26,16 +26,19 @@ from __future__ import annotations
 
 import array
 import hashlib
+import json
 import math
 import os
 import struct
 import sys
 import wave
 
+from ... import score as _score
 from . import contracts as C
 
-__all__ = ["make", "synthesize", "analyze", "AudioError",
-           "SAMPLE_RATE", "CHANNELS", "SAMPWIDTH", "DEFAULT_HOP_S"]
+__all__ = ["make", "synthesize", "analyze",
+           "analyze_external_audio", "consolidate_score", "load_consolidated_score",
+           "AudioError", "SAMPLE_RATE", "CHANNELS", "SAMPWIDTH", "DEFAULT_HOP_S"]
 
 # ---------------------------------------------------------------- 全片常数
 
@@ -806,9 +809,698 @@ def make(brief: dict, out_dir: str) -> dict:
     return {"score": doc, "wav": info}
 
 
-if __name__ == "__main__":                     # pragma: no cover - 手动探针
-    import json
+# ---------------------------------------------------------------- 外部音频离线分析与固化
 
+_TONICS = _score.TONICS
+_KS_MAJOR = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
+_KS_MINOR = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+
+
+def _require_finite_num(v, where: str) -> float:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise AudioError("%s 须为有限数值，实为 %r" % (where, v))
+    fv = float(v)
+    if not math.isfinite(fv):
+        raise AudioError("%s 须为有限数值，实为 %r" % (where, v))
+    return fv
+
+
+def _validate_meter(meter) -> tuple[int, int]:
+    if not isinstance(meter, (tuple, list)) or len(meter) != 2:
+        raise AudioError("meter 须为长度为 2 的序列，实为 %r" % (meter,))
+    for idx, x in enumerate(meter):
+        if isinstance(x, bool) or not isinstance(x, int):
+            raise AudioError("meter[%d] 须为整数（不得为 bool），实为 %r" % (idx, x))
+    mv = (int(meter[0]), int(meter[1]))
+    if mv not in _score.METERS:
+        raise AudioError("meter 须属于闭集 %s，实为 %r" % (_score.METERS, mv))
+    return mv
+
+
+def _validate_hop_s(energy_hop_s) -> float:
+    hop = _require_finite_num(energy_hop_s, "energy_hop_s")
+    if not (1e-4 <= hop <= 1.0):
+        raise AudioError("energy_hop_s 越界（须在 [1e-4, 1.0]）：%r" % (energy_hop_s,))
+    return hop
+
+
+def _validate_score_id(score_id) -> str:
+    if not isinstance(score_id, str) or not score_id.strip():
+        raise AudioError("score_id 须为非空字符串，实为 %r" % (score_id,))
+    return score_id.strip()
+
+
+def _validate_audio_path(audio_path) -> str:
+    if not isinstance(audio_path, str) or not audio_path.strip():
+        raise AudioError("audio_path 须为非空文件路径，实为 %r" % (audio_path,))
+    if not os.path.isfile(audio_path):
+        raise AudioError("音频文件不存在：%r" % (audio_path,))
+    return audio_path
+
+
+def _norm_sections_external(raw, duration_s: float) -> list[dict]:
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise AudioError("brief.sections 不得为空")
+    out = []
+    prev_end = None
+    for i, s in enumerate(raw):
+        if not isinstance(s, dict):
+            raise AudioError("sections[%d] 须为对象" % i)
+        kind = s.get("kind")
+        if kind not in _score.SECTION_KINDS:
+            raise AudioError("sections[%d].kind 非法：%r" % (i, kind))
+        if "start_s" not in s or "end_s" not in s:
+            raise AudioError("sections[%d] 缺 start_s/end_s" % i)
+        a = _require_finite_num(s["start_s"], "sections[%d].start_s" % i)
+        b = _require_finite_num(s["end_s"], "sections[%d].end_s" % i)
+        if a < 0.0 or b <= a:
+            raise AudioError("sections[%d] 须非负且 end_s > start_s（实为 [%r, %r)）" % (i, a, b))
+        if prev_end is not None and abs(a - prev_end) > 1e-6:
+            raise AudioError("sections[%d] 必须无缝衔接（前段 end=%r，本段 start=%r）"
+                             % (i, prev_end, a))
+        prev_end = b
+        out.append({"kind": kind, "start_s": a, "end_s": b})
+    if abs(out[0]["start_s"]) > 1e-6:
+        raise AudioError("sections 须从 0 开始（得到 %r）" % out[0]["start_s"])
+    if abs(out[-1]["end_s"] - duration_s) > 1e-3:
+        raise AudioError("sections 末段 end_s(%r) 与时长(%r) 不符（> 1e-3）"
+                         % (out[-1]["end_s"], duration_s))
+    out[-1]["end_s"] = float(duration_s)
+    return out
+
+
+def _build_sections_output(brief: dict | None, duration_s: float,
+                           values: list[float], hop_s: float) -> list[dict]:
+    if brief is not None and "sections" in brief and brief["sections"] is not None:
+        secs = _norm_sections_external(brief["sections"], duration_s)
+        out = []
+        for s in secs:
+            e = _section_energy(values, hop_s, s["start_s"], s["end_s"])
+            out.append({"kind": s["kind"], "start_s": s["start_s"],
+                        "end_s": s["end_s"], "energy": min(1.0, max(0.0, e))})
+        return out
+    mean_e = sum(values) / float(len(values)) if values else 0.0
+    return [{"kind": "instrumental", "start_s": 0.0, "end_s": float(duration_s),
+             "energy": min(1.0, max(0.0, mean_e))}]
+
+
+def _pearson_corr12(a: list[float], b: tuple[float, ...]) -> float:
+    ma = sum(a) / 12.0
+    mb = sum(b) / 12.0
+    num = sum((x - ma) * (y - mb) for x, y in zip(a, b))
+    da = math.sqrt(sum((x - ma) ** 2 for x in a))
+    db = math.sqrt(sum((y - mb) ** 2 for y in b))
+    return num / (da * db) if da > 0.0 and db > 0.0 else 0.0
+
+
+def _estimate_key_from_chroma(chroma: list[float],
+                              open_chroma: list[float] | None = None) -> dict | None:
+    total = sum(chroma)
+    if total <= 0.0 or not math.isfinite(total):
+        return None
+    cn = [v / total for v in chroma]
+    candidates = []
+    for ti in range(12):
+        rot = [cn[(ti + j) % 12] for j in range(12)]
+        candidates.append((_pearson_corr12(rot, _KS_MAJOR), ti, "major"))
+        candidates.append((_pearson_corr12(rot, _KS_MINOR), ti, "minor"))
+    candidates.sort(reverse=True)
+    best_r, best_ti, best_mode = candidates[0]
+
+    if open_chroma is not None:
+        o_tot = sum(open_chroma)
+        if o_tot > 0.0 and math.isfinite(o_tot):
+            on = [v / o_tot for v in open_chroma]
+            if best_mode == "major":
+                rel_ti = (best_ti + 9) % 12
+                maj_sc = on[best_ti] + on[(best_ti + 4) % 12] + 1.2 * on[(best_ti + 7) % 12]
+                min_sc = 1.2 * on[rel_ti] + on[best_ti] + on[(best_ti + 4) % 12]
+                if min_sc > maj_sc * 1.05:
+                    best_ti, best_mode = rel_ti, "minor"
+            else:
+                rel_ti = (best_ti + 3) % 12
+                min_sc = 1.2 * on[best_ti] + on[rel_ti] + on[(best_ti + 7) % 12]
+                maj_sc = on[rel_ti] + on[(rel_ti + 4) % 12] + 1.2 * on[(rel_ti + 7) % 12]
+                if maj_sc > min_sc * 1.05:
+                    best_ti, best_mode = rel_ti, "major"
+
+    conf = max(0.0, min(1.0, 0.5 * (best_r + 1.0)))
+    return {"tonic": _TONICS[best_ti], "mode": best_mode, "confidence": conf}
+
+
+def _detect_beats_pcm(mono: list[float], sr: int, meter: tuple[int, int]) -> tuple[float, float, list[float], list[float]]:
+    """纯标准库确定性波形节拍/BPM/强拍实测（无 `brief.tempo` 盲测）。"""
+    dur = len(mono) / float(sr)
+    stride = max(1, sr // 11025)
+    ds = mono[::stride]
+    sr_ds = sr / float(stride)
+    n_ds = len(ds)
+    if n_ds < 32:
+        raise AudioError("音频过短，无法实测节拍（样点数=%d）" % n_ds)
+
+    # 低通（捕获底鼓/贝斯）+ 一阶差分高通（捕获军鼓/踩镲/瞬态）
+    lp = [0.0] * n_ds
+    hp = [0.0] * n_ds
+    alpha = 0.14
+    prev_lp = 0.0
+    prev_x = 0.0
+    for i, x in enumerate(ds):
+        prev_lp = prev_lp + alpha * (x - prev_lp)
+        lp[i] = prev_lp
+        hp[i] = x - prev_x
+        prev_x = x
+
+    hop_n = max(1, int(round(0.005 * sr_ds)))
+    dt = hop_n / sr_ds
+    n_f = n_ds // hop_n
+    if n_f < 8:
+        raise AudioError("音频过短，无法形成节拍包络（帧数=%d）" % n_f)
+
+    el = [0.0] * n_f
+    eh = [0.0] * n_f
+    ef = [0.0] * n_f
+    for k in range(n_f):
+        a = k * hop_n
+        b = min(n_ds, a + hop_n)
+        sl = sh = sf = 0.0
+        for j in range(a, b):
+            vl = lp[j]
+            vh = hp[j]
+            vf = ds[j]
+            sl += vl * vl
+            sh += vh * vh
+            sf += vf * vf
+        inv = 1.0 / (b - a)
+        el[k] = math.sqrt(sl * inv)
+        eh[k] = math.sqrt(sh * inv)
+        ef[k] = math.sqrt(sf * inv)
+
+    # 因果半波整流对数通量：比较 k 后 15ms 与 k 前 15ms，消除起音延迟偏移
+    flux = [0.0] * n_f
+    flux_low = [0.0] * n_f
+    w = min(3, max(1, n_f // 4))
+    for k in range(n_f):
+        if k == 0:
+            la = sum(el[:w]) / w
+            ha = sum(eh[:w]) / w
+            fa = sum(ef[:w]) / w
+            flux_low[0] = math.log1p(25.0 * la)
+            flux[0] = 1.6 * flux_low[0] + math.log1p(25.0 * ha) + 0.8 * math.log1p(25.0 * fa)
+            continue
+        b0 = max(0, k - w)
+        a1 = min(n_f, k + w)
+        lb = sum(el[b0:k]) / (k - b0)
+        la = sum(el[k:a1]) / (a1 - k)
+        hb = sum(eh[b0:k]) / (k - b0)
+        ha = sum(eh[k:a1]) / (a1 - k)
+        fb = sum(ef[b0:k]) / (k - b0)
+        fa = sum(ef[k:a1]) / (a1 - k)
+        dl = math.log1p(25.0 * la) - math.log1p(25.0 * lb)
+        dh = math.log1p(25.0 * ha) - math.log1p(25.0 * hb)
+        df = math.log1p(25.0 * fa) - math.log1p(25.0 * fb)
+        fl = dl if dl > 0.0 else 0.0
+        fh = dh if dh > 0.0 else 0.0
+        ff = df if df > 0.0 else 0.0
+        flux_low[k] = fl
+        flux[k] = 1.6 * fl + 1.0 * fh + 0.8 * ff
+
+    rad = 15
+    pref = [0.0] * (n_f + 1)
+    for k in range(n_f):
+        pref[k + 1] = pref[k] + flux[k]
+    flux_odf = [0.0] * n_f
+    for k in range(n_f):
+        lo = max(0, k - rad)
+        hi = min(n_f, k + rad + 1)
+        m = (pref[hi] - pref[lo]) / (hi - lo)
+        v = flux[k] - m
+        flux_odf[k] = v if v > 0.0 else 0.0
+    flux_odf[0] = max(flux_odf[0], flux[0] * 0.5)
+
+    def _prior(bpm_val: float) -> float:
+        return math.exp(-0.5 * (math.log2(bpm_val / 115.0) / 0.85) ** 2)
+
+    min_lag = max(2, int(round((60.0 / 190.0) / dt)))
+    max_lag = min(max(min_lag + 1, n_f // 2), int(round((60.0 / 55.0) / dt)))
+    acf_max = min(n_f - 1, 2 * max_lag + 2)
+    acf = [0.0] * (acf_max + 1)
+    mean_f = sum(flux_odf) / n_f
+    centered = [v - mean_f for v in flux_odf]
+    var_f = sum(v * v for v in centered)
+    if var_f <= 1e-18:
+        raise AudioError("音频缺乏节拍瞬态特征，无法检出稳定节拍")
+    for lag in range(min(acf_max, min_lag // 2), acf_max + 1):
+        s = 0.0
+        lim = n_f - lag
+        for i in range(lim):
+            s += centered[i] * centered[i + lag]
+        acf[lag] = s / (lim * var_f / n_f)
+
+    cands = []
+    b = 55.0
+    while b <= 190.0:
+        lag_f = (60.0 / b) / dt
+        l0 = int(round(lag_f))
+        l2 = int(round(2.0 * lag_f))
+        sc = acf[l0] if l0 < len(acf) else 0.0
+        if l2 < len(acf):
+            sc = 0.65 * sc + 0.35 * acf[l2]
+        sc *= _prior(b)
+        cands.append((sc, b))
+        b += 0.5
+    cands.sort(reverse=True)
+
+    peaks = []
+    for _sc, b in cands:
+        if all(abs(b - pb) >= 5.0 for pb in peaks):
+            peaks.append(b)
+            if len(peaks) >= 4:
+                break
+    if not peaks:
+        peaks = [120.0]
+
+    sm = [0.0] * n_f
+    for k in range(n_f):
+        s = 0.60 * flux_odf[k]
+        if k >= 1:
+            s += 0.25 * flux_odf[k - 1]
+        if k + 1 < n_f:
+            s += 0.25 * flux_odf[k + 1]
+        sm[k] = s
+
+    best_comb = (-1.0, peaks[0], 0.0)
+    for bp0 in peaks:
+        b_lo = max(40.0, bp0 - 1.5)
+        b_hi = min(220.0, bp0 + 1.5)
+        nb = int(round((b_hi - b_lo) / 0.05)) + 1
+        for bi in range(nb):
+            bpm_cand = b_lo + bi * 0.05
+            period = 60.0 / bpm_cand
+            n_ph = max(1, int(round(period / dt)))
+            pr = _prior(bpm_cand)
+            for pi in range(n_ph):
+                off = pi * dt
+                tot = 0.0
+                i = 0
+                while True:
+                    t = off + i * period
+                    if t > dur - 0.01:
+                        break
+                    idx = int(round(t / dt))
+                    if 0 <= idx < n_f:
+                        tot += sm[idx]
+                    i += 1
+                score = tot * pr
+                if score > best_comb[0]:
+                    best_comb = (score, bpm_cand, off)
+
+    bpm_est = round(best_comb[1], 4)
+    off_est = best_comb[2]
+    period = 60.0 / bpm_est
+    if period - off_est < 0.025:
+        off_est = 0.0
+    off_est = round(off_est, 6)
+
+    beats = []
+    i = 0
+    while True:
+        t = off_est + i * period
+        if t > dur + 1e-9:
+            break
+        beats.append(t)
+        i += 1
+    if not beats:
+        raise AudioError("未检出有效拍点")
+
+    num = int(meter[0])
+    best_p = 0
+    best_pscore = -1.0
+    for p in range(num):
+        ps = 0.0
+        pc = 0
+        for idx in range(p, len(beats), num):
+            k = int(round(beats[idx] / dt))
+            s = 0.0
+            for dk in range(-2, 4):
+                if 0 <= k + dk < n_f:
+                    s += flux_low[k + dk]
+            ps += s
+            pc += 1
+        val = ps / pc if pc else 0.0
+        if p == 0:
+            val *= 1.05
+        if val > best_pscore:
+            best_pscore = val
+            best_p = p
+    downbeats = [beats[idx] for idx in range(best_p, len(beats), num)]
+    if not downbeats:
+        downbeats = [beats[0]]
+    return bpm_est, off_est, beats, downbeats
+
+
+def _detect_key_pcm(mono: list[float], sr: int, offset_s: float) -> dict | None:
+    """Goertzel 12 音高类色度向量 + Krumhansl-Schmuckler 调性估计（纯标准库）。"""
+    stride_c = max(1, sr // 4410)
+    csig = mono[::stride_c]
+    sr_c = sr / float(stride_c)
+    if len(csig) < 64:
+        return None
+    n_win = min(2048, len(csig))
+    if n_win < 64:
+        return None
+    hann = [0.5 * (1.0 - math.cos(2.0 * math.pi * j / (n_win - 1))) for j in range(n_win)]
+    coeffs = [
+        (m % 12, m, 2.0 * math.cos(2.0 * math.pi * (440.0 * (2.0 ** ((m - 69.0) / 12.0))) / sr_c))
+        for m in range(36, 84)
+    ]
+
+    n_f = 24
+    span = max(0, len(csig) - n_win)
+    step = max(1, span // max(1, n_f - 1)) if span > 0 else 1
+    chroma = [0.0] * 12
+    for fi in range(n_f):
+        st = fi * step
+        if st + n_win > len(csig):
+            break
+        win_s = [csig[st + j] * hann[j] for j in range(n_win)]
+        for pc, _m, coeff in coeffs:
+            s1 = 0.0
+            s2 = 0.0
+            for x in win_s:
+                s0 = x + coeff * s1 - s2
+                s2 = s1
+                s1 = s0
+            pwr = s1 * s1 + s2 * s2 - coeff * s1 * s2
+            if pwr > 0.0:
+                chroma[pc] += math.sqrt(pwr)
+
+    open_chroma = [0.0] * 12
+    st0 = min(max(0, len(csig) - n_win), max(0, int(round((offset_s + 0.35) * sr_c))))
+    if st0 + n_win <= len(csig):
+        win0 = [csig[st0 + j] * hann[j] for j in range(n_win)]
+        for pc, m, coeff in coeffs:
+            if m < 45:
+                continue
+            s1 = 0.0
+            s2 = 0.0
+            for x in win0:
+                s0 = x + coeff * s1 - s2
+                s2 = s1
+                s1 = s0
+            pwr = s1 * s1 + s2 * s2 - coeff * s1 * s2
+            if pwr > 0.0:
+                open_chroma[pc] += math.sqrt(pwr)
+
+    return _estimate_key_from_chroma(chroma, open_chroma)
+
+
+def _resample_envelope(vals: list[float], target_len: int) -> list[float]:
+    if target_len <= 0:
+        raise AudioError("包络目标长度须 > 0：%r" % (target_len,))
+    if not vals:
+        raise AudioError("包络原始序列为空")
+    if len(vals) == target_len:
+        return list(vals)
+    if target_len == 1 or len(vals) == 1:
+        return [vals[0]] * target_len
+    out = []
+    scale = (len(vals) - 1) / float(target_len - 1)
+    for i in range(target_len):
+        pos = i * scale
+        lo = int(math.floor(pos))
+        hi = min(len(vals) - 1, lo + 1)
+        frac = pos - lo
+        out.append(vals[lo] * (1.0 - frac) + vals[hi] * frac)
+    return out
+
+
+def _as_float_list(seq, where: str) -> list[float]:
+    raw = seq.tolist() if hasattr(seq, "tolist") else list(seq)
+    out = []
+    for i, v in enumerate(raw):
+        out.append(_require_finite_num(v, "%s[%d]" % (where, i)))
+    return out
+
+
+def _analyze_via_librosa(audio_path: str, brief: dict | None,
+                         meter: tuple[int, int], hop_s: float,
+                         score_id: str) -> dict:
+    try:
+        import librosa  # noqa: PLC0415
+    except ImportError as exc:
+        raise AudioError(
+            "缺少可选音频分析依赖 librosa：请安装 `pip install -e \".[film-audio]\"` "
+            "或显式切用 backend=\"pcm_wave\"（%s）" % exc
+        ) from exc
+
+    loaded = librosa.load(audio_path, sr=None, mono=True)
+    if not isinstance(loaded, (tuple, list)) or len(loaded) != 2:
+        raise AudioError("librosa.load 返回形状非法：%r" % (type(loaded).__name__,))
+    y_raw, sr_raw = loaded
+    sr_f = _require_finite_num(sr_raw, "sample_rate")
+    if sr_f <= 0.0:
+        raise AudioError("sample_rate 须 > 0：%r" % (sr_raw,))
+    sr = int(round(sr_f))
+    samples = _as_float_list(y_raw, "samples")
+    if not samples:
+        raise AudioError("音频样本为空：%r" % audio_path)
+    if max(abs(v) for v in samples) <= 1e-12:
+        raise AudioError("音频全静音，无法分析：%r" % audio_path)
+
+    duration = len(samples) / float(sr)
+    if duration <= 0.0:
+        raise AudioError("音频时长须 > 0：%r" % audio_path)
+
+    channels = 1
+    try:
+        with wave.open(audio_path, "rb") as wf:
+            channels = max(1, int(wf.getnchannels()))
+    except (wave.Error, EOFError, struct.error, OSError):
+        channels = 1
+
+    hop_length = max(1, int(round(hop_s * sr)))
+    tempo_raw, beat_frames_raw = librosa.beat.beat_track(y=y_raw, sr=sr, hop_length=hop_length)
+    if hasattr(tempo_raw, "__len__") and not isinstance(tempo_raw, (str, bytes)):
+        t_seq = _as_float_list(tempo_raw, "tempo")
+        if not t_seq:
+            raise AudioError("librosa.beat.beat_track 返回空 tempo")
+        bpm = t_seq[0]
+    else:
+        bpm = _require_finite_num(tempo_raw, "tempo")
+    if not (20.0 <= bpm <= 400.0):
+        raise AudioError("librosa 检出 bpm 越界：%r" % bpm)
+
+    if hasattr(librosa, "frames_to_time"):
+        beats_raw = librosa.frames_to_time(beat_frames_raw, sr=sr, hop_length=hop_length)
+        beats = _as_float_list(beats_raw, "beats")
+    else:
+        beat_frames = _as_float_list(beat_frames_raw, "beat_frames")
+        beats = [f * hop_length / float(sr) for f in beat_frames]
+    if not beats:
+        raise AudioError("librosa 未检出拍点")
+    for idx, t in enumerate(beats):
+        if t < 0.0 or (idx > 0 and not (t > beats[idx - 1])):
+            raise AudioError("librosa 拍点须非负且严格递增：%r" % (beats,))
+
+    n_hops = int(round(duration / hop_s)) + 1
+    rms_feat = getattr(getattr(librosa, "feature", None), "rms", None)
+    if callable(rms_feat):
+        rms_raw = rms_feat(y=y_raw, frame_length=min(len(samples), max(2048, hop_length * 2)),
+                           hop_length=hop_length)
+        rms_rows = rms_raw.tolist() if hasattr(rms_raw, "tolist") else list(rms_raw)
+        if not rms_rows:
+            raise AudioError("librosa.feature.rms 返回空结果")
+        row0 = rms_rows[0] if isinstance(rms_rows[0], (list, tuple)) else rms_rows
+        rms_vals = _as_float_list(row0, "rms")
+        rms_aligned = _resample_envelope(rms_vals, n_hops)
+    else:
+        rms_aligned = _rms_envelope(samples, sr, hop_s, n_hops)
+    values = [_energy_map(max(0.0, v)) for v in rms_aligned]
+
+    num = meter[0]
+    best_p = 0
+    best_ps = -1.0
+    for p in range(num):
+        idxs = range(p, len(beats), num)
+        sc = 0.0
+        cnt = 0
+        for bi in idxs:
+            hi = min(len(values) - 1, max(0, int(round(beats[bi] / hop_s))))
+            sc += values[hi]
+            cnt += 1
+        avg = sc / cnt if cnt else 0.0
+        if p == 0:
+            avg *= 1.05
+        if avg > best_ps:
+            best_ps = avg
+            best_p = p
+    downbeats = [beats[i] for i in range(best_p, len(beats), num)]
+    if not downbeats:
+        downbeats = [beats[0]]
+
+    key_doc = None
+    chroma_feat = getattr(getattr(librosa, "feature", None), "chroma_stft", None)
+    if callable(chroma_feat):
+        chroma_raw = chroma_feat(y=y_raw, sr=sr, hop_length=hop_length)
+        c_rows = chroma_raw.tolist() if hasattr(chroma_raw, "tolist") else list(chroma_raw)
+        if len(c_rows) != 12:
+            raise AudioError("librosa.feature.chroma_stft 须返回 12 个音高类，实为 %d" % len(c_rows))
+        chroma12 = []
+        open12 = []
+        for pc in range(12):
+            row = c_rows[pc]
+            vals_pc = _as_float_list(row, "chroma[%d]" % pc) if isinstance(row, (list, tuple)) else [_require_finite_num(row, "chroma[%d]" % pc)]
+            chroma12.append(sum(max(0.0, x) for x in vals_pc))
+            open12.append(sum(max(0.0, x) for x in vals_pc[:max(1, len(vals_pc) // 8)]))
+        key_doc = _estimate_key_from_chroma(chroma12, open12)
+
+    out_sections = _build_sections_output(brief, duration, values, hop_s)
+    with open(audio_path, "rb") as f:
+        file_digest = hashlib.sha256(f.read()).hexdigest()
+
+    doc = {
+        "schema": C.SCHEMAS["score"],
+        "id": score_id,
+        "source": {
+            "path": os.path.basename(audio_path),
+            "digest": file_digest,
+            "duration_s": duration,
+            "sample_rate": sr,
+            "channels": channels,
+        },
+        "tempo": {
+            "bpm": bpm,
+            "meter": [meter[0], meter[1]],
+            "offset_s": float(beats[0]),
+        },
+        "beats": beats,
+        "downbeats": downbeats,
+        "sections": out_sections,
+        "energy": {"hop_s": hop_s, "metric": "rms", "values": values},
+    }
+    if key_doc is not None:
+        doc["key"] = key_doc
+    return C.normalize("score", doc)
+
+
+def _analyze_via_pcm_wave(audio_path: str, brief: dict | None,
+                          meter: tuple[int, int], hop_s: float,
+                          score_id: str) -> dict:
+    info = _read_wav(audio_path)
+    sr = info["sample_rate"]
+    frames = info["frames"]
+    mono = info["mono"]
+    if frames <= 0 or sr <= 0 or not mono:
+        raise AudioError("WAV 音频为空或采样率非法：%r" % audio_path)
+    if max(abs(v) for v in mono) <= 1e-9:
+        raise AudioError("WAV 音频全静音，无法分析节拍与调性：%r" % audio_path)
+    duration = frames / float(sr)
+
+    n_hops = int(round(duration / hop_s)) + 1
+    raw_rms = _rms_envelope(mono, sr, hop_s, n_hops)
+    values = [_energy_map(v) for v in raw_rms]
+
+    bpm, offset_s, beats, downbeats = _detect_beats_pcm(mono, sr, meter)
+    key_doc = _detect_key_pcm(mono, sr, offset_s)
+    out_sections = _build_sections_output(brief, duration, values, hop_s)
+
+    with open(audio_path, "rb") as f:
+        file_digest = hashlib.sha256(f.read()).hexdigest()
+
+    doc = {
+        "schema": C.SCHEMAS["score"],
+        "id": score_id,
+        "source": {
+            "path": os.path.basename(audio_path),
+            "digest": file_digest,
+            "duration_s": duration,
+            "sample_rate": sr,
+            "channels": info["channels"],
+        },
+        "tempo": {
+            "bpm": bpm,
+            "meter": [meter[0], meter[1]],
+            "offset_s": offset_s,
+        },
+        "beats": beats,
+        "downbeats": downbeats,
+        "sections": out_sections,
+        "energy": {"hop_s": hop_s, "metric": "rms", "values": values},
+    }
+    if key_doc is not None:
+        doc["key"] = key_doc
+    return C.normalize("score", doc)
+
+
+def analyze_external_audio(
+    audio_path: str,
+    brief: dict | None = None,
+    *,
+    backend: str = "librosa",
+    meter: tuple[int, int] = (4, 4),
+    energy_hop_s: float = DEFAULT_HOP_S,
+    score_id: str = "score_main",
+) -> dict:
+    """离线分析外部音频（不依赖 `brief.tempo`），产出通过 `wmmv.score/1` 的乐谱文档。
+
+    · `backend="librosa"`：仅在函数体内按需导入 `librosa`；缺失时 fail-closed 抛 `AudioError`。
+    · `backend="pcm_wave"`：纯标准库 16-bit PCM WAV 波形实测器（无外部依赖）。
+    """
+    path = _validate_audio_path(audio_path)
+    if brief is not None and not isinstance(brief, dict):
+        raise AudioError("brief 须为对象或 None，实为 %s" % type(brief).__name__)
+    meter_v = _validate_meter(meter)
+    hop_s = _validate_hop_s(energy_hop_s)
+    sid = _validate_score_id(score_id)
+
+    if backend == "librosa":
+        return _analyze_via_librosa(path, brief, meter_v, hop_s, sid)
+    if backend == "pcm_wave":
+        return _analyze_via_pcm_wave(path, brief, meter_v, hop_s, sid)
+    raise AudioError("不支持的分析后端 %r（可选：'librosa' / 'pcm_wave'）" % (backend,))
+
+
+def consolidate_score(score_doc: dict, out_json_path: str) -> dict:
+    """将 `wmmv.score/1` 乐谱固化落盘为确定性 JSON，后续执行期零外部音频依赖。"""
+    if not isinstance(score_doc, dict):
+        raise AudioError("score_doc 须为对象，实为 %s" % type(score_doc).__name__)
+    if not isinstance(out_json_path, str) or not out_json_path.strip():
+        raise AudioError("out_json_path 须为非空路径，实为 %r" % (out_json_path,))
+
+    norm = C.normalize("score", score_doc)
+    file_sha256 = C.write_json(out_json_path, norm)
+    verified = C.normalize("score", C.read_json(out_json_path))
+    score_digest = C.digest("score", verified)
+    return {
+        "score": verified,
+        "path": out_json_path,
+        "digest": score_digest,
+        "file_sha256": file_sha256,
+    }
+
+
+def load_consolidated_score(json_path: str) -> dict:
+    """读取并校验已固化的 `wmmv.score/1` JSON（纯标准库，零外部音频依赖）。"""
+    if not isinstance(json_path, str) or not json_path.strip():
+        raise AudioError("json_path 须为非空路径，实为 %r" % (json_path,))
+    if not os.path.isfile(json_path):
+        raise AudioError("固化乐谱 JSON 不存在：%r" % (json_path,))
+
+    def _reject_nonfinite(tok: str) -> None:
+        raise AudioError("固化乐谱 JSON 含非法非有限常量：%r" % (tok,))
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            raw = json.load(f, parse_constant=_reject_nonfinite)
+    except AudioError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AudioError("读取固化乐谱失败：%s（%s）" % (json_path, exc)) from exc
+
+    return C.normalize("score", raw)
+
+
+if __name__ == "__main__":                     # pragma: no cover - 手动探针
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with open(os.path.join(here, "brief.json"), encoding="utf-8") as f:
         _brief = json.load(f)

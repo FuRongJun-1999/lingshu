@@ -373,25 +373,15 @@ class ActivationEngine:
                     inh_rows.append(si); inh_cols.append(di); inh_mags.append(-d)
             else:
                 rows.append(si); cols.append(di); decays.append(d)
-        if csr_matrix is not None and rows:
-            adj = csr_matrix((np.array(decays, dtype=np.float32), (rows, cols)),
-                             shape=(n, n))
-        else:
-            adj = None  # 降级:edge-list 传播
-        if csr_matrix is not None and inh_rows:
-            adj_inh = csr_matrix((np.array(inh_mags, dtype=np.float32), (inh_rows, inh_cols)),
-                                 shape=(n, n))
-        else:
-            adj_inh = None  # 降级:edge-list 抑制
-        if csr_matrix is not None and unv_rows:
-            _unv_data = np.array(unv_mags, dtype=np.float32)
-            if _FastTransposeCSR is not None and csr_matrix is _ORIG_CSR_MATRIX:
-                adj_inh_unv = _FastTransposeCSR((_unv_data, (unv_rows, unv_cols)), shape=(n, n))
-                adj_inh_unv._t_csr = csr_matrix((_unv_data, (unv_cols, unv_rows)), shape=(n, n))
-            else:
-                adj_inh_unv = csr_matrix((_unv_data, (unv_rows, unv_cols)), shape=(n, n))
-        else:
-            adj_inh_unv = None
+        adj = self._build_max_csr(rows, cols, decays, n)
+        adj_inh = self._build_max_csr(inh_rows, inh_cols, inh_mags, n)
+        adj_inh_unv = self._build_max_csr(unv_rows, unv_cols, unv_mags, n)
+        if adj_inh_unv is not None and _FastTransposeCSR is not None and csr_matrix is _ORIG_CSR_MATRIX:
+            _unv_fast = _FastTransposeCSR(
+                (adj_inh_unv.data, adj_inh_unv.indices, adj_inh_unv.indptr),
+                shape=(n, n), copy=False)
+            _unv_fast._t_csr = adj_inh_unv.T.tocsr()
+            adj_inh_unv = _unv_fast
         self._adj = adj
         self._adj_inh = adj_inh
         self._adj_inh_unv = adj_inh_unv
@@ -880,6 +870,22 @@ class ActivationEngine:
         src_act = np.repeat(act[act_u], c_u)
         np.maximum.at(out, indices[edge_idx], src_act * data[edge_idx])
         return out
+
+    @staticmethod
+    def _build_max_csr(rows: List[int], cols: List[int],
+                       weights: List[float], n: int):
+        """Build CSR after aggregating parallel edges by maximum weight."""
+        if csr_matrix is None or np is None or not rows:
+            return None
+        best: Dict[Tuple[int, int], float] = {}
+        for src, dst, weight in zip(rows, cols, weights):
+            key = (src, dst)
+            if key not in best or weight > best[key]:
+                best[key] = weight
+        out_rows = [key[0] for key in best]
+        out_cols = [key[1] for key in best]
+        values = np.fromiter(best.values(), dtype=np.float32, count=len(best))
+        return csr_matrix((values, (out_rows, out_cols)), shape=(n, n))
 
     @staticmethod
     def _max_plus(adj, act: np.ndarray,

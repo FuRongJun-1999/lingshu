@@ -23,9 +23,13 @@
 from __future__ import annotations
 
 import math
+import re
 import xml.etree.ElementTree as ET
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # pragma: no cover - 纯标准库环境（parse_svg 几何解析仍可用）
+    np = None
 
 __all__ = ["parse_svg", "rasterize", "foreground_mask", "iou", "load_svg_text",
            "SUPPORTED_TAGS"]
@@ -38,6 +42,15 @@ SUPPORTED_TAGS = ("svg", "g", "polygon", "polyline", "path", "rect", "circle",
 _INERT = ("title", "desc", "defs", "linearGradient", "radialGradient", "stop",
           "animate", "animateTransform", "animateMotion", "set", "metadata")
 _NUM = r"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?"
+_PATH_TOKEN_RE = re.compile(
+    r"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?|[A-Za-z]|[^\s,]"
+)
+
+
+def _require_numpy(fn_name):
+    if np is None:
+        raise ModuleNotFoundError(
+            "numpy is required for wm_bridge.factory.vec.raster.%s" % fn_name)
 
 
 # ─────────────────────────────────────────────────────────── 解析
@@ -94,16 +107,20 @@ def _gradient_mid(doc_defs, ref):
 
 
 def _mat_identity():
-    return np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    if np is not None:
+        return np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 
 
 def _mat_mul(a, b):
-    return a @ b
+    if np is not None:
+        return a @ b
+    return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)]
+            for i in range(3)]
 
 
 def _parse_transform(s):
     """`transform` 文本 → 3×3 仿射矩阵（SVG 语义：后写的先作用？不——按 SVG 顺序左乘）。"""
-    import re
     m = _mat_identity()
     if not s:
         return m
@@ -111,23 +128,23 @@ def _parse_transform(s):
         v = _floats(args)
         t = _mat_identity()
         if name == "translate":
-            t[0, 2] = v[0] if v else 0.0
-            t[1, 2] = v[1] if len(v) > 1 else 0.0
+            t[0][2] = v[0] if v else 0.0
+            t[1][2] = v[1] if len(v) > 1 else 0.0
         elif name == "scale":
             sx = v[0] if v else 1.0
             sy = v[1] if len(v) > 1 else sx
-            t[0, 0], t[1, 1] = sx, sy
+            t[0][0], t[1][1] = sx, sy
         elif name == "rotate":
             a = math.radians(v[0] if v else 0.0)
             ca, sa = math.cos(a), math.sin(a)
-            t[0, 0], t[0, 1], t[1, 0], t[1, 1] = ca, -sa, sa, ca
+            t[0][0], t[0][1], t[1][0], t[1][1] = ca, -sa, sa, ca
             if len(v) >= 3:
                 cx, cy = v[1], v[2]
-                t[0, 2] = cx - ca * cx + sa * cy
-                t[1, 2] = cy - sa * cx - ca * cy
+                t[0][2] = cx - ca * cx + sa * cy
+                t[1][2] = cy - sa * cx - ca * cy
         elif name == "matrix" and len(v) >= 6:
-            t[0, 0], t[0, 1], t[0, 2] = v[0], v[2], v[4]
-            t[1, 0], t[1, 1], t[1, 2] = v[1], v[3], v[5]
+            t[0][0], t[0][1], t[0][2] = v[0], v[2], v[4]
+            t[1][0], t[1][1], t[1][2] = v[1], v[3], v[5]
         m = _mat_mul(m, t)
     return m
 
@@ -135,8 +152,8 @@ def _parse_transform(s):
 def parse_svg(svg_text):
     """SVG 文本 → `(shapes, meta, report)`。
 
-    shapes 是**绘制序**列表，每项：`{kind, subpaths(用户坐标), closed, fill, stroke,
-    stroke_width, dash, rule}`；meta 含画布尺寸与 viewBox 映射。
+    shapes 是**绘制序**列表，每项：`{kind, subpaths(用户坐标), closed, subpath_closed,
+    fill, stroke, stroke_width, dash, rule}`；meta 含画布尺寸与 viewBox 映射。
     """
     root = ET.fromstring(svg_text)
     report = {"unsupported": {}, "gradients_approximated": 0, "elements_seen": 0}
@@ -171,8 +188,11 @@ def parse_svg(svg_text):
 
     shapes = []
 
-    def emit(kind, subpaths, closed, style):
-        shapes.append({"kind": kind, "subpaths": subpaths, "closed": closed,
+    def emit(kind, subpaths, closed, style, subpath_closed=None):
+        flags = (list(subpath_closed) if subpath_closed is not None
+                 else [bool(closed)] * len(subpaths))
+        shapes.append({"kind": kind, "subpaths": subpaths, "closed": bool(closed),
+                       "subpath_closed": flags,
                        "fill": style.get("fill"), "stroke": style.get("stroke"),
                        "stroke_width": style.get("stroke-width", 1.0),
                        "dash": style.get("stroke-dasharray"),
@@ -208,12 +228,12 @@ def parse_svg(svg_text):
         if tag == "text":
             report["unsupported"]["text"] = report["unsupported"].get("text", 0) + 1
             return
-        subs, closed = _geometry(tag, e)
+        subs, closed_flags = _geometry(tag, e, per_subpath=True)
         if not subs:
             report["unsupported"][tag + ":empty"] = report["unsupported"].get(tag + ":empty", 0) + 1
             return
         subs = [_apply(m, sp) for sp in subs]
-        emit(tag, subs, closed, st)
+        emit(tag, subs, all(closed_flags), st, subpath_closed=closed_flags)
 
     walk(root, _mat_identity(), {})
     meta = {"width": float(_floats(root.get("width"))[0]) if root.get("width") else vw,
@@ -223,6 +243,10 @@ def parse_svg(svg_text):
 
 
 def _apply(m, pts):
+    if np is None:
+        return [(m[0][0] * float(x) + m[0][1] * float(y) + m[0][2],
+                 m[1][0] * float(x) + m[1][1] * float(y) + m[1][2])
+                for x, y in pts]
     arr = np.asarray(pts, dtype=np.float64)
     if arr.size == 0:
         return arr.reshape((0, 2))
@@ -231,48 +255,62 @@ def _apply(m, pts):
     return out[:, :2]
 
 
-def _geometry(tag, e):
-    """元素 → `(subpaths, closed)`（用户坐标，未经 transform）。"""
+def _geometry(tag, e, *, per_subpath=False):
+    """元素 → `(subpaths, closed)`（用户坐标，未经 transform）。
+
+    默认返回 `(subpaths, bool)`；`per_subpath=True` 时第二项为与 `subpaths`
+    等长的 `list[bool]`，供 `parse_svg` 保留 `<path>` 混合闭合/开放子路径语义。
+    """
     if tag == "polygon":
         f = _floats(e.get("points"))
         pts = [(f[i], f[i + 1]) for i in range(0, len(f) - 1, 2)]
-        return ([pts] if len(pts) >= 3 else []), True
-    if tag == "polyline":
+        subs, closed = ([pts] if len(pts) >= 3 else []), True
+    elif tag == "polyline":
         f = _floats(e.get("points"))
         pts = [(f[i], f[i + 1]) for i in range(0, len(f) - 1, 2)]
-        return ([pts] if len(pts) >= 2 else []), False
-    if tag == "rect":
+        subs, closed = ([pts] if len(pts) >= 2 else []), False
+    elif tag == "rect":
         x = float(e.get("x") or 0)
         y = float(e.get("y") or 0)
         w = float(e.get("width") or 0)
         h = float(e.get("height") or 0)
         if w <= 0 or h <= 0:
-            return [], True
-        return ([[(x, y), (x + w, y), (x + w, y + h), (x, y + h)]], True)
-    if tag == "circle":
+            subs, closed = [], True
+        else:
+            subs, closed = [[(x, y), (x + w, y), (x + w, y + h), (x, y + h)]], True
+    elif tag == "circle":
         cx = float(e.get("cx") or 0)
         cy = float(e.get("cy") or 0)
         r = float(e.get("r") or 0)
         if r <= 0:
-            return [], True
-        return ([_circle_pts(cx, cy, r)], True)
-    if tag == "ellipse":
+            subs, closed = [], True
+        else:
+            subs, closed = [_circle_pts(cx, cy, r)], True
+    elif tag == "ellipse":
         cx = float(e.get("cx") or 0)
         cy = float(e.get("cy") or 0)
         rx = float(e.get("rx") or 0)
         ry = float(e.get("ry") or 0)
         if rx <= 0 or ry <= 0:
-            return [], True
-        return ([_circle_pts(cx, cy, rx, ry)], True)
-    if tag == "line":
+            subs, closed = [], True
+        else:
+            subs, closed = [_circle_pts(cx, cy, rx, ry)], True
+    elif tag == "line":
         x1 = float(e.get("x1") or 0)
         y1 = float(e.get("y1") or 0)
         x2 = float(e.get("x2") or 0)
         y2 = float(e.get("y2") or 0)
-        return ([[(x1, y1), (x2, y2)]], False)
-    if tag == "path":
-        return _path_subpaths(e.get("d") or "")
-    return [], False
+        subs, closed = [[(x1, y1), (x2, y2)]], False
+    elif tag == "path":
+        subs, flags = _path_subpaths(e.get("d") or "")
+        if per_subpath:
+            return subs, flags
+        return subs, (bool(flags) and all(flags))
+    else:
+        subs, closed = [], False
+    if per_subpath:
+        return subs, [closed] * len(subs)
+    return subs, closed
 
 
 def _circle_pts(cx, cy, rx, ry=None, n=96):
@@ -281,66 +319,137 @@ def _circle_pts(cx, cy, rx, ry=None, n=96):
              cy + ry * math.sin(2 * math.pi * i / n)) for i in range(n)]
 
 
+def _read_path_nums(tokens, i, count):
+    if i + count > len(tokens):
+        return None
+    vals = []
+    for k in range(count):
+        tk = tokens[i + k]
+        if tk.isalpha():
+            return None
+        try:
+            v = float(tk)
+        except ValueError:
+            return None
+        if not math.isfinite(v):
+            return None
+        vals.append(v)
+    return vals
+
+
 def _path_subpaths(d):
-    """路径 → 子路径列表。**只实现 M/L/H/V/Z + 小写相对版**（本产线只发射这些）。"""
-    import re
-    tokens = re.findall(r"[MmLlHhVvZz]|-?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?", d)
+    """路径 → `(subpaths, closed_flags)`。
+
+    **只实现 M/L/H/V/Z + 小写相对版**（本产线只发射这些）；
+    遇 C/S/Q/T/A 或非法词元 fail-closed 返回 `([], [])`（由调用方计入 unsupported）。
+    """
+    tokens = _PATH_TOKEN_RE.findall(d or "")
     subs = []
+    closed_flags = []
     cur = []
     x = y = 0.0
     sx = sy = 0.0
     i = 0
     cmd = None
+    started = False
+    need_arg = False
+
+    def _flush(is_closed):
+        nonlocal cur
+        if is_closed and len(cur) > 2 and cur[-1] == cur[0]:
+            cur = cur[:-1]
+        if len(cur) >= 2:
+            subs.append(cur)
+            closed_flags.append(is_closed)
+        cur = []
+
     while i < len(tokens):
         tk = tokens[i]
         if tk.isalpha():
+            if need_arg:
+                return [], []
             cmd = tk
             i += 1
+            if not started and cmd not in "Mm":
+                return [], []
             if cmd in "Zz":
                 if cur:
-                    cur.append((sx, sy))
-                    subs.append(cur)
-                    cur = []
+                    _flush(True)
                 x, y = sx, sy
+                need_arg = False
+            elif cmd in "MmLlHhVv":
+                need_arg = True
+            else:
+                # C/S/Q/T/A 等不在自用子集内：整条路径跳过（计入 unsupported），不猜
+                return [], []
             continue
+
+        if cmd is None or cmd in "Zz":
+            return [], []
+
         rel = cmd.islower()
         c = cmd.upper()
         if c == "M":
-            x0, y0 = float(tokens[i]), float(tokens[i + 1])
+            vals = _read_path_nums(tokens, i, 2)
+            if vals is None:
+                return [], []
+            x0, y0 = vals
             i += 2
             if rel:
                 x0 += x
                 y0 += y
             if cur:
-                subs.append(cur)
+                _flush(False)
             x, y = x0, y0
             sx, sy = x, y
             cur = [(x, y)]
-            cmd = "l" if rel else "L"       # 后续隐式 L
+            started = True
+            cmd = "l" if rel else "L"       # 后续隐式 L/l
+            need_arg = False
         elif c == "L":
-            x0, y0 = float(tokens[i]), float(tokens[i + 1])
+            vals = _read_path_nums(tokens, i, 2)
+            if vals is None:
+                return [], []
+            x0, y0 = vals
             i += 2
             if rel:
                 x0 += x
                 y0 += y
+            if not cur:
+                cur = [(x, y)]
             x, y = x0, y0
             cur.append((x, y))
+            need_arg = False
         elif c == "H":
-            x0 = float(tokens[i])
+            vals = _read_path_nums(tokens, i, 1)
+            if vals is None:
+                return [], []
+            x0 = vals[0]
             i += 1
+            if not cur:
+                cur = [(x, y)]
             x = x + x0 if rel else x0
             cur.append((x, y))
+            need_arg = False
         elif c == "V":
-            y0 = float(tokens[i])
+            vals = _read_path_nums(tokens, i, 1)
+            if vals is None:
+                return [], []
+            y0 = vals[0]
             i += 1
+            if not cur:
+                cur = [(x, y)]
             y = y + y0 if rel else y0
             cur.append((x, y))
+            need_arg = False
         else:
-            # C/S/Q/T/A 不在自用子集内：整条路径跳过（计入 unsupported），不猜
-            return []
+            return [], []
+
+    if need_arg:
+        return [], []
     if cur:
-        subs.append(cur)
-    return subs
+        _flush(False)
+    return subs, closed_flags
 
 
 # ─────────────────────────────────────────────────────────── 光栅化
@@ -373,39 +482,63 @@ class _Ctx:
         stroke, sa = self._style_color(shape, "stroke", "stroke-opacity")
         if fill is None and stroke is None:
             return 0
-        touched = 0
-        for sp in shape["subpaths"]:
+        subpaths = shape["subpaths"]
+        sub_closed = shape.get("subpath_closed")
+        if sub_closed is None or len(sub_closed) != len(subpaths):
+            sub_closed = [bool(shape["closed"])] * len(subpaths)
+        else:
+            sub_closed = [bool(c) for c in sub_closed]
+
+        prepared = []
+        for sp, is_closed in zip(subpaths, sub_closed):
             arr = np.asarray(sp, dtype=np.float64)
             if arr.size == 0:
                 continue
-            arr = arr * self.ss
-            xs, ys = arr[:, 0], arr[:, 1]
-            x0, x1 = float(xs.min()), float(xs.max())
-            y0, y1 = float(ys.min()), float(ys.max())
-            pad = 2.0 + (float(shape["stroke_width"]) * self.ss if stroke is not None else 0.0)
-            ix0 = max(0, int(math.floor(x0 - pad)))
-            ix1 = min(self.dw - 1, int(math.ceil(x1 + pad)))
-            iy0 = max(0, int(math.floor(y0 - pad)))
-            iy1 = min(self.dh - 1, int(math.ceil(y1 + pad)))
-            if ix1 < ix0 or iy1 < iy0:
-                continue
-            h = iy1 - iy0 + 1
-            w = ix1 - ix0 + 1
-            if fill is not None and shape["closed"] and len(sp) >= 3:
-                cov = _fill_coverage(arr, ix0, ix1, iy0, iy1, closed=True)
-                _composite(self.img, self.painted, cov, fill, fa, ix0, iy0)
-                touched += 1
-            if stroke is not None:
-                lw = float(shape["stroke_width"]) * self.ss
-                if lw <= 0:
-                    continue
-                segs = _dash_split(arr, shape["closed"], shape["dash"], self.ss)
-                scov = np.zeros((h, w), dtype=np.float32)
+            prepared.append((arr * self.ss, is_closed))
+        if not prepared:
+            return 0
+
+        touched = 0
+        # 填充：同元素全部闭合子路径合并做 even-odd 扫描线（支持多块与带洞复合路径）
+        if fill is not None:
+            fill_polys = [arr for arr, is_closed in prepared if is_closed and len(arr) >= 3]
+            if fill_polys:
+                x0 = min(float(arr[:, 0].min()) for arr in fill_polys)
+                x1 = max(float(arr[:, 0].max()) for arr in fill_polys)
+                y0 = min(float(arr[:, 1].min()) for arr in fill_polys)
+                y1 = max(float(arr[:, 1].max()) for arr in fill_polys)
+                pad = 2.0
+                ix0 = max(0, int(math.floor(x0 - pad)))
+                ix1 = min(self.dw - 1, int(math.ceil(x1 + pad)))
+                iy0 = max(0, int(math.floor(y0 - pad)))
+                iy1 = min(self.dh - 1, int(math.ceil(y1 + pad)))
+                if ix1 >= ix0 and iy1 >= iy0:
+                    cov = _fill_subpaths(fill_polys, ix0, ix1, iy0, iy1)
+                    _composite(self.img, self.painted, cov, fill, fa, ix0, iy0)
+                    touched += 1
+
+        # 描边：逐子路径按各自闭合标记切段，避免开放子路径被误连回起点
+        if stroke is not None:
+            lw = float(shape["stroke_width"]) * self.ss
+            if lw > 0:
                 r = lw / 2.0
-                for a, b in segs:
-                    _capsule(scov, ix0, iy0, a, b, r)
-                _composite(self.img, self.painted, scov, stroke, sa, ix0, iy0)
-                touched += 1
+                pad = 2.0 + lw
+                for arr, is_closed in prepared:
+                    segs = _dash_split(arr, is_closed, shape["dash"], self.ss)
+                    if not segs:
+                        continue
+                    xs, ys = arr[:, 0], arr[:, 1]
+                    ix0 = max(0, int(math.floor(float(xs.min()) - pad)))
+                    ix1 = min(self.dw - 1, int(math.ceil(float(xs.max()) + pad)))
+                    iy0 = max(0, int(math.floor(float(ys.min()) - pad)))
+                    iy1 = min(self.dh - 1, int(math.ceil(float(ys.max()) + pad)))
+                    if ix1 < ix0 or iy1 < iy0:
+                        continue
+                    scov = np.zeros((iy1 - iy0 + 1, ix1 - ix0 + 1), dtype=np.float32)
+                    for a, b in segs:
+                        _capsule(scov, ix0, iy0, a, b, r)
+                    _composite(self.img, self.painted, scov, stroke, sa, ix0, iy0)
+                    touched += 1
         return touched
 
     def result(self):
@@ -428,30 +561,32 @@ def _composite(img, painted, cov, color, alpha, ix0, iy0):
     painted[iy0:iy0 + cov.shape[0], ix0:ix0 + cov.shape[1]] |= (cov > 0.5)
 
 
-def _fill_coverage(pts, ix0, ix1, iy0, iy1, closed=True):
-    """**自己的扫描线 even-odd 填充**：逐边求交 → 按 (行, x) 排序 → 相邻交点配对成 span
-    → 差分数组累加。对**非凸**多边形同样正确（min/max 近似会把它填爆）。"""
+def _fill_subpaths(polys, ix0, ix1, iy0, iy1):
+    """**自己的扫描线 even-odd 填充**：汇总全部闭合子路径的边求交 → 按 (行, x)
+    排序 → 相邻交点配对成 span → 差分数组累加。对**非凸**多边形与**带洞/多块**
+    复合路径同样正确（min/max 近似会把它填爆）。"""
     h = iy1 - iy0 + 1
     w = ix1 - ix0 + 1
-    p = np.asarray(pts, dtype=np.float64)
-    n = len(p)
-    if n < 3:
-        return np.zeros((h, w), dtype=np.float32)
     ys = np.arange(iy0, iy1 + 1, dtype=np.float64) + 0.5
     rows_all, xs_all = [], []
-    for i in range(n):
-        ax, ay = p[i]
-        bx, by = p[(i + 1) % n]
-        if ay == by:
+    for pts in polys:
+        p = np.asarray(pts, dtype=np.float64)
+        n = len(p)
+        if n < 3:
             continue
-        lo, hi = (ay, by) if ay < by else (by, ay)
-        sel = (ys >= lo) & (ys < hi)
-        if not sel.any():
-            continue
-        idx = np.nonzero(sel)[0]
-        t = (ys[idx] - ay) / (by - ay)
-        rows_all.append(idx)
-        xs_all.append(ax + (bx - ax) * t)
+        for i in range(n):
+            ax, ay = p[i]
+            bx, by = p[(i + 1) % n]
+            if ay == by:
+                continue
+            lo, hi = (ay, by) if ay < by else (by, ay)
+            sel = (ys >= lo) & (ys < hi)
+            if not sel.any():
+                continue
+            idx = np.nonzero(sel)[0]
+            t = (ys[idx] - ay) / (by - ay)
+            rows_all.append(idx)
+            xs_all.append(ax + (bx - ax) * t)
     if not rows_all:
         return np.zeros((h, w), dtype=np.float32)
     rows = np.concatenate(rows_all)
@@ -468,10 +603,10 @@ def _fill_coverage(pts, ix0, ix1, iy0, iy1, closed=True):
     rw = rows[pairable]
     a = np.ceil(left - 0.5) - ix0
     b = np.floor(right - 0.5) - ix0
-    a = np.clip(a, 0, w - 1).astype(np.int64)
-    b = np.clip(b, 0, w - 1).astype(np.int64)
-    keep = b >= a
-    a, b, rw = a[keep], b[keep], rw[keep]
+    keep = (right > left) & (b >= a) & (b >= 0) & (a < w)
+    a = np.clip(a[keep], 0, w - 1).astype(np.int64)
+    b = np.clip(b[keep], 0, w - 1).astype(np.int64)
+    rw = rw[keep]
     if len(a) == 0:
         return np.zeros((h, w), dtype=np.float32)
     diff = np.zeros((h, w + 1), dtype=np.float32)
@@ -479,6 +614,11 @@ def _fill_coverage(pts, ix0, ix1, iy0, iy1, closed=True):
     np.add.at(diff, (rw, b + 1), -1.0)
     cov = np.cumsum(diff[:, :w], axis=1)
     return (cov > 0.5).astype(np.float32)
+
+
+def _fill_coverage(pts, ix0, ix1, iy0, iy1, closed=True):
+    """单多边形扫描线 even-odd 填充（委托 `_fill_subpaths`）。"""
+    return _fill_subpaths([pts], ix0, ix1, iy0, iy1)
 
 
 def _capsule(cov, ox, oy, a, b, r):
@@ -555,6 +695,7 @@ def rasterize(src, width=None, height=None, ss=2, background=(0.0, 0.0, 0.0, 0.0
 
     `width/height` 缺省用 SVG 自身尺寸；`ss` 为超采样倍数（1 = 关抗锯齿）。
     """
+    _require_numpy("rasterize")
     text = load_svg_text(src)
     shapes, meta, report = parse_svg(text)
     w = int(round(width or meta["width"]))
@@ -598,6 +739,7 @@ def iou(mask_a, mask_b):
     能骗过 `iou >= 0.90` 这类下限门）。现改为返回 `0.0` 并**在明细里显式标 `undefined`**
     —— 消费方据此可区分"真的算出来是 0"（`undefined` 缺席）与"无从判定"（`undefined=True`）。
     """
+    _require_numpy("iou")
     a = np.asarray(mask_a, dtype=bool)
     b = np.asarray(mask_b, dtype=bool)
     if a.shape != b.shape:

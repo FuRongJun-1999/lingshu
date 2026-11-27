@@ -10524,7 +10524,7 @@ class SpacetimeMemoryEngine:
                 for _i, _v in enumerate(vel):
                     _require_finite("velocity[%d]" % _i, _v)
                 eid = self._voxel.spawn_entity(category, pos, velocity=vel)
-            except (ValueError, TypeError) as _e:
+            except (ValueError, TypeError, OverflowError) as _e:
                 return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "simulate":
@@ -10693,7 +10693,7 @@ class SpacetimeMemoryEngine:
     def wm_simloop(self, action: str, params: dict = None) -> dict:
         """世界模型推演循环（里程碑 M5.1 · WM-SIMLOOP-REV1）：
         - setup: 构建推演循环（size/seed/entities/mask/wal_path）
-        - attach: 推演循环接到已经初始化、正在接收观测的统一模型
+        - attach: 推演循环接到已经初始化、正在接收观测的统一模型；模型换代后须重新 attach
         - run: 推进 n tick（可选 script=drift_sinusoid 内置确定性外部演化）
         - step: 推进 n tick（无汇总）
         - load: 认知图现在时节点 → 世界图先验（mdcg_root）
@@ -10755,9 +10755,9 @@ class SpacetimeMemoryEngine:
             return {"status": "ok", "entity_ids": eids,
                     "masked": sorted(sl_._mask), "wal_path": wal,
                     "state": sl_.state()}
-        if not hasattr(self, '_simloop'):
-            return {"status": "error", "error": "推演循环未初始化（先 setup）"}
-        sl = self._simloop
+        sl = getattr(self, "_simloop", None)
+        if sl is None:
+            return {"status": "error", "error": "推演循环未初始化（先 setup 或 attach）"}
         if action == "run":
             # #2412：同 step——n 判型后进底层（浮点/字符串不再静默截断）。
             n = p.get("n", 10)
@@ -11026,7 +11026,7 @@ class SpacetimeMemoryEngine:
     def world_model(self, action: str, params: dict = None) -> dict:
         """统一世界模型（里程碑3.1 · HERMES 式统一架构）：世界状态表征作为
         理解/生成/验证共享的同一骨干——
-        - init: 初始化（size/ground_level/seed）
+        - init: 初始化（size/ground_level/seed）；已有附着推演循环随旧模型结束
         - create: 物理世界创建场景（trees/water）
         - entity: 物理世界添加自主实体（行为已知=世界真相，模型只能观测）
         - path: 定义巡逻路径
@@ -11055,12 +11055,20 @@ class SpacetimeMemoryEngine:
         # #243：`init` 独立分支（旧实现缺此分支 ⇒ 首次返回 error 却顺带构造、
         # 后续调用参数完全不生效）。惰性构造只用默认值，见 #243 说明。
         if action == "init":
-            self._wmodel = UnifiedWorldModel(
+            model = UnifiedWorldModel(
                 size=int(p.get('size', 24)),
                 ground_level=int(p.get('ground_level', 1)),
                 seed=int(p.get('seed', 42)),
                 identity_policy=p.get('identity_policy', 'legacy'))
-            return {"status": "ok", "model": self._wmodel.state()}
+            state = model.state()
+            previous = getattr(self, "_wmodel", None)
+            loop = getattr(self, "_simloop", None)
+            # setup 拥有独立模型；只结束附着在旧统一模型上的循环。
+            # 重新 attach 才能继续，旧循环的 WAL 和经验不迁入新模型。
+            if loop is not None and loop.wm is previous:
+                del self._simloop
+            self._wmodel = model
+            return {"status": "ok", "model": state}
         if action in ("identity", "identity_policy"):
             if not hasattr(self, '_wmodel'):
                 return {"status": "error", "error": "先 world_model init"}

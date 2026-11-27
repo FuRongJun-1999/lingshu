@@ -183,6 +183,7 @@ class SimulationLoop:
         # #248 的期望是「seq 严格单调 **或** 带 session」——只做前半即已满足判据。
         self._seq = self._resume_seq_from_wal(wal_path)
         self.ticks_stepped = 0             # 推演环推进的 tick 数（不含外部 perceive）
+        self._step_count_complete = True
         self._alias: Dict[str, str] = {}   # WAL 稳定别名（SceneEntity 用 uuid4 随机
         #                                    id，别名保证同配置两次运行 WAL 逐字节
         #                                    一致——单调审计可比性的前提）
@@ -363,11 +364,9 @@ class SimulationLoop:
                                       / len(self._rolling_rates), 4)
             if self._rolling_rates else None,
             "verified_ticks": len(self._rolling_rates),
-            # #2544：恢复场景下 `ticks_stepped` 未被恢复（0）而 `_rolling_rates`
-            # 有 5 条 ⇒ 原式给出 -5（物理上不可能的「负的未验证轮次」），且 flush
-            # 正文写「已验证轮次 5/0」。钳到 0（恢复 ticks_stepped 属另一修复面）。
             "unverified_ticks": max(0, self.ticks_stepped
                                     - len(self._rolling_rates)),
+            "step_count_complete": self._step_count_complete,
             "growth_summary": {
                 "born": sum(1 for g in self._growth_log
                             if g["event"] in ("growth", "re-grow")),
@@ -689,6 +688,7 @@ class SimulationLoop:
         """认知图 contextual 层（tags 含 wm_simloop 的节点）→ 世界图实体先验。
 
         诚实边界：v1 只重建位置+类别先验（行为不重建，落 wander 缺省）。
+        世界尺寸必须与目标循环的模型及物理场景一致；此 API 不重建或缩放 SceneSimulator。
 
         #247（成立）：两处口径错误——
           · 根来源：`os.environ.get("MDCG_ROOT", mdcg_root or "")` 让**环境变量
@@ -721,6 +721,20 @@ class SimulationLoop:
             schema = state["schema"]
             if schema not in ("lingshu.world-prior.v1", "lingshu.world-prior.v2"):
                 raise ValueError("不支持的世界模型经验格式")
+            # 先验的预测边界必须与要继续推进的物理场景一致。恢复只替换模型
+            # 表征，不重建/缩放 SceneSimulator；尺寸不一致就不能安全发布候选。
+            prior_size = state.get("size")
+            if (isinstance(prior_size, bool) or not isinstance(prior_size, int)
+                    or prior_size <= 0):
+                raise ValueError("世界模型经验 size 必须是正整数，收到 %r" % (prior_size,))
+            model_size = self.wm.size
+            model_world_size = self.wm.world.world.size
+            scene_size = self.scene.world.size
+            if not (prior_size == model_size == model_world_size == scene_size):
+                raise ValueError(
+                    "世界模型经验 size 与当前模型/物理世界不一致："
+                    "prior=%r model=%r model_world=%r scene=%r"
+                    % (prior_size, model_size, model_world_size, scene_size))
             selected = list(state["nodes"].items())[:max(0, limit)]
             # 先构建独立候选；后段字段或历史投影失败时，活动模型必须仍可继续使用。
             candidate = copy(self.wm)
@@ -776,10 +790,21 @@ class SimulationLoop:
             restored_hypotheses = {eid: h for eid, h in state["hypotheses"].items()
                                    if eid in candidate.nodes and h["node"] in candidate.nodes}
             restored_rates = state["rolling_rates"]
+            # 旧载荷只知道有验证读数的轮次。模型 tick 还计入了外部感知，不能补齐总轮次。
+            verified = len(restored_rates)
+            has_step_total = "ticks_stepped" in state
+            restored_steps = state.get("ticks_stepped", verified)
+            step_count_complete = state.get("step_count_complete", has_step_total)
+            if type(restored_steps) is not int or restored_steps < verified:
+                raise ValueError("世界模型经验 ticks_stepped 必须是至少等于已验证轮次的整数")
+            if type(step_count_complete) is not bool or (step_count_complete and not has_step_total):
+                raise ValueError("世界模型经验 step_count_complete 无效或缺少 ticks_stepped")
             # 保留外部持有的同一模型对象；全部可失败的恢复步骤已完成。
             self.wm.__dict__.update(candidate.__dict__)
             self._hypotheses = restored_hypotheses
             self._rolling_rates = restored_rates
+            self.ticks_stepped = restored_steps
+            self._step_count_complete = step_count_complete
             return {"status": "ok", "seeded": len(selected), "memory_id": memory_id,
                     "truncated": len(selected) < len(state["nodes"]),
                     "entities": [{"source": memory_id, "eid": eid, "seeded_id": eid,
@@ -874,8 +899,9 @@ class SimulationLoop:
         # test_world_observation_contracts.py 断言 "命中率: None"），「暂无验证读数」
         # 只作括号说明（tests/test_world_feedback.py 断言该标记存在）。
         reading = f"{rate}（暂无验证读数）" if rate is None else rate
+        step_count_note = "" if self._step_count_complete else "（总轮次为已知下限）"
         lines += ["", f"最近已验证轮次命中率: {reading} | "
-                  f"已验证轮次 {len(self._rolling_rates)}/{self.ticks_stepped} | "
+                  f"已验证轮次 {len(self._rolling_rates)}/{self.ticks_stepped}{step_count_note} | "
                   f"节点 {g['node_count']} | "
                   f"边 {g['edge_count']} | WAL {self._seq} 条",
                   f"growth: born={sum(1 for x in self._growth_log if x['event'] in ('growth', 're-grow'))} "
@@ -907,6 +933,8 @@ class SimulationLoop:
                  "motion_directions": self.wm._motion_directions,
                  "relation_history": self.wm.relation_history,
                  "hypotheses": confirmed, "rolling_rates": self._rolling_rates,
+                 "ticks_stepped": self.ticks_stepped,
+                 "step_count_complete": self._step_count_complete,
                  "last_verification": self.wm._compare}
         # 只序列化显式逐模型覆盖。未覆盖时，接收端应使用自己的有效模块默认；
         # 这也使旧 v1/v2 归档缺该字段时继续按各自进程的默认策略工作。
@@ -1016,11 +1044,9 @@ class SimulationLoop:
                                           / len(self._rolling_rates), 4)
                 if self._rolling_rates else None,
                 "verified_ticks": len(self._rolling_rates),
-                # #2544：恢复场景下 `ticks_stepped` 未被恢复（0）而 `_rolling_rates`
-            # 有 5 条 ⇒ 原式给出 -5（物理上不可能的「负的未验证轮次」），且 flush
-            # 正文写「已验证轮次 5/0」。钳到 0（恢复 ticks_stepped 属另一修复面）。
-            "unverified_ticks": max(0, self.ticks_stepped
-                                    - len(self._rolling_rates)),
+                "unverified_ticks": max(0, self.ticks_stepped
+                                        - len(self._rolling_rates)),
+                "step_count_complete": self._step_count_complete,
                 "hypotheses_active": len(self._hypotheses),
                 "growth_events": len(self._growth_log),
                 "wal_records": len(self.wal),

@@ -40,6 +40,7 @@ F06 关系判定(recipe role → detection 一对一绑定):
 """
 from __future__ import annotations
 import json
+import math
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -208,11 +209,31 @@ def _det_axes(det: Dict) -> Optional[Tuple[int, int]]:
 
 # ==================== 查询式识别 ====================
 
+def _validate_threshold(name: str, val: float) -> float:
+    """校验四态阈值：非 bool、有限实数且落在 [0, 1]（#196 census）。"""
+    if isinstance(val, (bool, np.bool_)) or not isinstance(val, (int, float, np.number)):
+        raise ValueError("query_match: %s 必须是数值，收到 %r" % (name, val))
+    try:
+        f = float(val)
+    except OverflowError as exc:
+        raise ValueError("query_match: %s 必须落在 [0, 1]，收到 %r" % (name, val)) from exc
+    if not math.isfinite(f) or not (0.0 <= f <= 1.0):
+        raise ValueError("query_match: %s 必须落在 [0, 1]，收到 %r" % (name, val))
+    return f
+
+
 def query_match(detections: List[Dict], lib: ConnectionLibrary,
                 th_accept: float = 0.6, th_defer: float = 0.3
                 ) -> List[Dict]:
     """查询式识别:新图关系 → 连接库匹配 → 条件判断(四态)。
     零梯度,纯比对——毫秒级。"""
+    th_accept = _validate_threshold("th_accept", th_accept)
+    th_defer = _validate_threshold("th_defer", th_defer)
+    if th_defer > th_accept:
+        raise ValueError(
+            "query_match: 要求 th_defer <= th_accept，收到 th_defer=%r, th_accept=%r"
+            % (th_defer, th_accept)
+        )
     if not detections:
         return [{"verdict": "BLINDSPOT", "note": "无检出"}]
     # dsh-bounty #1800①：知识侧的对称退化——空连接库（`ConnectionLibrary()`

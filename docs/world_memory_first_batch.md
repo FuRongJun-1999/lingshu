@@ -90,6 +90,10 @@ prediction = resumed.wm.generate()
 多场景应用持有这个 ID。正文按脑端 next_offset 续读，50 KiB 预览不会截坏经验 JSON。
 核心 `wm_simloop("flush"/"load")` 也转发 Python 调用方提供的已连接 brain 对象及 memory_id。
 `wm_simloop("attach")` 把推演循环接到核心当前统一模型；视觉观测、推断与经验保存因此使用同一个对象。
+成功执行 `world_model("init")` 会替换当前模型，同时结束附着在旧模型上的循环。
+如需保留旧模型的经验，请在重新初始化前执行 `wm_simloop("flush")`；重新初始化不会修改已写入的 WAL。
+新模型需显式 `wm_simloop("attach")` 后才能继续推演，建议使用新的 WAL 路径。
+`wm_simloop("setup")` 创建的独立循环不受统一模型替换影响。
 
 边界：自动发现只从可见的最多 200 条候选中选 saved_at 最新的快照，仍受脑端召回与权限约束；
 旧 mdcg_root 文件加载保留原位置/类别沙盒种入语义。本批不改变该旧入口的行为。完整历史随
