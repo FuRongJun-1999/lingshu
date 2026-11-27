@@ -5,10 +5,10 @@
 
 ## 一、盘点口径与白箱定义
 
-- **扫描范围**：`lingshu/` 下全部 `.py` 文件（共 **93** 个文件：**87** 个非 `__init__` 模块 + **6** 个 `__init__.py`）。
+- **扫描范围**：`lingshu/` 下全部 `.py` 文件（共 **94** 个文件：**88** 个非 `__init__` 模块 + **6** 个 `__init__.py`）。
 - **导入边识别**：AST 扫描 `import ...`、`from ... import ...`（含相对/绝对/子包解析）及 `importlib.import_module("lingshu....")` / `__import__("lingshu....")`（含 `core.py` 方法体内的惰性导入）。
 - **主入口根节点**：`lingshu/core/core.py`（`SpacetimeMemoryEngine`）、`lingshu/world/world_model.py`（`UnifiedWorldModel`）、`lingshu/world/scene_model.py`（`WorldModel`）。
-- **三分类定义**（对全部 **87** 个非 `__init__` 模块互斥完备划分）：
+- **三分类定义**（对全部 **88** 个非 `__init__` 模块互斥完备划分）：
   1. `main_chain`（**核心主入口可达**）：从主入口根节点沿 `lingshu/` 内有向 import 边可达；
   2. `subgraph_only`（**包内子图互调**）：未从主入口直接可达，但在 `lingshu/` 内入度 > 0（含通过包 `__init__.py` 如 `lingshu/world/__init__.py::register_world_process` 等静态解析包内边 接入者）；
   3. `standalone_leaf`（**独立原型叶模块**）：`lingshu/` 包内入度 == 0（包内无任何模块导入它，仅被 `tests/`、`bench/`、`tools/` 或直接 CLI 消费）。
@@ -17,10 +17,10 @@
 
 | 分类 | 模块数 | 占比 | 说明 |
 |---|---:|---:|---|
-| `main_chain`（核心主入口可达） | 40 | 46.0% | 由 `core.py`（含惰性边界）或 `WorldModel` / `UnifiedWorldModel` 静态/惰性可达 |
-| `subgraph_only`（包内子图互调） | 19 | 21.8% | 仅在子包/扩展内部或经 `__init__.py`（含依赖倒置注册接口）互调 |
-| `standalone_leaf`（独立原型叶模块） | 28 | 32.2% | 包内入度为 0，仅被测试 / 基准 / CLI 独立调用 |
-| **非 `__init__` 合计** | **87** | **100.0%** | 与 `docs/architecture.md` 计数同口径 |
+| `main_chain`（核心主入口可达） | 40 | 45.5% | 由 `core.py`（含惰性边界）或 `WorldModel` / `UnifiedWorldModel` 静态/惰性可达 |
+| `subgraph_only`（包内子图互调） | 19 | 21.6% | 仅在子包/扩展内部或经 `__init__.py`（含依赖倒置注册接口）互调 |
+| `standalone_leaf`（独立原型叶模块） | 29 | 33.0% | 包内入度为 0，仅被测试 / 基准 / CLI 独立调用 |
+| **非 `__init__` 合计** | **88** | **100.0%** | 与 `docs/architecture.md` 计数同口径 |
 
 ### 按层分布
 
@@ -31,9 +31,9 @@
 | `world` | 47 | 30 | 6 | 11 |
 | `nn` | 14 | 0 | 5 | 9 |
 | `gen` | 7 | 0 | 5 | 2 |
-| `vision` | 3 | 1 | 0 | 2 |
+| `vision` | 4 | 1 | 0 | 3 |
 
-## 三、全量模块逐件台账（87 个非 `__init__` 模块）
+## 三、全量模块逐件台账（88 个非 `__init__` 模块）
 
 | 模块路径 | 层 | 状态 | 主入口可达径 | 包内入度 / 导入方 | 包内出度 |
 |---|---|---|---|---:|---:|
@@ -77,6 +77,7 @@
 | `lingshu/vision/audio.py` | `vision` | `main_chain`（核心主入口可达） | core.py | 1（`lingshu/core/core.py`） | 0 |
 | `lingshu/vision/image_stats.py` | `vision` | `standalone_leaf`（独立原型叶模块） | — | 0 | 0 |
 | `lingshu/vision/lineart.py` | `vision` | `standalone_leaf`（独立原型叶模块） | — | 0 | 0 |
+| `lingshu/vision/mask_geometry.py` | `vision` | `standalone_leaf`（独立原型叶模块） | — | 0 | 0 |
 | `lingshu/world/anchor_verify.py` | `world` | `main_chain`（核心主入口可达） | core.py, WorldModel | 1（`lingshu/world/semantic_anchor_graph.py`） | 0 |
 | `lingshu/world/anchored_verification.py` | `world` | `standalone_leaf`（独立原型叶模块） | — | 0 | 0 |
 | `lingshu/world/anim.py` | `world` | `main_chain`（核心主入口可达） | WorldModel | 1（`lingshu/world/skeleton3d.py`） | 0 |
