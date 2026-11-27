@@ -49,13 +49,38 @@ def _norm(a: Vec3) -> float:
     return math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2])
 
 
+def _require_finite_num(v, name: str, ctx: str) -> float:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError("%s：%s 须为有限数值，收到 %r" % (ctx, name, v))
+    fv = float(v)
+    if not math.isfinite(fv):
+        raise ValueError("%s：%s 须为有限数值，收到 %r" % (ctx, name, v))
+    return fv
+
+
+def _require_vec3(p, name: str, ctx: str) -> Vec3:
+    try:
+        seq = tuple(p)
+    except TypeError:
+        raise ValueError("%s：%s 须为 3 元有限数值，收到 %r" % (ctx, name, p))
+    if len(seq) != 3:
+        raise ValueError("%s：%s 须为 3 元有限数值，收到 %r" % (ctx, name, p))
+    return (
+        _require_finite_num(seq[0], name, ctx),
+        _require_finite_num(seq[1], name, ctx),
+        _require_finite_num(seq[2], name, ctx),
+    )
+
+
 def orbit_dir(azimuth_deg: float, elevation_deg: float) -> Vec3:
     """从主体指向相机的单位方向（**y 向上**，与 `Camera3D` 同一约定）。
 
     `azimuth_deg` 绕 Y（0 ⇒ 相机在 +z 侧），`elevation_deg > 0` ⇒ 相机在主体**上方**。
     """
-    az = math.radians(azimuth_deg)
-    el = math.radians(elevation_deg)
+    az_d = _require_finite_num(azimuth_deg, "azimuth_deg", "orbit_dir")
+    el_d = _require_finite_num(elevation_deg, "elevation_deg", "orbit_dir")
+    az = math.radians(az_d)
+    el = math.radians(el_d)
     ce = math.cos(el)
     return (ce * math.sin(az), math.sin(el), ce * math.cos(az))
 
@@ -71,24 +96,21 @@ def frame_points(points: Sequence[Vec3], screen_w: int, screen_h: int, *,
     """
     from .world3d import Camera3D
 
-    pts = [tuple(float(v) for v in p) for p in points]
-    fit = [tuple(float(v) for v in p) for p in (fit_points or points)]
-    if not pts or not fit:
+    raw_pts = list(points)
+    raw_fit = list(fit_points) if fit_points else raw_pts
+    if not raw_pts or not raw_fit:
         raise ValueError("frame_points：点集为空")
-    # fov_deg 闸（#731）：初值 `dist = (scale·0.5)/tan(fov/2)·(1+2·margin)`
-    # 的除数在 `fov_deg == 0` 时为 0（`math.tan(0.0) == 0.0`）⇒ ZeroDivisionError。
-    # 值域判据（不是拍的）：同仓 `Camera3D.from_meta` 已把同一参数的合法域定为
-    # `0 < fov_deg < 180` 并对越界 fail-closed 报错——此处与该既有契约对齐。
-    # 该域同时排掉三类退化：`fov ≤ 0`（tan 非正 ⇒ dist ≤ 0，相机落到目标背面/
-    # 无穷远）、`fov ≥ 180`（半角 ≥ 90° ⇒ tan 爆炸或翻负，`focal()` 同步退化）、
-    # 以及 NaN（比较全 False ⇒ 相机各字段被 NaN 污染）。
-    # 处置口径与同模块一致：`points`/`iters`/`margin_frac` 的边界一律显式 raise，
-    # 本参数不得例外；不静默 clamp 成 50.0——那会把「调用方传了非法视场」译成
-    # 「照默认视场出图」，正是本波 #732 那类静默升级。
-    if not (0.0 < fov_deg < 180.0):
+    pts = [_require_vec3(p, "points", "frame_points") for p in raw_pts]
+    fit = pts if raw_fit is raw_pts else [_require_vec3(p, "fit_points", "frame_points") for p in raw_fit]
+    # fov_deg 闸（#731 + #196）：拒绝 bool / 非数值 / 非有限 / 越界值。
+    if (isinstance(fov_deg, bool) or not isinstance(fov_deg, (int, float))
+            or not math.isfinite(float(fov_deg))
+            or not (0.0 < float(fov_deg) < 180.0)):
         raise ValueError(
             "frame_points：fov_deg 必须落在开区间 (0,180)，收到 %r"
             % (fov_deg,))
+    if isinstance(iters, bool) or not isinstance(iters, int) or iters < 1:
+        raise ValueError("frame_points：iters 须为正整数，收到 %r" % (iters,))
     # #2154：margin_frac 与 fov_deg 同款显式闸——上一段注释「本参数不得例外；
     # 不静默 clamp」的承诺在 fov_deg 已落地、此处漏改。修前全值域无闸：负值挤爆
     # 画布、>=1.0 违反模块 docstring 自述验收判据 clipped=False（主体被裁出画
@@ -119,18 +141,22 @@ def frame_points(points: Sequence[Vec3], screen_w: int, screen_h: int, *,
     hi = [max(p[k] for p in pts) for k in range(3)]
     center = tuple((lo[k] + hi[k]) / 2.0 for k in range(3))
     scale = max(1e-6, max(hi[k] - lo[k] for k in range(3)))
+    if not (all(math.isfinite(v) for v in center) and math.isfinite(scale)):
+        raise ValueError("frame_points：点集跨度溢出（非有限）")
     eps = scale * _JAC_EPS_FRAC
 
     d = orbit_dir(azimuth_deg, elevation_deg)
     #: 初值：按包围球 + 视场半角（与 frame_object 同一几何，只是当起点用）
     half = math.radians(fov_deg) / 2.0
     dist = (scale * 0.5) / math.tan(half) * (1.0 + 2.0 * margin_frac)
+    if not math.isfinite(dist):
+        raise ValueError("frame_points：初始相机距离溢出（非有限）")
     target = center
     fit_w = screen_w * (1.0 - 2.0 * margin_frac)
     fit_h = screen_h * (1.0 - 2.0 * margin_frac)
     cam = Camera3D.look_at(_add(center, _mul(d, dist)), target, fov_deg)
 
-    for _ in range(max(1, int(iters))):
+    for _ in range(iters):
         eye = _add(target, _mul(d, dist))
         cam = Camera3D.look_at(eye, target, fov_deg)
         spts = [cam.project(p, screen_w, screen_h) for p in fit]
@@ -261,10 +287,12 @@ def frame_mesh(mesh, screen_w: int, screen_h: int, use_verts: bool = True,
     b = mesh.bounds()
     if b is None:
         raise ValueError("frame_mesh：空网格")
+    _require_vec3(b[0], "bounds.lo", "frame_mesh")
+    _require_vec3(b[1], "bounds.hi", "frame_mesh")
     #: ⚠ **必须加 `Object3D.center`**：`mesh.verts` 是局部坐标，而渲染时网格是靠
     #: `obj.center` 平移到世界位置的（`_draw_mesh`）。不加上它，取景框会整体错位 ——
     #: 守卫 A2 第一次就是这么红的（对 center≠0 的物体取景后上边越界 −57 px）。
-    _c = tuple(float(v) for v in center)
+    _c = _require_vec3(center, "center", "frame_mesh")
     lo = tuple(b[0][k] + _c[k] for k in range(3))
     hi = tuple(b[1][k] + _c[k] for k in range(3))
     if use_verts and getattr(mesh, "verts", None):
@@ -431,7 +459,10 @@ def auto_view(mesh, screen_w: int, screen_h: int, *,
     #: 实测教训：只用"投影面积最大"会被**正对一个大平面**骗到 —— arm 在 el=-8 时
     #: 正对底座大平面，面积最大，但画面里只看得见底座、连杆全被叠掉。
     b = mesh.bounds()
-    lo, hi = b
+    if b is None:
+        raise ValueError("auto_view：空网格")
+    lo = _require_vec3(b[0], "bounds.lo", "auto_view")
+    hi = _require_vec3(b[1], "bounds.hi", "auto_view")
     dims = [hi[k] - lo[k] for k in range(3)]
     axis = max(range(3), key=lambda k: dims[k])
     elong = dims[axis] / max(1e-9, sorted(dims)[1])

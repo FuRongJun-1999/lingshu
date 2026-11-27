@@ -41,6 +41,7 @@
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -55,6 +56,8 @@ def _num(v) -> str:
 
     非有限值（NaN/inf）⇒ 返回 `None`，调用方据此**跳过**该元素（不发射非法 SVG）。
     """
+    if isinstance(v, bool):
+        return None
     try:
         f = float(v)
     except (TypeError, ValueError, OverflowError):
@@ -83,16 +86,21 @@ def _color(c) -> Optional[Tuple[str, Optional[str], bool]]:
     if c is None:
         return None
     if isinstance(c, (int, float)) and not isinstance(c, bool):
+        if isinstance(c, float) and not math.isfinite(c):
+            return None
         v = int(c)
         vc = min(255, max(0, v))
         return ("rgb(%d,%d,%d)" % (vc, vc, vc), None, not (0 <= v <= 255))
     if isinstance(c, (tuple, list)):
         if len(c) not in (3, 4):
             return None
-        try:
-            vals = [int(x) for x in c]
-        except (TypeError, ValueError):
-            return None
+        vals = []
+        for x in c:
+            if isinstance(x, bool) or not isinstance(x, (int, float)):
+                return None
+            if isinstance(x, float) and not math.isfinite(x):
+                return None
+            vals.append(int(x))
         clamped = any(x < 0 or x > 255 for x in vals)
         vals = [min(255, max(0, x)) for x in vals]
         if len(vals) == 3:
@@ -145,8 +153,11 @@ class SVGBackend:
 
     def __init__(self, width: int, height: int,
                  background: Tuple[int, int, int] = (20, 24, 40)) -> None:
-        self.width = int(width)
-        self.height = int(height)
+        for _nm, _v in (("width", width), ("height", height)):
+            if isinstance(_v, bool) or not isinstance(_v, int) or _v <= 0:
+                raise ValueError("SVGBackend：%s 须为正整数，收到 %r" % (_nm, _v))
+        self.width = width
+        self.height = height
         self.background = background
         self._elements: List[str] = []
         #: ★ 元素级 CSS 类（本件）：给"线稿元素"统一打 `class="ink"` ⇒ 编辑器一条
@@ -302,6 +313,10 @@ class SVGBackend:
         if was_clamped:
             self._clamped += 1
         # 照 PIL 实测：`width=0` ⇒ 什么也不画；`width=-3` ⇒ 按宽 3 画（PIL 取绝对值）。
+        if (isinstance(width, bool) or not isinstance(width, (int, float))
+                or (isinstance(width, float) and not math.isfinite(width))):
+            self._skip("line_width")
+            return
         w = abs(int(width))
         if w == 0:
             self._skip("line_width")
@@ -419,11 +434,15 @@ class SVGBackend:
             out += ' fill="none"'
         st = _color(outline)
         if st is not None:
-            if st[2]:
-                self._clamped += 1
-            out += ' stroke="%s" stroke-width="%d"' % (st[0], max(1, int(width)))
-            if st[1] is not None:
-                out += ' stroke-opacity="%s"' % st[1]
+            if (isinstance(width, bool) or not isinstance(width, (int, float))
+                    or (isinstance(width, float) and not math.isfinite(width))):
+                self._skip("outline_width")
+            else:
+                if st[2]:
+                    self._clamped += 1
+                out += ' stroke="%s" stroke-width="%d"' % (st[0], max(1, int(width)))
+                if st[1] is not None:
+                    out += ' stroke-opacity="%s"' % st[1]
         elif outline is not None:
             self._skip("outline_color")
         return out
