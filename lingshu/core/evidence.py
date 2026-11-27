@@ -91,12 +91,27 @@ def normalize_source(source: Optional[str]) -> str:
 
 
 def _check_weight(weight) -> float:
+    if isinstance(weight, bool):
+        raise ValueError(f"evidence weight 必须是数值（不能为 bool），收到 {weight!r}")
     try:
         w = float(weight)
     except (TypeError, ValueError, OverflowError):
         raise ValueError(f"evidence weight 必须是数值，收到 {weight!r}")
     if not math.isfinite(w) or w <= 0.0 or w > 1.0:
         raise ValueError(f"evidence weight 须在 (0, 1] 且有限，收到 {weight!r}")
+    return w
+
+
+def _check_stored_weight(weight) -> float:
+    """校验从证据表读出的权重为有限正数且非 ``bool``（防损坏库行向置信度传播 NaN）。"""
+    if isinstance(weight, bool):
+        raise ValueError(f"evidence stored weight 必须是有限正数（不能为 bool），收到 {weight!r}")
+    try:
+        w = float(weight)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"evidence stored weight 必须是有限正数，收到 {weight!r}") from exc
+    if not math.isfinite(w) or w <= 0.0:
+        raise ValueError(f"evidence stored weight 必须是有限正数（> 0），收到 {weight!r}")
     return w
 
 
@@ -177,8 +192,8 @@ class EvidenceLedger:
     def record(self, node_id: str, source: Optional[str], polarity: int = SUPPORT,
                weight: float = 1.0, self_generated: bool = False,
                note: str = "") -> str:
-        if polarity not in (SUPPORT, CONTRADICT):
-            raise ValueError(f"polarity 只能是 SUPPORT(1) / CONTRADICT(-1)，收到 {polarity!r}")
+        if type(polarity) is not int or polarity not in (SUPPORT, CONTRADICT):
+            raise ValueError(f"polarity 只能是整数 SUPPORT(1) / CONTRADICT(-1)，收到 {polarity!r}")
         w = _check_weight(weight)
         eid = uuid.uuid4().hex
         with self.store._structure_event_transaction() as c:
@@ -235,6 +250,7 @@ class EvidenceLedger:
             if e["self_generated"]:
                 self_count += 1
                 continue
+            w_new = _check_stored_weight(e["weight"])
             cur = per_source.get(e["source"])
             # #2533：权重**相等**时此前保留先出现的那条——`record` 默认 weight=1.0
             # 即绝大多数调用，于是同一来源先记支持后记反证时反证被吞掉（实测
@@ -242,19 +258,25 @@ class EvidenceLedger:
             # 插入顺序不同结论相反），违反模块头「一旦有人把反证记进来，置信度
             # 会降」。同权时确定性地让反证胜出（fail-closed）。
             if cur is None:
-                per_source[e["source"]] = e
+                per_source[e["source"]] = (w_new, e)
             else:
-                _w_new = float(e["weight"])
-                _w_cur = float(cur["weight"])
-                if _w_new > _w_cur or (
-                        _w_new == _w_cur and e["polarity"] == CONTRADICT
-                        and cur["polarity"] != CONTRADICT):
-                    per_source[e["source"]] = e
-        for src, e in per_source.items():
+                w_cur, cur_e = cur
+                if w_new > w_cur or (
+                        w_new == w_cur and e["polarity"] == CONTRADICT
+                        and cur_e["polarity"] != CONTRADICT):
+                    per_source[e["source"]] = (w_new, e)
+        for src, (w, e) in per_source.items():
             bucket = support if e["polarity"] == SUPPORT else contra
-            bucket[src] = max(bucket.get(src, 0.0), e["weight"])
+            bucket[src] = max(bucket.get(src, 0.0), w)
         S, C = sum(support.values()), sum(contra.values())
-        conf = (PRIOR_A + S) / (PRIOR_A + PRIOR_B + S + C)
+        numer = PRIOR_A + S
+        denom = PRIOR_A + PRIOR_B + S + C
+        if not (math.isfinite(S) and math.isfinite(C)
+                and math.isfinite(numer) and math.isfinite(denom)):
+            raise ValueError(f"evidence 聚合权重溢出非有限：S={S!r}, C={C!r}")
+        conf = numer / denom
+        if not math.isfinite(conf):
+            raise ValueError(f"evidence 聚合置信度非有限：S={S!r}, C={C!r}")
         if support and contra:
             status = "contested"
         elif contra or (not support and conf < REFUTED_BELOW):
