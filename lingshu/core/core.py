@@ -10540,7 +10540,7 @@ class SpacetimeMemoryEngine:
                 for _i, _v in enumerate(vel):
                     _require_finite("velocity[%d]" % _i, _v)
                 eid = self._voxel.spawn_entity(category, pos, velocity=vel)
-            except (ValueError, TypeError) as _e:
+            except (ValueError, TypeError, OverflowError) as _e:
                 return {"status": "error", "error": str(_e)}
             return {"status": "ok", "entity_id": eid}
         if action == "simulate":
