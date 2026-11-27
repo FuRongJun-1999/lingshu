@@ -296,7 +296,14 @@ def main(argv=None):
         parser.error("--k must not exceed --max-nodes")
     scope = dict(role_id=args.role_id, session_id=args.session_id,
                  max_nodes=args.max_nodes, max_edges=args.max_edges)
+    def _is_unc_or_device(raw_path: str) -> bool:
+        return len(raw_path) >= 2 and raw_path[0] in ("/", "\\") and raw_path[1] in ("/", "\\")
+
     try:
+        if args.source == "brain" and _is_unc_or_device(str(args.root)):
+            raise ValueError("brain root must not use a UNC/device path")
+        if args.render and _is_unc_or_device(str(args.render)):
+            raise ValueError("render output must not use a UNC/device path")
         render = Path(args.render).resolve() if args.render else None
         if render:
             if render.suffix.lower() != ".png":
@@ -310,10 +317,6 @@ def main(argv=None):
                 # 但 `os.path.realpath(verbatim)` 仍保留前缀、实际写入落在脑根内（实测
                 # plain=True / verbatim=False，两者指向同一文件）。同仓
                 # `_screen_expected_allowed` 已有 `\?\` 拒绝的现成写法。
-                _raw = str(args.render)
-                if _raw.startswith("//") or _raw.startswith("\\\\"):
-                    raise ValueError(
-                        "render output must not use a UNC/device path")
                 if render.is_relative_to(Path(args.root).resolve()):
                     raise ValueError(
                         "render output must be outside the brain root")

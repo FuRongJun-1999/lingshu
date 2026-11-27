@@ -401,7 +401,10 @@ class MCPClient:
                  args: Optional[List[str]] = None,
                  request_timeout: Optional[float] = 30.0):
         if request_timeout is not None and (
-                not math.isfinite(request_timeout) or request_timeout <= 0):
+                isinstance(request_timeout, bool)
+                or not isinstance(request_timeout, (int, float))
+                or not math.isfinite(request_timeout)
+                or request_timeout <= 0):
             raise ValueError("request_timeout 必须是正的有限秒数或 None")
         # #652①：显式参数优先；env 兜底值**不可信**（父进程 env 决定被执行的
         # 程序与模块）⇒ fail-closed 校验（绝对路径＋存在性＋形状/结构，
@@ -820,7 +823,9 @@ class BrainStore:
         """
         if accept_states is None:
             accept_states = self.DEFAULT_ACCEPT_STATES
-        want = max(1, int(limit))
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+            raise ValueError("limit 必须是非负整数")
+        want = max(1, limit)
         k = want
         while True:
             args = {"op": "read", "query": self.seed_query if seed_query is None else seed_query, "k": k}
@@ -838,12 +843,24 @@ class BrainStore:
                     st = item.get("state")
                     if st and st not in accept_states:
                         continue                  # 明确否决态不注入世界（缺省踢 REJECT）
-                sp = ((fm.get("spatial") or {}).get("coords3d") or {})
+                raw_spatial = fm.get("spatial")
+                sp = (raw_spatial.get("coords3d") if isinstance(raw_spatial, dict) else None) or {}
                 coords = None
                 if isinstance(sp, dict) and sp:
-                    coords = {"x": float(sp.get("x", 0.0)),
-                              "y": float(sp.get("y", 0.0)),
-                              "z": float(sp.get("z", 0.0))}
+                    parsed = {}
+                    valid_coords = True
+                    for axis in ("x", "y", "z"):
+                        raw_v = sp.get(axis, 0.0)
+                        if isinstance(raw_v, bool) or not isinstance(raw_v, (int, float)):
+                            valid_coords = False
+                            break
+                        fv = float(raw_v)
+                        if not math.isfinite(fv):
+                            valid_coords = False
+                            break
+                        parsed[axis] = fv
+                    if valid_coords:
+                        coords = parsed
                 out.append(BrainNode(
                     id=str(node.get("id") or fm.get("id") or ""),
                     content=self._content(node),
@@ -931,8 +948,13 @@ class BrainEngine:
                 "它们不会进 mdcg_remember（静默吞参＝声明静默失效，issue #364）；"
                 "请在方法签名里显式声明并透传"
                 % (sorted(_kw),))
+        if isinstance(importance, bool) or not isinstance(importance, (int, float)):
+            raise ValueError("importance 必须是有限数值")
+        imp = float(importance)
+        if not math.isfinite(imp):
+            raise ValueError("importance 必须是有限数值")
         args = {"content": content, "layer": "contextual", "gated": False,
-                "importance": float(importance), "tags": list(tags or [])}
+                "importance": imp, "tags": list(tags or [])}
         if sensitivity is not None:
             args["sensitivity"] = sensitivity
         if role is not None:
@@ -940,8 +962,17 @@ class BrainEngine:
         if condition_space is not None:
             args["condition_space"] = condition_space
         if spatial_coordinates:
-            args["spatial"] = {"coords3d": {k: float(v)
-                                            for k, v in spatial_coordinates.items()}}
+            if not isinstance(spatial_coordinates, dict):
+                raise ValueError("spatial_coordinates 必须是字典")
+            clean_coords = {}
+            for k, v in spatial_coordinates.items():
+                if isinstance(v, bool) or not isinstance(v, (int, float)):
+                    raise ValueError(f"spatial_coordinates[{k!r}] 必须是有限数值")
+                fv = float(v)
+                if not math.isfinite(fv):
+                    raise ValueError(f"spatial_coordinates[{k!r}] 必须是有限数值")
+                clean_coords[k] = fv
+            args["spatial"] = {"coords3d": clean_coords}
         r = self.store.client.call("mdcg_remember", args)
         if not r.get("ok") or not r.get("id"):
             raise BrainError("mdcg_remember 未成功：%r" % (r,))
