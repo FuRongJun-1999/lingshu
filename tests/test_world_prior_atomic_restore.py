@@ -188,3 +188,67 @@ def test_valid_limit_truncation_keeps_only_selected_history_and_relations(tmp_pa
     assert all(set(frame["entities"]) <= selected for frame in target.wm.history)
     assert all(edge.source in selected and edge.target in selected for edge in target.wm.edges)
     assert set(target.wm._traj_buf) == selected
+
+
+@pytest.mark.parametrize("policy", ["legacy", "conservative"])
+@pytest.mark.parametrize("historical", [False, True], ids=["with-total", "before-total"])
+def test_prior_round_trip_preserves_verification_counts(tmp_path, policy, historical):
+    state = _source(identity_policy=policy)
+    verified = len(state["rolling_rates"])
+    assert 0 < verified < 3
+    if historical:
+        state.pop("ticks_stepped", None)
+        state.pop("step_count_complete", None)
+    known_total = verified if historical else 3
+    unverified = known_total - verified
+    complete = not historical
+
+    target = SimulationLoop(size=24, seed=9)
+    target.step(5)
+    receipt = ReceiptStore(tmp_path / "receipt.md", state)
+    target.load_priors(brain=receipt, memory_id="receipt")
+    for summary in (target.report(), target.run(0)):
+        assert summary["verified_ticks"] == verified
+        assert summary["unverified_ticks"] == unverified, "restored unverified count changed"
+        assert summary["step_count_complete"] is complete, "restored completeness changed"
+
+    target.step()
+    body = target.flush_payloads()["payload"]["body_md"]
+    count_note = "（总轮次为已知下限）" if historical else ""
+    assert f"已验证轮次 {verified}/{known_total + 1}{count_note} |" in body
+    receipt.path.write_text(body, encoding="utf-8")
+    restarted = SimulationLoop(size=24)
+    restarted.load_priors(brain=receipt, memory_id="receipt")
+    summary = restarted.report()
+    assert summary["verified_ticks"] == verified
+    assert summary["unverified_ticks"] == unverified + 1
+    assert summary["step_count_complete"] is complete, "resaved completeness changed"
+
+
+@pytest.mark.parametrize("fields, field", [
+    ({"ticks_stepped": True}, "ticks_stepped"),
+    ({"ticks_stepped": 3.0}, "ticks_stepped"),
+    ({"ticks_stepped": -1}, "ticks_stepped"),
+    ({"ticks_stepped": 0}, "ticks_stepped"),
+    ({"ticks_stepped": 3, "step_count_complete": 1}, "step_count_complete"),
+    ({"step_count_complete": True}, "step_count_complete"),
+], ids=[
+    "bool-total", "float-total", "negative-total", "below-verified-total",
+    "invalid-completeness", "complete-without-total",
+])
+def test_invalid_verification_counts_fail_atomically(tmp_path, fields, field):
+    state = _source()
+    state.pop("ticks_stepped", None)
+    state.pop("step_count_complete", None)
+    state.update(fields)
+    target = _target()
+    before = _snapshot(target)
+    before_report = target.report()
+
+    with pytest.raises(ValueError, match=field):
+        target.load_priors(
+            brain=ReceiptStore(tmp_path / "receipt.md", state), memory_id="receipt",
+        )
+
+    assert _snapshot(target) == before, "invalid count partially changed the running model"
+    assert target.report() == before_report
