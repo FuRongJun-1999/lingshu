@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import numbers
 import os
 import re
 import sqlite3
@@ -200,6 +202,26 @@ def _normalize_candidates_k(k: Optional[int]) -> Optional[int]:
     return k
 
 
+def _require_finite_real(value, name: str) -> float:
+    """校验有限实数且拒绝 ``bool``（#196 第十三批）。"""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise ValueError(f"{name} 必须是有限实数（不能为 bool），收到 {value!r}")
+    try:
+        f = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} 必须是有限实数，收到 {value!r}") from exc
+    if not math.isfinite(f):
+        raise ValueError(f"{name} 必须有限（不能为 NaN/±inf），收到 {value!r}")
+    return f
+
+
+def _require_positive_int(value, name: str) -> int:
+    """校验正整数（>= 1）且拒绝 ``bool``（#196 第十三批）。"""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} 必须是正整数（>= 1，不能为 bool），收到 {value!r}")
+    return value
+
+
 class FTSIndex:
     """挂在 LayeredStore 上的派生索引；所有方法失败都只让调用方回退原路径。"""
 
@@ -275,12 +297,14 @@ class FTSIndex:
 
     # ---------- 增量同步 ----------
     def sync(self, batch: int = 2000) -> int:
+        batch = _require_positive_int(batch, "batch")
+        sql_limit = min(batch, _SQLITE_MAX_LIMIT)
         store = self.store
         done = 0
         epoch = self._tracking_epoch()
         while True:
             c = store.conn
-            ids = [r[0] for r in c.execute("SELECT nid FROM nodes_fts_dirty LIMIT ?", (batch,))]
+            ids = [r[0] for r in c.execute("SELECT nid FROM nodes_fts_dirty LIMIT ?", (sql_limit,))]
             if not ids:
                 self._require_tracking_epoch(epoch)
                 return done
@@ -406,6 +430,9 @@ class FTSIndex:
                            window: float = NEIGHBOR_WINDOW_S) -> List[Tuple[str, tuple]]:
         """[(种子 nid, 邻居 nodes 行)]：每个种子取 temporal_coordinate 紧邻的前一条与后一条，
         间隔超过 window 秒的不算（会话边界）。同层过滤与 search_content 一致。"""
+        win = _require_finite_real(window, "window")
+        if win < 0.0:
+            raise ValueError(f"window 必须是非负有限实数，收到 {window!r}")
         conn = self.store.conn
         lay, lp = "", []
         if layers:
@@ -434,11 +461,13 @@ class FTSIndex:
                         f"SELECT * FROM nodes WHERE temporal_coordinate {op} ? AND id != ?{lay} "
                         f"ORDER BY temporal_coordinate {order}, rowid {order} LIMIT 1",
                         [tc, nid] + lp).fetchone()
-                if row is not None and abs(float(row["temporal_coordinate"]) - tc) <= window:
+                if row is not None and abs(float(row["temporal_coordinate"]) - tc) <= win:
                     out.append((nid, tuple(row)))
         return out
 
     @staticmethod
     def blend(jaccard: float, bm25_pos: float) -> float:
-        r = bm25_pos / (bm25_pos + BM25_K) if bm25_pos > 0 else 0.0
-        return min(1.0, max(jaccard, BM25_CAP * r))
+        j = _require_finite_real(jaccard, "jaccard")
+        b = _require_finite_real(bm25_pos, "bm25_pos")
+        r = b / (b + BM25_K) if b > 0 else 0.0
+        return min(1.0, max(j, BM25_CAP * r))

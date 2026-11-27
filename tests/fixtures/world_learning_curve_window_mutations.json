@@ -1,0 +1,48 @@
+{
+  "guard": "tests/test_world_learning_curve_window.py",
+  "total": 3,
+  "sources": [
+    "lingshu/world/world_learner.py"
+  ],
+  "baseline_failures": [
+    "test_curve_advances_once_per_evaluation[with-evaluation]",
+    "test_curve_distance_matches_its_evaluation"
+  ],
+  "mutations": [
+    {
+      "name": "repeat_evaluation_advance",
+      "test": "test_curve_advances_once_per_evaluation[with-evaluation]",
+      "assertion": "curve advanced beyond its evaluation budget",
+      "changes": [
+        {
+          "file": "lingshu/world/world_learner.py",
+          "class": "WorldLearner",
+          "method": "learning_curve",
+          "old": "            res = self.eval_phase(eval_ticks)",
+          "new": "            res = self.eval_phase(eval_ticks)\n            self.next_state_loss(eval_ticks)"
+        }
+      ]
+    },
+    {
+      "name": "report_distance_from_next_window",
+      "test": "test_curve_distance_matches_its_evaluation",
+      "assertion": "curve mixed evaluation windows",
+      "changes": [
+        {
+          "file": "lingshu/world/world_learner.py",
+          "class": "WorldLearner",
+          "method": "learning_curve",
+          "old": "            res = self.eval_phase(eval_ticks)",
+          "new": "            res = self.eval_phase(eval_ticks)\n            extra = self.next_state_loss(eval_ticks)"
+        },
+        {
+          "file": "lingshu/world/world_learner.py",
+          "class": "WorldLearner",
+          "method": "learning_curve",
+          "old": "\"mean_distance\": res[\"mean_distance\"]",
+          "new": "\"mean_distance\": extra[\"mean_distance\"]"
+        }
+      ]
+    }
+  ]
+}
