@@ -155,7 +155,7 @@ def test_path_alias_is_rejected_by_file_identity(tmp_path):
     alias = dict(record, part="other", path="./model.obj")
     doc = _manifest([dict(record, part="main"), alias])
     manifest = _write_manifest(tmp_path, doc)
-    with pytest.raises(AttaEvidenceError, match="重复指向同一文件"):
+    with pytest.raises(AttaEvidenceError, match="重复规范化 path"):
         verify_atta_receipt(tmp_path, manifest_path=manifest)
 
 def test_hardlink_distinct_paths_are_accepted(tmp_path):
