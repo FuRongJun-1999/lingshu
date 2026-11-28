@@ -158,7 +158,7 @@ def test_path_alias_is_rejected_by_file_identity(tmp_path):
     with pytest.raises(AttaEvidenceError, match="重复指向同一文件"):
         verify_atta_receipt(tmp_path, manifest_path=manifest)
 
-def test_hardlink_to_same_file_is_rejected(tmp_path):
+def test_hardlink_distinct_paths_are_accepted(tmp_path):
     record = _file_record(tmp_path, "model.obj", b"mesh")
     linked = tmp_path / "linked.obj"
     try:
@@ -167,8 +167,9 @@ def test_hardlink_to_same_file_is_rejected(tmp_path):
         pytest.skip("hard links unavailable: %s" % exc)
     alias = dict(record, part="other", path="linked.obj")
     manifest = _write_manifest(tmp_path, _manifest([dict(record, part="main"), alias]))
-    with pytest.raises(AttaEvidenceError, match="同一文件"):
-        verify_atta_receipt(tmp_path, manifest_path=manifest)
+    result = verify_atta_receipt(tmp_path, manifest_path=manifest)
+    assert result["verified_file_count"] == 2
+    assert result["files"][0]["path"] != result["files"][1]["path"]
 
 
 def test_same_content_distinct_files_are_accepted(tmp_path):
