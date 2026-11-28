@@ -150,6 +150,52 @@ def test_duplicate_path_is_rejected(tmp_path):
         validate_manifest(_manifest([a, b]))
 
 
+def test_path_alias_is_rejected_by_file_identity(tmp_path):
+    record = _file_record(tmp_path, "model.obj", b"mesh")
+    alias = dict(record, part="other", path="./model.obj")
+    doc = _manifest([dict(record, part="main"), alias])
+    manifest = _write_manifest(tmp_path, doc)
+    with pytest.raises(AttaEvidenceError, match="重复规范化 path"):
+        verify_atta_receipt(tmp_path, manifest_path=manifest)
+
+def test_hardlink_distinct_paths_are_accepted(tmp_path):
+    record = _file_record(tmp_path, "model.obj", b"mesh")
+    linked = tmp_path / "linked.obj"
+    try:
+        os.link(tmp_path / "model.obj", linked)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip("hard links unavailable: %s" % exc)
+    alias = dict(record, part="other", path="linked.obj")
+    manifest = _write_manifest(tmp_path, _manifest([dict(record, part="main"), alias]))
+    result = verify_atta_receipt(tmp_path, manifest_path=manifest)
+    assert result["verified_file_count"] == 2
+    assert result["files"][0]["path"] != result["files"][1]["path"]
+
+
+def test_same_content_distinct_files_are_accepted(tmp_path):
+    a = _file_record(tmp_path, "a.obj", b"mesh")
+    b = _file_record(tmp_path, "b.obj", b"mesh")
+    a["part"], b["part"] = "a", "b"
+    manifest = _write_manifest(tmp_path, _manifest([a, b]))
+    result = verify_atta_receipt(tmp_path, manifest_path=manifest)
+    assert result["verified_file_count"] == 2
+    assert result["files"][0]["path"] != result["files"][1]["path"]
+
+
+def test_case_distinct_files_follow_filesystem_identity(tmp_path):
+    a = _file_record(tmp_path, "mesh.obj", b"mesh")
+    upper = tmp_path / "MESH.obj"
+    try:
+        upper.write_bytes(b"mesh")
+    except OSError as exc:
+        pytest.skip("cannot create case-distinct path: %s" % exc)
+    if os.path.samefile(tmp_path / "mesh.obj", upper):
+        pytest.skip("filesystem treats case-distinct spellings as the same file")
+    b = dict(a, part="upper", path="MESH.obj")
+    manifest = _write_manifest(tmp_path, _manifest([dict(a, part="lower"), b]))
+    result = verify_atta_receipt(tmp_path, manifest_path=manifest)
+    assert result["verified_file_count"] == 2
+
 def test_failed_export_row_is_not_hashed_and_needs_partial_opt_in(tmp_path):
     """A row with ``ok: false`` is a declared failure, not a corrupt receipt.
 
