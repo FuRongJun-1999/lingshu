@@ -85,6 +85,103 @@ class CalibrationError(ValueError):
     """标定失败（输入不足 / 退化 / 解不自洽）。**不返回可疑的解**。"""
 
 
+def _require_finite(name: str, val: Any, *, positive: bool = False,
+                    min_val: Optional[float] = None,
+                    allow_pos_inf: bool = False) -> float:
+    """校验有限实数且拒绝 bool（#196）；allow_pos_inf=True 时仅放行 +inf。"""
+    if type(val) is float:
+        f = val
+    elif isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise CalibrationError("%s：必须是有限数值，收到 %r" % (name, val))
+    else:
+        try:
+            f = float(val)
+        except OverflowError as exc:
+            raise CalibrationError("%s：数值溢出，收到 %r" % (name, val)) from exc
+    if math.isnan(f):
+        raise CalibrationError("%s：不能为 NaN，收到 %r" % (name, val))
+    if not math.isfinite(f):
+        if allow_pos_inf and f > 0.0:
+            return f
+        raise CalibrationError("%s：必须是有限数值，收到 %r" % (name, val))
+    if positive and f <= 0.0:
+        raise CalibrationError("%s：必须为正，收到 %r" % (name, val))
+    if min_val is not None and f < min_val:
+        raise CalibrationError("%s：不能小于 %r，收到 %r" % (name, min_val, val))
+    return f
+
+
+def _require_int(name: str, val: Any, *, min_val: Optional[int] = None) -> int:
+    """校验整数且拒绝 bool / 非整数浮点（#196）。"""
+    if isinstance(val, bool) or not isinstance(val, int):
+        raise CalibrationError("%s：必须是整数，收到 %r" % (name, val))
+    if min_val is not None and val < min_val:
+        raise CalibrationError("%s：不能小于 %d，收到 %r" % (name, min_val, val))
+    return val
+
+
+def _require_image_size(image_size: Any, where: str) -> Tuple[float, float]:
+    """校验图像尺寸为长度 2 的正有限数值对（拒绝 bool / NaN / ±inf / <=0）。"""
+    if isinstance(image_size, (str, bytes)):
+        raise CalibrationError("%s：image_size 必须是长度 2 的正有限数值对，收到 %r"
+                               % (where, image_size))
+    try:
+        seq = list(image_size)
+    except TypeError as exc:
+        raise CalibrationError("%s：image_size 必须是长度 2 的正有限数值对，收到 %r"
+                               % (where, image_size)) from exc
+    if len(seq) != 2:
+        raise CalibrationError("%s：image_size 长度必须为 2，收到 %d"
+                               % (where, len(seq)))
+    w = _require_finite("%s.image_size[0]" % where, seq[0], positive=True)
+    h = _require_finite("%s.image_size[1]" % where, seq[1], positive=True)
+    return w, h
+
+
+def _require_vec(vec: Any, length: int, where: str) -> List[float]:
+    """校验定长有限实数向量（拒绝 bool / NaN / ±inf / 溢出）。"""
+    if isinstance(vec, (str, bytes)):
+        raise CalibrationError("%s：需要长度为 %d 的有限数值向量，收到 %r"
+                               % (where, length, vec))
+    try:
+        seq = list(vec)
+    except TypeError as exc:
+        raise CalibrationError("%s：需要长度为 %d 的有限数值向量，收到 %r"
+                               % (where, length, vec)) from exc
+    if len(seq) != length:
+        raise CalibrationError("%s：需要长度为 %d 的向量，收到 %d"
+                               % (where, length, len(seq)))
+    return [_require_finite("%s[%d]" % (where, i), v) for i, v in enumerate(seq)]
+
+
+def _require_mat3(mat: Any, where: str) -> List[List[float]]:
+    """校验 3×3 有限实数矩阵（拒绝 bool / NaN / ±inf / 溢出）。"""
+    if isinstance(mat, (str, bytes)):
+        raise CalibrationError("%s：需要 3×3 有限数值矩阵，收到 %r" % (where, mat))
+    try:
+        rows = list(mat)
+    except TypeError as exc:
+        raise CalibrationError("%s：需要 3×3 有限数值矩阵，收到 %r" % (where, mat)) from exc
+    if len(rows) != 3:
+        raise CalibrationError("%s：需要 3×3 矩阵，收到 %d 行" % (where, len(rows)))
+    return [_require_vec(row, 3, "%s[%d]" % (where, i)) for i, row in enumerate(rows)]
+
+
+def _require_intrinsics_dict(k: Any, where: str) -> Tuple[float, float, float, float, float]:
+    """校验内参字典 {fx, fy, cx, cy, skew} 全为有限非 bool 实数。"""
+    if not isinstance(k, dict):
+        raise CalibrationError("%s：内参必须是字典，收到 %r" % (where, type(k).__name__))
+    try:
+        fx = _require_finite("%s.k['fx']" % where, k["fx"])
+        fy = _require_finite("%s.k['fy']" % where, k["fy"])
+        cx = _require_finite("%s.k['cx']" % where, k["cx"])
+        cy = _require_finite("%s.k['cy']" % where, k["cy"])
+        skew = _require_finite("%s.k['skew']" % where, k["skew"])
+    except KeyError as exc:
+        raise CalibrationError("%s：内参缺少字段 %s" % (where, exc)) from exc
+    return fx, fy, cx, cy, skew
+
+
 # =========================================================== 小型线性代数
 def _mat_mul(a: Sequence[Sequence[float]],
              b: Sequence[Sequence[float]]) -> List[List[float]]:
@@ -110,19 +207,23 @@ def _mat_transpose(a: Sequence[Sequence[float]]) -> List[List[float]]:
 
 
 def _mat_inv3(m: Sequence[Sequence[float]]) -> List[List[float]]:
-    """3×3 求逆（伴随矩阵闭式）。奇异 ⇒ 抛错，不返回垃圾。"""
-    a, b, c = float(m[0][0]), float(m[0][1]), float(m[0][2])
-    d, e, f = float(m[1][0]), float(m[1][1]), float(m[1][2])
-    g, h, i = float(m[2][0]), float(m[2][1]), float(m[2][2])
+    """3×3 求逆（伴随矩阵闭式）。奇异或含非有限/bool 元素 ⇒ 抛错，不返回垃圾。"""
+    m3 = _require_mat3(m, "_mat_inv3")
+    a, b, c = m3[0][0], m3[0][1], m3[0][2]
+    d, e, f = m3[1][0], m3[1][1], m3[1][2]
+    g, h, i = m3[2][0], m3[2][1], m3[2][2]
     det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
-    if abs(det) < 1e-14:
-        raise CalibrationError("_mat_inv3：矩阵奇异（det=%.3e）" % det)
+    if (not math.isfinite(det)) or abs(det) < 1e-14:
+        raise CalibrationError("_mat_inv3：矩阵奇异或非有限（det=%.3e）" % det)
     inv = 1.0 / det
-    return [
+    out = [
         [(e * i - f * h) * inv, (c * h - b * i) * inv, (b * f - c * e) * inv],
         [(f * g - d * i) * inv, (a * i - c * g) * inv, (c * d - a * f) * inv],
         [(d * h - e * g) * inv, (b * g - a * h) * inv, (a * e - b * d) * inv],
     ]
+    if not all(math.isfinite(v) for row in out for v in row):
+        raise CalibrationError("_mat_inv3：逆矩阵含非有限值")
+    return out
 
 
 def _jacobi_eigen_sym(a: Sequence[Sequence[float]],
@@ -137,18 +238,29 @@ def _jacobi_eigen_sym(a: Sequence[Sequence[float]],
     缺陷态对照：把旋转角写成 `t = tan(theta)` 而非
     `t = sign(θ)/(|θ|+√(θ²+1))` 的稳定式 ⇒ 大角度时溢出，特征值不收敛。
     """
+    max_sweeps_i = _require_int("_jacobi_eigen_sym.max_sweeps", max_sweeps, min_val=0)
+    tol_f = _require_finite("_jacobi_eigen_sym.tol", tol, min_val=0.0)
     n = len(a)
     if n == 0 or any(len(r) != n for r in a):
         raise CalibrationError("_jacobi_eigen_sym：需要非空方阵")
+    clean = [
+        [_require_finite("_jacobi_eigen_sym.a[%d][%d]" % (i, j), a[i][j])
+         for j in range(n)]
+        for i in range(n)
+    ]
     # 对称化（调用方可能只填了上三角）
-    m = [[0.5 * (float(a[i][j]) + float(a[j][i])) for j in range(n)] for i in range(n)]
+    m = [[0.5 * (clean[i][j] + clean[j][i]) for j in range(n)] for i in range(n)]
+    if not all(math.isfinite(v) for row in m for v in row):
+        raise CalibrationError("_jacobi_eigen_sym：对称化后矩阵非有限")
     v = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
-    for _sweep in range(max_sweeps):
+    for _sweep in range(max_sweeps_i):
         off = 0.0
         for i in range(n):
             for j in range(i + 1, n):
                 off += m[i][j] * m[i][j]
-        if off <= tol:
+        if not math.isfinite(off):
+            raise CalibrationError("_jacobi_eigen_sym：非对角范数溢出")
+        if off <= tol_f:
             break
         for p in range(n - 1):
             for q in range(p + 1, n):
@@ -171,7 +283,10 @@ def _jacobi_eigen_sym(a: Sequence[Sequence[float]],
                     vkp, vkq = v[k][p], v[k][q]
                     v[k][p] = c * vkp - s * vkq
                     v[k][q] = s * vkp + c * vkq
-    return [m[i][i] for i in range(n)], v
+    vals = [m[i][i] for i in range(n)]
+    if not all(math.isfinite(x) for x in vals):
+        raise CalibrationError("_jacobi_eigen_sym：特征值非有限")
+    return vals, v
 
 
 def _null_vector(a: Sequence[Sequence[float]],
@@ -191,44 +306,70 @@ def _null_vector(a: Sequence[Sequence[float]],
 
     缺陷态对照：去掉本检查 ⇒ 共线点也会"解出"一个单应（D 组红）。
     """
-    at = _mat_transpose(a)
-    ata = _mat_mul(at, a)
+    rank_tol_f = _require_finite("_null_vector.rank_tol", rank_tol, min_val=0.0)
+    if not a or not a[0]:
+        raise CalibrationError("_null_vector：输入矩阵为空")
+    ncols = len(a[0])
+    clean_a: List[List[float]] = []
+    for ri, row in enumerate(a):
+        if len(row) != ncols:
+            raise CalibrationError("_null_vector：第 %d 行长度不一致" % ri)
+        clean_a.append([
+            _require_finite("_null_vector.a[%d][%d]" % (ri, ci), v)
+            for ci, v in enumerate(row)
+        ])
+    at = _mat_transpose(clean_a)
+    ata = _mat_mul(at, clean_a)
     vals, vecs = _jacobi_eigen_sym(ata)
     order = sorted(range(len(vals)), key=lambda i: vals[i])
     k = order[0]
     if len(order) >= 2:
         lam_max = max(abs(v) for v in vals)
         lam2 = abs(vals[order[1]])
-        if lam_max > 0.0 and lam2 / lam_max < rank_tol:
+        if lam_max > 0.0 and lam2 / lam_max < rank_tol_f:
             raise CalibrationError(
                 "_null_vector：零空间不唯一（λ₂/λmax=%.2e < %.0e）——"
-                "点集退化（共线/重合）或视图朝向不足" % (lam2 / lam_max, rank_tol))
+                "点集退化（共线/重合）或视图朝向不足" % (lam2 / lam_max, rank_tol_f))
     col = [vecs[r][k] for r in range(len(vecs))]
     nrm = math.sqrt(sum(x * x for x in col))
-    if nrm < 1e-300:
+    if (not math.isfinite(nrm)) or nrm < 1e-300:
         raise CalibrationError("_null_vector：零空间向量退化")
     return [x / nrm for x in col]
 
 
 # =========================================================== 单应（DLT）
 def _require_finite_points(pts: Sequence[Sequence[float]], where: str) -> None:
-    """#2402：点集须为数值对且每分量有限——否则 CalibrationError。
+    """#2402/#196：点集须为非 bool 有限数值对——否则 CalibrationError。
 
     修前 nan/inf 点经 `_hartley` → DLT 得全 nan 单应，而唯一退化闸
     `if nrm < 1e-300` 对 nan 恒假 ⇒ 静默返回全 nan H；该 H 再经
     `intrinsics_from_homographies`（λ₂/λmax 对 nan 恒假）产出全 nan 内参——
     与两函数自述的「点集退化 ⇒ 抛错」「不返回看似合理的解」直接矛盾。
     同文件后段（:430 `math.isfinite(rms)`、:653 初值残差非有限）已是
-    fail-loud 口径，此处把入口段对齐。
+    fail-loud 口径，此处把入口段对齐并同步拒绝 bool 与溢出整数。
     """
     for i, pt in enumerate(pts):
-        try:
-            vals = [float(v) for v in pt]
-        except (TypeError, ValueError):
+        if isinstance(pt, (str, bytes)):
             raise CalibrationError("%s：第 %d 个点不是数值对（%r）" % (where, i, pt))
-        if len(vals) < 2 or not all(math.isfinite(v) for v in vals[:2]):
+        try:
+            raw = list(pt)
+        except TypeError as exc:
+            raise CalibrationError("%s：第 %d 个点不是数值对（%r）" % (where, i, pt)) from exc
+        if len(raw) < 2:
             raise CalibrationError(
                 "%s：第 %d 个点含非有限/非法坐标（%r）——拒绝求解" % (where, i, pt))
+        for v in raw:
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise CalibrationError(
+                    "%s：第 %d 个点含非有限/非法坐标（%r）——拒绝求解" % (where, i, pt))
+            try:
+                fv = float(v)
+            except OverflowError as exc:
+                raise CalibrationError(
+                    "%s：第 %d 个点坐标溢出（%r）——拒绝求解" % (where, i, pt)) from exc
+            if not math.isfinite(fv):
+                raise CalibrationError(
+                    "%s：第 %d 个点含非有限/非法坐标（%r）——拒绝求解" % (where, i, pt))
 
 
 def _hartley(pts: Sequence[Sequence[float]]) -> Tuple[List[List[float]],
@@ -241,8 +382,8 @@ def _hartley(pts: Sequence[Sequence[float]]) -> Tuple[List[List[float]],
     cx = sum(float(p[0]) for p in pts) / n
     cy = sum(float(p[1]) for p in pts) / n
     d = sum(math.hypot(float(p[0]) - cx, float(p[1]) - cy) for p in pts) / n
-    if d < 1e-12:
-        raise CalibrationError("_hartley：点集退化（平均距离 %.3e）" % d)
+    if (not math.isfinite(cx)) or (not math.isfinite(cy)) or (not math.isfinite(d)) or d < 1e-12:
+        raise CalibrationError("_hartley：点集退化或溢出（平均距离 %.3e）" % d)
     s = math.sqrt(2.0) / d
     t = [[s, 0.0, -s * cx], [0.0, s, -s * cy], [0.0, 0.0, 1.0]]
     out = [[s * (float(p[0]) - cx), s * (float(p[1]) - cy)] for p in pts]
@@ -271,8 +412,8 @@ def homography_dlt(src: Sequence[Sequence[float]],
     # H = Td⁻¹ · Ĥ · Ts
     hfull = _mat_mul(_mat_mul(_mat_inv3(td), hn), ts)
     nrm = math.sqrt(sum(hfull[i][j] ** 2 for i in range(3) for j in range(3)))
-    if nrm < 1e-300:
-        raise CalibrationError("homography_dlt：解出的 H 退化为零")
+    if (not math.isfinite(nrm)) or nrm < 1e-300:
+        raise CalibrationError("homography_dlt：解出的 H 退化为零或非有限")
     return [[hfull[i][j] / nrm for j in range(3)] for i in range(3)]
 
 
@@ -300,21 +441,44 @@ def intrinsics_from_homographies(hs: Sequence[Sequence[Sequence[float]]]
         raise CalibrationError(
             "intrinsics_from_homographies：至少 3 个视图（得到 %d）——"
             "2 个视图欠约束，无法唯一确定内参" % len(hs))
-    # #2402：H 含非有限元素时 λ₂/λmax 比较对 nan 恒假（退化闸逃逸），
-    # `_null_vector` 会产出全 nan 内参——与下方「退化 ⇒ 显式抛错，不返回
-    # 看似合理的解」的承诺相反。入口先拒，合法输入行为逐位不变。
+    # #2402/#196：H 含非有限/bool/溢出元素时 λ₂/λmax 比较对 nan 恒假（退化闸逃逸），
+    # `_null_vector` 会产出全 nan 内参——入口统一校验 3×3 有限非 bool 矩阵。
+    clean_hs: List[List[List[float]]] = []
     for i, h in enumerate(hs):
-        try:
-            vals = [float(v) for row in h for v in row]
-        except (TypeError, ValueError):
+        if isinstance(h, (str, bytes)):
             raise CalibrationError(
                 "intrinsics_from_homographies：第 %d 个单应不是 3×3 数值矩阵" % i)
-        if len(vals) != 9 or not all(math.isfinite(v) for v in vals):
+        try:
+            rows = [list(row) for row in h]
+        except TypeError as exc:
             raise CalibrationError(
-                "intrinsics_from_homographies：第 %d 个单应含非有限/非法元素"
-                "——拒绝求解（不返回全 nan 内参）" % i)
+                "intrinsics_from_homographies：第 %d 个单应不是 3×3 数值矩阵" % i) from exc
+        if len(rows) != 3 or any(len(row) != 3 for row in rows):
+            raise CalibrationError(
+                "intrinsics_from_homographies：第 %d 个单应不是 3×3 数值矩阵" % i)
+        mat: List[List[float]] = []
+        for row in rows:
+            frow: List[float] = []
+            for v in row:
+                if isinstance(v, bool) or not isinstance(v, (int, float)):
+                    raise CalibrationError(
+                        "intrinsics_from_homographies：第 %d 个单应含非有限/非法元素"
+                        "——拒绝求解（不返回全 nan 内参）" % i)
+                try:
+                    fv = float(v)
+                except OverflowError as exc:
+                    raise CalibrationError(
+                        "intrinsics_from_homographies：第 %d 个单应含非有限/溢出元素"
+                        "——拒绝求解（不返回全 nan 内参）" % i) from exc
+                if not math.isfinite(fv):
+                    raise CalibrationError(
+                        "intrinsics_from_homographies：第 %d 个单应含非有限/非法元素"
+                        "——拒绝求解（不返回全 nan 内参）" % i)
+                frow.append(fv)
+            mat.append(frow)
+        clean_hs.append(mat)
     a: List[List[float]] = []
-    for h in hs:
+    for h in clean_hs:
         a.append(_v_ij(h, 0, 1))
         v11 = _v_ij(h, 0, 0)
         v22 = _v_ij(h, 1, 1)
@@ -346,40 +510,50 @@ def intrinsics_from_homographies(hs: Sequence[Sequence[Sequence[float]]]
     #           β  = √(λ·B11/(B11·B22 − B12²))
     #           u0 = −B13·α²/λ
     denom = b11 * b22 - b12 ** 2
-    if abs(denom) < 1e-30:
+    if (not math.isfinite(denom)) or abs(denom) < 1e-30:
         raise CalibrationError(
             "intrinsics_from_homographies：B 退化（B11·B22−B12²≈0）——"
             "视图朝向过于接近或点集共线")
     v0 = (b12 * b13 - b11 * b23) / denom
     lam = b33 - (b13 ** 2 + v0 * (b12 * b13 - b11 * b23)) / b11
-    if lam <= 0 or lam / b11 <= 0:
+    if (not math.isfinite(lam)) or lam <= 0 or (not math.isfinite(lam / b11)) or lam / b11 <= 0:
         raise CalibrationError(
             "intrinsics_from_homographies：λ=%r 非正（数据不自洽或符号约定不符）"
             % (lam,))
+    fy_sq = lam * b11 / denom
+    if (not math.isfinite(fy_sq)) or fy_sq <= 0:
+        raise CalibrationError(
+            "intrinsics_from_homographies：fy²=%r 非正（数据不自洽）" % (fy_sq,))
     # 注：Zhang 原文用 α/β 表示像素焦距。这里直接命名 fx_est/fy_est ——
     # 它们**就是**估计出的 fx/fy，用原名更清楚；也顺带避开
     # tools/time_core_lint.py 的 R3C 误报（该规则把 `* alpha` 当成 EMA 权重，
     # 其 docstring 已自陈这是已知局限）。
     fx_est = math.sqrt(lam / b11)
-    fy_est = math.sqrt(lam * b11 / denom)
+    fy_est = math.sqrt(fy_sq)
     u0 = -b13 * (fx_est ** 2) / lam
+    skew_est = -b12 * fx_est ** 2 * fy_est / lam
+    if not all(math.isfinite(v) for v in (fx_est, fy_est, u0, v0, skew_est)):
+        raise CalibrationError("intrinsics_from_homographies：解出非有限内参")
     return {"fx": fx_est, "fy": fy_est, "cx": u0, "cy": v0,
-            "skew": -b12 * fx_est ** 2 * fy_est / lam}
+            "skew": skew_est}
 
 
 # =========================================================== 棋盘主入口
 def chessboard_object_points(cols: int, rows: int, square: float = 1.0,
                              z: float = 0.0) -> List[List[float]]:
     """棋盘**内角点**世界坐标（cols×rows 个，Z=0 平面，行优先）。"""
-    if cols < 2 or rows < 2:
-        raise CalibrationError("chessboard_object_points：cols/rows 至少 2"
-                               "（得到 %d×%d）" % (cols, rows))
-    if square <= 0:
-        raise CalibrationError("chessboard_object_points：方格边长必须为正")
+    cols_i = _require_int("chessboard_object_points.cols", cols, min_val=2)
+    rows_i = _require_int("chessboard_object_points.rows", rows, min_val=2)
+    sq = _require_finite("chessboard_object_points.square", square, positive=True)
+    zf = _require_finite("chessboard_object_points.z", z)
     pts: List[List[float]] = []
-    for r in range(rows):
-        for c in range(cols):
-            pts.append([c * square, r * square, z])
+    for r in range(rows_i):
+        for c in range(cols_i):
+            x_val = c * sq
+            y_val = r * sq
+            if not (math.isfinite(x_val) and math.isfinite(y_val)):
+                raise CalibrationError("chessboard_object_points：角点坐标溢出")
+            pts.append([x_val, y_val, zf])
     return pts
 
 
@@ -387,19 +561,28 @@ def _project(k: Dict[str, float], rot: Sequence[Sequence[float]],
              tvec: Sequence[float], p: Sequence[float]
              ) -> Optional[Tuple[float, float]]:
     """把世界点 P 投到像素；在相机后方返回 None（**不返回垃圾坐标**）。"""
-    x = rot[0][0] * p[0] + rot[0][1] * p[1] + rot[0][2] * p[2] + tvec[0]
-    y = rot[1][0] * p[0] + rot[1][1] * p[1] + rot[1][2] * p[2] + tvec[1]
-    z = rot[2][0] * p[0] + rot[2][1] * p[1] + rot[2][2] * p[2] + tvec[2]
+    fx, fy, cx, cy, skew = _require_intrinsics_dict(k, "_project")
+    rm = _require_mat3(rot, "_project.rot")
+    tv = _require_vec(tvec, 3, "_project.tvec")
+    pt = _require_vec(p, 3, "_project.p")
+    x = rm[0][0] * pt[0] + rm[0][1] * pt[1] + rm[0][2] * pt[2] + tv[0]
+    y = rm[1][0] * pt[0] + rm[1][1] * pt[1] + rm[1][2] * pt[2] + tv[1]
+    z = rm[2][0] * pt[0] + rm[2][1] * pt[1] + rm[2][2] * pt[2] + tv[2]
+    if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+        raise CalibrationError("_project：相机坐标非有限")
     if z <= 1e-9:
         return None
-    u = k["fx"] * (x / z) + k["skew"] * (y / z) + k["cx"]
-    v = k["fy"] * (y / z) + k["cy"]
+    u = fx * (x / z) + skew * (y / z) + cx
+    v = fy * (y / z) + cy
+    if not (math.isfinite(u) and math.isfinite(v)):
+        raise CalibrationError("_project：投影像素非有限")
     return u, v
 
 
 def reprojection_rms(k: Dict[str, float], views: Sequence[Dict[str, Any]],
                      obj: Sequence[Sequence[float]]) -> Tuple[float, int]:
     """重投影 RMS（**唯一质量判据**）。返回 (rms_px, 参与点数)。"""
+    _require_intrinsics_dict(k, "reprojection_rms")
     res: List[float] = []
     for v in views:
         rot = v["R"]
@@ -408,11 +591,16 @@ def reprojection_rms(k: Dict[str, float], views: Sequence[Dict[str, Any]],
             pred = _project(k, rot, tvec, p)
             if pred is None:
                 continue
-            res.append(math.hypot(pred[0] - float(px[0]), pred[1] - float(px[1])))
+            px_u = _require_finite("reprojection_rms.pixels[0]", px[0])
+            px_v = _require_finite("reprojection_rms.pixels[1]", px[1])
+            res.append(math.hypot(pred[0] - px_u, pred[1] - px_v))
     if not res:
         raise CalibrationError("reprojection_rms：没有任何角点落在相机前方"
                                "（位姿不自洽）")
-    return math.sqrt(sum(r * r for r in res) / len(res)), len(res)
+    rms = math.sqrt(sum(r * r for r in res) / len(res))
+    if not math.isfinite(rms):
+        raise CalibrationError("reprojection_rms：重投影残差非有限")
+    return rms, len(res)
 
 
 def calibrate_from_chessboards(views: Sequence[Dict[str, Any]],
@@ -429,12 +617,22 @@ def calibrate_from_chessboards(views: Sequence[Dict[str, Any]],
     返回 {intrinsics, residual_px, n_views, n_points, homographies}。
     主点落在图像外 / fx,fy 非正 / 残差过大 ⇒ 抛 `CalibrationError`（不返回可疑解）。
 
-    #2316：残差上界默认取模块常量 `RESIDUAL_PX_MAX`（修前 docstring 承诺了
+    #2316/#196：残差上界默认取模块常量 `RESIDUAL_PX_MAX`（修前 docstring 承诺了
     「残差过大 ⇒ 抛错」但返回路径**没有任何 rms 比较**——劣质解实测 113 px
-    照常返回）；`max_residual_px` 供调用方按次覆盖（None ⇒ 用常量；内部
-    LM 初值路径显式传 inf 豁免，见 `calibrate_with_distortion`）。非有限 rms
-    与超上限同判（fail-closed）。
+    照常返回）；`max_residual_px` 供调用方按次覆盖（None ⇒ 用常量；显式 +inf
+    豁免保留给 `calibrate_with_distortion` 等调用方；NaN / -inf / 负值 / bool
+    一律拒绝）。非有限 rms 与超上限同判（fail-closed）。
     """
+    w_img, h_img = _require_image_size(image_size, "calibrate_from_chessboards")
+    if max_residual_px is None:
+        _rms_max = RESIDUAL_PX_MAX
+    else:
+        _rms_max = _require_finite(
+            "calibrate_from_chessboards.max_residual_px",
+            max_residual_px,
+            min_val=0.0,
+            allow_pos_inf=True,
+        )
     if len(views) < 3:
         raise CalibrationError("calibrate_from_chessboards：至少 3 个视图（得到 %d）"
                                % len(views))
@@ -454,13 +652,10 @@ def calibrate_from_chessboards(views: Sequence[Dict[str, Any]],
     k = intrinsics_from_homographies(hs)
     if not (k["fx"] > 0 and k["fy"] > 0):
         raise CalibrationError("标定失败：fx/fy 必须为正，得到 %r" % (k,))
-    w_img, h_img = float(image_size[0]), float(image_size[1])
     if not (0.0 <= k["cx"] <= w_img and 0.0 <= k["cy"] <= h_img):
         raise CalibrationError("标定失败：主点落在图像外（%r，图像 %s）"
                                % (k, image_size))
     rms, n_pts = reprojection_rms(k, views, obj)
-    _rms_max = (RESIDUAL_PX_MAX if max_residual_px is None
-                else float(max_residual_px))
     if (not math.isfinite(rms)) or rms > _rms_max:
         raise CalibrationError(
             "标定失败：重投影残差过大（rms=%.2f px > 上限 %.2f px）——"
@@ -474,8 +669,10 @@ def calibrate_from_chessboards(views: Sequence[Dict[str, Any]],
 # =========================================================== 旋转表示
 def _rodrigues(rvec: Sequence[float]) -> List[List[float]]:
     """旋转向量 → 旋转矩阵（Rodrigues 闭式）。"""
-    rx, ry, rz = float(rvec[0]), float(rvec[1]), float(rvec[2])
-    th = math.sqrt(rx * rx + ry * ry + rz * rz)
+    rx, ry, rz = _require_vec(rvec, 3, "_rodrigues")
+    th = math.hypot(rx, ry, rz)
+    if not math.isfinite(th):
+        raise CalibrationError("_rodrigues：旋转角非有限")
     if th < 1e-12:
         return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     kx, ky, kz = rx / th, ry / th, rz / th
@@ -489,25 +686,31 @@ def _rodrigues(rvec: Sequence[float]) -> List[List[float]]:
 
 
 def _mat_to_rodrigues(r: Sequence[Sequence[float]]) -> List[float]:
-    """旋转矩阵 → 旋转向量。"""
-    tr = float(r[0][0]) + float(r[1][1]) + float(r[2][2])
+    """旋转矩阵 → 旋转向量（拒绝含非有限/bool 元素的矩阵）。"""
+    rm = _require_mat3(r, "_mat_to_rodrigues")
+    tr = rm[0][0] + rm[1][1] + rm[2][2]
+    if not math.isfinite(tr):
+        raise CalibrationError("_mat_to_rodrigues：矩阵迹非有限")
     cos_th = max(-1.0, min(1.0, (tr - 1.0) / 2.0))
     th = math.acos(cos_th)
     if th < 1e-12:
         return [0.0, 0.0, 0.0]
     if abs(math.pi - th) < 1e-6:
         # θ≈π：从 R+I 的列取轴（最大对角元那一列最稳）
-        diag = [float(r[0][0]), float(r[1][1]), float(r[2][2])]
+        diag = [rm[0][0], rm[1][1], rm[2][2]]
         i = max(range(3), key=lambda k: diag[k])
-        col = [float(r[k][i]) + (1.0 if k == i else 0.0) for k in range(3)]
+        col = [rm[k][i] + (1.0 if k == i else 0.0) for k in range(3)]
         nrm = math.sqrt(sum(x * x for x in col))
-        if nrm < 1e-12:
+        if (not math.isfinite(nrm)) or nrm < 1e-12:
             raise CalibrationError("_mat_to_rodrigues：θ≈π 且轴退化")
         return [th * x / nrm for x in col]
     f = th / (2.0 * math.sin(th))
-    return [f * (float(r[2][1]) - float(r[1][2])),
-            f * (float(r[0][2]) - float(r[2][0])),
-            f * (float(r[1][0]) - float(r[0][1]))]
+    out = [f * (rm[2][1] - rm[1][2]),
+           f * (rm[0][2] - rm[2][0]),
+           f * (rm[1][0] - rm[0][1])]
+    if not all(math.isfinite(x) for x in out):
+        raise CalibrationError("_mat_to_rodrigues：输出旋转向量非有限")
+    return out
 
 
 # =========================================================== Brown–Conrady 畸变
@@ -523,10 +726,18 @@ def distort_normalized(xn: float, yn: float, k1: float, k2: float,
     `p1 = p2 = 0` 时与"只做径向"完全等价（向后兼容）。
     切向项来自镜头与传感器不平行，手机/工业相机通常很小。
     """
-    r2 = xn * xn + yn * yn
-    radial = 1.0 + k1 * r2 + k2 * r2 * r2
-    xd = xn * radial + 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
-    yd = yn * radial + p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
+    xnf = _require_finite("distort_normalized.xn", xn)
+    ynf = _require_finite("distort_normalized.yn", yn)
+    k1f = _require_finite("distort_normalized.k1", k1)
+    k2f = _require_finite("distort_normalized.k2", k2)
+    p1f = _require_finite("distort_normalized.p1", p1)
+    p2f = _require_finite("distort_normalized.p2", p2)
+    r2 = xnf * xnf + ynf * ynf
+    radial = 1.0 + k1f * r2 + k2f * r2 * r2
+    xd = xnf * radial + 2.0 * p1f * xnf * ynf + p2f * (r2 + 2.0 * xnf * xnf)
+    yd = ynf * radial + p1f * (r2 + 2.0 * ynf * ynf) + 2.0 * p2f * xnf * ynf
+    if not (math.isfinite(xd) and math.isfinite(yd)):
+        raise CalibrationError("distort_normalized：畸变结果非有限")
     return xd, yd
 
 
@@ -536,15 +747,27 @@ def project_with_distortion(k: Dict[str, float], rvec: Sequence[float],
                             p1: float = 0.0, p2: float = 0.0
                             ) -> Optional[Tuple[float, float]]:
     """世界点 → 像素（含径向 + 切向畸变）。相机后方返回 None。"""
+    fx, fy, cx, cy, skew = _require_intrinsics_dict(k, "project_with_distortion")
     rot = _rodrigues(rvec)
-    x = rot[0][0] * p[0] + rot[0][1] * p[1] + rot[0][2] * p[2] + tvec[0]
-    y = rot[1][0] * p[0] + rot[1][1] * p[1] + rot[1][2] * p[2] + tvec[1]
-    z = rot[2][0] * p[0] + rot[2][1] * p[1] + rot[2][2] * p[2] + tvec[2]
+    tv = _require_vec(tvec, 3, "project_with_distortion.tvec")
+    pt = _require_vec(p, 3, "project_with_distortion.p")
+    k1f = _require_finite("project_with_distortion.k1", k1)
+    k2f = _require_finite("project_with_distortion.k2", k2)
+    p1f = _require_finite("project_with_distortion.p1", p1)
+    p2f = _require_finite("project_with_distortion.p2", p2)
+    x = rot[0][0] * pt[0] + rot[0][1] * pt[1] + rot[0][2] * pt[2] + tv[0]
+    y = rot[1][0] * pt[0] + rot[1][1] * pt[1] + rot[1][2] * pt[2] + tv[1]
+    z = rot[2][0] * pt[0] + rot[2][1] * pt[1] + rot[2][2] * pt[2] + tv[2]
+    if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+        raise CalibrationError("project_with_distortion：相机坐标非有限")
     if z <= 1e-9:
         return None
-    xd, yd = distort_normalized(x / z, y / z, k1, k2, p1, p2)
-    return (k["fx"] * xd + k["skew"] * yd + k["cx"],
-            k["fy"] * yd + k["cy"])
+    xd, yd = distort_normalized(x / z, y / z, k1f, k2f, p1f, p2f)
+    u = fx * xd + skew * yd + cx
+    v = fy * yd + cy
+    if not (math.isfinite(u) and math.isfinite(v)):
+        raise CalibrationError("project_with_distortion：投影像素非有限")
+    return u, v
 
 
 def _pose_from_homography(h: Sequence[Sequence[float]],
@@ -561,16 +784,19 @@ def _pose_from_homography(h: Sequence[Sequence[float]],
          先单位化 `r1`，再 `r3 = normalize(r1 × r2)`、`r2 = r3 × r1`，保证
          `RᵀR = I, det(R) = +1`；`t3` 保持均值尺度 `lam = 2/(n1+n2)`。
     """
-    kinv = _mat_inv3([[k["fx"], k["skew"], k["cx"]],
-                      [0.0, k["fy"], k["cy"]],
+    hm = _require_mat3(h, "_pose_from_homography.h")
+    fx, fy, cx, cy, skew = _require_intrinsics_dict(k, "_pose_from_homography")
+    ref_xy = tuple(_require_vec(ref_xy, 2, "_pose_from_homography.ref_xy"))
+    kinv = _mat_inv3([[fx, skew, cx],
+                      [0.0, fy, cy],
                       [0.0, 0.0, 1.0]])
-    m = _mat_mul(kinv, h)
+    m = _mat_mul(kinv, hm)
     r1 = [m[i][0] for i in range(3)]
     r2 = [m[i][1] for i in range(3)]
     t3 = [m[i][2] for i in range(3)]
     n1 = math.sqrt(sum(x * x for x in r1))
     n2 = math.sqrt(sum(x * x for x in r2))
-    if n1 < 1e-12 or n2 < 1e-12:
+    if (not math.isfinite(n1)) or (not math.isfinite(n2)) or n1 < 1e-12 or n2 < 1e-12:
         raise CalibrationError("_pose_from_homography：单应退化（列范数 ~0）")
     lam = 2.0 / (n1 + n2)          # 两列范数应相等，取均值更稳
     r1 = [x * lam for x in r1]
@@ -578,6 +804,8 @@ def _pose_from_homography(h: Sequence[Sequence[float]],
     t3 = [x * lam for x in t3]
     # 射影手性对齐：参考点须在相机前方（z_ref > 0）
     z_ref = r1[2] * float(ref_xy[0]) + r2[2] * float(ref_xy[1]) + t3[2]
+    if not math.isfinite(z_ref):
+        raise CalibrationError("_pose_from_homography：参考深度非有限")
     if z_ref < 0.0:
         r1 = [-x for x in r1]
         r2 = [-x for x in r2]
@@ -589,7 +817,7 @@ def _pose_from_homography(h: Sequence[Sequence[float]],
           r1[2] * r2[0] - r1[0] * r2[2],
           r1[0] * r2[1] - r1[1] * r2[0]]
     n3 = math.sqrt(sum(x * x for x in r3))
-    if n3 < 1e-12:
+    if (not math.isfinite(n3)) or n3 < 1e-12:
         raise CalibrationError("_pose_from_homography：r1×r2 退化")
     r3 = [x / n3 for x in r3]
     r2 = [r3[1] * r1[2] - r3[2] * r1[1],
@@ -609,8 +837,7 @@ def _residuals(params: Sequence[float], obj: Sequence[Sequence[float]],
     参数布局：`[fx, fy, cx, cy, k1, k2]` +（切向时追加 `[p1, p2]`）
               + 每视图 `[rvec(3), tvec(3)]`。
     """
-    k = {"fx": params[0], "fy": params[1], "cx": params[2], "cy": params[3],
-         "skew": 0.0}
+    fx, fy, cx, cy = params[0], params[1], params[2], params[3]
     k1, k2 = params[4], params[5]
     if tangential:
         p1, p2 = params[6], params[7]
@@ -621,17 +848,34 @@ def _residuals(params: Sequence[float], obj: Sequence[Sequence[float]],
     out: List[float] = []
     for vi in range(n_views):
         o = base + 6 * vi
-        rvec = params[o:o + 3]
-        tvec = params[o + 3:o + 6]
+        rot = _rodrigues(params[o:o + 3])
+        tx, ty, tz = params[o + 3], params[o + 4], params[o + 5]
+        r00, r01, r02 = rot[0][0], rot[0][1], rot[0][2]
+        r10, r11, r12 = rot[1][0], rot[1][1], rot[1][2]
+        r20, r21, r22 = rot[2][0], rot[2][1], rot[2][2]
         for p, px in zip(obj, obs[vi]):
-            pred = project_with_distortion(k, rvec, tvec, p, k1, k2, p1, p2)
-            if pred is None:
+            px0, px1, px2 = p[0], p[1], p[2]
+            x = r00 * px0 + r01 * px1 + r02 * px2 + tx
+            y = r10 * px0 + r11 * px1 + r12 * px2 + ty
+            z = r20 * px0 + r21 * px1 + r22 * px2 + tz
+            if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+                raise CalibrationError("_residuals：相机坐标非有限")
+            if z <= 1e-9:
                 # 相机后方：给一个大残差把参数推回去（不是静默丢弃）
                 out.append(1e4)
                 out.append(1e4)
             else:
-                out.append(pred[0] - float(px[0]))
-                out.append(pred[1] - float(px[1]))
+                xn, yn = x / z, y / z
+                r2 = xn * xn + yn * yn
+                radial = 1.0 + k1 * r2 + k2 * r2 * r2
+                xd = xn * radial + 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
+                yd = yn * radial + p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
+                u = fx * xd + cx
+                v = fy * yd + cy
+                if not (math.isfinite(u) and math.isfinite(v)):
+                    raise CalibrationError("_residuals：投影像素非有限")
+                out.append(u - float(px[0]))
+                out.append(v - float(px[1]))
     return out
 
 
@@ -674,11 +918,17 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
 
     失败即抛 `CalibrationError`；**不返回"看起来收敛了"的可疑解**。
     """
+    w_img, h_img = _require_image_size(image_size, "calibrate_with_distortion")
+    iters_i = _require_int("calibrate_with_distortion.iters", iters, min_val=0)
+    fd_abs_f = _require_finite("calibrate_with_distortion.fd_abs", fd_abs, min_val=0.0)
+    fd_rel_f = _require_finite("calibrate_with_distortion.fd_rel", fd_rel, min_val=0.0)
+    if fd_abs_f == 0.0 and fd_rel_f == 0.0:
+        raise CalibrationError(
+            "calibrate_with_distortion：fd_abs 与 fd_rel 不能同时为 0（中心差分步长为零）")
     if len(views) < 3:
         raise CalibrationError("calibrate_with_distortion：至少 3 个视图（得到 %d）"
                                % len(views))
     obj = chessboard_object_points(cols, rows, square)
-    obj2d = [[p[0], p[1]] for p in obj]
     obs = [v["pixels"] for v in views]
     for i, px in enumerate(obs):
         if len(px) != len(obj):
@@ -709,11 +959,15 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
         raise CalibrationError("calibrate_with_distortion：初值残差非有限")
     lam = 1e-3
     n = len(params)
-    for _it in range(int(iters)):
+    for _it in range(iters_i):
         # ---- 数值雅可比（中心差分）----
         jac: List[List[float]] = []
         for j in range(n):
-            step = fd_abs + fd_rel * abs(params[j])
+            step = fd_abs_f + fd_rel_f * abs(params[j])
+            if (not math.isfinite(step)) or step <= 0.0:
+                raise CalibrationError(
+                    "calibrate_with_distortion：第 %d 维中心差分步长非法（step=%r）"
+                    % (j, step))
             pp = list(params)
             pp[j] += step
             pm = list(params)
@@ -736,10 +990,14 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
                 lam = _lm_damping(lam, grow=True)
                 continue
             cand = [params[i] + delta[i] for i in range(n)]
-            if not (cand[0] > 0 and cand[1] > 0):
+            if (not all(math.isfinite(v) for v in cand)) or not (cand[0] > 0 and cand[1] > 0):
                 lam = _lm_damping(lam, grow=True)
                 continue
-            rc = _residuals(cand, obj, obs, len(views), tangential)
+            try:
+                rc = _residuals(cand, obj, obs, len(views), tangential)
+            except CalibrationError:
+                lam = _lm_damping(lam, grow=True)
+                continue
             cc = _cost(rc)
             if math.isfinite(cc) and cc < cost:
                 params, res, cost = cand, rc, cc
@@ -749,13 +1007,16 @@ def calibrate_with_distortion(views: Sequence[Dict[str, Any]],
             lam = _lm_damping(lam, grow=True)
         if not improved:
             break
-    if not (params[0] > 0 and params[1] > 0):
+    if not (math.isfinite(params[0]) and math.isfinite(params[1])
+            and params[0] > 0 and params[1] > 0):
         raise CalibrationError("calibrate_with_distortion：优化后 fx/fy 非正")
-    w_img, h_img = float(image_size[0]), float(image_size[1])
-    if not (0.0 <= params[2] <= w_img and 0.0 <= params[3] <= h_img):
+    if not (math.isfinite(params[2]) and math.isfinite(params[3])
+            and 0.0 <= params[2] <= w_img and 0.0 <= params[3] <= h_img):
         raise CalibrationError("calibrate_with_distortion：优化后主点落在图像外"
                                "（%.2f, %.2f）" % (params[2], params[3]))
     rms = math.sqrt(cost / max(len(res), 1))
+    if not math.isfinite(rms):
+        raise CalibrationError("calibrate_with_distortion：优化后残差非有限")
     pbase = 8 if tangential else 6
     dist: Dict[str, float] = {"k1": params[4], "k2": params[5]}
     if tangential:
