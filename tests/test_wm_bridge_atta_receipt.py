@@ -150,6 +150,14 @@ def test_duplicate_path_is_rejected(tmp_path):
         validate_manifest(_manifest([a, b]))
 
 
+def test_path_alias_is_rejected_after_normalization(tmp_path):
+    record = _file_record(tmp_path, "model.obj", b"mesh")
+    alias = dict(record, part="other", path="./model.obj")
+    doc = _manifest([dict(record, part="main"), alias])
+    manifest = _write_manifest(tmp_path, doc)
+    with pytest.raises(AttaEvidenceError, match="规范化 path"):
+        verify_atta_receipt(tmp_path, manifest_path=manifest)
+
 def test_failed_export_row_is_not_hashed_and_needs_partial_opt_in(tmp_path):
     """A row with ``ok: false`` is a declared failure, not a corrupt receipt.
 
