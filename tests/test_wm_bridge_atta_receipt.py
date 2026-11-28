@@ -150,12 +150,12 @@ def test_duplicate_path_is_rejected(tmp_path):
         validate_manifest(_manifest([a, b]))
 
 
-def test_path_alias_is_rejected_after_normalization(tmp_path):
+def test_path_alias_is_rejected_by_file_identity(tmp_path):
     record = _file_record(tmp_path, "model.obj", b"mesh")
     alias = dict(record, part="other", path="./model.obj")
     doc = _manifest([dict(record, part="main"), alias])
     manifest = _write_manifest(tmp_path, doc)
-    with pytest.raises(AttaEvidenceError, match="规范化 path"):
+    with pytest.raises(AttaEvidenceError, match="重复指向同一文件"):
         verify_atta_receipt(tmp_path, manifest_path=manifest)
 
 def test_hardlink_to_same_file_is_rejected(tmp_path):
