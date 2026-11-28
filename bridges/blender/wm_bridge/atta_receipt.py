@@ -314,14 +314,18 @@ def verify_atta_receipt(scene_dir: os.PathLike[str] | str, *, manifest_path: Opt
                                 allow_partial=allow_partial,
                                 require_method=require_method)
     normalized_files = []
-    canonical_paths = set()
+    verified_paths = []
     for i, record in enumerate(doc["files"]):
         normalized = verify_file_record(root, record, where="files[%d]" % i)
         if normalized["ok"]:
-            canonical = os.path.normcase(os.path.normpath(normalized["path"]))
-            if canonical in canonical_paths:
-                raise AttaEvidenceError("files 重复规范化 path：%s" % normalized["path"])
-            canonical_paths.add(canonical)
+            for previous_path in verified_paths:
+                try:
+                    same_file = os.path.samefile(normalized["path"], previous_path)
+                except OSError as exc:
+                    raise AttaEvidenceError("无法确认 files 路径身份：%s" % normalized["path"]) from exc
+                if same_file:
+                    raise AttaEvidenceError("files 重复指向同一文件：%s" % normalized["path"])
+            verified_paths.append(normalized["path"])
         normalized_files.append(normalized)
     summary.update({
         "manifest_path": str(path),
