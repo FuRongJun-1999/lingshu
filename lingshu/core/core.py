@@ -14393,6 +14393,13 @@ class SpacetimeMemoryEngine:
                 if _skip_row:
                     skipped_rows[table] = skipped_rows.get(table, 0) + 1
                     continue
+                if table == "edges":
+                    if "confidence" in r:
+                        r["confidence"] = _finite_clamp(
+                            r.get("confidence"), 0.0, 1.0, default=0.0)
+                    if "weight" in r:
+                        r["weight"] = _finite_clamp(
+                            r.get("weight"), 0.0, 1.0, default=1.0)
                 # #125 增量复现：`escalation_points` 用 `INSERT OR IGNORE`——上方预筛
                 # 已把「库内既有 id」的行摘掉并计数，此处 OR IGNORE 只作**备份自身
                 # 含重复 id** 时的兜底（取首条），使本表上**不再存在任何整行替换
